@@ -17,6 +17,7 @@ struct StateToMask(Vec<MoveClassMask>);
 
 #[derive(Debug)]
 pub struct PuzzleCanonicalFSM<'id, P: PuzzleState<'id>> {
+    // TODO: flatvec
     next_state_lookup: Vec<Vec<CanonicalFSMState>>,
     _id: Id<'id>,
     _marker: PhantomData<P>,
@@ -37,10 +38,10 @@ impl<'id, P: PuzzleState<'id>> From<&PuzzleDef<'id, P>> for PuzzleCanonicalFSM<'
         // - T-perm and `(R2 U2)3` commute.
         let mut result_1 = puzzle_def.new_solved_state();
         let mut result_2 = result_1.clone();
-        for (i, move_class_1_index) in puzzle_def.move_classes.iter().copied().enumerate() {
-            for (j, move_class_2_index) in puzzle_def.move_classes.iter().copied().enumerate() {
-                if !puzzle_def.moves[move_class_1_index].commutes_with(
-                    &puzzle_def.moves[move_class_2_index],
+        for (i, move_class_1) in puzzle_def.move_classes.iter().copied().enumerate() {
+            for (j, move_class_2) in puzzle_def.move_classes.iter().copied().enumerate().take(i) {
+                if !puzzle_def.moves[move_class_1].commutes_with(
+                    &puzzle_def.moves[move_class_2],
                     &mut result_1,
                     &mut result_2,
                     puzzle_def.sorted_orbit_defs_ref(),
@@ -56,8 +57,8 @@ impl<'id, P: PuzzleState<'id>> From<&PuzzleDef<'id, P>> for PuzzleCanonicalFSM<'
         let mut mask_to_state = MaskToState(HashMap::new());
         mask_to_state.0.insert(vec![false; num_move_classes], 0);
         // state_to_mask, indexed by state ordinal, holds the set of move
-        // classes in the move sequence so far for which there has not been a
-        // subsequent move that does not commute with that move
+        // classes in the move sequence so far for which all subsequent moves
+        // commute
         let mut state_to_mask = StateToMask(vec![vec![false; num_move_classes]]);
 
         // start state

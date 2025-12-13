@@ -20,9 +20,41 @@ use puzzle_geometry::ksolve::{KPUZZLE_3X3, KPUZZLE_MEGAMINX, KSolve};
 fn playground() {
     make_guard!(guard);
     let megaminx_def = PuzzleDef::<HeapPuzzle>::new(&KPUZZLE_MEGAMINX, guard).unwrap();
-    // println!("{:#?}", megaminx_def);
     let solved = megaminx_def.new_solved_state();
-    let a = apply_moves(&megaminx_def, &solved, "blue2 purple2' green2 white' red2' beige blue' white2' white' white2'", 1);
+    let a = apply_moves(&megaminx_def, &solved, "U2 F", 1); // F2
+    println!(
+        "{:?}",
+        a.sorted_cycle_structure(
+            megaminx_def.sorted_orbit_defs_ref(),
+            &mut HeapPuzzle::new_aux_mem(megaminx_def.sorted_orbit_defs_ref())
+        )
+    );
+    let a = apply_moves(&megaminx_def, &solved, "U2 F2", 1); // F'
+    println!(
+        "{:?}",
+        a.sorted_cycle_structure(
+            megaminx_def.sorted_orbit_defs_ref(),
+            &mut HeapPuzzle::new_aux_mem(megaminx_def.sorted_orbit_defs_ref())
+        )
+    );
+    let a = apply_moves(&megaminx_def, &solved, "U2 F2'", 1); // F
+    println!(
+        "{:?}",
+        a.sorted_cycle_structure(
+            megaminx_def.sorted_orbit_defs_ref(),
+            &mut HeapPuzzle::new_aux_mem(megaminx_def.sorted_orbit_defs_ref())
+        )
+    );
+    let a = apply_moves(&megaminx_def, &solved, "U2 F'", 1); // F2'
+    println!(
+        "{:?}",
+        a.sorted_cycle_structure(
+            megaminx_def.sorted_orbit_defs_ref(),
+            &mut HeapPuzzle::new_aux_mem(megaminx_def.sorted_orbit_defs_ref())
+        )
+    );
+    
+    let a = apply_moves(&megaminx_def, &solved, "F F'", 1); // F2'
     println!(
         "{:?}",
         a.sorted_cycle_structure(

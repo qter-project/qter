@@ -153,7 +153,7 @@ impl<'id, P: PuzzleState<'id>, T: PruningTables<'id, P>> CycleStructureSolver<'i
         // Therefore, the `pop_stack` cannot be called more than `push_stack`.
         let last_puzzle_state = unsafe { mutable.puzzle_state_history.last_state_unchecked() };
 
-        let mut admissible_prune_cost = self.pruning_tables.admissible_heuristic(last_puzzle_state);
+        let admissible_prune_cost = self.pruning_tables.admissible_heuristic(last_puzzle_state);
         if admissible_prune_cost > permitted_cost {
             // Note that `admissible_prune_heuristic` is impossible to be zero
             // here, so the enum instantiation is valid
