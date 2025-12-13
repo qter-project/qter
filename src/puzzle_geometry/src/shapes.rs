@@ -1,5 +1,5 @@
 use crate::{
-    DEG_36, DEG_72, DEG_90, DEG_180, Face, Point, Polyhedron, PuzzleDescriptionString,
+    DEG_72, DEG_90, DEG_180, Face, Point, Polyhedron, PuzzleDescriptionString,
     num::{Matrix, Num, Vector, rotate_to},
     rotation_about,
 };
@@ -115,8 +115,7 @@ pub static DODECAHEDRON: LazyLock<Polyhedron> = LazyLock::new(|| {
     left.color = ArcIntern::from("L");
 
     let top_half = vec![up, front, right, back_1, back_2, left];
-    let around_x = &rotation_about(Vector::new([[0, 1, 0]]), DEG_36.clone())
-        * &rotation_about(Vector::new([[0, 0, 1]]), DEG_180.clone());
+    let around_x = rotation_about(Vector::new([[1, 0, 0]]), DEG_180.clone());
     let bottom_half = top_half
         .iter()
         .map(|v| v.transformed(&around_x))
