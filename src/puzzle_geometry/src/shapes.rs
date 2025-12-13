@@ -114,8 +114,6 @@ pub static DODECAHEDRON: LazyLock<Polyhedron> = LazyLock::new(|| {
     let mut left = back_2.transformed(&y_rot);
     left.color = ArcIntern::from("L");
 
-    // println!("{:?}", y_rot - &rotation_about(Vector::new([[0, 1, 0]]), DEG_36.clone()) * &rotation_about(Vector::new([[0, 1, 0]]), DEG_36.clone()));
-
     let top_half = vec![up, front, right, back_1, back_2, left];
     let around_x = &rotation_about(Vector::new([[0, 1, 0]]), DEG_36.clone())
         * &rotation_about(Vector::new([[0, 0, 1]]), DEG_180.clone());

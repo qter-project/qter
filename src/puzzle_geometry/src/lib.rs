@@ -1249,9 +1249,9 @@ mod tests {
                 .ksolve()
                 .sets
                 .iter()
-                .map(|v| v.piece_count.get())
+                .map(|v| (v.piece_count.get(), v.orientation_count.get()))
                 .collect::<HashSet<_>>(),
-            HashSet::from([20, 30])
+            HashSet::from([(20, 3), (30, 2)])
         );
 
         // print_shapes(shapes);
