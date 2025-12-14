@@ -72,6 +72,9 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
       - name: Create web root
         run: mkdir -p www
         working-directory: media
