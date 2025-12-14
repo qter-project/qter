@@ -28,9 +28,6 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Set up Typst
-        uses: typst-community/setup-typst@v4
-
       - name: Set up Shiroa
         uses: baptiste0928/cargo-install@v3
         with:
@@ -38,14 +35,15 @@ jobs:
           git: https://github.com/Myriad-Dreamin/shiroa
 
       - name: Compile documentation
-        run: shiroa build
-        working-directory: media/docs
-
-      - name: Copy documentation to web root
-        run: |
-          mkdir -p www
-          mv docs/dist/* www
+        run: shiroa build docs
         working-directory: media
+        
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        working-directory: media
+        with:
+          name: docs
+          path: docs/dist
   
   render-paper:
     name: Render paper PDF
@@ -61,11 +59,12 @@ jobs:
         run: typst compile paper/paper.typ
         working-directory: media
 
-      - name: Copy paper to web root
-        run: |
-         mkdir -p www
-         ln paper/paper.pdf www/paper.pdf
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         working-directory: media
+        with:
+          name: paper
+          path: paper/paper.pdf
 
   deploy:
     name: Deploy site
@@ -75,10 +74,29 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: Create web root
+        run: mkdir -p www
+        working-directory: media
+
+      - name: Download docs artifact
+        uses: actions/download-artifact@v4
+        working-directory: media
+        with:
+          name: docs
+          path: www
+
+      - name: Download paper artifact
+        uses: actions/download-artifact@v4
+        working-directory: media
+        with:
+          name: paper
+          path: www
+
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v4
+        working-directory: media
         with:
-          path: media/www
+          path: www
 
       - name: Deploy to GitHub Pages
         id: deployment
