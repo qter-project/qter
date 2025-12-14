@@ -40,10 +40,9 @@ jobs:
         
       - name: Upload artifact
         uses: actions/upload-artifact@v4
-        working-directory: media
         with:
           name: docs
-          path: docs/dist
+          path: media/docs/dist
   
   render-paper:
     name: Render paper PDF
@@ -61,10 +60,9 @@ jobs:
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
-        working-directory: media
         with:
           name: paper
-          path: paper/paper.pdf
+          path: media/paper/paper.pdf
 
   deploy:
     name: Deploy site
@@ -80,23 +78,20 @@ jobs:
 
       - name: Download docs artifact
         uses: actions/download-artifact@v4
-        working-directory: media
         with:
           name: docs
-          path: www
+          path: media/www
 
       - name: Download paper artifact
         uses: actions/download-artifact@v4
-        working-directory: media
         with:
           name: paper
-          path: www
+          path: media/www
 
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v4
-        working-directory: media
         with:
-          path: www
+          path: media/www
 
       - name: Deploy to GitHub Pages
         id: deployment
