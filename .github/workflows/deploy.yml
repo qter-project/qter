@@ -44,7 +44,7 @@ jobs:
       - name: Copy documentation to web root
         run: |
           mkdir -p www
-          mv dist/* www
+          mv docs/dist/* www
         working-directory: media
   
   render-paper:
