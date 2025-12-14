@@ -38,11 +38,13 @@ jobs:
           git: https://github.com/Myriad-Dreamin/shiroa
 
       - name: Compile documentation
-        run: shrioa build
+        run: shiroa build
         working-directory: media/docs
 
       - name: Copy documentation to web root
-        run: mv dist/* www
+        run: |
+          mkdir -p www
+          mv dist/* www
         working-directory: media
   
   render-paper:
@@ -60,7 +62,9 @@ jobs:
         working-directory: media
 
       - name: Copy paper to web root
-        run: ln paper/paper.pdf www/paper.pdf
+        run: |
+         mkdir -p www
+         ln paper/paper.pdf www/paper.pdf
         working-directory: media
 
   deploy:
