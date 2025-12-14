@@ -7,12 +7,13 @@ on:
     paths:
       - media/paper/**
       - media/www/**
+      - media/docs/**
       - .github/workflows/deploy.yml
   workflow_dispatch:
 
 concurrency:
   group: ${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: write
@@ -20,6 +21,30 @@ permissions:
   id-token: write
 
 jobs:
+  render-docs:
+    name: Render documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Typst
+        uses: typst-community/setup-typst@v4
+
+      - name: Set up Shiroa
+        uses: baptiste0928/cargo-install@v3
+        with:
+          crate: shiroa
+          git: https://github.com/Myriad-Dreamin/shiroa
+
+      - name: Compile documentation
+        run: shrioa build
+        working-directory: media/docs
+
+      - name: Copy documentation to web root
+        run: mv dist/* www
+        working-directory: media
+  
   render-paper:
     name: Render paper PDF
     runs-on: ubuntu-latest
@@ -31,24 +56,26 @@ jobs:
         uses: typst-community/setup-typst@v4
 
       - name: Compile document
-        run: typst compile media/paper/paper.typ
+        run: typst compile paper/paper.typ
+        working-directory: media
 
       - name: Copy paper to web root
-        run: ln media/paper/paper.pdf media/www/paper.pdf
-
-      - name: Upload GitHub Pages artifact
-        uses: actions/upload-pages-artifact@v4
-        with:
-          path: media/www
+        run: ln paper/paper.pdf www/paper.pdf
+        working-directory: media
 
   deploy:
     name: Deploy site
-    needs: render-paper
+    needs: [render-paper, render-docs]
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: media/www
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
