@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - main
+    paths:
+      - media/paper/**
+      - media/www/**
+      - media/docs/**
+      - .github/workflows/deploy.yml
   workflow_dispatch:
 
 concurrency:
@@ -16,30 +21,8 @@ permissions:
   id-token: write
 
 jobs:
-  detect-changes:
-    name: Detect changes
-    runs-on: ubuntu-latest
-    outputs:
-      paper: ${{ steps.filter.outputs.paper }}
-      docs: ${{ steps.filter.outputs.docs }}
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Calculate which jobs need to run
-        uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            paper:
-              - 'media/paper/**'
-            docs:
-              - 'media/docs/**'
-
   render-docs:
     name: Render documentation
-    needs: detect-changes
-    if: ${{ needs.detect-changes.outputs.docs == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -54,17 +37,15 @@ jobs:
       - name: Compile documentation
         run: shiroa build docs --mode static-html
         working-directory: media
-
+        
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: docs
           path: media/docs/dist
-
+  
   render-paper:
     name: Render paper PDF
-    needs: detect-changes
-    if: ${{ needs.detect-changes.outputs.paper == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -85,30 +66,22 @@ jobs:
 
   deploy:
     name: Deploy site
-    needs: [detect-changes, render-paper, render-docs]
-    if: ${{ always() && (needs.detect-changes.outputs.paper == 'true' || needs.detect-changes.outputs.docs == 'true') }}
+    needs: [render-paper, render-docs]
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      # - name: Create web root
-      #   run: mkdir www
-      - name: Checkout existing Pages content
-        uses: actions/checkout@v6
-        with:
-          ref: gh-pages
-          path: www
+      - name: Create web root
+        run: mkdir www
 
       - name: Download docs artifact
-        if: ${{ needs.detect-changes.outputs.docs == 'true' }}
         uses: actions/download-artifact@v4
         with:
           name: docs
           path: www
 
       - name: Download paper artifact
-        if: ${{ needs.detect-changes.outputs.paper == 'true' }}
         uses: actions/download-artifact@v4
         with:
           name: paper
