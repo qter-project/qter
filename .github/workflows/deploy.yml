@@ -96,12 +96,14 @@ jobs:
         run: mkdir www
 
       - name: Download docs artifact
+        if: ${{ needs.detect-changes.outputs.docs == 'true' }}
         uses: actions/download-artifact@v4
         with:
           name: docs
           path: www
 
       - name: Download paper artifact
+        if: ${{ needs.detect-changes.outputs.paper == 'true' }}
         uses: actions/download-artifact@v4
         with:
           name: paper
