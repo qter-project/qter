@@ -1,4 +1,3 @@
-
 #import "@preview/shiroa:0.3.1": *
 
 #show: book
