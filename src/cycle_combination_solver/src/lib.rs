@@ -5,6 +5,7 @@
 pub(crate) mod canonical_fsm;
 pub(crate) mod orbit_puzzle;
 pub(crate) mod permutator;
+pub(crate) mod all_topos;
 pub mod pruning;
 pub mod puzzle;
 pub(crate) mod puzzle_state_history;
