@@ -40,7 +40,12 @@ impl AllTopologicalSorts {
             count[to] += 1;
         }
 
-        let available: VecDeque<_> = (0..n).filter(|&i| count[i] == 0).collect();
+        let mut available = VecDeque::with_capacity(n);
+        for (i, &v) in count.iter().enumerate() {
+            if v == 0 {
+                available.push_back(i);
+            }
+        }
 
         assert!(!available.is_empty() || n == 0, "Cycle detected");
 
@@ -116,6 +121,7 @@ impl Iterator for AllTopologicalSorts {
                 }
 
                 self.available.push_front(q);
+                assert!(self.available.len() <= self.n);
 
                 // Check if we've exhausted all choices at this position
                 if !self.bases.is_empty()
@@ -142,6 +148,8 @@ impl Iterator for AllTopologicalSorts {
             return None;
         }
 
+        assert!(self.current.len() <= self.n);
+
         loop {
             if self.current.len() == self.n {
                 // Found a complete topological sort
@@ -159,6 +167,7 @@ impl Iterator for AllTopologicalSorts {
 
                 if self.count[successor] == 0 {
                     self.available.push_back(successor);
+                    assert!(self.available.len() < self.n);
                 }
             }
 
@@ -213,7 +222,7 @@ mod tests {
 
     #[test]
     fn empty_graph() {
-        let edges: [[usize; 2]; 0] = [];
+        let edges = [];
 
         let mut iter = AllTopologicalSorts::new(3, &edges);
         let mut results = Vec::new();
