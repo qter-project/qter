@@ -6,7 +6,7 @@ use std::collections::VecDeque;
 /// - `n`: the number of nodes (nodes are 0..n-1)
 /// - `edges`: a slice of directed edges [from, to], where nodes are zero-indexed
 pub struct AllTopologicalSorts {
-    n: usize,
+    solution_length: usize,
     /// Adjacency list: successors[i] contains nodes that i points to
     successors: Box<[Vec<usize>]>,
     /// Number of incoming edges for each node
@@ -17,8 +17,6 @@ pub struct AllTopologicalSorts {
     bases: Vec<usize>,
     /// Current topological sort (fixed size buffer, reused across iterations)
     current: Vec<usize>,
-    /// Whether iteration is complete
-    done: bool,
 }
 
 impl AllTopologicalSorts {
@@ -50,13 +48,12 @@ impl AllTopologicalSorts {
         assert!(!available.is_empty() || n == 0, "Cycle detected");
 
         Self {
-            n,
+            solution_length: n,
             successors: successors.into_boxed_slice(),
             count: count.into_boxed_slice(),
             available,
             bases: Vec::with_capacity(n),
             current: Vec::with_capacity(n),
-            done: false,
         }
     }
 
@@ -104,7 +101,7 @@ impl Iterator for AllTopologicalSorts {
         // 6. The algorithm generates all valid topological sorts without duplicationn
 
         // If we just returned a result, backtrack before computing next
-        if self.current.len() == self.n && !self.done {
+        if self.current.len() == self.solution_length {
             while let Some(q) = self.current.pop() {
                 // Restore edges from q
                 for &successor in &self.successors[q] {
@@ -121,7 +118,7 @@ impl Iterator for AllTopologicalSorts {
                 }
 
                 self.available.push_front(q);
-                assert!(self.available.len() <= self.n);
+                assert!(self.available.len() <= self.solution_length);
 
                 // Check if we've exhausted all choices at this position
                 if !self.bases.is_empty()
@@ -139,24 +136,12 @@ impl Iterator for AllTopologicalSorts {
 
             // Check if backtracking exhausted all options
             if self.current.is_empty() && self.bases.is_empty() {
-                self.done = true;
                 return None;
             }
         }
 
-        if self.done {
-            return None;
-        }
-
-        assert!(self.current.len() < self.n);
-
-        loop {
-            if self.current.len() == self.n {
-                // Found a complete topological sort
-                // Return without backtracking - that happens on next call
-                return Some(());
-            }
-
+        assert!(self.current.len() < self.solution_length);
+        while self.current.len() < self.solution_length {
             // No available nodes means cycle detected (shouldn't happen mid-iteration)
             let q = self.available.pop_back().unwrap();
 
@@ -167,7 +152,7 @@ impl Iterator for AllTopologicalSorts {
 
                 if self.count[successor] == 0 {
                     self.available.push_back(successor);
-                    assert!(self.available.len() < self.n);
+                    assert!(self.available.len() < self.solution_length);
                 }
             }
 
@@ -176,9 +161,13 @@ impl Iterator for AllTopologicalSorts {
             // Track base choice at this position
             if self.bases.len() < self.current.len() {
                 self.bases.push(q);
-                assert!(self.bases.len() <= self.n);
+                assert!(self.bases.len() <= self.solution_length);
             }
         }
+
+        // Found a complete topological sort
+        // Return without backtracking - that happens on next call
+        Some(())
     }
 }
 
@@ -191,7 +180,7 @@ mod tests {
         let edges = [[0, 1], [1, 2], [1, 3]];
 
         let mut iter = AllTopologicalSorts::new(4, &edges);
-        let mut results = Vec::new();
+        let mut results = vec![];
         while iter.next().is_some() {
             results.push(iter.current().to_vec());
         }
@@ -212,7 +201,7 @@ mod tests {
         let edges = [[0, 1], [1, 2], [2, 3]];
 
         let mut iter = AllTopologicalSorts::new(4, &edges);
-        let mut results = Vec::new();
+        let mut results = vec![];
         while iter.next().is_some() {
             results.push(iter.current().to_vec());
         }
@@ -225,7 +214,7 @@ mod tests {
         let edges = [];
 
         let mut iter = AllTopologicalSorts::new(3, &edges);
-        let mut results = Vec::new();
+        let mut results = vec![];
         while iter.next().is_some() {
             results.push(iter.current().to_vec());
         }
@@ -249,7 +238,7 @@ mod tests {
         let edges = [[0, 1], [0, 2], [1, 3], [2, 3]];
 
         let mut iter = AllTopologicalSorts::new(4, &edges);
-        let mut results = Vec::new();
+        let mut results = vec![];
         while iter.next().is_some() {
             results.push(iter.current().to_vec());
         }
@@ -260,10 +249,10 @@ mod tests {
 
     #[test]
     fn single_node() {
-        let edges: [[usize; 2]; 0] = [];
+        let edges = [];
 
         let mut iter = AllTopologicalSorts::new(1, &edges);
-        let mut results = Vec::new();
+        let mut results = vec![];
         while iter.next().is_some() {
             results.push(iter.current().to_vec());
         }
@@ -276,7 +265,7 @@ mod tests {
         let edges = [[0, 1], [0, 2], [1, 3], [1, 4], [2, 4], [2, 5], [3, 5]];
 
         let mut iter = AllTopologicalSorts::new(6, &edges);
-        let mut results = Vec::new();
+        let mut results = vec![];
         while iter.next().is_some() {
             results.push(iter.current().to_vec());
         }
@@ -319,7 +308,7 @@ mod tests {
         ];
 
         let mut iter = AllTopologicalSorts::new(8, &edges);
-        let mut results = Vec::new();
+        let mut results = vec![];
         while iter.next().is_some() {
             results.push(iter.current().to_vec());
         }
@@ -342,7 +331,7 @@ mod tests {
         }
 
         let mut iter = AllTopologicalSorts::new(20, &edges);
-        let mut results = Vec::new();
+        let mut results = vec![];
         while iter.next().is_some() {
             results.push(iter.current().to_vec());
         }
