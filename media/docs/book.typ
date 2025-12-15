@@ -16,6 +16,7 @@
     - #chapter(none)[Programming with Qter]
       - #chapter(none)[Q language]
       - #chapter(none)[QAT language]
+      - #chapter(none)[Example programs]
       - #chapter(none)[Memory tapes]
 
     = Theory

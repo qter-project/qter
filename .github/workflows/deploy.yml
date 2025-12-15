@@ -92,8 +92,13 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Create web root
-        run: mkdir www
+      # - name: Create web root
+      #   run: mkdir www
+      - name: Checkout existing Pages content
+        uses: actions/checkout@v6
+        with:
+          ref: gh-pages
+          path: www
 
       - name: Download docs artifact
         if: ${{ needs.detect-changes.outputs.docs == 'true' }}
