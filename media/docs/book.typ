@@ -28,6 +28,7 @@
     - #chapter(none)[The Qter Architecture Solver]
       - #chapter(none)[Cycle Combination Finder]
       - #chapter(none)[Cycle Combination Solver]
+      - #chapter(none)[Movecount Coefficient Calculator]
 
     = Technical Documentation
 
