@@ -35,7 +35,7 @@ jobs:
           git: https://github.com/Myriad-Dreamin/shiroa
 
       - name: Compile documentation
-        run: shiroa build docs
+        run: shiroa build docs --mode static-html
         working-directory: media
         
       - name: Upload artifact
