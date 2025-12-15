@@ -86,7 +86,7 @@ jobs:
   deploy:
     name: Deploy site
     needs: [detect-changes, render-paper, render-docs]
-    if: ${{ needs.detect-changes.outputs.paper == 'true' || needs.detect-changes.outputs.docs == 'true' }}
+    if: ${{ always() && (needs.detect-changes.outputs.paper == 'true' || needs.detect-changes.outputs.docs == 'true') }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages

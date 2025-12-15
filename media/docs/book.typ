@@ -13,7 +13,7 @@
 
     - #chapter(none)[Rubik's cube theory]
     - #chapter(none)[What is Qter?]
-    - #chapter(none)[Coding with Qter]
+    - #chapter(none)[Programming with Qter]
       - #chapter(none)[Q language]
       - #chapter(none)[QAT language]
       - #chapter(none)[Memory tapes]
