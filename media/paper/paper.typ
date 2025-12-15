@@ -2402,8 +2402,8 @@ $
     & r_(1,2) = 6 plus.minus 3sqrt(6) \
     & a_n = A r_1^(n-2) + B r_2^(n-2) = A/r_1^2 r_1^n + B/r_2^2 r_2^n \
     & cases(
-             a_1 = 18 \
-              a_2 = A & + B                     &  = 243 \
+             a_1 = 18,
+              a_2 = A & + B                     &  = 243,
           a_3 = A r_1 & + B r_2 = 12a_2 + 18a_1 & = 3240,
       ) \
     & "Solve for" A "and" B \

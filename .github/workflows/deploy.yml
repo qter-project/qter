@@ -19,6 +19,7 @@ permissions:
 
 jobs:
   detect-changes:
+    name: Detect changes
     runs-on: ubuntu-latest
     outputs:
       backend: ${{ steps.filter.outputs.paper }}
