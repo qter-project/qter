@@ -148,7 +148,7 @@ impl Iterator for AllTopologicalSorts {
             return None;
         }
 
-        assert!(self.current.len() <= self.n);
+        assert!(self.current.len() < self.n);
 
         loop {
             if self.current.len() == self.n {
