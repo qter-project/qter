@@ -22,8 +22,8 @@ jobs:
     name: Detect changes
     runs-on: ubuntu-latest
     outputs:
-      backend: ${{ steps.filter.outputs.paper }}
-      frontend: ${{ steps.filter.outputs.docs }}
+      paper: ${{ steps.filter.outputs.paper }}
+      docs: ${{ steps.filter.outputs.docs }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
