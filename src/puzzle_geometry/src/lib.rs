@@ -24,6 +24,7 @@ use qter_core::{
 use thiserror::Error;
 
 mod edge_cloud;
+mod exact_trig;
 pub mod knife;
 pub mod ksolve;
 pub mod num;
@@ -1252,7 +1253,7 @@ mod tests {
                 .collect::<HashSet<_>>(),
             HashSet::from([(20, 3), (30, 2)])
         );
-
+        
         // print_shapes(shapes);
         assert_eq!(megaminx.ksolve().moves.len(), 12 * 4);
 

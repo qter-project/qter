@@ -33,8 +33,8 @@ fn approx_float(mut algebraic: RealAlgebraicNumber) -> f64 {
         return if sign { -f64::INFINITY } else { f64::INFINITY };
     }
 
-    let mantissa_val =
-        (algebraic * RealAlgebraicNumber::from(2).pow((amt_to_exp, 1))).into_integer_floor();
+    let mantissa_val = (algebraic * RealAlgebraicNumber::from(2).pow((amt_to_exp, 1)))
+        .into_integer_floor();
     let mut mantissa_digits = mantissa_val.to_u64_digits().1;
     assert_eq!(mantissa_digits.len(), 1);
     let mut mantissa = mantissa_digits.remove(0);
@@ -46,12 +46,19 @@ fn approx_float(mut algebraic: RealAlgebraicNumber) -> f64 {
         mantissa >>= 1;
     }
 
-    let mantissa_log2 = mantissa.floor_log2().unwrap();
+    let mut mantissa_log2 = mantissa.floor_log2().unwrap();
     if mantissa_log2 < 52 {
         // Subnormal
         assert_eq!(exponent, 1);
         exponent = 0;
     } else {
+        if mantissa_log2 == 53 {
+            // Rounding up made the entire mantissa a digit longer
+            mantissa >>= 1;
+            mantissa_log2 -= 1;
+            exponent += 1;
+        }
+        
         assert_eq!(mantissa_log2, 52);
         // Delete the leading bit because it's implied
         mantissa = mantissa - (1 << mantissa.ilog2());
@@ -614,9 +621,17 @@ pub fn rotation_about(axis: Vector<3>, x_axis: Vector<2>) -> Matrix<3, 3> {
     ])
 }
 
+// pub fn rotation_degree(matrix: Matrix<3, 3>) -> Num {
+//     let mat = matrix.into_inner();
+//     let determinant = Polynomial::<Num>::from([-1, mat[0][0].clone()]);
+// }
+
 #[cfg(test)]
 mod tests {
-    use algebraics::prelude::*;
+    use algebraics::{
+        interval_arithmetic::DyadicFractionInterval, polynomial::Polynomial, prelude::*,
+    };
+    use num_bigint::BigInt;
     use std::cmp::Ordering;
 
     use algebraics::RealAlgebraicNumber;
@@ -817,6 +832,21 @@ mod tests {
         assert_eq!(
             -f64::INFINITY,
             approx_float(RealAlgebraicNumber::from(-2).pow((10001, 1)))
+        );
+
+        // Very big
+        assert_eq!(
+            (2_f64).powi(55),
+            approx_float(RealAlgebraicNumber::from(2).pow((55, 1))),
+        );
+
+        // Regression
+        assert_eq!(
+            approx_float(RealAlgebraicNumber::new_unchecked(
+                Polynomial::from([-18_014_398_509_481_983_i64, 18_014_398_509_481_984_i64].map(BigInt::from)),
+                DyadicFractionInterval::new(BigInt::from(0), BigInt::from(1), 0)
+            )),
+            1.
         );
     }
 }
