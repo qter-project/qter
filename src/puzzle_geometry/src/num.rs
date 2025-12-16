@@ -762,6 +762,8 @@ mod tests {
 
     #[test]
     fn test_float_approx() {
+        #![allow(clippy::float_cmp)]
+
         assert_eq!(3., approx_float(RealAlgebraicNumber::from(3)));
         assert_eq!(-3., approx_float(RealAlgebraicNumber::from(-3)));
         assert_eq!(

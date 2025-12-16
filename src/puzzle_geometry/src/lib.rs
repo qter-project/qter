@@ -1,6 +1,5 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::too_many_lines)]
-#![allow(clippy::float_cmp)]
 #![allow(mixed_script_confusables)]
 
 use std::{
