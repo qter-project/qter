@@ -6,6 +6,10 @@
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    vcube = {
+      url = "github:qter-project/vcube";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -13,6 +17,7 @@
       nixpkgs,
       flake-utils,
       rust-overlay,
+      vcube,
       ...
     }:
     flake-utils.lib.eachDefaultSystem (
@@ -54,6 +59,7 @@
               pkg-config
               packages.rob-twophase
               packages.shiroa
+              vcube.defaultPackage."${system}"
 
               (gap.overrideAttrs (o: {
                 version = "4.13.1";
