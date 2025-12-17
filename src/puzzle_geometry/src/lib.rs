@@ -7,7 +7,7 @@ use std::{
     collections::{BTreeSet, HashMap},
     mem,
     num::NonZeroU16,
-    sync::{Arc, LazyLock, OnceLock},
+    sync::{Arc, OnceLock},
 };
 
 use edge_cloud::EdgeCloud;
@@ -48,29 +48,6 @@ pub enum PuzzleGeometryError {
     #[error("The slice {0} does not have any rotational symmetry")]
     PuzzleLacksSymmetry(ArcIntern<str>),
 }
-
-static DEG_180: LazyLock<Vector<2>> = LazyLock::new(|| Vector::new([[-1, 0]]));
-static DEG_120: LazyLock<Vector<2>> = LazyLock::new(|| {
-    Vector::new([[
-        Num::from(-1) / Num::from(2),
-        Num::from(1) / Num::from(2) * Num::from(3).sqrt(),
-    ]])
-});
-static DEG_90: LazyLock<Vector<2>> = LazyLock::new(|| Vector::new([[0, 1]]));
-static DEG_72: LazyLock<Vector<2>> = LazyLock::new(|| {
-    let fourth = Num::from(1) / Num::from(4);
-    Vector::new([[
-        Num::from(5).sqrt() / Num::from(4) - fourth.clone(),
-        (Num::from(2) * Num::from(5).sqrt() + Num::from(10)).sqrt() * fourth,
-    ]])
-});
-static DEG_36: LazyLock<Vector<2>> = LazyLock::new(|| {
-    let fourth = Num::from(1) / Num::from(4);
-    Vector::new([[
-        fourth.clone() * Num::from(5).sqrt() + fourth.clone(),
-        fourth * (Num::from(-2) * Num::from(5).sqrt() + Num::from(10)).sqrt(),
-    ]])
-});
 
 #[derive(Clone, Debug)]
 pub struct Point(Vector<3>);
@@ -823,27 +800,18 @@ mod tests {
     use std::{cmp::Ordering, collections::HashSet, sync::Arc};
 
     use crate::{
-        DEG_36, DEG_72, DEG_90, DEG_120, DEG_180, Face, Point, PuzzleGeometryDefinition,
+        Face, Point, PuzzleGeometryDefinition,
         PuzzleGeometryError,
         knife::{CutSurface, PlaneCut},
         ksolve::KSolveMove,
         num::{Num, Vector},
         point_compare,
-        shapes::{CUBE, DODECAHEDRON, TETRAHEDRON, print_shapes},
+        shapes::{CUBE, DODECAHEDRON, TETRAHEDRON},
         turn_compare, turn_names,
     };
     use internment::ArcIntern;
     use itertools::Itertools;
     use qter_core::{Int, Span, U, architectures::Permutation, schreier_sims::StabilizerChain};
-
-    #[test]
-    fn valid_rotators() {
-        assert_eq!(DEG_180.clone().norm(), Num::from(1));
-        assert_eq!(DEG_120.clone().norm(), Num::from(1));
-        assert_eq!(DEG_90.clone().norm(), Num::from(1));
-        assert_eq!(DEG_72.clone().norm(), Num::from(1));
-        assert_eq!(DEG_36.clone().norm(), Num::from(1));
-    }
 
     #[test]
     fn test_turn_names() {

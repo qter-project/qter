@@ -104,9 +104,7 @@ fn edge_cloud_eq(cloud1: &[(Vector<3>, Vector<3>)], cloud2: &[(Vector<3>, Vector
 #[cfg(test)]
 mod tests {
     use crate::{
-        DEG_72, DEG_120, Face,
-        num::{Vector, rotation_about},
-        shapes::TETRAHEDRON,
+        Face, exact_trig::rotation_degree, num::{Vector, rotation_about}, shapes::TETRAHEDRON
     };
 
     use super::EdgeCloud;
@@ -138,12 +136,12 @@ mod tests {
         assert_eq!(
             tetrahedron
                 .clone()
-                .try_symmetry(&rotation_about(Vector::new([[0, 1, 0]]), DEG_120.clone())),
+                .try_symmetry(&rotation_about(Vector::new([[0, 1, 0]]), rotation_degree(1, 3).clone())),
             Some(3),
         );
 
         assert_eq!(
-            tetrahedron.try_symmetry(&rotation_about(Vector::new([[0, 1, 0]]), DEG_72.clone())),
+            tetrahedron.try_symmetry(&rotation_about(Vector::new([[0, 1, 0]]), rotation_degree(1, 5).clone())),
             None
         );
     }

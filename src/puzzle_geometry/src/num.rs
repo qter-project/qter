@@ -637,7 +637,6 @@ mod tests {
     use algebraics::RealAlgebraicNumber;
 
     use crate::{
-        DEG_72, DEG_90, DEG_120, DEG_180,
         num::{Num, Vector, approx_float, rotate_to, rotation_about},
     };
 
@@ -713,10 +712,6 @@ mod tests {
                 .sum::<Vector<3>>(),
             Vector::new([[6, 9, 12]])
         );
-
-        for v in [&*DEG_180, &*DEG_120, &*DEG_90, &*DEG_72] {
-            assert_eq!(v.clone().norm_squared(), Num::from(1));
-        }
     }
 
     #[test]
@@ -840,7 +835,7 @@ mod tests {
             approx_float(RealAlgebraicNumber::from(2).pow((55, 1))),
         );
 
-        // Regression
+        // Rounding causing overflowing
         assert_eq!(
             approx_float(RealAlgebraicNumber::new_unchecked(
                 Polynomial::from([-18_014_398_509_481_983_i64, 18_014_398_509_481_984_i64].map(BigInt::from)),

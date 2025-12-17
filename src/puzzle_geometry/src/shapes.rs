@@ -1,7 +1,5 @@
 use crate::{
-    DEG_72, DEG_90, DEG_180, Face, Point, Polyhedron, PuzzleDescriptionString,
-    num::{Matrix, Num, Vector, rotate_to},
-    rotation_about,
+    Face, Point, Polyhedron, PuzzleDescriptionString, exact_trig::rotation_degree, num::{Matrix, Num, Vector, rotate_to}, rotation_about
 };
 use internment::ArcIntern;
 use std::sync::LazyLock;
@@ -55,14 +53,14 @@ pub static CUBE: LazyLock<Polyhedron> = LazyLock::new(|| {
         color: ArcIntern::from("white"),
     };
 
-    let x_rot = rotation_about(Vector::new([[-1, 0, 0]]), DEG_90.clone());
+    let x_rot = rotation_about(Vector::new([[-1, 0, 0]]), rotation_degree(1, 4).clone());
 
     let mut front = up.transformed(&x_rot);
     front.color = ArcIntern::from("green");
     let mut down = front.transformed(&x_rot);
     down.color = ArcIntern::from("yellow");
 
-    let y_rot = rotation_about(Vector::new([[0, -1, 0]]), DEG_90.clone());
+    let y_rot = rotation_about(Vector::new([[0, -1, 0]]), rotation_degree(1, 4).clone());
 
     let mut right = front.transformed(&y_rot);
     right.color = ArcIntern::from("red");
@@ -98,13 +96,13 @@ pub static DODECAHEDRON: LazyLock<Polyhedron> = LazyLock::new(|| {
     let rotate = Matrix::new([[1, 0, 0].map(Num::from), centroid, [x, -z, y]]);
     let derotate = rotate.transpose();
 
-    let y_flip = rotation_about(Vector::new([[0, 1, 0]]), DEG_180.clone());
+    let y_flip = rotation_about(Vector::new([[0, 1, 0]]), rotation_degree(1, 2).clone());
     let up = pentagon.transformed(&derotate);
     let mk_front = &derotate * &(&derotate * &y_flip);
     let mut front = up.transformed(&mk_front);
     front.color = ArcIntern::from("F");
 
-    let y_rot = rotation_about(Vector::new([[0, 1, 0]]), DEG_72.clone());
+    let y_rot = rotation_about(Vector::new([[0, 1, 0]]), rotation_degree(1, 5).clone());
     let mut right = front.transformed(&y_rot);
     right.color = ArcIntern::from("R");
     let mut back_1 = right.transformed(&y_rot);
@@ -115,7 +113,7 @@ pub static DODECAHEDRON: LazyLock<Polyhedron> = LazyLock::new(|| {
     left.color = ArcIntern::from("L");
 
     let top_half = vec![up, front, right, back_1, back_2, left];
-    let around_x = rotation_about(Vector::new([[1, 0, 0]]), DEG_180.clone());
+    let around_x = rotation_about(Vector::new([[1, 0, 0]]), rotation_degree(1, 2).clone());
     let bottom_half = top_half
         .iter()
         .map(|v| v.transformed(&around_x))
