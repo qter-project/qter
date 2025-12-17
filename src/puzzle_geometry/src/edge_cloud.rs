@@ -16,15 +16,13 @@ impl EdgeCloud {
         EdgeCloud { edges }
     }
 
-    pub fn try_symmetry(self, matrix: &Matrix<3, 3>) -> Option<usize> {
+    pub fn try_symmetry(self, matrix: &Matrix<3, 3>) -> bool {
         if self.edges.is_empty() {
-            return None;
+            return false;
         }
 
         let mut edges = self.edges.into_iter().dedup_with_count().collect_vec();
         let mut current_edge = edges[0].clone();
-        let mut max_degree = 1;
-        let mut current_degree = 1;
 
         loop {
             let (eq_count, (start, end)) = &current_edge;
@@ -34,25 +32,20 @@ impl EdgeCloud {
             match edges.binary_search_by(|(_, v)| edge_compare(&v.0, &v.1, &new_start, &new_end)) {
                 Ok(idx) => {
                     if edges[idx].0 != *eq_count {
-                        return None;
+                        return false;
                     }
 
                     if edges.len() == 1 {
-                        max_degree = max_degree.max(current_degree);
-                        return Some(max_degree);
+                        return true;
                     }
 
                     current_edge = edges.remove(idx);
 
                     if idx == 0 {
-                        max_degree = max_degree.max(current_degree);
-                        current_degree = 1;
                         current_edge = edges[0].clone();
-                    } else {
-                        current_degree += 1;
                     }
                 }
-                Err(_) => return None,
+                Err(_) => return false,
             }
         }
     }
@@ -137,12 +130,12 @@ mod tests {
             tetrahedron
                 .clone()
                 .try_symmetry(&rotation_about(Vector::new([[0, 1, 0]]), rotation_degree(1, 3).clone())),
-            Some(3),
+            true,
         );
 
         assert_eq!(
             tetrahedron.try_symmetry(&rotation_about(Vector::new([[0, 1, 0]]), rotation_degree(1, 5).clone())),
-            None
+            false
         );
     }
 }

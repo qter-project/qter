@@ -3,7 +3,7 @@
 #![allow(mixed_script_confusables)]
 
 use std::{
-    cmp::Ordering,
+    cmp::{Ordering, Reverse},
     collections::{BTreeSet, HashMap},
     mem,
     num::NonZeroU16,
@@ -22,6 +22,8 @@ use qter_core::{
     union_find::UnionFind,
 };
 use thiserror::Error;
+
+use crate::exact_trig::rotation_degree;
 
 mod edge_cloud;
 mod exact_trig;
@@ -614,12 +616,16 @@ impl PuzzleGeometryDefinition {
                 .unwrap()
                 .1;
 
+            let possible_degrees = (2..=edges_that_might_map_together.len())
+                .map(|d| (rotation_degree(1, d).inner()[0][0].clone() * Num::from(2) + Num::from(1), d))
+                .collect_vec();
+
             let from = Matrix::new([
                 edges_that_might_map_together[0].0.clone().vec_into_inner(),
                 edges_that_might_map_together[0].1.clone().vec_into_inner(),
             ]);
 
-            let matrices = edges_that_might_map_together
+            let mut matrices = edges_that_might_map_together
                 .into_iter()
                 .flat_map(|(a, b)| [(a.clone(), b.clone()), (b, a)])
                 .skip(1)
@@ -627,36 +633,47 @@ impl PuzzleGeometryDefinition {
                     let to = Matrix::new([v.0.vec_into_inner(), v.1.vec_into_inner()]);
                     rotate_to(from.clone(), to)
                 })
-                .filter(|v| {
+                .filter_map(|v| {
+                    let [[xx, xy, xz], [yx, yy, yz], [zx, zy, zz]] = v.clone().into_inner();
+
+                    // Remove any matrices that aren't a valid rotation degree.
+                    // Note that some of these invalid matrices will pass the `try_symmetry` test; for example ⟨F2⟩ on the megaminx is C₅ and would be indistinguishable from ⟨F⟩ other than geometrically.
+                    // The trace is exactly 1+2cos(θ)
+                    let trace = xx + yy + zz;
+                    let (_, degree) = possible_degrees.iter().find(|v| v.0 == trace)?;
+                    let degree = *degree;
+                    
                     // Remove counterclockwise rotations; it would be cursed if `R` was counterclockwise
-                    let v = v.inner();
                     // This is the axis about which the turn would be counter-clockwise
                     // https://en.wikipedia.org/wiki/Rotation_matrix#Determining_the_axis
                     let axis = Vector::new([[
-                        v[1][2].clone() - v[2][1].clone(),
-                        v[2][0].clone() - v[0][2].clone(),
-                        v[0][1].clone() - v[1][0].clone(),
+                        yz - zy,
+                        zx - xz,
+                        xy - yx,
                     ]]);
 
-                    // If the axis is the zero vector, then the rotation is either 0 or 180 degrees and there isn't a sense of "clockwise"
+                    // If the axis is the zero vector, then the rotation is 180 degrees and there isn't a sense of "clockwise"
                     if axis.is_zero() {
-                        return true;
+                        assert_eq!(degree, 2);
+                        return Some((v, degree));
                     }
 
                     // If the counterclockwise axis is facing out, then this turn is counterclockwise and we should not process it. If this was truly a valid turn, then we will see the clockwise version by seeing the edge in the clockwise direction.
-                    axis.dot(out_direction.clone()).cmp_zero().is_gt()
-                });
+                    if axis.dot(out_direction.clone()).cmp_zero().is_gt() {
+                        Some((v, degree))
+                    } else {
+                        None
+                    }
+                }).sorted_unstable_by_key(|v| Reverse(v.1));
 
             let cloud = EdgeCloud::new(edges);
 
             match matrices
-                .filter_map(|matrix| {
+                .find(|(matrix, _)| {
                     cloud
                         .clone()
-                        .try_symmetry(&matrix)
-                        .map(|degree| (matrix, degree))
+                        .try_symmetry(matrix)
                 })
-                .max_by_key(|v| v.1)
             {
                 None | Some((_, 1)) => {
                     return Err(PuzzleGeometryError::PuzzleLacksSymmetry(name.clone()));
@@ -800,8 +817,7 @@ mod tests {
     use std::{cmp::Ordering, collections::HashSet, sync::Arc};
 
     use crate::{
-        Face, Point, PuzzleGeometryDefinition,
-        PuzzleGeometryError,
+        Face, Point, PuzzleGeometryDefinition, PuzzleGeometryError,
         knife::{CutSurface, PlaneCut},
         ksolve::KSolveMove,
         num::{Num, Vector},
@@ -1221,7 +1237,7 @@ mod tests {
                 .collect::<HashSet<_>>(),
             HashSet::from([(20, 3), (30, 2)])
         );
-        
+
         // print_shapes(shapes);
         assert_eq!(megaminx.ksolve().moves.len(), 12 * 4);
 
