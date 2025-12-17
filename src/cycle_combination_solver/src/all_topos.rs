@@ -269,17 +269,19 @@ mod tests {
         while iter.next().is_some() {
             results.push(iter.current().to_vec());
         }
+        results.sort_unstable();
+ 
         assert_eq!(
             results,
             vec![
-                vec![0, 2, 1, 4, 3, 5],
-                vec![0, 2, 1, 3, 5, 4],
-                vec![0, 2, 1, 3, 4, 5],
-                vec![0, 1, 3, 2, 5, 4],
-                vec![0, 1, 3, 2, 4, 5],
-                vec![0, 1, 2, 4, 3, 5],
+                vec![0, 1, 2, 3, 4, 5],
                 vec![0, 1, 2, 3, 5, 4],
-                vec![0, 1, 2, 3, 4, 5]
+                vec![0, 1, 2, 4, 3, 5],
+                vec![0, 1, 3, 2, 4, 5],
+                vec![0, 1, 3, 2, 5, 4],
+                vec![0, 2, 1, 3, 4, 5],
+                vec![0, 2, 1, 3, 5, 4],
+                vec![0, 2, 1, 4, 3, 5]
             ]
         );
 

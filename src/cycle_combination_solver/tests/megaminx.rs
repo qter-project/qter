@@ -1,8 +1,39 @@
-use cycle_combination_solver::{pruning::{PruningTables, ZeroTable}, puzzle::{PuzzleDef, SortedCycleStructure, slice_puzzle::HeapPuzzle}, solver::{CycleStructureSolver, SearchStrategy}};
+use cycle_combination_solver::{
+    pruning::{PruningTables, ZeroTable},
+    puzzle::{PuzzleDef, PuzzleState, SortedCycleStructure, apply_moves, slice_puzzle::HeapPuzzle},
+    solver::{CycleStructureSolver, SearchStrategy},
+};
 use generativity::make_guard;
 use itertools::Itertools;
 use log::trace;
 use puzzle_geometry::ksolve::KPUZZLE_MEGAMINX;
+
+#[test_log::test]
+fn move_powers() {
+    make_guard!(guard);
+    let megaminx_def = PuzzleDef::<HeapPuzzle>::new(&KPUZZLE_MEGAMINX, guard).unwrap();
+    let sorted_orbit_defs = megaminx_def.sorted_orbit_defs_ref();
+    let mut aux_mem = HeapPuzzle::new_aux_mem(sorted_orbit_defs);
+    let solved = megaminx_def.new_solved_state();
+
+    for (moves_str, expected_sorted_cycle_structure) in [
+        ("U F", &[vec![(1, true), (7, true)], vec![(9, false)]]),
+        ("U F2", &[vec![(3, true), (5, true)], vec![(9, false)]]),
+        ("U F2'", &[vec![(2, true), (6, true)], vec![(9, false)]]),
+        ("U F'", &[vec![(4, true), (4, true)], vec![(9, false)]]),
+    ] {
+        let test = apply_moves(&megaminx_def, &solved, moves_str, 1);
+        assert!(
+            test.induces_sorted_cycle_structure(
+                SortedCycleStructure::new(expected_sorted_cycle_structure, sorted_orbit_defs)
+                    .unwrap()
+                    .as_ref(),
+                sorted_orbit_defs,
+                aux_mem.as_ref_mut(),
+            )
+        );
+    }
+}
 
 #[test_log::test]
 fn test_random_order1() {
