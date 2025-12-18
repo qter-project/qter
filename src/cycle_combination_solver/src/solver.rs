@@ -5,6 +5,7 @@ use super::{
     puzzle_state_history::{PuzzleStateHistory, StackedPuzzleStateHistory},
 };
 use crate::{puzzle::AuxMem, start, success, working};
+use humanize_duration::{Truncate, prelude::DurationExt};
 use itertools::Itertools;
 use log::{Level, debug, info, log_enabled};
 use std::{borrow::Cow, cmp::Ordering, time::Instant, vec::IntoIter};
@@ -274,7 +275,7 @@ impl<'id, P: PuzzleState<'id>, T: PruningTables<'id, P>> CycleStructureSolver<'i
                 // "A C B ..." is also a solution. We want to throw out the
                 // "A B ... C" case to avoid the redundant work. This condition
                 // performs both of these optimizations at once.
-                // 
+                //
                 // Note that we *must* use this finnicky reverse_state logic.
                 // It does NOT suffice to use next_state and is_some because
                 // this condition incorrectly returns true in the case of two
@@ -408,6 +409,29 @@ impl<'id, P: PuzzleState<'id>, T: PruningTables<'id, P>> CycleStructureSolver<'i
         )
     }
 
+    fn prepare_next_depth<H: PuzzleStateHistory<'id, P>>(
+        &self,
+        mutable: &mut CycleStructureSolverMutable<'id, P, H>,
+        next_depth: u8,
+    ) -> Result<(), CycleStructureSolverError> {
+        // During pathmax we increment the depth by one, so we ensure it
+        // cannot overflow
+        if next_depth == u8::MAX {
+            return Err(CycleStructureSolverError::SolutionDoesNotExist);
+        }
+        if let Some(max_solution_length) = self.max_solution_length
+            && usize::from(next_depth) > max_solution_length
+        {
+            return Err(CycleStructureSolverError::MaxSolutionLengthExceeded);
+        }
+        mutable.nodes_visited = 0;
+        mutable.tmp = 0;
+        mutable
+            .puzzle_state_history
+            .resize_if_needed(usize::from(next_depth));
+        Ok(())
+    }
+
     /// Run Qter's cycle combination solver.
     ///
     /// # Errors
@@ -450,33 +474,18 @@ impl<'id, P: PuzzleState<'id>, T: PruningTables<'id, P>> CycleStructureSolver<'i
                     .solutions
                     .push(mutable.puzzle_state_history.create_move_history());
             } else {
-                // The loop increments `depth` so we do this manually
                 depth = 1;
-                if H::UPPER_GODS_NUMBER_BOUND.is_some_and(|gods_number| gods_number == 0) {
-                    return Err(CycleStructureSolverError::SolutionDoesNotExist);
-                }
+                self.prepare_next_depth(&mut mutable, depth)?;
             }
             debug!(
-                working!("Traversed {} nodes in {:.3}s"),
+                working!("Traversed {} nodes in {}"),
                 mutable.nodes_visited,
-                depth_start.elapsed().as_secs_f64()
+                depth_start.elapsed().human(Truncate::Millis)
             );
         }
 
         if !mutable.found_solution() {
-            if depth == u8::MAX {
-                return Err(CycleStructureSolverError::SolutionDoesNotExist);
-            }
-            if let Some(max_solution_length) = self.max_solution_length
-                && usize::from(depth) > max_solution_length
-            {
-                return Err(CycleStructureSolverError::MaxSolutionLengthExceeded);
-            }
-            mutable.nodes_visited = 0;
-            mutable.tmp = 0;
-            mutable
-                .puzzle_state_history
-                .resize_if_needed(usize::from(depth));
+            self.prepare_next_depth(&mut mutable, depth)?;
             loop {
                 debug!(working!("Searching depth limit {}..."), depth);
                 let depth_start = Instant::now();
@@ -491,41 +500,24 @@ impl<'id, P: PuzzleState<'id>, T: PruningTables<'id, P>> CycleStructureSolver<'i
                     depth,
                 );
                 debug!(
-                    working!("Traversed {} nodes in {:.3}s (tmp: {})"),
+                    working!("Traversed {} nodes in {} (tmp: {})"),
                     mutable.nodes_visited,
-                    depth_start.elapsed().as_secs_f64(),
+                    depth_start.elapsed().human(Truncate::Millis),
                     mutable.tmp,
                 );
                 if mutable.found_solution() {
                     break;
                 }
                 depth += 1;
-                // During pathmax we increment the depth by one, so we ensure it
-                // cannot overflow
-                if depth == u8::MAX
-                    || H::UPPER_GODS_NUMBER_BOUND
-                        .is_some_and(|gods_number| usize::from(depth) > gods_number)
-                {
-                    return Err(CycleStructureSolverError::SolutionDoesNotExist);
-                }
-                if let Some(max_solution_length) = self.max_solution_length
-                    && usize::from(depth) > max_solution_length
-                {
-                    return Err(CycleStructureSolverError::MaxSolutionLengthExceeded);
-                }
-                mutable.nodes_visited = 0;
-                mutable.tmp = 0;
-                mutable
-                    .puzzle_state_history
-                    .resize_if_needed(usize::from(depth));
+                self.prepare_next_depth(&mut mutable, depth)?;
             }
         }
 
         info!(
-            success!("Found {} raw solutions at depth {} in {:.3}s"),
+            success!("Found {} raw solutions at depth {} in {}"),
             mutable.solutions.len(),
             depth,
-            start.elapsed().as_secs_f64()
+            start.elapsed().human(Truncate::Millis)
         );
         debug!("");
         let result_1 = self.puzzle_def.new_solved_state();

@@ -611,8 +611,6 @@ impl<'id, P: PuzzleState<'id>> PuzzleDef<'id, P> {
         if result != solved {
             return Err(KSolveConversionError::InvalidMoveClass);
         }
-        
-        
 
         Ok(PuzzleDef {
             moves: moves.into_boxed_slice(),

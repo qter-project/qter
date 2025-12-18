@@ -9,7 +9,7 @@ use log::trace;
 use puzzle_geometry::ksolve::KPUZZLE_MEGAMINX;
 
 #[test_log::test]
-fn move_powers() {
+fn test_move_powers() {
     make_guard!(guard);
     let megaminx_def = PuzzleDef::<HeapPuzzle>::new(&KPUZZLE_MEGAMINX, guard).unwrap();
     let sorted_orbit_defs = megaminx_def.sorted_orbit_defs_ref();

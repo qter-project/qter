@@ -270,7 +270,7 @@ mod tests {
             results.push(iter.current().to_vec());
         }
         results.sort_unstable();
- 
+
         assert_eq!(
             results,
             vec![

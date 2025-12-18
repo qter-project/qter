@@ -19,6 +19,7 @@ use crate::{
     start, success, working,
 };
 use generativity::Id;
+use humanize_duration::{Truncate, prelude::DurationExt};
 use itertools::Itertools;
 use log::{debug, info};
 use std::{
@@ -400,8 +401,8 @@ impl<'id, P: PuzzleState<'id>> PruningTables<'id, P> for OrbitPruningTables<'id,
             sorted_cycle_structure,
         };
         info!(
-            success!("Generated all orbit pruning tables in {:.3}s"),
-            start.elapsed().as_secs_f64()
+            success!("Generated all orbit pruning tables in {}"),
+            start.elapsed().human(Truncate::Millis)
         );
         debug!("");
         Ok(orbit_pruning_tables)
@@ -440,9 +441,9 @@ macro_rules! table_fn {
                 used_size_bytes,
             );
             info!(
-                success!("Generated {} in {:.3}s"),
+                success!("Generated {} in {}"),
                 stringify!($table),
-                start.elapsed().as_secs_f64()
+                start.elapsed().human(Truncate::Millis)
             );
             Ok(generated)
         }
@@ -465,9 +466,9 @@ macro_rules! table_fn {
                 used_size_bytes,
             );
             info!(
-                success!("Generated {} in {:.3}s"),
+                success!("Generated {} in {}"),
                 stringify!($table),
-                start.elapsed().as_secs_f64()
+                start.elapsed().human(Truncate::Millis)
             );
             Ok(generated)
         }
@@ -899,9 +900,9 @@ impl<'id, P: PuzzleState<'id>, S: StorageBackend<true>> OrbitPruningTable<'id, P
                 }
             }
             debug!(
-                working!("Filled {} entries in {:.3}s"),
+                working!("Filled {} entries in {}"),
                 prev_vacant_entry_count - vacant_entry_count,
-                depth_start.elapsed().as_secs_f64()
+                depth_start.elapsed().human(Truncate::Millis)
             );
             #[allow(clippy::cast_precision_loss)]
             let percent = (entry_count - vacant_entry_count) as f64 / entry_count as f64 * 100.0;
