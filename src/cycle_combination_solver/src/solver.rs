@@ -264,11 +264,21 @@ impl<'id, P: PuzzleState<'id>, T: PruningTables<'id, P>> CycleStructureSolver<'i
                         // hardcode it for optimization
                         .reverse_next_state(CanonicalFSMState::default(), move_class_index)
                 };
-            // We take advantage of the fact that the shortest sequence can
-            // never start and end with the moves in the same move class.
-            // Otherwise the end could be rotated to the start and combined
-            // together, thus contradicting that assumption
             } else if permitted_cost == 0
+                // We take advantage of the fact that the shortest sequence can
+                // never start and end with the moves in the same move class.
+                // Otherwise the end could be rotated to the start and combined
+                // together, thus contradicting that assumption. We also note
+                // that if A and C commute and "A B ... C" is a solution, then
+                // by performing a rotation and commuting A and C we show that
+                // "A C B ..." is also a solution. We want to throw out the
+                // "A B ... C" case to avoid the redundant work. This condition
+                // performs both of these optimizations at once.
+                // 
+                // Note that we *must* use this finnicky reverse_state logic.
+                // It does NOT suffice to use next_state and is_some because
+                // this condition incorrectly returns true in the case of two
+                // non-commutative moves.
                 && unsafe {
                     self.canonical_fsm
                         .reverse_state(move_class_index, mutable.root_canonical_fsm_reversed_state)
