@@ -49,6 +49,8 @@
         ];
       in
       rec {
+        toolchain = ./rust-toolchain.toml;
+        
         devShell = pkgs.mkShell rec {
           buildInputs =
             libraries
