@@ -8,7 +8,6 @@ members = [
   "cycle_combination_solver",
   "puzzle_geometry",
   "movecount_coefficient_calculator",
-  "pog_ans",
   "cycle_combination_finder",
   "robot",
   "visualizer",

@@ -3920,6 +3920,7 @@ dependencies = [
 [[package]]
 name = "pog_ans"
 version = "0.1.0"
+source = "git+https://github.com/qter-project/pog-ans#8d9ff67805777f49756f0489567c903681feb953"
 dependencies = [
  "num-traits",
 ]

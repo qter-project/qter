@@ -7,7 +7,7 @@ edition = "2024"
 bnum = "0.12"
 itertools = "0.14"
 internment = { version = "0.8", features = [ "arc" ] }
-pog_ans = { path = "../pog_ans" }
+pog_ans = { git = "https://github.com/qter-project/pog-ans" }
 ariadne = "0.5"
 chumsky = { version = "0.10.1", features = [ "memoization" ] }
 
