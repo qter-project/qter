@@ -10,8 +10,6 @@ use cycle_combination_solver::{
     },
     solver::{CycleStructureSolver, CycleStructureSolverError, SearchStrategy},
 };
-use itertools::Itertools;
-use log::trace;
 use puzzle_geometry::ksolve::KPUZZLE_3X3;
 
 mod common;
@@ -71,14 +69,6 @@ fn test_single_quarter_turn() {
     let mut solutions = solver.solve::<[Cube3; 21]>().unwrap();
     assert_eq!(solutions.solution_length(), 1);
     while solutions.next().is_some() {
-        trace!(
-            "{:<2}",
-            solutions
-                .expanded_solution()
-                .iter()
-                .map(|move_| move_.name())
-                .format(" ")
-        );
         if solutions.expanded_count() == 1 {
             // assert_eq!(
             //     format!(
@@ -113,15 +103,6 @@ fn test_single_half_turn() {
     let mut solutions = solver.solve::<[Cube3; 21]>().unwrap();
     assert_eq!(solutions.solution_length(), 1);
     while solutions.next().is_some() {
-        trace!(
-            "{:<2}",
-            solutions
-                .expanded_solution()
-                .iter()
-                .map(|move_| move_.name())
-                .format(" ")
-        );
-
         if solutions.expanded_count() == 1 {
             // assert_eq!(
             //     format!(
@@ -162,14 +143,6 @@ fn test_optimal_subgroup_cycle() {
     let mut solutions = solver.solve::<[Cube3; 21]>().unwrap();
     assert_eq!(solutions.solution_length(), 4);
     while solutions.next().is_some() {
-        trace!(
-            "{:<2}",
-            solutions
-                .expanded_solution()
-                .iter()
-                .map(|move_| move_.name())
-                .format(" ")
-        );
         if solutions.expanded_count() == 1 {
             // assert_eq!(
             //     format!(
@@ -204,16 +177,7 @@ fn test_210_optimal_cycle() {
 
     let mut solutions = solver.solve::<[Cube3; 21]>().unwrap();
     assert_eq!(solutions.solution_length(), 5);
-    while solutions.next().is_some() {
-        trace!(
-            "{:<2}",
-            solutions
-                .expanded_solution()
-                .iter()
-                .map(|move_| move_.name())
-                .format(" ")
-        );
-    }
+    while solutions.next().is_some() {}
     assert_eq!(solutions.expanded_count(), 480);
 }
 
@@ -243,16 +207,7 @@ fn test_easy_30x30x30_optimal_cycle() {
 
     let mut solutions = solver.solve::<[Cube3; 21]>().unwrap();
     assert_eq!(solutions.solution_length(), 11);
-    while solutions.next().is_some() {
-        trace!(
-            "{:<2}",
-            solutions
-                .expanded_solution()
-                .iter()
-                .map(|move_| move_.name())
-                .format(" ")
-        );
-    }
+    while solutions.next().is_some() {}
     assert_eq!(solutions.expanded_count(), 2112);
 }
 
@@ -308,16 +263,7 @@ fn test_3c_optimal_cycle() {
 
     let mut solutions = solver.solve::<[Cube3; 21]>().unwrap();
     assert_eq!(solutions.solution_length(), 8);
-    while solutions.next().is_some() {
-        trace!(
-            "{:<2}",
-            solutions
-                .expanded_solution()
-                .iter()
-                .map(|move_| move_.name())
-                .format(" ")
-        );
-    }
+    while solutions.next().is_some() {}
     assert_eq!(solutions.expanded_count(), 864);
 }
 
@@ -338,16 +284,7 @@ fn test_8c8e_optimal_cycle() {
 
     let mut solutions = solver.solve::<[Cube3; 21]>().unwrap();
     assert_eq!(solutions.solution_length(), 5);
-    while solutions.next().is_some() {
-        trace!(
-            "{:<2}",
-            solutions
-                .expanded_solution()
-                .iter()
-                .map(|move_| move_.name())
-                .format(" ")
-        );
-    }
+    while solutions.next().is_some() {}
     assert_eq!(solutions.expanded_count(), 960);
 }
 
@@ -378,16 +315,7 @@ fn test_consecutive_commutative_moves() {
 
     let mut solutions = solver.solve::<[Cube3; 21]>().unwrap();
     assert_eq!(solutions.solution_length(), 4);
-    while solutions.next().is_some() {
-        trace!(
-            "{:<2}",
-            solutions
-                .expanded_solution()
-                .iter()
-                .map(|move_| move_.name())
-                .format(" ")
-        );
-    }
+    while solutions.next().is_some() {}
     assert_eq!(solutions.expanded_count(), 96);
 }
 
@@ -408,16 +336,7 @@ fn test_commutative_moves_only() {
 
     let mut solutions = solver.solve::<[Cube3; 21]>().unwrap();
     assert_eq!(solutions.solution_length(), 2);
-    while solutions.next().is_some() {
-        trace!(
-            "{:<2}",
-            solutions
-                .expanded_solution()
-                .iter()
-                .map(|move_| move_.name())
-                .format(" ")
-        );
-    }
+    while solutions.next().is_some() {}
     assert_eq!(solutions.expanded_count(), 12);
 }
 
@@ -438,16 +357,7 @@ fn test_sequence_symmetry_wrapping_sequence_edge_case() {
 
     let mut solutions = solver.solve::<[Cube3; 21]>().unwrap();
     assert_eq!(solutions.solution_length(), 7);
-    while solutions.next().is_some() {
-        trace!(
-            "{:<2}",
-            solutions
-                .expanded_solution()
-                .iter()
-                .map(|move_| move_.name())
-                .format(" ")
-        );
-    }
+    while solutions.next().is_some() {}
     assert_eq!(solutions.expanded_count(), 6048);
 }
 

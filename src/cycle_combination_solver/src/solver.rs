@@ -7,8 +7,8 @@ use super::{
 use crate::{puzzle::AuxMem, start, success, working};
 use humanize_duration::{Truncate, prelude::DurationExt};
 use itertools::Itertools;
-use log::{Level, debug, info, log_enabled};
-use std::{borrow::Cow, cmp::Ordering, time::Instant, vec::IntoIter};
+use log::{Level, debug, info, log_enabled, trace};
+use std::{borrow::Cow, cmp::Ordering, num::NonZeroU8, time::Instant, vec::IntoIter};
 use thiserror::Error;
 
 pub struct CycleStructureSolver<'id, P: PuzzleState<'id>, T: PruningTables<'id, P>> {
@@ -210,23 +210,22 @@ impl<'id, P: PuzzleState<'id>, T: PruningTables<'id, P>> CycleStructureSolver<'i
         // only works on leaf nodes
         if permitted_cost == 0 {
             if entry_index == 1 {
-                // fast path
+                // Fast path. Prevents the leaf node from being the root move
+                // class.
                 move_index_prune_lt += 1;
             } else {
-                let mut i = 0;
-                while i + entry_index < mutable.puzzle_state_history.stack_pointer() {
-                    // SAFETY: `i + 1` and `i + entry_index + 1` are
-                    // both less than or equal to `stack_pointer`, so
-                    // they are both bound
+                let mut i = 1;
+                // Note that this correctly evaluates 1 <= 0 and skips when the
+                // root node is the leaf node (ie entry_index is 0)
+                while i + entry_index <= mutable.puzzle_state_history.stack_pointer() {
+                    // SAFETY: `i` and `i + entry_index` are both less than or
+                    // equal to `stack_pointer`, so they are both bound
                     match unsafe {
-                        mutable
-                            .puzzle_state_history
-                            .move_index_unchecked(i + 1)
-                            .cmp(
-                                &mutable
-                                    .puzzle_state_history
-                                    .move_index_unchecked(i + entry_index + 1),
-                            )
+                        mutable.puzzle_state_history.move_index_unchecked(i).cmp(
+                            &mutable
+                                .puzzle_state_history
+                                .move_index_unchecked(i + entry_index),
+                        )
                     } {
                         Ordering::Less => {
                             move_index_prune_lt += 1;
@@ -242,6 +241,7 @@ impl<'id, P: PuzzleState<'id>, T: PruningTables<'id, P>> CycleStructureSolver<'i
                 }
             }
         }
+
         for (move_index, move_) in self
             .puzzle_def
             .moves
@@ -748,6 +748,15 @@ impl<'id, P: PuzzleState<'id>> Iterator for SolutionsIntoIter<'id, '_, P> {
         }
 
         self.expanded_count += 1;
+        trace!(
+            "{:<4}",
+            self.expanded_solution
+                .as_ref()
+                .unwrap()
+                .iter()
+                .map(|move_| move_.name())
+                .format(" ")
+        );
         Some(())
     }
 }
