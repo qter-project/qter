@@ -17,8 +17,8 @@ struct StateToMask(Vec<MoveClassMask>);
 
 #[derive(Debug)]
 pub struct PuzzleCanonicalFSM<'id, P: PuzzleState<'id>> {
-    // TODO: flatvec
-    next_state_lookup: Vec<Vec<CanonicalFSMState>>,
+    next_state_lookup: Vec<CanonicalFSMState>,
+    num_move_classes: usize,
     _id: Id<'id>,
     _marker: PhantomData<P>,
 }
@@ -52,7 +52,7 @@ impl<'id, P: PuzzleState<'id>> From<&PuzzleDef<'id, P>> for PuzzleCanonicalFSM<'
             }
         }
 
-        let mut next_state_lookup: Vec<Vec<CanonicalFSMState>> = vec![];
+        let mut next_state_lookup: Vec<CanonicalFSMState> = vec![];
 
         let mut mask_to_state = MaskToState(HashMap::new());
         mask_to_state.0.insert(vec![false; num_move_classes], 0);
@@ -119,11 +119,12 @@ impl<'id, P: PuzzleState<'id>> From<&PuzzleDef<'id, P>> for PuzzleCanonicalFSM<'
                         CanonicalFSMState::Some(next_state.try_into().unwrap())
                     };
             }
-            next_state_lookup.push(next_state);
+            next_state_lookup.extend(next_state);
         }
 
         Self {
             next_state_lookup,
+            num_move_classes,
             _id: puzzle_def.id(),
             _marker: PhantomData,
         }
@@ -131,18 +132,19 @@ impl<'id, P: PuzzleState<'id>> From<&PuzzleDef<'id, P>> for PuzzleCanonicalFSM<'
 }
 
 impl<'id, P: PuzzleState<'id>> PuzzleCanonicalFSM<'id, P> {
-    fn next_state_lookup(&self) -> &[Vec<CanonicalFSMState>] {
+    fn next_state_lookup(&self) -> &[CanonicalFSMState] {
         &self.next_state_lookup
     }
 
     /// The next state of the FSM given the current state and a move class.
+    /// 
+    /// None passed in means we're in the initial state
+    /// None returned means the move is illegal
     pub unsafe fn next_state(
         &self,
         current_fsm_state: CanonicalFSMState,
         move_class_index: usize,
     ) -> CanonicalFSMState {
-        // None passed in means we're in the initial state
-        // None returned means the move is illegal
         let i = match current_fsm_state {
             Some(state) => state.get(),
             None => 0,
@@ -150,8 +152,7 @@ impl<'id, P: PuzzleState<'id>> PuzzleCanonicalFSM<'id, P> {
         unsafe {
             *self
                 .next_state_lookup()
-                .get_unchecked(i)
-                .get_unchecked(move_class_index)
+                .get_unchecked(i * self.num_move_classes + move_class_index)
         }
     }
 
@@ -344,19 +345,5 @@ mod tests {
                 }
             }
         }
-    }
-
-    #[test]
-    #[ignore = "big cube stuff isnt working without puzzle working"]
-    fn test_big_cube_optimization() {
-        make_guard!(guard);
-        let cube4_def = PuzzleDef::<HeapPuzzle>::new(&KPUZZLE_4X4, guard).unwrap();
-        let canonical_fsm: PuzzleCanonicalFSM<HeapPuzzle> = (&cube4_def).into();
-
-        // - 1 to discount the initial FSM state
-        assert_eq!(
-            canonical_fsm.next_state_lookup.len() - 1,
-            canonical_fsm.next_state_lookup[0].len()
-        );
     }
 }
