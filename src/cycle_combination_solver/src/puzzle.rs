@@ -1,8 +1,11 @@
 use crate::orbit_puzzle::OrbitPuzzleStateImplementor;
 use generativity::{Guard, Id};
+use heuristic_graph_coloring::{VecVecGraph, color_rlf};
+use humanize_duration::{Truncate, prelude::DurationExt};
 use itertools::Itertools;
+use log::debug;
 use puzzle_geometry::ksolve::KSolve;
-use std::{fmt::Debug, hash::Hash, num::NonZeroU8};
+use std::{fmt::Debug, hash::Hash, num::NonZeroU8, time::Instant};
 use thiserror::Error;
 
 pub mod cube3;
@@ -83,7 +86,7 @@ pub trait OrbitIdentifier<'id> {
 
 #[derive(Debug)]
 pub struct PuzzleDef<'id, P: PuzzleState<'id>> {
-    pub(crate) moves: Box<[Move<'id, P>]>,
+    pub moves: Box<[Move<'id, P>]>,
     // indicies into moves
     pub(crate) move_classes: Box<[usize]>,
     pub(crate) symmetries: Box<[Move<'id, P>]>,
@@ -515,10 +518,9 @@ impl<'id, P: PuzzleState<'id>> PuzzleDef<'id, P> {
             id,
         };
 
-        let mut moves = Vec::with_capacity(ksolve.moves().len());
-        let mut move_classes: Vec<usize> = vec![];
+        let mut move_class_groups: Vec<Vec<Move<'id, P>>> = vec![];
         let mut symmetries = Vec::with_capacity(ksolve.symmetries().len());
-        let mut result = solved.clone();
+        let mut move_iter = solved.clone();
 
         for (i, ksolve_move) in ksolve
             .moves()
@@ -571,47 +573,98 @@ impl<'id, P: PuzzleState<'id>> PuzzleDef<'id, P> {
                 continue;
             }
 
-            if let Some(&base_move_class) = move_classes.last() {
+            let init = move_class_groups.is_empty();
+            if init {
+                move_class_groups.push(vec![]);
+            }
+            #[allow(clippy::missing_panics_doc)]
+            let move_class_group = move_class_groups.last_mut().unwrap();
+
+            if !init {
                 #[allow(clippy::missing_panics_doc)]
-                let last_move: &Move<P> = moves.last().unwrap();
-                let base_move = &moves[base_move_class];
-                result.replace_compose(
+                let last_move = move_class_group.last().unwrap();
+                #[allow(clippy::missing_panics_doc)]
+                let base_move = move_class_group.first().unwrap();
+                move_iter.replace_compose(
                     &last_move.puzzle_state,
                     &base_move.puzzle_state,
                     sorted_orbit_defs_ref,
                 );
             }
-            if result == puzzle_state {
-                // We are still in the move class and just visited a greater
-                // move power
-            } else if result == solved {
-                // We just finished this move class, and we should have
-                // expected to wrap around to the beginning at the end
-                move_classes.push(moves.len());
+
+            let in_move_class = move_iter == puzzle_state;
+            let finished_move_class = move_iter == solved;
+            let move_ = Move {
+                name: ksolve_move.name().to_owned(),
+                class_index: 0,
+                puzzle_state,
+                _id: id,
+            };
+
+            if init {
+                move_class_group.push(move_);
+            } else if finished_move_class {
+                move_class_groups.push(vec![move_]);
+            } else if in_move_class {
+                move_class_group.push(move_);
             } else {
                 return Err(KSolveConversionError::InvalidMoveClass);
             }
-            moves.push(Move {
-                name: ksolve_move.name().to_owned(),
-                class_index: move_classes.len() - 1,
-                puzzle_state,
-                _id: id,
-            });
         }
-        if let Some(&base_move_class) = move_classes.last() {
-            #[allow(clippy::missing_panics_doc)]
-            let last_move = moves.last().unwrap();
-            let base_move = &moves[base_move_class];
-            result.replace_compose(
+        if let Some(move_class_group) = move_class_groups.last()
+            && let Some(last_move) = move_class_group.last()
+            && let Some(base_move) = move_class_group.first()
+        {
+            move_iter.replace_compose(
                 &last_move.puzzle_state,
                 &base_move.puzzle_state,
                 sorted_orbit_defs_ref,
             );
         }
-        if result != solved {
+        if move_iter != solved {
             return Err(KSolveConversionError::InvalidMoveClass);
         }
 
+        let mut graph = VecVecGraph::new(move_class_groups.len());
+        let mut result_1 = move_iter;
+        let mut result_2 = solved.clone();
+        for (i, move_class_group_1) in move_class_groups.iter().enumerate() {
+            for (j, move_class_group_2) in move_class_groups.iter().enumerate().take(i) {
+                if !move_class_group_1[0].commutes_with(
+                    &move_class_group_2[0],
+                    &mut result_1,
+                    &mut result_2,
+                    sorted_orbit_defs_ref,
+                ) {
+                    graph.add_edge(i, j);
+                }
+            }
+        }
+        let start = Instant::now();
+        let coloring = color_rlf(&graph);
+        debug!("Coloring in {}", start.elapsed().human(Truncate::Millis));
+
+        let mut coloring = coloring.into_iter().enumerate().collect_vec();
+        coloring.sort_by_key(|&(_, color)| color);
+        move_class_groups = coloring
+            .into_iter()
+            .map(|(i, _)| move_class_groups[i].clone())
+            .collect_vec();
+
+        let move_classes = move_class_groups.iter_mut().enumerate().fold(
+            vec![],
+            |mut acc, (move_class_index, move_class_group)| {
+                for move_ in &mut *move_class_group {
+                    move_.class_index = move_class_index;
+                }
+                acc.push(match acc.last().copied() {
+                    Some(prev) => prev + move_class_group.len(),
+                    None => 0,
+                });
+                acc
+            },
+        );
+        let moves = move_class_groups.into_iter().flatten().collect_vec();
         Ok(PuzzleDef {
             moves: moves.into_boxed_slice(),
             move_classes: move_classes.into_boxed_slice(),

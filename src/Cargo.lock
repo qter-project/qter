@@ -2040,6 +2040,7 @@ dependencies = [
  "fastrand",
  "fxhash",
  "generativity",
+ "heuristic-graph-coloring",
  "humanize-duration",
  "integer-partitions",
  "itertools 0.14.0",
@@ -2733,6 +2734,12 @@ name = "hermit-abi"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc0fef456e4baa96da950455cd02c081ca953b141298e41db3fc7e36b1da849c"
+
+[[package]]
+name = "heuristic-graph-coloring"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "49b668274fa5581eb527cef09a3e33028f8edee0faa6fa7853eff3271f0030f7"
 
 [[package]]
 name = "hexasphere"

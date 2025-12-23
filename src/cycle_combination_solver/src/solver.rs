@@ -8,7 +8,7 @@ use crate::{puzzle::AuxMem, start, success, working};
 use humanize_duration::{Truncate, prelude::DurationExt};
 use itertools::Itertools;
 use log::{Level, debug, info, log_enabled, trace};
-use std::{borrow::Cow, cmp::Ordering, num::NonZeroU8, time::Instant, vec::IntoIter};
+use std::{borrow::Cow, cmp::Ordering, time::Instant, vec::IntoIter};
 use thiserror::Error;
 
 pub struct CycleStructureSolver<'id, P: PuzzleState<'id>, T: PruningTables<'id, P>> {
@@ -24,7 +24,7 @@ struct CycleStructureSolverMutable<'id, P: PuzzleState<'id>, H: PuzzleStateHisto
     aux_mem: AuxMem<'id>,
     solutions: Vec<Vec<usize>>,
     root_canonical_fsm_reversed_state: usize,
-    nodes_visited: u64,
+    traversed: u64,
     tmp: u64,
 }
 
@@ -148,7 +148,7 @@ impl<'id, P: PuzzleState<'id>, T: PruningTables<'id, P>> CycleStructureSolver<'i
         mut permitted_cost: u8,
     ) -> AdmissibleGoalHeuristic {
         if log_enabled!(Level::Debug) {
-            mutable.nodes_visited += 1;
+            mutable.traversed += 1;
         }
         // SAFETY: This function calls `pop_stack` for every `push_stack` call.
         // Therefore, the `pop_stack` cannot be called more than `push_stack`.
@@ -424,7 +424,7 @@ impl<'id, P: PuzzleState<'id>, T: PruningTables<'id, P>> CycleStructureSolver<'i
         {
             return Err(CycleStructureSolverError::MaxSolutionLengthExceeded);
         }
-        mutable.nodes_visited = 0;
+        mutable.traversed = 0;
         mutable.tmp = 0;
         mutable
             .puzzle_state_history
@@ -451,7 +451,7 @@ impl<'id, P: PuzzleState<'id>, T: PruningTables<'id, P>> CycleStructureSolver<'i
             aux_mem: P::new_aux_mem(self.puzzle_def.sorted_orbit_defs_ref()),
             solutions: vec![],
             root_canonical_fsm_reversed_state: 0,
-            nodes_visited: 0,
+            traversed: 0,
             tmp: 0,
         };
         // SAFETY: `H::initialize` when puzzle_state_history is created
@@ -479,7 +479,7 @@ impl<'id, P: PuzzleState<'id>, T: PruningTables<'id, P>> CycleStructureSolver<'i
             }
             debug!(
                 working!("Traversed {} nodes in {}"),
-                mutable.nodes_visited,
+                mutable.traversed,
                 depth_start.elapsed().human(Truncate::Millis)
             );
         }
@@ -501,7 +501,7 @@ impl<'id, P: PuzzleState<'id>, T: PruningTables<'id, P>> CycleStructureSolver<'i
                 );
                 debug!(
                     working!("Traversed {} nodes in {} (tmp: {})"),
-                    mutable.nodes_visited,
+                    mutable.traversed,
                     depth_start.elapsed().human(Truncate::Millis),
                     mutable.tmp,
                 );
