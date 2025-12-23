@@ -468,7 +468,7 @@ mod tests {
         recolor_border_edges(&mut edges);
         edges.go_forward();
 
-        println!("{:#?}", edges.0);
+        // println!("{:#?}", edges.0);
 
         assert_eq!(edges.len(), 13);
         assert!(edges.0.iter().take(3).all(|v| v.1.is_none()));
@@ -505,7 +505,7 @@ mod tests {
             &face.subspace_info(),
         )
         .unwrap();
-        println!("{cutted:?}");
+        // println!("{cutted:?}");
 
         assert_eq!(cutted.len(), 2);
 

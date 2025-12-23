@@ -116,8 +116,8 @@ mod tests {
             (Vector::new([[6, 5, 4]]), Vector::new([[3, 2, 1]])),
         ]);
 
-        println!("{edge_cloud_one:?}");
-        println!("{edge_cloud_two:?}");
+        // println!("{edge_cloud_one:?}");
+        // println!("{edge_cloud_two:?}");
 
         assert!(edge_cloud_one.epsilon_eq(&edge_cloud_two));
     }

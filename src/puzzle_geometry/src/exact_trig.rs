@@ -40,7 +40,7 @@ impl Branch {
     /// Get a vector (cos, sin) of π`nth`/x where this is T_x. Returns `None` if there aren't that many roots.
     fn get(&mut self, nth: usize, counter_clockwise: bool) -> Option<&'static Vector<2>> {
         self.try_simplify();
-        println!("{nth} {self:#?}");
+        // println!("{nth} {self:#?}");
 
         match self {
             Branch::Dense { cos_sin_vectors } => {
