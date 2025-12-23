@@ -8,6 +8,7 @@ qter_core = { path = "../qter_core" }
 internment = { version = "0.8", features = [ "arc" ] }
 compiler = { path = "../compiler" }
 log = "0.4.28"
+puzzle_theory = { git = "https://github.com/qter-project/puzzle-theory" }
 
 [lints]
 workspace = true

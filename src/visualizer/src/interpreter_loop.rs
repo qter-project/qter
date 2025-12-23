@@ -5,10 +5,10 @@ use interpreter::{
     ActionPerformed, ExecutionState, Interpreter, PausedState,
     puzzle_states::{PuzzleState, RobotLike, RobotLikeDyn},
 };
+use puzzle_theory::{numbers::{Int, U, lcm_iter}, permutations::{Algorithm, PermutationGroup}, puzzle_geometry::parsing::puzzle};
 use qter_core::{
-    Facelets, Int, U,
-    architectures::{Algorithm, PermutationGroup, PuzzleDefinition, mk_puzzle_definition},
-    discrete_math::lcm_iter,
+    Facelets, 
+    architectures::{PuzzleDefinition, chromatic_orders_by_facelets, with_presets},
 };
 use std::{
     collections::VecDeque,
@@ -24,8 +24,8 @@ struct RobotHandle {
 
 static ROBOT_HANDLE: OnceLock<Mutex<RobotHandle>> = OnceLock::new();
 
-pub static CUBE3_DEF: LazyLock<Arc<PuzzleDefinition>> =
-    LazyLock::new(|| mk_puzzle_definition("3x3").unwrap());
+pub static CUBE3_DEF: LazyLock<PuzzleDefinition> =
+    LazyLock::new(|| with_presets(puzzle("3x3")).into_inner());
 
 pub static CUBE3: LazyLock<Arc<PermutationGroup>> =
     LazyLock::new(|| Arc::clone(&CUBE3_DEF.perm_group));
@@ -41,7 +41,7 @@ impl TrackedRobotState {
     fn halt_quiet(&mut self, facelets: &[usize], generator: &Algorithm) -> Option<Int<U>> {
         let mut sum = Int::<U>::zero();
 
-        let chromatic_orders = generator.chromatic_orders_by_facelets();
+        let chromatic_orders = chromatic_orders_by_facelets(&generator);
         let order = lcm_iter(facelets.iter().map(|&i| chromatic_orders[i]));
 
         while !self.facelets_solved(facelets) {
@@ -97,7 +97,7 @@ impl PuzzleState for TrackedRobotState {
         &mut self,
         facelets: &[usize],
         generator: &Algorithm,
-    ) -> Option<qter_core::Int<qter_core::U>> {
+    ) -> Option<Int<U>> {
         let before = {
             let mut handle = robot_handle();
 
@@ -134,7 +134,7 @@ impl PuzzleState for TrackedRobotState {
         &mut self,
         facelets: &[usize],
         generator: &Algorithm,
-    ) -> Option<qter_core::Int<qter_core::U>> {
+    ) -> Option<Int<U>> {
         {
             robot_handle()
                 .event_tx
@@ -149,7 +149,7 @@ impl PuzzleState for TrackedRobotState {
 
         let mut sum = Int::<U>::zero();
 
-        let chromatic_orders = generator.chromatic_orders_by_facelets();
+        let chromatic_orders = chromatic_orders_by_facelets(&generator);
         let order = lcm_iter(facelets.iter().map(|&i| chromatic_orders[i]));
 
         while !self.facelets_solved(facelets) {

@@ -18,10 +18,8 @@ use chumsky::{
 };
 use internment::ArcIntern;
 use itertools::Itertools;
-use qter_core::{
-    Extra, File, Int, MaybeErr, Span, U, WithSpan,
-    architectures::{Architecture, puzzle_definition},
-};
+use puzzle_theory::{numbers::{Int, U}, puzzle_geometry::parsing::puzzle_definition, span::{Extra, File, MaybeErr, Span, WithSpan}};
+use qter_core::architectures::{Architecture, with_presets };
 
 use crate::{BlockID, Macro, ParsedSyntax, Puzzle, RegistersDecl};
 
@@ -489,7 +487,7 @@ fn register_architecture() -> impl Parser<'static, File, MaybeErr<PuzzleUnnamed>
         ))
         .map(|(_, (), order)| order.map(|order| PuzzleUnnamed::Theoretical { order })),
         group((
-            puzzle_definition(),
+            puzzle_definition().map(|v| with_presets(v)),
             whitespace(),
             just("builtin"),
             whitespace(),
@@ -502,10 +500,10 @@ fn register_architecture() -> impl Parser<'static, File, MaybeErr<PuzzleUnnamed>
                     .collect::<MaybeErr<Vec<_>>>()
                     .delimited_by(group((just("("), nlm())), group((nlm(), just(")")))),
             ))
-            .map_with(|v, data| data.span().with(v)),
+            .map_with(|v, data| v.map(|v| data.span().with(v))),
         ))
         .validate(
-            |(def, (), _, (), orders), data, emitter| orders.spanspose().map(|orders| if let Some(arch) = def.get_preset(&orders) { MaybeErr::Some(PuzzleUnnamed::Real {
+            |(def, (), _, (), orders), data, emitter| orders.map(|orders| if let Some(arch) = def.get_preset(&orders) { MaybeErr::Some(PuzzleUnnamed::Real {
                 architecture: data.span().with(arch),
             }) } else {
                 emitter.emit(Rich::custom(
@@ -516,7 +514,7 @@ fn register_architecture() -> impl Parser<'static, File, MaybeErr<PuzzleUnnamed>
             },
         ).flatten()),
         group((
-            puzzle_definition(),
+            puzzle_definition().map(|v| with_presets(v)),
             whitespace(),
             choice((
                 algorithm().map(|v| vec![v]),
@@ -931,7 +929,7 @@ fn merge_files(
 mod tests {
     use chumsky::Parser;
     use internment::ArcIntern;
-    use qter_core::File;
+    use puzzle_theory::span::File;
 
     use super::{ident, number, parse, registers};
 

@@ -12,7 +12,8 @@ use bevy::{
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use internment::Intern;
 use interpreter::puzzle_states::{RemoteRobot, RobotLike, SimulatedPuzzle};
-use qter_core::{Facelets, I, Int, U, architectures::Permutation};
+use puzzle_theory::{numbers::{I, Int, U}, permutations::Permutation};
+use qter_core::{Facelets};
 
 use super::interpreter_loop;
 

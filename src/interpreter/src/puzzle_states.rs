@@ -3,10 +3,9 @@ use std::{
 };
 
 use log::trace;
+use puzzle_theory::{numbers::{I, Int, U, lcm_iter}, permutations::{Algorithm, Permutation, PermutationGroup}};
 use qter_core::{
-    I, Int, Program, PuzzleIdx, TheoreticalIdx, U,
-    architectures::{Algorithm, Permutation, PermutationGroup, mk_puzzle_definition},
-    discrete_math::{decode, lcm_iter},
+    Program, PuzzleIdx, TheoreticalIdx, architectures::{chromatic_orders_by_facelets, decode}, 
 };
 
 /// An instance of a theoretical register. Analagous to the `Puzzle` structure.
@@ -171,7 +170,7 @@ impl<R: RobotLike> PuzzleState for RobotState<R> {
 
         let mut sum = Int::<U>::zero();
 
-        let chromatic_orders = generator.chromatic_orders_by_facelets();
+        let chromatic_orders = chromatic_orders_by_facelets(&generator);
         let order = lcm_iter(facelets.iter().map(|&i| chromatic_orders[i]));
 
         while !self.facelets_solved(facelets) {
@@ -402,7 +401,6 @@ impl<C: Connection> RobotLike for RemoteRobot<C> {
 
     fn initialize(perm_group: Arc<PermutationGroup>, mut conn: C) -> Self {
         let writer = conn.writer();
-        writeln!(writer, "{}", perm_group.definition().slice()).unwrap();
         writer.flush().unwrap();
 
         RemoteRobot {
@@ -457,6 +455,7 @@ impl<C: Connection> RobotLike for RemoteRobot<C> {
 pub fn run_robot_server<C: Connection, R: RobotLike>(
     mut conn: C,
     robot: &mut R,
+    group: &Arc<PermutationGroup>,
 ) -> Result<(), io::Error> {
     let mut puzzle_def = String::new();
     conn.reader().read_line(&mut puzzle_def)?;
@@ -464,16 +463,6 @@ pub fn run_robot_server<C: Connection, R: RobotLike>(
     if puzzle_def.is_empty() {
         return Ok(());
     }
-    
-    let group = Arc::clone(
-        &mk_puzzle_definition(puzzle_def.trim())
-            .ok_or_else(|| {
-                io::Error::other(format!(
-                    "Could not parse `{puzzle_def}` as a puzzle definition"
-                ))
-            })?
-            .perm_group,
-    );
 
     loop {
         let mut command = String::new();
@@ -505,7 +494,7 @@ pub fn run_robot_server<C: Connection, R: RobotLike>(
             writer.flush()?;
         } else {
             let alg =
-                Algorithm::parse_from_string(Arc::clone(&group), command).ok_or_else(|| {
+                Algorithm::parse_from_string(Arc::clone(group), command).ok_or_else(|| {
                     io::Error::other(format!("Could not parse {command} as an algorithm"))
                 })?;
 
@@ -516,15 +505,15 @@ pub fn run_robot_server<C: Connection, R: RobotLike>(
 
 #[cfg(test)]
 mod tests {
-    use std::{io::{self, BufReader, Read, Write}, sync::{Arc, atomic::{AtomicUsize, Ordering}}};
+    use std::{io::{self, BufReader, Read, Write}, sync::{Arc}};
 
-    use qter_core::architectures::{Algorithm, Permutation, PermutationGroup, mk_puzzle_definition};
+    use puzzle_theory::{permutations::{Algorithm, Permutation, PermutationGroup}, puzzle_geometry::parsing::puzzle};
 
     use crate::puzzle_states::{RemoteRobot, RobotLike, run_robot_server};
 
     #[test]
     fn remote_robot() {
-        let cube3 = Arc::clone(&mk_puzzle_definition("3x3").unwrap().perm_group);
+        let cube3 = puzzle("3x3").permutation_group();
 
         let (mut rx, tx_robot) = io::pipe().unwrap();
         let (rx_robot, mut tx) = io::pipe().unwrap();
@@ -546,7 +535,7 @@ mod tests {
 
         let mut data = String::new();
         rx.read_to_string(&mut data).unwrap();        
-        assert_eq!(data, "3x3\nU D U2 D2 U' D'\n!PICTURE\n!SOLVE\n");
+        assert_eq!(data, "U D U2 D2 U' D'\n!PICTURE\n!SOLVE\n");
     }
 
     #[test]
@@ -557,7 +546,6 @@ mod tests {
             type InitializationArgs = ();
 
             fn initialize(perm_group: Arc<PermutationGroup>, (): Self::InitializationArgs) -> Self {
-                assert_eq!(perm_group.definition().slice(), "3x3");
                 TestRobot(0, perm_group, Permutation::from_cycles(vec![vec![0, 1]]))
             }
 
@@ -587,9 +575,10 @@ mod tests {
 
         let rx_robot = BufReader::new(rx_robot);
 
-        let mut robot = TestRobot::initialize(Arc::clone(&mk_puzzle_definition("3x3").unwrap().perm_group), ());
+        let group = puzzle("3x3").permutation_group();
+        let mut robot = TestRobot::initialize(Arc::clone(&group), ());
         
-        run_robot_server::<_, TestRobot>((rx_robot, tx_robot), &mut robot).unwrap();
+        run_robot_server::<_, TestRobot>((rx_robot, tx_robot), &mut robot, &group).unwrap();
 
         assert_eq!(robot.0, 3);
 

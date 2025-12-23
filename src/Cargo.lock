@@ -128,7 +128,7 @@ dependencies = [
 [[package]]
 name = "algebraics"
 version = "0.3.0"
-source = "git+https://github.com/Xendergo/algebraics?branch=prevent-exploding-ranges#de1068d52df557600a81ba9aca8a9e4cf514a5f0"
+source = "git+https://github.com/qter-project/algebraics?branch=prevent-exploding-ranges#de1068d52df557600a81ba9aca8a9e4cf514a5f0"
 dependencies = [
  "lazy_static",
  "num-bigint",
@@ -279,11 +279,11 @@ dependencies = [
 
 [[package]]
 name = "ariadne"
-version = "0.5.1"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36f5e3dca4e09a6f340a61a0e9c7b61e030c69fc27bf29d73218f7e5e3b7638f"
+checksum = "8454c8a44ce2cb9cc7e7fae67fc6128465b343b92c6631e94beca3c8d1524ea5"
 dependencies = [
- "unicode-width",
+ "unicode-width 0.2.2",
  "yansi",
 ]
 
@@ -1490,9 +1490,9 @@ dependencies = [
 
 [[package]]
 name = "bnum"
-version = "0.12.1"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f781dba93de3a5ef6dc5b17c9958b208f6f3f021623b360fb605ea51ce443f10"
+checksum = "119771309b95163ec7aaf79810da82f7cd0599c19722d48b9c03894dca833966"
 
 [[package]]
 name = "boxcar"
@@ -1634,6 +1634,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "chumsky"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ba4a05c9ce83b07de31b31c874e87c069881ac4355db9e752e3a55c11ec75a6"
+dependencies = [
+ "hashbrown 0.15.5",
+ "regex-automata 0.3.9",
+ "serde",
+ "stacker",
+ "unicode-ident",
+ "unicode-segmentation",
+]
+
+[[package]]
 name = "clang-sys"
 version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1697,7 +1711,7 @@ dependencies = [
  "itertools 0.13.0",
  "log",
  "owo-colors",
- "puzzle_geometry",
+ "puzzle_theory",
  "qter_core",
  "visualizer",
 ]
@@ -1709,7 +1723,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3538270d33cc669650c4b093848450d380def10c331d38c768e34cac80576e6e"
 dependencies = [
  "termcolor",
- "unicode-width",
+ "unicode-width 0.1.14",
 ]
 
 [[package]]
@@ -1760,10 +1774,11 @@ name = "compiler"
 version = "0.1.0"
 dependencies = [
  "ariadne",
- "chumsky",
+ "chumsky 0.12.0",
  "internment",
  "itertools 0.14.0",
  "mlua",
+ "puzzle_theory",
  "qter_core",
 ]
 
@@ -2027,7 +2042,7 @@ checksum = "f27ae1dd37df86211c42e150270f82743308803d90a6f6e6651cd730d5e1732f"
 name = "cycle_combination_finder"
 version = "0.1.0"
 dependencies = [
- "puzzle_geometry",
+ "puzzle_theory",
  "qter_core",
 ]
 
@@ -2049,7 +2064,7 @@ dependencies = [
  "num-traits",
  "pareto_front",
  "pretty_env_logger",
- "puzzle_geometry",
+ "puzzle_theory",
  "qter_core",
  "test-log",
  "thiserror 2.0.17",
@@ -2838,6 +2853,7 @@ dependencies = [
  "compiler",
  "internment",
  "log",
+ "puzzle_theory",
  "qter_core",
 ]
 
@@ -4046,17 +4062,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "puzzle_geometry"
+name = "puzzle_theory"
 version = "0.1.0"
+source = "git+https://github.com/qter-project/puzzle-theory#f8012cea17c456af53ec9901fec6b21e55e01166"
 dependencies = [
  "algebraics",
+ "ariadne",
+ "bnum",
  "boxcar",
+ "chumsky 0.12.0",
  "internment",
  "itertools 0.14.0",
  "num-bigint",
  "num-rational",
  "phf",
- "qter_core",
  "thiserror 2.0.17",
 ]
 
@@ -4073,12 +4092,10 @@ dependencies = [
 name = "qter_core"
 version = "0.1.0"
 dependencies = [
- "ariadne",
- "bnum",
- "chumsky",
  "internment",
  "itertools 0.14.0",
  "pog_ans",
+ "puzzle_theory",
 ]
 
 [[package]]
@@ -4289,6 +4306,7 @@ dependencies = [
  "itertools 0.13.0",
  "log",
  "paste",
+ "puzzle_theory",
  "qter_core",
  "rppal",
  "serde",
@@ -4362,7 +4380,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4632,6 +4650,7 @@ dependencies = [
  "cfg-if",
  "libc",
  "psm",
+ "windows-sys 0.52.0",
  "windows-sys 0.59.0",
 ]
 
@@ -5166,6 +5185,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7dd6e30e90baa6f72411720665d41d89b9a3d039dc45b8faea1ddd07f617f6af"
 
 [[package]]
+name = "unicode-width"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4ac048d71ede7ee76d585517add45da530660ef4390e49b098733c6e897f254"
+
+[[package]]
 name = "unicode-xid"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5218,12 +5243,13 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "bevy_simple_text_input",
- "chumsky",
+ "chumsky 0.10.1",
  "compiler",
  "crossbeam-channel",
  "internment",
  "interpreter",
  "itertools 0.13.0",
+ "puzzle_theory",
  "qter_core",
 ]
 

@@ -9,9 +9,10 @@ use cube_viz::CubeViz;
 use internment::{ArcIntern, Intern};
 use interpreter_loop::{CUBE3, CUBE3_DEF};
 use interpreter_plugin::{InterpretationCommand, InterpreterPlugin};
+use puzzle_theory::{permutations::Permutation, span::File};
 use qter_core::{
-    File, Program,
-    architectures::{Architecture, Permutation},
+     Program,
+    architectures::{Architecture },
 };
 
 use crate::{code_viz::CodeViz, io_viz::IOViz};

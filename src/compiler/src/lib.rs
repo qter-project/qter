@@ -11,8 +11,9 @@ use chumsky::error::Rich;
 use internment::ArcIntern;
 use lua::LuaMacros;
 use parsing::parse;
+use puzzle_theory::{numbers::{Int, ParseIntError, U}, span::{File, Span, WithSpan}};
 use qter_core::{
-    File, Int, ParseIntError, Program, Span, U, WithSpan, architectures::Architecture,
+    Program, architectures::Architecture,
 };
 use strip_expanded::strip_expanded;
 

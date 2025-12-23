@@ -3,11 +3,11 @@ use std::{collections::HashMap, sync::Arc};
 use chumsky::error::Rich;
 use internment::ArcIntern;
 use itertools::{Either, Itertools};
+use puzzle_theory::{numbers::{Int, U}, permutations::PermutationGroup, span::{Span, WithSpan}};
 use qter_core::{
-    ByPuzzleType, Facelets, Halt, Input, Instruction, Int, Print, Program, PuzzleIdx,
-    RegisterGenerator, RepeatUntil, SeparatesByPuzzleType, Span, StateIdx, TheoreticalIdx, U,
-    WithSpan,
-    architectures::{Algorithm, Architecture, CycleGeneratorSubcycle, PermutationGroup},
+    ByPuzzleType, Facelets, Halt, Input, Instruction, Print, Program, PuzzleIdx,
+    RegisterGenerator, RepeatUntil, SeparatesByPuzzleType, StateIdx, TheoreticalIdx, 
+    architectures::{Architecture, CycleGeneratorSubcycle, new_from_effect},
 };
 
 use crate::{
@@ -64,7 +64,7 @@ impl GlobalRegs {
             ByPuzzleType::Puzzle((puzzle_idx, (idx, arch, modulus))) => Ok(ByPuzzleType::Puzzle((
                 puzzle_idx,
                 (
-                    Algorithm::new_from_effect(&arch, vec![(idx, Int::<U>::one())]),
+                    new_from_effect(&arch, vec![(idx, Int::<U>::one())]),
                     get_facelets(idx, &arch, modulus, register)?,
                 ),
             ))),
@@ -251,7 +251,7 @@ pub fn strip_expanded(expanded: ExpandedCode) -> Result<Program, Vec<Rich<'stati
                 OptimizingPrimitive::AddPuzzle { puzzle, arch, amts } => {
                     Instruction::PerformAlgorithm(ByPuzzleType::Puzzle((
                         puzzle,
-                        Algorithm::new_from_effect(
+                        new_from_effect(
                             &arch,
                             amts.into_iter()
                                 .map(|(idx, _, amt)| (idx, amt.into_inner()))
@@ -311,7 +311,7 @@ pub fn strip_expanded(expanded: ExpandedCode) -> Result<Program, Vec<Rich<'stati
                             facelets
                         }
                     },
-                    alg: Algorithm::new_from_effect(
+                    alg: new_from_effect(
                         &arch,
                         amts.into_iter()
                             .map(|(idx, _, amt)| (idx, amt.into_inner()))

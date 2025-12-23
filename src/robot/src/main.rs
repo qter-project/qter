@@ -5,7 +5,7 @@ use clap::{Parser, Subcommand};
 use env_logger::TimestampPrecision;
 use interpreter::puzzle_states::{RobotLike, run_robot_server};
 use log::{LevelFilter, warn};
-use qter_core::architectures::{Algorithm, mk_puzzle_definition};
+use puzzle_theory::{permutations::Algorithm, puzzle_geometry::parsing::puzzle};
 use robot::{
     CUBE3, QterRobot,
     hardware::{
@@ -134,15 +134,17 @@ fn main() {
             let listener = TcpListener::bind(format!("0.0.0.0:{port}")).unwrap();
 
             let handle = RobotHandle::init(robot_config);
+            let group = 
+                puzzle("3x3").permutation_group();
             let mut robot = QterRobot::initialize(
-                Arc::clone(&mk_puzzle_definition("3x3").unwrap().perm_group),
+                Arc::clone(&group),
                 handle,
             );
 
             loop {
                 let (socket, _) = listener.accept().unwrap();
 
-                run_robot_server::<_, QterRobot>(BufReader::new(socket), &mut robot).unwrap();
+                run_robot_server::<_, QterRobot>(BufReader::new(socket), &mut robot, &group).unwrap();
             }
         }
         Commands::Solve {

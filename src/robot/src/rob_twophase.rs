@@ -10,22 +10,19 @@ use std::{
 use internment::ArcIntern;
 use itertools::Itertools;
 use log::{trace, warn};
-use qter_core::{
-    I, Int,
-    architectures::{Algorithm, Permutation},
-};
+use puzzle_theory::{numbers::{I, Int}, permutations::{Algorithm, Permutation}};
 
 use crate::CUBE3;
 
 static COLOR_MAPPING: LazyLock<HashMap<ArcIntern<str>, char>> = LazyLock::new(|| {
     let mut v = HashMap::new();
 
-    v.insert(ArcIntern::from("White"), 'U');
-    v.insert(ArcIntern::from("Green"), 'F');
-    v.insert(ArcIntern::from("Yellow"), 'D');
-    v.insert(ArcIntern::from("Red"), 'R');
-    v.insert(ArcIntern::from("Blue"), 'B');
-    v.insert(ArcIntern::from("Orange"), 'L');
+    v.insert(ArcIntern::from("white"), 'U');
+    v.insert(ArcIntern::from("green"), 'F');
+    v.insert(ArcIntern::from("yellow"), 'D');
+    v.insert(ArcIntern::from("red"), 'R');
+    v.insert(ArcIntern::from("blue"), 'B');
+    v.insert(ArcIntern::from("orange"), 'L');
 
     v
 });
@@ -176,7 +173,7 @@ pub fn solve_rob_twophase_string(rob_twophase_string: &str) -> Result<Algorithm,
 mod tests {
     use std::sync::Arc;
 
-    use qter_core::architectures::Algorithm;
+    use puzzle_theory::permutations::Algorithm;
 
     use crate::{
         CUBE3,

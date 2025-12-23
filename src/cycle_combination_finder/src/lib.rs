@@ -1,8 +1,7 @@
 #![allow(unused)]
 use std::fmt;
 
-use puzzle_geometry::ksolve::{KPUZZLE_3X3, KSolveSet};
-use qter_core::{Int, U};
+use puzzle_theory::{ksolve::KSolveSet, numbers::{self, Int, U}, puzzle_geometry::{num, parsing::puzzle}};
 
 struct PrimePower {
     value: u16,
@@ -407,7 +406,7 @@ fn assignments_to_combo(
         for (o, orbit) in puzzle.iter().enumerate() {
             let mut lcm: Int<U> = Int::<U>::from(1_u16);
             for &a in &assignments[registers.len() - 1 - r][o] {
-                lcm = qter_core::discrete_math::lcm(lcm, Int::<U>::from(a));
+                lcm = numbers::lcm(lcm, Int::<U>::from(a));
             }
 
             if orbit.orientation_count().get() > 1 {
@@ -669,7 +668,8 @@ fn optimal_combinations(puzzle: &[KSolveSet], num_registers: u16) {
 }
 
 fn main() {
-    let puzzle = KPUZZLE_3X3.sets();
+    let ksolve = puzzle("3x3").ksolve();
+    let puzzle = ksolve.sets();
     let cycle_combos: Option<CycleCombination> = optimal_equivalent_combination(puzzle, 3);
 
     println!(
@@ -696,7 +696,8 @@ mod tests {
 
     #[test]
     fn test_highest_equiv_order_3_registers_3x3() {
-        let puzzle = puzzle_geometry::ksolve::KPUZZLE_3X3.sets();
+        let ksolve = puzzle("3x3").ksolve();
+        let puzzle = ksolve.sets();
         let cycle_combos: Option<CycleCombination> = optimal_equivalent_combination(puzzle, 3);
         assert_eq!(
             cycle_combos.unwrap().cycles[0].order,
@@ -706,7 +707,8 @@ mod tests {
 
     #[test]
     fn test_highest_equiv_order_2_registers_3x3() {
-        let puzzle = puzzle_geometry::ksolve::KPUZZLE_3X3.sets();
+        let ksolve = puzzle("3x3").ksolve();
+        let puzzle = ksolve.sets();
         let cycle_combos: Option<CycleCombination> = optimal_equivalent_combination(puzzle, 2);
         assert_eq!(
             cycle_combos.unwrap().cycles[0].order,
@@ -716,13 +718,15 @@ mod tests {
 
     #[test]
     fn test_optimal_order_3_registers_3x3() {
-        let puzzle = puzzle_geometry::ksolve::KPUZZLE_3X3.sets();
+        let ksolve = puzzle("3x3").ksolve();
+        let puzzle = ksolve.sets();
         optimal_combinations(puzzle, 3);
     }
 
     #[test]
     fn test_optimal_order_2_registers_5X5() {
-        let puzzle = puzzle_geometry::ksolve::KPUZZLE_5X5.sets();
+        let ksolve = puzzle("3x3").ksolve();
+        let puzzle = ksolve.sets();
         optimal_combinations(puzzle, 2);
     }
 }

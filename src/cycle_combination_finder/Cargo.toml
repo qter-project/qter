@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-puzzle_geometry = { version = "0.1.0", path = "../puzzle_geometry" }
 qter_core = { version = "0.1.0", path = "../qter_core" }
+puzzle_theory = { git = "https://github.com/qter-project/puzzle-theory" }
 
 [lints]
 workspace = true

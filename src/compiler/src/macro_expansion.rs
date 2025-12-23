@@ -3,7 +3,7 @@ use std::{cell::OnceCell, mem};
 use chumsky::error::Rich;
 use internment::ArcIntern;
 use itertools::{Either, Itertools};
-use qter_core::{Span, WithSpan};
+use puzzle_theory::span::{Span, WithSpan};
 
 use crate::{
     BlockID, Code, ExpandedCode, ExpandedCodeComponent, ExpansionInfo, Instruction, Macro,
@@ -190,7 +190,8 @@ fn expand_code(
 
 #[cfg(test)]
 mod tests {
-    use qter_core::File;
+
+    use puzzle_theory::span::File;
 
     use crate::{macro_expansion::expand, parsing::parse};
 

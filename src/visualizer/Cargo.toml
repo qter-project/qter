@@ -12,6 +12,7 @@ chumsky = "0.10.1"
 internment = { version = "0.8", features = [ "arc" ] }
 compiler = { path = "../compiler" }
 itertools = "0.13"
+puzzle_theory = { git = "https://github.com/qter-project/puzzle-theory" }
 
 [dependencies.bevy]
 version = "0.16.1"

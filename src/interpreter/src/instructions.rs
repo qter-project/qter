@@ -1,6 +1,7 @@
+use puzzle_theory::numbers::{Int, U, lcm};
 use qter_core::{
-    ByPuzzleType, Halt, Input, Int, PerformAlgorithm, Print, RepeatUntil, SeparatesByPuzzleType,
-    Solve, SolvedGoto, U, discrete_math::lcm,
+    ByPuzzleType, Halt, Input,  PerformAlgorithm, Print, RepeatUntil, SeparatesByPuzzleType,
+    Solve, SolvedGoto, architectures::chromatic_orders_by_facelets, 
 };
 
 use crate::{
@@ -112,7 +113,7 @@ impl PuzzleInstructionImpl for Input {
             .3
             .0
             .iter()
-            .map(|facelet| instr.2.chromatic_orders_by_facelets()[*facelet])
+            .map(|facelet| chromatic_orders_by_facelets(&instr.2)[*facelet])
             .fold(Int::<U>::one(), lcm);
 
         input_impl(

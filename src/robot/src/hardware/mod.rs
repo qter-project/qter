@@ -1,7 +1,7 @@
 use clap::ValueEnum;
 use crossbeam::sync::{Parker, Unparker};
 use log::{debug, info};
-use qter_core::architectures::Algorithm;
+use puzzle_theory::permutations::Algorithm;
 use std::{
     fmt::Display,
     iter::from_fn,

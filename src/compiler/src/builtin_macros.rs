@@ -1,6 +1,6 @@
 use chumsky::error::Rich;
 use internment::ArcIntern;
-use qter_core::{Span, WithSpan};
+use puzzle_theory::span::{Span, WithSpan};
 
 use crate::{
     BlockID, Code, ExpansionInfo, Instruction, LabelReference, Macro, Primitive, RegisterReference,

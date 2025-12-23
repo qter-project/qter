@@ -18,8 +18,9 @@ use interpreter::{
     puzzle_states::{PuzzleState, SimulatedPuzzle},
 };
 use itertools::Itertools;
+use puzzle_theory::{numbers::{I, Int}, span::File};
 use qter_core::{
-    ByPuzzleType, File, I, Int,
+    ByPuzzleType, 
     table_encoding::{decode_table, encode_table},
 };
 

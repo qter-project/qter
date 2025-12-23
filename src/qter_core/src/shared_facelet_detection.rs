@@ -2,22 +2,16 @@ use std::{collections::HashSet, sync::Arc};
 
 use internment::ArcIntern;
 use itertools::Itertools;
+use puzzle_theory::{numbers::Int, permutations::{Algorithm, Permutation, PermutationGroup}, union_find::{SetInfo, UnionFind}};
 
-use crate::{
-    Int,
-    architectures::{
-        Algorithm, CycleGenerator, CycleGeneratorSubcycle, Permutation, PermutationGroup,
-    },
-    discrete_math::length_of_substring_that_this_string_is_n_repeated_copies_of,
-    union_find::{SetInfo, UnionFind},
-};
+use crate::architectures::{
+         CycleGenerator, CycleGeneratorSubcycle, length_of_substring_that_this_string_is_n_repeated_copies_of,
+    };
 
 struct FaceletSources(HashSet<usize>);
 
 impl SetInfo for FaceletSources {
     type PathInfo = ();
-
-    const ALLOW_WEIGHTED: bool = true;
 
     fn merge(&mut self, new_child: Self) -> Self::PathInfo {
         self.0.extend(new_child.0);
@@ -133,10 +127,10 @@ mod tests {
     use std::{collections::HashMap, sync::Arc};
 
     use internment::ArcIntern;
+    use puzzle_theory::{numbers::Int, permutations::{Permutation, PermutationGroup}};
 
     use crate::{
-        Int, Span,
-        architectures::{Architecture, CycleGeneratorSubcycle, Permutation, PermutationGroup},
+        architectures::{Architecture, CycleGeneratorSubcycle},
     };
 
     #[test]
@@ -198,7 +192,6 @@ mod tests {
                 ArcIntern::from("L"),
             ],
             generators,
-            Span::from_static("thingy"),
         ));
 
         let preset = Architecture::new(

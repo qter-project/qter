@@ -1,5 +1,5 @@
 use mlua::{AnyUserData, IntoLua, Lua, UserDataMethods, UserDataRegistry, Value};
-use qter_core::{I, Int};
+use puzzle_theory::numbers::{I, Int};
 
 #[derive(Clone, Debug)]
 pub struct LuaMacros {
@@ -94,7 +94,7 @@ impl LuaMacros {
 #[cfg(test)]
 mod tests {
     use mlua::{AnyUserData, Function};
-    use qter_core::{I, Int};
+    use puzzle_theory::numbers::{I, Int};
 
     use super::LuaMacros;
 

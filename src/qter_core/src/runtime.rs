@@ -1,8 +1,10 @@
-use crate::architectures::{Algorithm, PermutationGroup};
-use crate::{Int, U, WithSpan};
 use std::convert::Infallible;
 use std::fmt::Debug;
 use std::sync::Arc;
+
+use puzzle_theory::numbers::{Int, U};
+use puzzle_theory::permutations::{Algorithm, PermutationGroup};
+use puzzle_theory::span::WithSpan;
 
 /// The facelets needed for `solved-goto`
 #[derive(Debug, Clone)]

@@ -4,7 +4,7 @@ use heuristic_graph_coloring::{VecVecGraph, color_rlf};
 use humanize_duration::{Truncate, prelude::DurationExt};
 use itertools::Itertools;
 use log::debug;
-use puzzle_geometry::ksolve::KSolve;
+use puzzle_theory::ksolve::KSolve;
 use std::{fmt::Debug, hash::Hash, num::NonZeroU8, time::Instant};
 use thiserror::Error;
 
@@ -733,13 +733,13 @@ mod tests {
         *,
     };
     use generativity::make_guard;
-    use puzzle_geometry::ksolve::KPUZZLE_3X3;
+    use puzzle_theory::puzzle_geometry::parsing::puzzle;
     use test::Bencher;
 
     type StackCube3<'id> = StackPuzzle<'id, 40>;
 
     fn commutes_with<'id, P: PuzzleState<'id>>(guard: Guard<'id>) {
-        let cube3_def = PuzzleDef::<P>::new(&KPUZZLE_3X3, guard).unwrap();
+        let cube3_def = PuzzleDef::<P>::new(&puzzle("3x3").ksolve(), guard).unwrap();
         let mut result_1 = cube3_def.new_solved_state();
         let mut result_2 = result_1.clone();
 
@@ -814,7 +814,7 @@ mod tests {
     #[test]
     fn test_not_enough_buffer_space() {
         make_guard!(guard);
-        let try_cube3_def = PuzzleDef::<StackPuzzle<39>>::new(&KPUZZLE_3X3, guard);
+        let try_cube3_def = PuzzleDef::<StackPuzzle<39>>::new(&puzzle("3x3").ksolve(), guard);
         assert!(matches!(
             try_cube3_def,
             Err(KSolveConversionError::TransformsMetaError(
@@ -824,7 +824,7 @@ mod tests {
     }
 
     pub fn many_compositions<'id, P: PuzzleState<'id>>(guard: Guard<'id>) {
-        let cube3_def = PuzzleDef::<P>::new(&KPUZZLE_3X3, guard).unwrap();
+        let cube3_def = PuzzleDef::<P>::new(&puzzle("3x3").ksolve(), guard).unwrap();
         let solved = cube3_def.new_solved_state();
         let also_solved = apply_moves(&cube3_def, &solved, "R F", 105);
         assert_eq!(also_solved, solved);
@@ -851,7 +851,7 @@ mod tests {
     }
 
     pub fn s_u4_symmetry<'id, P: PuzzleState<'id>>(guard: Guard<'id>) {
-        let cube3_def = PuzzleDef::<P>::new(&KPUZZLE_3X3, guard).unwrap();
+        let cube3_def = PuzzleDef::<P>::new(&puzzle("3x3").ksolve(), guard).unwrap();
         let s_u4_symmetry = cube3_def.find_symmetry("S_U4").unwrap();
         let solved = cube3_def.new_solved_state();
 
@@ -891,7 +891,7 @@ mod tests {
     }
 
     pub fn expanded_move<'id, P: PuzzleState<'id>>(guard: Guard<'id>) {
-        let cube3_def = PuzzleDef::<P>::new(&KPUZZLE_3X3, guard).unwrap();
+        let cube3_def = PuzzleDef::<P>::new(&puzzle("3x3").ksolve(), guard).unwrap();
         let actual_solved = cube3_def.new_solved_state();
         let expected_solved = apply_moves(
             &cube3_def,
@@ -923,7 +923,7 @@ mod tests {
     }
 
     pub fn inversion<'id, P: PuzzleState<'id>>(guard: Guard<'id>) {
-        let cube3_def = PuzzleDef::<P>::new(&KPUZZLE_3X3, guard).unwrap();
+        let cube3_def = PuzzleDef::<P>::new(&puzzle("3x3").ksolve(), guard).unwrap();
         let solved = cube3_def.new_solved_state();
         let mut result = solved.clone();
 
@@ -968,7 +968,7 @@ mod tests {
     }
 
     pub fn random_inversion<'id, P: PuzzleState<'id>>(guard: Guard<'id>) {
-        let cube3_def = PuzzleDef::<P>::new(&KPUZZLE_3X3, guard).unwrap();
+        let cube3_def = PuzzleDef::<P>::new(&puzzle("3x3").ksolve(), guard).unwrap();
         let solved = cube3_def.new_solved_state();
 
         for _ in 0..50 {
@@ -1005,7 +1005,7 @@ mod tests {
     pub fn induces_sorted_cycle_structure_within_cycle<'id, P: PuzzleState<'id>>(
         guard: Guard<'id>,
     ) {
-        let cube3_def = PuzzleDef::<P>::new(&KPUZZLE_3X3, guard).unwrap();
+        let cube3_def = PuzzleDef::<P>::new(&puzzle("3x3").ksolve(), guard).unwrap();
         let solved = cube3_def.new_solved_state();
         let mut aux_mem = P::new_aux_mem(cube3_def.sorted_orbit_defs_ref());
 
@@ -1055,7 +1055,7 @@ mod tests {
     }
 
     pub fn induces_sorted_cycle_structure_many<'id, P: PuzzleState<'id>>(guard: Guard<'id>) {
-        let cube3_def = PuzzleDef::<P>::new(&KPUZZLE_3X3, guard).unwrap();
+        let cube3_def = PuzzleDef::<P>::new(&puzzle("3x3").ksolve(), guard).unwrap();
         let solved = cube3_def.new_solved_state();
         let mut aux_mem = P::new_aux_mem(cube3_def.sorted_orbit_defs_ref());
 
@@ -1238,7 +1238,7 @@ mod tests {
     }
 
     fn exact_hasher_orbit<'id, P: PuzzleState<'id>>(guard: Guard<'id>) {
-        let cube3_def = PuzzleDef::<P>::new(&KPUZZLE_3X3, guard).unwrap();
+        let cube3_def = PuzzleDef::<P>::new(&puzzle("3x3").ksolve(), guard).unwrap();
         let solved = cube3_def.new_solved_state();
 
         for (test_state, exp_hashes) in [
@@ -1320,7 +1320,7 @@ mod tests {
     }
 
     pub fn bench_compose_helper<'id, P: PuzzleState<'id>>(guard: Guard<'id>, b: &mut Bencher) {
-        let cube3_def = PuzzleDef::<P>::new(&KPUZZLE_3X3, guard).unwrap();
+        let cube3_def = PuzzleDef::<P>::new(&puzzle("3x3").ksolve(), guard).unwrap();
         let mut solved = cube3_def.new_solved_state();
         let r_move = cube3_def.find_move("R").unwrap();
         let f_move = cube3_def.find_move("F").unwrap();
@@ -1334,7 +1334,7 @@ mod tests {
     }
 
     pub fn bench_inverse_helper<'id, P: PuzzleState<'id>>(guard: Guard<'id>, b: &mut Bencher) {
-        let cube3_def = PuzzleDef::<P>::new(&KPUZZLE_3X3, guard).unwrap();
+        let cube3_def = PuzzleDef::<P>::new(&puzzle("3x3").ksolve(), guard).unwrap();
         let solved = cube3_def.new_solved_state();
         let mut result = solved.clone();
         let order_1260 = apply_moves(&cube3_def, &solved, "R U2 D' B D'", 100);
@@ -1350,7 +1350,7 @@ mod tests {
         guard: Guard<'id>,
         b: &mut Bencher,
     ) {
-        let cube3_def = PuzzleDef::<P>::new(&KPUZZLE_3X3, guard).unwrap();
+        let cube3_def = PuzzleDef::<P>::new(&puzzle("3x3").ksolve(), guard).unwrap();
         let sorted_cycle_structure = SortedCycleStructure::new(
             &[
                 vec![(3, true), (5, true)],
@@ -1374,7 +1374,7 @@ mod tests {
         guard: Guard<'id>,
         b: &mut Bencher,
     ) {
-        let cube3_def = PuzzleDef::<P>::new(&KPUZZLE_3X3, guard).unwrap();
+        let cube3_def = PuzzleDef::<P>::new(&puzzle("3x3").ksolve(), guard).unwrap();
         let solved = cube3_def.new_solved_state();
 
         // let sorted_cycle_structures = [

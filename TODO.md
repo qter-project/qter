@@ -91,7 +91,6 @@
 - Figure out algebraics
   - Acceptance criterion: All default puzzles can be processed in <1s with exact arithmetic
 - Parse our modified puzzlegeometry definition string
-- Reorganize parts of qter_core into here, rename `puzzle_theory` or something, and release as a crate on crates.io
 - Spherical cuts
 
 ## QAT

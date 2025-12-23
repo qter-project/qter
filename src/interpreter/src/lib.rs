@@ -8,9 +8,10 @@ use std::{collections::VecDeque, mem, sync::Arc};
 
 use instructions::do_instr;
 use puzzle_states::{PuzzleState, PuzzleStates};
+use puzzle_theory::{numbers::{I, Int, U}, permutations::Algorithm};
 use qter_core::{
-    ByPuzzleType, Facelets, I, Instruction, Int, Program, PuzzleIdx, SeparatesByPuzzleType,
-    StateIdx, TheoreticalIdx, U, architectures::Algorithm,
+    ByPuzzleType, Facelets,  Instruction,  Program, PuzzleIdx, SeparatesByPuzzleType,
+    StateIdx, TheoreticalIdx, 
 };
 
 pub struct PuzzleAndRegister;
@@ -299,12 +300,13 @@ mod tests {
     use crate::{Interpreter, PausedState, puzzle_states::SimulatedPuzzle};
     use compiler::compile;
     use internment::ArcIntern;
-    use qter_core::{File, Int, U, architectures::mk_puzzle_definition};
+    use puzzle_theory::{puzzle_geometry::parsing::puzzle, span::File};
+    use qter_core::architectures::{new_from_effect, with_presets};
     use std::sync::Arc;
 
     #[test]
     fn facelets_solved() {
-        let perm_group = mk_puzzle_definition("3x3").unwrap();
+        let perm_group = with_presets(puzzle("3x3"));
 
         let mut cube: SimulatedPuzzle =
             SimulatedPuzzle::initialize(Arc::clone(&perm_group.perm_group), ());
@@ -324,7 +326,7 @@ mod tests {
 
     #[test]
     fn complicated_solved_decode_test() {
-        let perm_group = mk_puzzle_definition("3x3").unwrap();
+        let perm_group = with_presets(puzzle("3x3"));
 
         let arch = perm_group
             .get_preset(&[Int::from(210_u64), Int::from(24_u64)])
@@ -333,8 +335,8 @@ mod tests {
         let a_facelets = arch.registers()[0].signature_facelets();
         let b_facelets = arch.registers()[1].signature_facelets();
 
-        let a_permutation = Algorithm::new_from_effect(&arch, vec![(0, Int::one())]);
-        let b_permutation = Algorithm::new_from_effect(&arch, vec![(1, Int::one())]);
+        let a_permutation = new_from_effect(&arch, vec![(0, Int::one())]);
+        let b_permutation = new_from_effect(&arch, vec![(1, Int::one())]);
 
         let mut cube: SimulatedPuzzle =
             SimulatedPuzzle::initialize(Arc::clone(&perm_group.perm_group), ());

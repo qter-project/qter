@@ -1,7 +1,8 @@
 use std::{collections::VecDeque, ptr, sync::Arc};
 
+use puzzle_theory::{numbers::{Int, U}, span::WithSpan};
 use qter_core::{
-    ByPuzzleType, Int, PuzzleIdx, StateIdx, TheoreticalIdx, U, WithSpan,
+    ByPuzzleType,  PuzzleIdx, StateIdx, TheoreticalIdx, 
     architectures::Architecture,
 };
 

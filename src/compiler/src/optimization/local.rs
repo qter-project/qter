@@ -3,8 +3,9 @@ use std::{
 };
 
 use itertools::Itertools;
+use puzzle_theory::{numbers::{Int, U}, span::WithSpan};
 use qter_core::{
-    ByPuzzleType, Int, PuzzleIdx, TheoreticalIdx, U, WithSpan, architectures::Architecture,
+    ByPuzzleType,  PuzzleIdx, TheoreticalIdx, architectures::Architecture,
 };
 
 use crate::{

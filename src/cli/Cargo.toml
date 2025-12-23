@@ -11,11 +11,11 @@ owo-colors = "4.2.0"
 qter_core = { path = "../qter_core" }
 compiler = { path = "../compiler" }
 interpreter = { path = "../interpreter" }
-puzzle_geometry = { path = "../puzzle_geometry" }
 visualizer = { path = "../visualizer" }
-ariadne = "0.5.1"
+ariadne = "0.6.0"
 log = "0.4.28"
 internment = { version = "0.8", features = [ "arc" ] }
+puzzle_theory = { git = "https://github.com/qter-project/puzzle-theory" }
 
 [lints]
 workspace = true

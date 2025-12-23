@@ -8,8 +8,9 @@ qter_core = { path = "../qter_core" }
 internment = { version = "0.8", features = [ "arc" ] }
 itertools = "0.14"
 mlua = { version = "0.10.2", features = ["lua54", "vendored", "send"] }
-chumsky = "0.10.1"
-ariadne = "0.5.1"
+chumsky = "0.12.0"
+ariadne = "0.6.0"
+puzzle_theory = { git = "https://github.com/qter-project/puzzle-theory" }
 
 [lints]
 workspace = true

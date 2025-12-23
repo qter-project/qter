@@ -6,7 +6,6 @@ members = [
   "compiler",
   "cli",
   "cycle_combination_solver",
-  "puzzle_geometry",
   "movecount_coefficient_calculator",
   "cycle_combination_finder",
   "robot",

@@ -2,11 +2,8 @@ use std::{collections::HashMap, sync::Arc};
 
 use bevy::prelude::*;
 use internment::ArcIntern;
-use qter_core::{
-    I, Int,
-    architectures::Architecture,
-    discrete_math::{chinese_remainder_theorem, decode, lcm_iter},
-};
+use puzzle_theory::numbers::{I, Int, chinese_remainder_theorem, lcm_iter};
+use qter_core::architectures::{Architecture, decode};
 
 use super::{
     CurrentState, PROGRAMS,
