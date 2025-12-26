@@ -59,6 +59,7 @@
               rust-analyzer
               rust
               pkg-config
+              tree-sitter
               packages.rob-twophase
               packages.shiroa
               vcube.defaultPackage."${system}"

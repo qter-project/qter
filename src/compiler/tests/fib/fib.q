@@ -8,6 +8,7 @@ A: 3x3
 3 | D L' F L2 B L' F' L B' D' L'
 4 | L' F' R B' D2 L2 B' R' F L' U2 B2
 5 | solved-goto UFR 15
+(bruh (bruh?) )
 6 | repeat until DL DFL solved
             L U' B R' L B' L' U'
             L U R2 B R2 D2 R2 D'
