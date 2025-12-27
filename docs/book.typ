@@ -5,7 +5,7 @@
 #book-meta(
   title: "Qter Documentation",
   repository: "https://github.com/qter-project/qter",
-  repository-edit: "https://github.com/qter-project/qter/edit/main/media/docs/{path}",
+  repository-edit: "https://github.com/qter-project/qter/edit/main/docs/{path}",
   summary: [
     #prefix-chapter("introduction.typ")[Introduction]
 

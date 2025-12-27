@@ -5,9 +5,8 @@ on:
     branches:
       - main
     paths:
-      - media/paper/**
-      - media/www/**
-      - media/docs/**
+      - paper/**
+      - docs/**
       - .github/workflows/deploy.yml
   workflow_dispatch:
 
@@ -36,13 +35,12 @@ jobs:
 
       - name: Compile documentation
         run: shiroa build docs --mode static-html
-        working-directory: media
         
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
           name: docs
-          path: media/docs/dist
+          path: docs/dist
   
   render-paper:
     name: Render paper PDF
@@ -56,13 +54,12 @@ jobs:
 
       - name: Compile document
         run: typst compile paper/paper.typ
-        working-directory: media
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
           name: paper
-          path: media/paper/paper.pdf
+          path: paper/paper.pdf
 
   deploy:
     name: Deploy site

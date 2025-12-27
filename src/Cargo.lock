@@ -4316,6 +4316,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "robot_app"
+version = "0.1.0"
+
+[[package]]
 name = "rodio"
 version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
