@@ -1,8 +1,6 @@
 Puzzles
 A: 3x3
 
-(bruh (dfddfdfdsfdfsfdkjdhfkjsdhfdskfjhalsdkjfhasdlkfjhasdlkfjhasdkfjlhasdlfkjhasdlfkjhasdflkasdjhalskdjfhasdlfkjhasdlkfjhasdlfkjhasdlkjh) )
-
 1 | input "Enter number X"
           L2 F2 U L' F D' F' U' L' F U D L' U'
           max-input 29
