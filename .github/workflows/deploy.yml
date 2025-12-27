@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - paper/**
+      - media/paper/**
       - docs/**
       - .github/workflows/deploy.yml
   workflow_dispatch:
@@ -54,12 +54,13 @@ jobs:
 
       - name: Compile document
         run: typst compile paper/paper.typ
+        working-directory: media
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
           name: paper
-          path: paper/paper.pdf
+          path: media/paper/paper.pdf
 
   deploy:
     name: Deploy site
