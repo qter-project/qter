@@ -136,7 +136,7 @@ impl<R: RobotLike> PuzzleState for RobotState<R> {
         let state = self.robot.take_picture();
 
         for &facelet in facelets {
-            let maps_to = state.mapping()[facelet];
+            let maps_to = state.mapping().get(facelet);
             if self.perm_group.facelet_colors()[maps_to]
                 != self.perm_group.facelet_colors()[facelet]
             {
@@ -217,7 +217,7 @@ impl PuzzleState for SimulatedPuzzle {
 
     fn initialize(perm_group: Arc<PermutationGroup>, (): ()) -> Self {
         SimulatedPuzzle {
-            state: perm_group.identity(),
+            state: Permutation::identity(),
             perm_group,
         }
     }
@@ -228,7 +228,7 @@ impl PuzzleState for SimulatedPuzzle {
 
     fn facelets_solved(&mut self, facelets: &[usize]) -> bool {
         for &facelet in facelets {
-            let maps_to = self.state.mapping()[facelet];
+            let maps_to = self.state.mapping().get(facelet);
             if self.perm_group.facelet_colors()[maps_to]
                 != self.perm_group.facelet_colors()[facelet]
             {
@@ -244,7 +244,7 @@ impl PuzzleState for SimulatedPuzzle {
     }
 
     fn solve(&mut self) {
-        self.state = self.perm_group.identity();
+        self.state = Permutation::identity();
     }
 
     fn repeat_until(&mut self, facelets: &[usize], generator: &Algorithm) -> Option<()> {
@@ -392,20 +392,18 @@ impl Connection for BufReader<TcpStream> {
 
 pub struct RemoteRobot<C: Connection> {
     conn: C,
-    group: Arc<PermutationGroup>,
     current_state: Option<Permutation>,
 }
 
 impl<C: Connection> RobotLike for RemoteRobot<C> {
     type InitializationArgs = C;
 
-    fn initialize(perm_group: Arc<PermutationGroup>, mut conn: C) -> Self {
+    fn initialize(_: Arc<PermutationGroup>, mut conn: C) -> Self {
         let writer = conn.writer();
         writer.flush().unwrap();
 
         RemoteRobot {
             conn,
-            group: perm_group,
             current_state: None,
         }
     }
@@ -444,7 +442,7 @@ impl<C: Connection> RobotLike for RemoteRobot<C> {
     }
 
     fn solve(&mut self) {
-        self.current_state = Some(self.group.identity());
+        self.current_state = Some(Permutation::identity());
 
         let writer = self.conn.writer();
         writeln!(writer, "!SOLVE").unwrap();
@@ -486,6 +484,7 @@ pub fn run_robot_server<C: Connection, R: RobotLike>(
                 "{}",
                 state
                     .mapping()
+                    .minimal()
                     .iter()
                     .map(ToString::to_string)
                     .collect::<Vec<_>>()
@@ -530,7 +529,7 @@ mod tests {
             assert_eq!(remote_robot.take_picture(), &Permutation::from_cycles(vec![vec![0, 1]]));
             assert_eq!(remote_robot.take_picture(), &Permutation::from_cycles(vec![vec![0, 1]]));
             remote_robot.solve();
-            assert_eq!(remote_robot.take_picture(), &cube3.identity());
+            assert_eq!(remote_robot.take_picture(), &Permutation::identity());
         }
 
         let mut data = String::new();

@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use bevy::prelude::*;
 use internment::ArcIntern;
-use puzzle_theory::numbers::{I, Int, chinese_remainder_theorem, lcm_iter};
+use puzzle_theory::{numbers::{I, Int, chinese_remainder_theorem, lcm_iter}, permutations::Permutation};
 use qter_core::architectures::{Architecture, decode};
 
 use super::{
@@ -98,7 +98,7 @@ fn setup(
 ) {
     commands.spawn(Camera2d);
 
-    commands.insert_resource(CurrentState(CUBE3.identity()));
+    commands.insert_resource(CurrentState(Permutation::identity()));
 
     let weird_dist = 1. / 3. * 1000.;
 
@@ -683,7 +683,7 @@ fn state_visualizer(
 
             let new_color = colors
                 .named
-                .get(&CUBE3.facelet_colors()[state_inv.mapping()[facelet.0]])
+                .get(&CUBE3.facelet_colors()[state_inv.mapping().get(facelet.0)])
                 .unwrap()
                 .clone();
 
@@ -798,7 +798,7 @@ fn solved_goto_visualizer(
         if pieces.contains(&idx.0) {
             *color = MeshMaterial2d(purple.to_owned());
 
-            taken &= color_scheme[current_state.0.mapping()[idx.0]] == color_scheme[idx.0];
+            taken &= color_scheme[current_state.0.mapping().get(idx.0)] == color_scheme[idx.0];
         }
     }
 

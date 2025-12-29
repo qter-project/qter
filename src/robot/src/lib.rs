@@ -24,7 +24,7 @@ impl RobotLike for QterRobot {
     fn initialize(_: Arc<PermutationGroup>, handle: RobotHandle) -> Self {
         QterRobot {
             handle,
-            state: CUBE3.identity(),
+            state: Permutation::identity(),
         }
     }
 

@@ -4881,7 +4881,7 @@ dependencies = [
 [[package]]
 name = "puzzle_theory"
 version = "0.1.0"
-source = "git+https://github.com/qter-project/puzzle-theory#94aabd6b2898aba8c76cf4d54a77a99aa5f194a6"
+source = "git+https://github.com/qter-project/puzzle-theory#11e859d41cb7123242a86e3799b14b9f384733fa"
 dependencies = [
  "algebraics",
  "ariadne",
@@ -4903,6 +4903,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7186d3822593aa4393561d186d1393b3923e9d6163d3fbfd6e825e3e6cf3e6a8"
 dependencies = [
  "num-traits",
+]
+
+[[package]]
+name = "qqveqq"
+version = "0.1.0"
+source = "git+https://github.com/qter-project/qqveqq/#d65b5887a76291844749f074c301b57e73bec4f2"
+dependencies = [
+ "itertools 0.14.0",
+ "puzzle_theory",
 ]
 
 [[package]]
@@ -5252,8 +5261,10 @@ version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
  "console_log",
+ "getrandom 0.3.4",
  "leptos",
  "log",
+ "qqveqq",
 ]
 
 [[package]]

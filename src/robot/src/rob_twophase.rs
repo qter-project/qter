@@ -10,7 +10,10 @@ use std::{
 use internment::ArcIntern;
 use itertools::Itertools;
 use log::{trace, warn};
-use puzzle_theory::{numbers::{I, Int}, permutations::{Algorithm, Permutation}};
+use puzzle_theory::{
+    numbers::{I, Int},
+    permutations::{Algorithm, Permutation},
+};
 
 use crate::CUBE3;
 
@@ -36,21 +39,22 @@ fn mk_rob_twophase_input(mut perm: Permutation) -> String {
 
     let mut faces = Vec::new();
 
-    for (chunk, current) in perm
-        .mapping()
-        .chunks_exact(8)
+    for (mut chunk, current) in (0..)
+        .map(|idx| perm.mapping().get(idx))
+        .chunks(8)
+        .into_iter()
         .zip(['U', 'L', 'F', 'R', 'B', 'D'])
     {
         let mut str = String::new();
 
-        for item in &chunk[0..4] {
-            str.push(*color_mapping.get(&cube3.facelet_colors()[*item]).unwrap());
+        for item in chunk.by_ref().take(4) {
+            str.push(*color_mapping.get(&cube3.facelet_colors()[item]).unwrap());
         }
 
         str.push(current);
 
-        for item in &chunk[4..8] {
-            str.push(*color_mapping.get(&cube3.facelet_colors()[*item]).unwrap());
+        for item in chunk {
+            str.push(*color_mapping.get(&cube3.facelet_colors()[item]).unwrap());
         }
 
         faces.push(str);
@@ -104,7 +108,7 @@ pub fn solve_rob_twophase_string(rob_twophase_string: &str) -> Result<Algorithm,
 
         maybe_rob_twophase.insert((stdin, stdout))
     };
-   
+
     /*
     Rob Twophase TUI looks like
 
@@ -173,7 +177,7 @@ pub fn solve_rob_twophase_string(rob_twophase_string: &str) -> Result<Algorithm,
 mod tests {
     use std::sync::Arc;
 
-    use puzzle_theory::permutations::Algorithm;
+    use puzzle_theory::permutations::{Algorithm, Permutation};
 
     use crate::{
         CUBE3,
@@ -431,7 +435,7 @@ mod tests {
 
     #[test]
     fn rob_twophase_solver() {
-        let identity = CUBE3.identity();
+        let identity = Permutation::identity();
 
         for [seq, _] in TESTS {
             let alg = Algorithm::parse_from_string(Arc::clone(&CUBE3), seq).unwrap();

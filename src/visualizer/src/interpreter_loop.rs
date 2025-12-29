@@ -5,7 +5,7 @@ use interpreter::{
     ActionPerformed, ExecutionState, Interpreter, PausedState,
     puzzle_states::{PuzzleState, RobotLike, RobotLikeDyn},
 };
-use puzzle_theory::{numbers::{Int, U, lcm_iter}, permutations::{Algorithm, PermutationGroup}, puzzle_geometry::parsing::puzzle};
+use puzzle_theory::{numbers::{Int, U, lcm_iter}, permutations::{Algorithm, Permutation, PermutationGroup}, puzzle_geometry::parsing::puzzle};
 use qter_core::{
     Facelets, 
     architectures::{PuzzleDefinition, chromatic_orders_by_facelets, with_presets},
@@ -84,7 +84,7 @@ impl PuzzleState for TrackedRobotState {
             .unwrap();
 
         for &facelet in facelets {
-            let maps_to = state.mapping()[facelet];
+            let maps_to = state.mapping().get(facelet);
             if CUBE3.facelet_colors()[maps_to] != CUBE3.facelet_colors()[facelet] {
                 return false;
             }
@@ -185,7 +185,7 @@ impl PuzzleState for TrackedRobotState {
 
         handle
             .event_tx
-            .send(InterpretationEvent::CubeState(CUBE3.identity()))
+            .send(InterpretationEvent::CubeState(Permutation::identity()))
             .unwrap();
 
         handle.robot.solve();

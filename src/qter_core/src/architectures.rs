@@ -622,7 +622,7 @@ pub fn decode(
     generator: &Algorithm,
 ) -> Option<Int<U>> {
     chinese_remainder_theorem(facelets.iter().map(|&facelet| {
-        let maps_to = permutation.mapping()[facelet];
+        let maps_to = permutation.mapping().get(facelet);
 
         let chromatic_order = chromatic_orders_by_facelets(generator)[facelet];
 
@@ -632,7 +632,7 @@ pub fn decode(
 
         let mut i = Int::<U>::one();
         let mut maps_to_found_at = None;
-        let mut facelet_at = generator.permutation().mapping()[facelet];
+        let mut facelet_at = generator.permutation().mapping().get(facelet);
 
         while facelet_at != facelet {
             if facelet_at == maps_to {
@@ -640,7 +640,7 @@ pub fn decode(
                 break;
             }
 
-            facelet_at = generator.permutation().mapping()[facelet_at];
+            facelet_at = generator.permutation().mapping().get(facelet_at);
             i += Int::<U>::one();
         }
 
@@ -657,7 +657,7 @@ mod tests {
     use itertools::Itertools;
     use puzzle_theory::{
         numbers::{Int, U},
-        permutations::Algorithm,
+        permutations::{Algorithm, Permutation},
         puzzle_geometry::parsing::puzzle,
     };
 
@@ -740,7 +740,7 @@ mod tests {
     fn test_decode() {
         let cube_def = puzzle("3x3").permutation_group();
 
-        let mut cube = cube_def.identity();
+        let mut cube = Permutation::identity();
 
         let permutation =
             Algorithm::new_from_move_seq(Arc::clone(&cube_def), vec![ArcIntern::from("U")])

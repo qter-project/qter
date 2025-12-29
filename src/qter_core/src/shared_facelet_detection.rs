@@ -11,17 +11,13 @@ use crate::architectures::{
 struct FaceletSources(HashSet<usize>);
 
 impl SetInfo for FaceletSources {
-    type PathInfo = ();
-
-    fn merge(&mut self, new_child: Self) -> Self::PathInfo {
+    fn merge(&mut self, new_child: Self) {
         self.0.extend(new_child.0);
     }
-
-    fn join_paths(_path: &mut Self::PathInfo, _path_of_parent: &Self::PathInfo) {}
 }
 
 /// Calculate the orbits of all of the facelets along with which algorithms contribute to the orbit
-fn find_orbits(facelet_count: usize, permutations: &[Permutation]) -> UnionFind<FaceletSources> {
+fn find_orbits(facelet_count: usize, permutations: &[Permutation]) -> UnionFind<FaceletSources, ()> {
     // Initialize the union-find
     let mut sets = vec![];
 
@@ -30,7 +26,7 @@ fn find_orbits(facelet_count: usize, permutations: &[Permutation]) -> UnionFind<
         let mut contains_facelets_from = HashSet::new();
 
         for (i, permutation) in permutations.iter().enumerate() {
-            if permutation.mapping()[facelet] != facelet {
+            if permutation.mapping().get(facelet) != facelet {
                 contains_facelets_from.insert(i);
             }
         }
@@ -38,15 +34,13 @@ fn find_orbits(facelet_count: usize, permutations: &[Permutation]) -> UnionFind<
         sets.push(FaceletSources(contains_facelets_from));
     }
 
-    let mut union_find = UnionFind::new_with_initial_set_info(sets);
+    let mut union_find = UnionFind::new_with_initial_set_info(sets.into_iter());
 
     // Union all facelets that share the same orbit
     for permutation in permutations {
-        for facelet in 0..facelet_count {
-            let goes_to = permutation.mapping()[facelet];
-
+        for (from, to) in permutation.mapping().all_changes() {
             // They have the same orbit if one is mapped to the other
-            union_find.union(facelet, goes_to, ());
+            union_find.union(from, to, ());
         }
     }
 
@@ -66,7 +60,7 @@ pub fn algorithms_to_cycle_generators<'a, T: AsRef<str>>(
     let mut permutations = vec![];
 
     for algorithm in algorithms {
-        let mut permutation = group.identity();
+        let mut permutation = Permutation::identity();
         group.compose_generators_into(&mut permutation, algorithm.iter())?;
         permutations.push(permutation);
     }
