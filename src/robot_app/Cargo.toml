@@ -8,6 +8,8 @@ console_error_panic_hook = "0.1.7"
 console_log = "1.0.0"
 leptos = { version = "0.8.15", features = ["csr"] }
 log = "0.4.29"
+qqveqq = { git = "https://github.com/qter-project/qqveqq/" }
+getrandom = { version = "0.3.4", features = ["wasm_js"] }
 
 [lints]
 workspace = true

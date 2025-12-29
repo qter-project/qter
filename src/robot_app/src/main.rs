@@ -1,4 +1,5 @@
 use leptos::prelude::*;
+use log::Level;
 
 #[component]
 fn App() -> impl IntoView {
@@ -6,7 +7,7 @@ fn App() -> impl IntoView {
 
     view! {
         <button on:click=move |_| {
-            set_count.set(3)
+            *set_count.write() += 1;
         }>
 
             "Click me: " {count}
@@ -16,10 +17,8 @@ fn App() -> impl IntoView {
 }
 
 fn main() {
-    _ = console_log::init_with_level(log::Level::Debug);
+    _ = console_log::init_with_level(Level::Debug);
     console_error_panic_hook::set_once();
 
-    leptos::mount::mount_to_body(|| {
-        view! { <p>"Hello, world!"</p> }
-    })
+    mount_to_body(App);
 }
