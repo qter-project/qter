@@ -11,8 +11,3 @@ log = "0.4.29"
 
 [lints]
 workspace = true
-
-[profile.release]
-opt-level = 'z'
-codegen-units = 1
-lto = true
