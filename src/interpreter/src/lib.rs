@@ -298,11 +298,12 @@ impl SeparatesByPuzzleType for InputRet {
 mod tests {
     use super::*;
     use crate::{Interpreter, PausedState, puzzle_states::SimulatedPuzzle};
-    use compiler::compile;
+    use compiler::{compile, q_emitter::emit_q};
     use internment::ArcIntern;
     use puzzle_theory::{puzzle_geometry::parsing::puzzle, span::File};
     use qter_core::architectures::{new_from_effect, with_presets};
     use std::sync::Arc;
+    use pretty_assertions::{assert_eq, assert_ne, assert_str_eq};
 
     #[test]
     fn facelets_solved() {
@@ -344,16 +345,16 @@ mod tests {
         for i in 1..=23 {
             cube.state.compose_into(b_permutation.permutation());
             assert_eq!(
-                cube.print(&b_facelets.0, &b_permutation).unwrap(),
+                cube.print(b_facelets.facelets(), &b_permutation).unwrap(),
                 Int::from(i)
             );
-            assert!(!cube.facelets_solved(&b_facelets.0));
+            assert!(!cube.facelets_solved(b_facelets.facelets()));
         }
 
         cube.state.compose_into(b_permutation.permutation());
-        assert!(cube.facelets_solved(&b_facelets.0));
+        assert!(cube.facelets_solved(b_facelets.facelets()));
         assert_eq!(
-            cube.print(&b_facelets.0, &b_permutation).unwrap(),
+            cube.print(b_facelets.facelets(), &b_permutation).unwrap(),
             Int::<U>::zero()
         );
 
@@ -361,11 +362,11 @@ mod tests {
             println!("{i}");
             for j in 0..210 {
                 assert_eq!(
-                    cube.print(&b_facelets.0, &b_permutation).unwrap(),
+                    cube.print(b_facelets.facelets(), &b_permutation).unwrap(),
                     Int::from(i)
                 );
                 assert_eq!(
-                    cube.print(&a_facelets.0, &a_permutation).unwrap(),
+                    cube.print(a_facelets.facelets(), &a_permutation).unwrap(),
                     Int::from(j)
                 );
 
@@ -546,7 +547,7 @@ mod tests {
                 solved-goto D do_if_1
                 goto after_if_1
             do_if_1:
-                halt \"The number is 0\"
+                halt \"The number is: 0\"
             after_if_1:
                 add B 1
             continue_1:
@@ -596,6 +597,48 @@ mod tests {
             Ok(v) => v,
             Err(e) => panic!("{e:?}"),
         };
+
+        let q = emit_q(&program).unwrap();
+
+        assert_str_eq!(q, r#"Puzzles
+A: 3x3
+
+0  | input "Which Fibonacci number to calculate:"
+           B2 U2 L F' R B L2 D2 B R' F L
+           max-input 8
+1  | solved-goto UBL 3
+2  | goto 4
+3  | halt "The number is: 0"
+4  | D L' F L2 B L' F' L B' D' L'
+5  | L' F' R B' D2 L2 B' R' F L' U2 B2
+6  | solved-goto UBL 8
+7  | goto 9
+8  | halt "The number is"
+          L D B L' F L B' L2 F' L D'
+          counting-until UFL DL
+9  | repeat until UFL DL solved
+            L U' B R' L B' L' U'
+            L U R2 B R2 D2 R2 D'
+10 | L' F' R B' D2 L2 B' R' F L' U2 B2
+11 | solved-goto UBL 13
+12 | goto 14
+13 | halt "The number is"
+          F2 L2 U2 D' R U' B L' B L' U'
+          counting-until FR DFR
+14 | repeat until FR DFR solved
+            D' B' U2 B D' F' D L' D2
+            F' R' D2 F2 R F2 R2 U' R'
+15 | L' F' R B' D2 L2 B' R' F L' U2 B2
+16 | solved-goto UBL 18
+17 | goto 19
+18 | halt "The number is"
+          U L' R' F' U' F' L' F2 L U R
+          counting-until UB
+19 | repeat until UB solved
+            B R2 D' R B D F2 U2 D'
+            F' L2 F D2 F B2 D' L' U'
+20 | goto 5
+"#);
 
         let mut interpreter: Interpreter<SimulatedPuzzle> = Interpreter::new(Arc::new(program), ());
 

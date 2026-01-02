@@ -149,7 +149,7 @@ pub fn strip_expanded(expanded: ExpandedCode) -> Result<Program, Vec<Rich<'stati
             Puzzle::Real { architectures } => {
                 // TODO: Support for architecture switching
                 // Just take the first architecture
-                let (names, architecture) = &architectures[0];
+                let (names, architecture, puzzle_span) = &architectures[0];
                 for (i, name) in names.iter().enumerate() {
                     global_regs.register_table.insert(
                         ArcIntern::clone(name),
@@ -162,7 +162,7 @@ pub fn strip_expanded(expanded: ExpandedCode) -> Result<Program, Vec<Rich<'stati
 
                 global_regs.puzzles.push(WithSpan::new(
                     architecture.group_arc(),
-                    architecture.span().to_owned(),
+                    puzzle_span.clone(),
                 ));
             }
         }

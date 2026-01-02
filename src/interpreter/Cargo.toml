@@ -9,6 +9,7 @@ internment = { version = "0.8", features = [ "arc" ] }
 compiler = { path = "../compiler" }
 log = "0.4.28"
 puzzle_theory = { git = "https://github.com/qter-project/puzzle-theory" }
+pretty_assertions = "1.4.1"
 
 [lints]
 workspace = true

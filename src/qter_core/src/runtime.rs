@@ -2,13 +2,32 @@ use std::convert::Infallible;
 use std::fmt::Debug;
 use std::sync::Arc;
 
+use internment::ArcIntern;
 use puzzle_theory::numbers::{Int, U};
 use puzzle_theory::permutations::{Algorithm, PermutationGroup};
 use puzzle_theory::span::WithSpan;
 
 /// The facelets needed for `solved-goto`
 #[derive(Debug, Clone)]
-pub struct Facelets(pub Vec<usize>);
+pub struct Facelets { facelets: Vec<usize>, pieces: Vec<ArcIntern<str>>, order: Int<U>, }
+
+impl Facelets {
+    pub fn new(facelets: Vec<usize>, pieces: Vec<ArcIntern<str>>, order: Int<U>) -> Self {
+        Self { facelets, pieces, order }
+    }
+
+    pub fn facelets(&self) -> &[usize] {
+        &self.facelets
+    }
+
+    pub fn pieces(&self) -> &[ArcIntern<str>] {
+        &self.pieces
+    }
+
+    pub fn order(&self) -> Int<U> {
+        self.order
+    }
+}
 
 /// The generator of a register along with the facelets needed to decode it
 pub struct RegisterGenerator;
@@ -42,6 +61,15 @@ pub struct PuzzleIdx(pub usize);
 pub enum ByPuzzleType<'a, T: SeparatesByPuzzleType> {
     Theoretical(T::Theoretical<'a>),
     Puzzle(T::Puzzle<'a>),
+}
+
+impl<'a, T: SeparatesByPuzzleType> ByPuzzleType<'a, T> {
+    pub fn unwrap_puzzle(&self) -> &T::Puzzle<'a> {
+        match self {
+            ByPuzzleType::Theoretical(_) => panic!("Found theoretical instruction when a puzzle one was expected"),
+            ByPuzzleType::Puzzle(v) => v,
+        }
+    }
 }
 
 impl<'a, T: SeparatesByPuzzleType> Debug for ByPuzzleType<'a, T>

@@ -185,6 +185,7 @@ mod tests {
                 ArcIntern::from("K"),
                 ArcIntern::from("L"),
             ],
+            vec![ArcIntern::from("A"); 14],
             generators,
         ));
 

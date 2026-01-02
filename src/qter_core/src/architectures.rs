@@ -1,6 +1,6 @@
 use std::{
     borrow::Cow,
-    collections::{BTreeMap, HashSet},
+    collections::BTreeMap,
     fmt::Debug,
     sync::{Arc, OnceLock},
 };
@@ -256,42 +256,49 @@ impl CycleGenerator {
             }
         }
 
-        let mut facelets = vec![];
+        // Note that since pieces all move together, including all stickers on a piece doesn't change the order of the cycle or include anything that shouldn't be included.
 
+        let mut facelets = Vec::new();
+        let mut pieces = Vec::new();
+
+        // Track uncovered facelets and the cycles that they belong to
+        let mut facelet_cycle_membership = BTreeMap::new();
         for (_, idx) in cycles {
-            // Find a list of facelets such that for every index in the cycle, at least one facelet is unsolved.
-            // On a 3x3, there are only 6 colors, so a subcycle of length 15 will necessarily repeat colors, so if we only include one facelet, the subcycle will appear solved early.
-            // TODO: This code doesn't take into account cubies
             let cycle = &self.unshared_cycles()[idx];
-            // The chromatic order of a single cycle is bounded by the number of facelets in the permutation group, so this is OK even for big cubes
-            let chromatic_order = cycle.chromatic_order().try_into().unwrap();
-
-            let mut uncovered = (1..chromatic_order).collect::<HashSet<usize>>();
-
-            let mut facelet_idx = 0;
-            while !uncovered.is_empty() {
-                let facelet = cycle.facelet_cycle()[facelet_idx];
-                let mut still_uncovered = HashSet::new();
-
-                for i in 1..chromatic_order {
-                    if self.algorithm.group().facelet_colors()
-                        [cycle.facelet_cycle()[(i + facelet_idx) % chromatic_order]]
-                        == self.algorithm.group().facelet_colors()[facelet]
-                    {
-                        still_uncovered.insert(i);
-                    }
-                }
-
-                if !uncovered.is_subset(&still_uncovered) {
-                    uncovered.retain(|v| still_uncovered.contains(v));
-                    facelets.push(facelet);
-                }
-
-                facelet_idx += 1;
+            for facelet in cycle.facelet_cycle() {
+                facelet_cycle_membership.insert(facelet, idx);
             }
         }
 
-        Some(Facelets(facelets))
+        let group = self.algorithm.group();
+
+        while let Some((sticker, _)) = facelet_cycle_membership.first_key_value() {
+            let piece = &group.piece_assignments()[**sticker];
+            pieces.push(ArcIntern::clone(piece));
+
+            // Include all other stickers on the same piece
+            let rest_to_include = group
+                .piece_assignments()
+                .iter()
+                .enumerate()
+                .filter(|(_, v)| *v == piece)
+                .filter_map(|(i, _)| facelet_cycle_membership.remove(&i).map(|v| (i, v)))
+                .collect_vec();
+
+            for (sticker, cycle) in rest_to_include {
+                facelets.push(sticker);
+
+                let color = &group.facelet_colors()[sticker];
+
+                for cycle_member in self.unshared_cycles()[cycle].facelet_cycle() {
+                    if &group.facelet_colors()[*cycle_member] != color {
+                        facelet_cycle_membership.remove(cycle_member);
+                    }
+                }
+            }
+        }
+
+        Some(Facelets::new(facelets, pieces, remainder_mod))
     }
 }
 
@@ -457,7 +464,7 @@ impl Architecture {
                 let maybe_decoded = registers_decoding_info
                     .iter()
                     .map(|(facelets, generators)| {
-                        decode(permutation.permutation(), &facelets.0, generators)
+                        decode(permutation.permutation(), facelets.facelets(), generators)
                     })
                     .collect::<Option<Vec<_>>>();
 
@@ -525,60 +532,63 @@ impl Architecture {
 pub fn with_presets(geometry: WithSpan<Arc<PuzzleGeometry>>) -> WithSpan<PuzzleDefinition> {
     let group = geometry.permutation_group();
 
-    geometry.span().clone().with(if geometry.span().slice() == "3x3" {
-        let presets: [Arc<Architecture>; 6] = [
-            (&["R U2 D' B D'"] as &[&str], None),
-            (&["U", "D"], None),
-            (
-                &["R' F' L U' L U L F U' R", "U F R' D' R2 F R' U' D"],
-                Some(3),
-            ),
-            (&["U R U' D2 B", "B U2 B' L' U2 B U L' B L B2 L"], Some(0)),
-            (
-                &[
-                    "U L2 B' L U' B' U2 R B' R' B L",
-                    "R2 L U' R' L2 F' D R' D L B2 D2",
-                    "L2 F2 U L' F D' F' U' L' F U D L' U'",
-                ],
-                Some(1),
-            ),
-            (
-                &[
-                    "U L B' L B' U R' D U2 L2 F2",
-                    "D L' F L2 B L' F' L B' D' L'",
-                    "R' U' L' F2 L F U F R L U'",
-                    "B2 U2 L F' R B L2 D2 B R' F L",
-                ],
-                Some(2),
-            ),
-        ]
-        .map(|(algs, maybe_index): (&[&str], Option<usize>)| {
-            let mut arch = Architecture::new(
-                Arc::clone(&group),
-                &algs
-                    .iter()
-                    .map(|alg| alg.split(' ').map(ArcIntern::from).collect_vec())
-                    .collect_vec(),
-            )
-            .unwrap();
+    geometry
+        .span()
+        .clone()
+        .with(if geometry.span().slice() == "3x3" {
+            let presets: [Arc<Architecture>; 6] = [
+                (&["R U2 D' B D'"] as &[&str], None),
+                (&["U", "D"], None),
+                (
+                    &["R' F' L U' L U L F U' R", "U F R' D' R2 F R' U' D"],
+                    Some(3),
+                ),
+                (&["U R U' D2 B", "B U2 B' L' U2 B U L' B L B2 L"], Some(0)),
+                (
+                    &[
+                        "U L2 B' L U' B' U2 R B' R' B L",
+                        "R2 L U' R' L2 F' D R' D L B2 D2",
+                        "L2 F2 U L' F D' F' U' L' F U D L' U'",
+                    ],
+                    Some(1),
+                ),
+                (
+                    &[
+                        "U L B' L B' U R' D U2 L2 F2",
+                        "D L' F L2 B L' F' L B' D' L'",
+                        "R' U' L' F2 L F U F R L U'",
+                        "B2 U2 L F' R B L2 D2 B R' F L",
+                    ],
+                    Some(2),
+                ),
+            ]
+            .map(|(algs, maybe_index): (&[&str], Option<usize>)| {
+                let mut arch = Architecture::new(
+                    Arc::clone(&group),
+                    &algs
+                        .iter()
+                        .map(|alg| alg.split(' ').map(ArcIntern::from).collect_vec())
+                        .collect_vec(),
+                )
+                .unwrap();
 
-            if let Some(index) = maybe_index {
-                arch.set_optimized_table(Cow::Borrowed(OPTIMIZED_TABLES[index]));
+                if let Some(index) = maybe_index {
+                    arch.set_optimized_table(Cow::Borrowed(OPTIMIZED_TABLES[index]));
+                }
+
+                Arc::new(arch)
+            });
+
+            PuzzleDefinition {
+                perm_group: group,
+                presets: presets.into(),
             }
-
-            Arc::new(arch)
-        });
-
-        PuzzleDefinition {
-            perm_group: group,
-            presets: presets.into(),
-        }
-    } else {
-        PuzzleDefinition {
-            perm_group: group,
-            presets: Vec::new(),
-        }
-    })
+        } else {
+            PuzzleDefinition {
+                perm_group: group,
+                presets: Vec::new(),
+            }
+        })
 }
 
 /// This function does what it says on the tin.

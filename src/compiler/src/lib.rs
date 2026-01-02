@@ -25,6 +25,7 @@ mod macro_expansion;
 mod optimization;
 mod parsing;
 mod strip_expanded;
+pub mod q_emitter;
 
 /// Compiles a QAT program into a Q program
 ///
@@ -268,7 +269,8 @@ enum Puzzle {
         order: WithSpan<Int<U>>,
     },
     Real {
-        architectures: Vec<(Vec<WithSpan<ArcIntern<str>>>, WithSpan<Arc<Architecture>>)>,
+        // The extra span is that of the puzzle definition itself
+        architectures: Vec<(Vec<WithSpan<ArcIntern<str>>>, WithSpan<Arc<Architecture>>, Span)>,
     },
 }
 
@@ -301,7 +303,7 @@ impl RegistersDecl {
                     }
                 }
                 Puzzle::Real { architectures } => {
-                    for (names, _) in architectures {
+                    for (names, _, _) in architectures {
                         for found_name in names {
                             if *reg_name == **found_name {
                                 return Some((

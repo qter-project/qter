@@ -83,6 +83,7 @@
 - Function macro
 - ⭐Directory of testing programs instead of hardcoding into Rust
   - ⭐Inline testing in the QAT format
+- 😎Write tree sitter grammar
 - 😎Architecture switching
 - 😎Instruction to copy solving moves to other puzzle
 - 😎Architecture that avoids sharing a piece by always having two additions simultaneously which avoids parity
@@ -110,9 +111,8 @@
 
 - ⭐Compile to Q
   - ⭐"[repeat|print|halt] until _ solved" syntax
+- Make solved-goto pieces "optimal" in a meaningful sense of "optimal"
 - Parse Q
-- Comments with parentheses
-- Write a tree-sitter grammer for Q
 
 ## End user
 

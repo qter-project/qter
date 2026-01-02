@@ -437,10 +437,10 @@ fn register_decl_unswitchable() -> impl Parser<'static, File, MaybeErr<Puzzle>, 
                         MaybeErr::None
                     }
                 }
-                PuzzleUnnamed::Real { architecture } => {
+                PuzzleUnnamed::Real { architecture, def_span } => {
                     if architecture.registers().len() == names.len() {
                         MaybeErr::Some(Puzzle::Real {
-                            architectures: vec![(names, architecture)],
+                            architectures: vec![(names, architecture, def_span)],
                         })
                     } else {
                         emitter.emit(Rich::custom(
@@ -467,6 +467,7 @@ enum PuzzleUnnamed {
     },
     Real {
         architecture: WithSpan<Arc<Architecture>>,
+        def_span: Span,
     },
 }
 
@@ -487,7 +488,7 @@ fn register_architecture() -> impl Parser<'static, File, MaybeErr<PuzzleUnnamed>
         ))
         .map(|(_, (), order)| order.map(|order| PuzzleUnnamed::Theoretical { order })),
         group((
-            puzzle_definition().map(|v| with_presets(v)),
+            puzzle_definition().map(with_presets),
             whitespace(),
             just("builtin"),
             whitespace(),
@@ -505,6 +506,7 @@ fn register_architecture() -> impl Parser<'static, File, MaybeErr<PuzzleUnnamed>
         .validate(
             |(def, (), _, (), orders), data, emitter| orders.map(|orders| if let Some(arch) = def.get_preset(&orders) { MaybeErr::Some(PuzzleUnnamed::Real {
                 architecture: data.span().with(arch),
+                def_span: def.span().clone(),
             }) } else {
                 emitter.emit(Rich::custom(
                                 orders.span().clone(),
@@ -514,7 +516,7 @@ fn register_architecture() -> impl Parser<'static, File, MaybeErr<PuzzleUnnamed>
             },
         ).flatten()),
         group((
-            puzzle_definition().map(|v| with_presets(v)),
+            puzzle_definition().map(with_presets),
             whitespace(),
             choice((
                 algorithm().map(|v| vec![v]),
@@ -532,6 +534,7 @@ fn register_architecture() -> impl Parser<'static, File, MaybeErr<PuzzleUnnamed>
             match Architecture::new(Arc::clone(&def.perm_group), &algs) {
                 Ok(arch) => MaybeErr::Some(PuzzleUnnamed::Real {
                     architecture: data.span().with(Arc::new(arch)),
+                    def_span: def.span().clone(),
                 }),
                 Err(bad_generator) => {
                     emitter.emit(Rich::custom(bad_generator.clone(), format!("This generator does not exist in the given permutation group. The options are: {}", def.perm_group.generators().map(|(name, _)| name).join(&ArcIntern::from(", ")))));

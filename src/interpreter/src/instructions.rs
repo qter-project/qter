@@ -58,7 +58,7 @@ impl PuzzleInstructionImpl for SolvedGoto {
     ) -> ActionPerformed<'a> {
         let puzzle = state.puzzle_states.puzzle_state_mut(instr.1);
 
-        if puzzle.facelets_solved(&instr.2.0) {
+        if puzzle.facelets_solved(instr.2.facelets()) {
             state.program_counter = instr.0.instruction_idx;
 
             ActionPerformed::SucceededSolvedGoto(ByPuzzleType::Puzzle((
@@ -111,7 +111,7 @@ impl PuzzleInstructionImpl for Input {
     ) -> ActionPerformed<'a> {
         let order = instr
             .3
-            .0
+            .facelets()
             .iter()
             .map(|facelet| chromatic_orders_by_facelets(&instr.2)[*facelet])
             .fold(Int::<U>::one(), lcm);
@@ -175,7 +175,7 @@ impl PuzzleInstructionImpl for Halt {
             match &instr.1 {
                 Some((idx, algorithm, facelets)) => {
                     let puzzle = state.puzzle_states.puzzle_state_mut(*idx);
-                    match puzzle.halt(&facelets.0, algorithm) {
+                    match puzzle.halt(facelets.facelets(), algorithm) {
                         Some(v) => Some((
                             v,
                             ByPuzzleType::Puzzle((*idx, algorithm.to_owned(), facelets.to_owned())),
@@ -235,7 +235,7 @@ impl PuzzleInstructionImpl for Print {
             match &instr.1 {
                 Some((idx, algorithm, facelets)) => {
                     let puzzle = state.puzzle_states.puzzle_state_mut(*idx);
-                    match puzzle.print(&facelets.0, algorithm) {
+                    match puzzle.print(facelets.facelets(), algorithm) {
                         Some(v) => Some(v),
                         None => {
                             return state.panic("The register specified is not decodable!");
@@ -322,7 +322,7 @@ impl PuzzleInstructionImpl for RepeatUntil {
         state
             .puzzle_states
             .puzzle_state_mut(instr.puzzle_idx)
-            .repeat_until(&instr.facelets.0, &instr.alg);
+            .repeat_until(instr.facelets.facelets(), &instr.alg);
 
         state.program_counter += 1;
 
