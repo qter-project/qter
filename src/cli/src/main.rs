@@ -3,25 +3,28 @@
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::needless_pass_by_value)]
 
-use std::{fs, io, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{fs, io, net::SocketAddr, path::{Path, PathBuf}, sync::Arc};
 
 use ariadne::{Color, Label, Report, ReportKind, Source};
+use chumsky::error::Rich;
 use clap::{ArgAction, Parser};
 use color_eyre::{
     eyre::{OptionExt, eyre},
     owo_colors::OwoColorize,
 };
-use compiler::compile;
+use compiler::{compile, q_emitter::emit_q};
 use internment::ArcIntern;
 use interpreter::{
     ActionPerformed, ExecutionState, InputRet, Interpreter, PausedState,
     puzzle_states::{PuzzleState, SimulatedPuzzle},
 };
 use itertools::Itertools;
-use puzzle_theory::{numbers::{I, Int}, span::File};
+use puzzle_theory::{
+    numbers::{I, Int},
+    span::{File, Span},
+};
 use qter_core::{
-    ByPuzzleType, 
-    table_encoding::{decode_table, encode_table},
+    ByPuzzleType, Program, table_encoding::{decode_table, encode_table}
 };
 
 /// Compiles and interprets qter programs
@@ -30,7 +33,7 @@ use qter_core::{
 enum Commands {
     /// Compile a QAT file to Q
     Compile {
-        /// Which file to compile; must be a .q file
+        /// Which file to compile; must be a QAT file
         file: PathBuf,
     },
     /// Interpret a QAT or a Q file
@@ -72,60 +75,83 @@ enum Commands {
     },
 }
 
+fn process_errors(errs: Vec<Rich<'static, char, Span>>, file: &Path, source: &File) -> color_eyre::Report {
+    for err in &errs {
+        Report::build(ReportKind::Error, err.span().clone())
+            .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
+            .with_message(err.to_string())
+            .with_label(
+                Label::new(err.span().clone())
+                    .with_message(err.reason().to_string())
+                    .with_color(Color::Red),
+            )
+            .finish()
+            .eprint(Source::from(source.inner()))
+            .unwrap();
+    }
+
+    eyre!(
+        "Could not compile {} due to {} errors.",
+        file.display(),
+        errs.len()
+    )
+}
+
+fn compile_qat(file: &Path) -> color_eyre::Result<(Program, File)> {
+    let qat = File::from(fs::read_to_string(file)?);
+
+    match compile(&qat, |name| {
+        let path = PathBuf::from(name);
+
+        if path.ancestors().count() > 1 {
+            // Easier not to implement relative paths and stuff
+            return Err("Imported files must be in the same path".to_owned());
+        }
+
+        match fs::read_to_string(path) {
+            Ok(s) => Ok(ArcIntern::from(s)),
+            Err(e) => Err(e.to_string()),
+        }
+    }) {
+        Ok(v) => Ok((v, qat)),
+        Err(errs) => {
+            Err(process_errors(errs, file, &qat))
+        }
+    }
+}
+
 fn main() -> color_eyre::Result<()> {
     let args = Commands::parse();
 
     match args {
-        Commands::Compile { file: _ } => todo!(),
+        Commands::Compile { file } => {
+            if file.extension().and_then(|v| v.to_str()) != Some("qat") {
+                return Err(eyre!("The file `{}` does not have an extension of `.qat`.", file.display()))
+            }
+
+            let (program, qat) = compile_qat(&file)?;
+
+            let q_code = match emit_q(&program) {
+                Ok(v) => v,
+                Err(errs) => {
+                    return Err(process_errors(errs, &file, &qat));
+                },
+            };
+
+            let path = file.with_extension("q");
+
+            fs::write(path, q_code)?;
+        }
         Commands::Interpret { file, trace_level } => {
             let program = match file.extension().and_then(|v| v.to_str()) {
                 Some("q") => todo!(),
                 Some("qat") => {
-                    let qat = File::from(fs::read_to_string(&file)?);
-
-                    match compile(&qat, |name| {
-                        let path = PathBuf::from(name);
-
-                        if path.ancestors().count() > 1 {
-                            // Easier not to implement relative paths and stuff
-                            return Err("Imported files must be in the same path".to_owned());
-                        }
-
-                        match fs::read_to_string(path) {
-                            Ok(s) => Ok(ArcIntern::from(s)),
-                            Err(e) => Err(e.to_string()),
-                        }
-                    }) {
-                        Ok(v) => v,
-                        Err(errs) => {
-                            for err in &errs {
-                                Report::build(ReportKind::Error, err.span().clone())
-                                    .with_config(
-                                        ariadne::Config::new()
-                                            .with_index_type(ariadne::IndexType::Byte),
-                                    )
-                                    .with_message(err.to_string())
-                                    .with_label(
-                                        Label::new(err.span().clone())
-                                            .with_message(err.reason().to_string())
-                                            .with_color(Color::Red),
-                                    )
-                                    .finish()
-                                    .eprint(Source::from(qat.inner()))
-                                    .unwrap();
-                            }
-
-                            return Err(eyre!(
-                                "Could not compile {} due to {} errors.",
-                                file.display(),
-                                errs.len()
-                            ));
-                        }
-                    }
+                    compile_qat(&file)?.0
                 }
                 _ => {
                     return Err(eyre!(
-                        "The file {file:?} must have an extension of `.qat` or `.q`."
+                        "The file `{}` does not have an extension of `.qat` or `.q`.",
+                        file.display(),
                     ));
                 }
             };

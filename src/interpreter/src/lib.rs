@@ -303,7 +303,7 @@ mod tests {
     use puzzle_theory::{puzzle_geometry::parsing::puzzle, span::File};
     use qter_core::architectures::{new_from_effect, with_presets};
     use std::sync::Arc;
-    use pretty_assertions::{assert_eq, assert_ne, assert_str_eq};
+    use pretty_assertions::{assert_eq, assert_str_eq};
 
     #[test]
     fn facelets_solved() {
@@ -754,7 +754,7 @@ A: 3x3
     fn repeat_until() {
         let code = "
             .registers {
-                A, B <- 3x3 builtin (90, 90)
+                A, B <- 3x3 builtin (4, 4)
             }
 
             add A 1
@@ -762,12 +762,12 @@ A: 3x3
             -- Two repeat untils
             spot1:
                 solved-goto A spot2
-                add A 89
+                add A 3
                 add B 2
                 goto spot1
             spot2:
                 solved-goto B spot3
-                add B 89
+                add B 3
                 add A 2
                 goto spot2
             spot3:
@@ -775,7 +775,7 @@ A: 3x3
             -- Two repeat untils
                 goto spot5
             spot4:
-                add A 89
+                add A 3
                 add B 2
             spot5:
                 solved-goto A spot6
@@ -784,7 +784,7 @@ A: 3x3
                 goto spot8
             spot7:
                 add A 2
-                add B 89
+                add B 3
             spot8:
                 solved-goto B spot9
                 goto spot7
@@ -798,7 +798,7 @@ A: 3x3
                 add B 1
             spot11:
                 solved-goto A spot12
-                add A 89
+                add A 3
                 add B 1
                 goto spot10
             spot12:
@@ -806,7 +806,7 @@ A: 3x3
             -- One algorithm + one repeat until
 
             spot13:
-                add B 89
+                add B 3
                 add A 2
                 solved-goto B spot14
                 goto spot13
@@ -820,12 +820,33 @@ A: 3x3
             Err(e) => panic!("{e:?}"),
         };
 
-        // println!("{:#?}", program);
-        assert_eq!(program.instructions.len(), 1 + 2 + 2 + 1 + 2 + 1);
+        let q = emit_q(&program).unwrap();
+
+        assert_str_eq!(q, r#"Puzzles
+A: 3x3
+
+0 | U
+1 | repeat until UFL solved
+           U' D2
+2 | repeat until DFL solved
+           U2 D'
+3 | repeat until UFL solved
+           U' D2
+4 | repeat until DFL solved
+           U2 D'
+5 | repeat until UFL solved
+           U' D2
+6 | U2 D'
+7 | repeat until DFL solved
+           U2 D'
+8 | halt "A="
+         U'
+         counting-until UFL
+"#);
 
         let mut interpreter: Interpreter<SimulatedPuzzle> = Interpreter::new(Arc::new(program), ());
 
-        let expected_output = ["A= 64"];
+        let expected_output = ["A= 0"];
 
         assert!(matches!(
             interpreter.step_until_halt(),
@@ -954,7 +975,16 @@ A: 3x3
             Err(e) => panic!("{e:?}"),
         };
 
-        assert_eq!(program.instructions.len(), 2);
+        let q_code = emit_q(&program).unwrap();
+
+        assert_eq!(q_code, r#"Puzzles
+A: 3x3
+
+0 | R' F' L U' L U L F U' R
+1 | halt "A="
+         R' U F' L' U' L' U L' F R
+         counting-until UBL UB
+"#);
 
         let mut interpreter: Interpreter<SimulatedPuzzle> = Interpreter::new(Arc::new(program), ());
 
@@ -1023,8 +1053,23 @@ A: 3x3
             Err(e) => panic!("{e:?}"),
         };
 
-        // println!("{program:#?}");
-        assert_eq!(program.instructions.len(), 1 + 1 + 3);
+        let q_code = emit_q(&program).unwrap();
+
+        assert_eq!(q_code, r#"Puzzles
+A: 3x3
+
+0 | U2 D2 F2 L' B L2 D L D2 B U2 D' F2 R2 B2
+1 | solve
+2 | print "A="
+          L' B' R B R' U2 B U L' B L2 U'
+          counting-until UL UFL
+3 | print "B="
+          D2 B2 L' D' R D' F L2 R U L' R2
+          counting-until UB DBL
+4 | halt "C="
+         U L U' D' F' L U F D F' L U' F2 L2
+         counting-until UBR FR
+"#);
 
         let mut interpreter: Interpreter<SimulatedPuzzle> = Interpreter::new(Arc::new(program), ());
 

@@ -25,6 +25,11 @@ enum QInstruction {
     RepeatUntil(<RepeatUntil as SeparatesByPuzzleType>::Puzzle<'static>),
 }
 
+/// Convert a `Program` into Q code
+///
+/// # Errors
+///
+/// Returns compile errors if `theoretical` registers are present.
 pub fn emit_q(program: &Program) -> Result<String, Vec<Rich<'static, char, Span>>> {
     let mut errors = Vec::new();
     for theoretical in &program.theoretical {
@@ -100,10 +105,12 @@ pub fn emit_q(program: &Program) -> Result<String, Vec<Rich<'static, char, Span>
                 format!("print \"{}\"", halt.message)
             }
             QInstruction::Print((halt, Some((_, alg, facelets)))) => {
+                let mut inverse_alg = alg.clone();
+                inverse_alg.exponentiate(-Int::<U>::one());
                 format!(
                     "print \"{}\"\n{}\n{padding}      counting-until {}",
                     halt.message,
-                    stringify_alg(alg, padding.len() + 6, true),
+                    stringify_alg(&inverse_alg, padding.len() + 6, true),
                     stringify_facelets(facelets),
                 )
             }

@@ -16,11 +16,12 @@ use puzzle_theory::{
 
 use crate::{Facelets, shared_facelet_detection::algorithms_to_cycle_generators, table_encoding};
 
-pub(crate) const OPTIMIZED_TABLES: [&[u8]; 4] = [
+pub(crate) const OPTIMIZED_TABLES: [&[u8]; 5] = [
     include_bytes!("../puzzles/210-24.bin"),
     include_bytes!("../puzzles/30-30-30.bin"),
     include_bytes!("../puzzles/30-18-10-9.bin"),
     include_bytes!("../puzzles/90-90.bin"),
+    include_bytes!("../puzzles/4-4.bin"),
 ];
 
 /// The definition of a puzzle parsed from the custom format
@@ -251,7 +252,7 @@ impl CycleGenerator {
                     .chain((i + 1..cycles_with_extras.len()).map(|idx| cycles_with_extras[idx].0)),
             );
 
-            if (self.order() % remainder_mod) != lcm_without {
+            if remainder_mod != lcm_without {
                 cycles.push((cycle_order, cycle_idx));
             }
         }
@@ -538,7 +539,7 @@ pub fn with_presets(geometry: WithSpan<Arc<PuzzleGeometry>>) -> WithSpan<PuzzleD
         .with(if geometry.span().slice() == "3x3" {
             let presets: [Arc<Architecture>; 6] = [
                 (&["R U2 D' B D'"] as &[&str], None),
-                (&["U", "D"], None),
+                (&["U", "D"], Some(4)),
                 (
                     &["R' F' L U' L U L F U' R", "U F R' D' R2 F R' U' D"],
                     Some(3),

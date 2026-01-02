@@ -82,10 +82,6 @@ impl PeepholeRewriter for RemoveUselessJumps {
             } | OptimizingPrimitive::Goto { label: jumps_to }) = window.front()
         );
 
-        println!("OWO");
-        println!("{jumps_to:#?}");
-        println!("{label:#?}");
-
         if jumps_to.name == label.name && jumps_to.block_id == label.maybe_block_id.unwrap() {
             window.pop_front().unwrap();
         }
