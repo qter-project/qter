@@ -9,7 +9,7 @@ members = [
   "movecount_coefficient_calculator",
   "cycle_combination_finder",
   "robot",
-  "visualizer", "robot_app",
+  "robot_app",
 ]
 
 [workspace.lints.clippy]

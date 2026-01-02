@@ -171,8 +171,9 @@ fn main() -> color_eyre::Result<()> {
                 println!("{}", moves.iter().join(" "));
             }
         }
-        Commands::Demo { remote } => {
-            visualizer::visualizer(remote);
+        Commands::Demo { remote: _ } => {
+            // visualizer::visualizer(remote);
+            panic!("Visualizer has been removed from the CLI");
         }
     }
 
