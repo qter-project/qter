@@ -1,5 +1,5 @@
 [workspace]
-resolver = "2"
+resolver = "3"
 members = [
   "qter_core",
   "interpreter",
@@ -9,7 +9,6 @@ members = [
   "movecount_coefficient_calculator",
   "cycle_combination_finder",
   "robot",
-  "robot_app",
 ]
 
 [workspace.lints.clippy]
