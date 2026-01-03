@@ -187,7 +187,7 @@ mod tests {
     use super::*;
     use crate::puzzle::{Move, cube3::Cube3};
     use generativity::{Guard, make_guard};
-    use puzzle_geometry::ksolve::KPUZZLE_3X3;
+    use puzzle_theory::puzzle_geometry::parsing::puzzle;
 
     fn move_index<'id, P: PuzzleState<'id>>(
         puzzle_def: &PuzzleDef<'id, P>,
@@ -201,7 +201,7 @@ mod tests {
     }
 
     fn initialize<'id, H: PuzzleStateHistory<'id, Cube3>>(guard: Guard<'id>) {
-        let cube3_def = PuzzleDef::<Cube3>::new(&KPUZZLE_3X3, guard).unwrap();
+        let cube3_def = PuzzleDef::<Cube3>::new(&puzzle("3x3").ksolve(), guard).unwrap();
         let puzzle_state_history: StackedPuzzleStateHistory<Cube3, H> = (&cube3_def).into();
 
         assert_eq!(puzzle_state_history.stack_pointer, 0);
@@ -221,7 +221,7 @@ mod tests {
     }
 
     fn puzzle_state_history_composition<'id, H: PuzzleStateHistory<'id, Cube3>>(guard: Guard<'id>) {
-        let cube3_def = PuzzleDef::<Cube3>::new(&KPUZZLE_3X3, guard).unwrap();
+        let cube3_def = PuzzleDef::<Cube3>::new(&puzzle("3x3").ksolve(), guard).unwrap();
         let r_move = cube3_def.find_move("R").unwrap();
         let r_move_index = move_index(&cube3_def, r_move);
 
@@ -250,7 +250,7 @@ mod tests {
     }
 
     fn puzzle_state_history_pop<'id, H: PuzzleStateHistory<'id, Cube3>>(guard: Guard<'id>) {
-        let cube3_def = PuzzleDef::<Cube3>::new(&KPUZZLE_3X3, guard).unwrap();
+        let cube3_def = PuzzleDef::<Cube3>::new(&puzzle("3x3").ksolve(), guard).unwrap();
         let solved = cube3_def.new_solved_state();
         let r_move = cube3_def.find_move("R").unwrap();
         let r2_move = cube3_def.find_move("R2").unwrap();

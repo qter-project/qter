@@ -10,14 +10,14 @@ use cycle_combination_solver::{
     },
     solver::{CycleStructureSolver, CycleStructureSolverError, SearchStrategy},
 };
-use puzzle_geometry::ksolve::KPUZZLE_3X3;
+use puzzle_theory::puzzle_geometry::parsing::puzzle;
 
 mod common;
 
 #[test_log::test]
 fn test_identity_cycle_structure() {
     make_guard!(guard);
-    let mut cube3_def = PuzzleDef::<Cube3>::new(&KPUZZLE_3X3, guard).unwrap();
+    let mut cube3_def = PuzzleDef::<Cube3>::new(&puzzle("3x3").ksolve(), guard).unwrap();
     let identity_cycle_structure =
         SortedCycleStructure::new(&[vec![], vec![]], cube3_def.sorted_orbit_defs_ref()).unwrap();
 
@@ -55,7 +55,7 @@ fn test_identity_cycle_structure() {
 #[test_log::test]
 fn test_single_quarter_turn() {
     make_guard!(guard);
-    let cube3_def = PuzzleDef::<Cube3>::new(&KPUZZLE_3X3, guard).unwrap();
+    let cube3_def = PuzzleDef::<Cube3>::new(&puzzle("3x3").ksolve(), guard).unwrap();
     let sorted_cycle_structure = SortedCycleStructure::new(
         &[vec![(4, false)], vec![(4, false)]],
         cube3_def.sorted_orbit_defs_ref(),
@@ -89,7 +89,7 @@ fn test_single_quarter_turn() {
 #[test_log::test]
 fn test_single_half_turn() {
     make_guard!(guard);
-    let cube3_def = PuzzleDef::<Cube3>::new(&KPUZZLE_3X3, guard).unwrap();
+    let cube3_def = PuzzleDef::<Cube3>::new(&puzzle("3x3").ksolve(), guard).unwrap();
     let sorted_cycle_structure = SortedCycleStructure::new(
         &[vec![(2, false), (2, false)], vec![(2, false), (2, false)]],
         cube3_def.sorted_orbit_defs_ref(),
@@ -124,7 +124,7 @@ fn test_single_half_turn() {
 fn test_optimal_subgroup_cycle() {
     make_guard!(guard);
     let cube3_def = PuzzleDef::<Cube3>::new(
-        &KPUZZLE_3X3
+        &(*puzzle("3x3").ksolve())
             .clone()
             .with_moves(&["F", "F2", "F'", "R", "R2", "R'", "U", "U2", "U'"]),
         guard,
@@ -163,7 +163,7 @@ fn test_optimal_subgroup_cycle() {
 #[test_log::test]
 fn test_210_optimal_cycle() {
     make_guard!(guard);
-    let cube3_def = PuzzleDef::<Cube3>::new(&KPUZZLE_3X3, guard).unwrap();
+    let cube3_def = PuzzleDef::<Cube3>::new(&puzzle("3x3").ksolve(), guard).unwrap();
     let sorted_cycle_structure = SortedCycleStructure::new(
         &[vec![(1, true), (5, true)], vec![(1, true), (7, true)]],
         cube3_def.sorted_orbit_defs_ref(),
@@ -184,7 +184,7 @@ fn test_210_optimal_cycle() {
 #[test_log::test]
 fn test_easy_30x30x30_optimal_cycle() {
     make_guard!(guard);
-    let cube3_def = PuzzleDef::<Cube3>::new(&KPUZZLE_3X3, guard).unwrap();
+    let cube3_def = PuzzleDef::<Cube3>::new(&puzzle("3x3").ksolve(), guard).unwrap();
     let sorted_cycle_structure = SortedCycleStructure::new(
         &[vec![(1, true), (1, true)], vec![(1, true), (5, true)]],
         cube3_def.sorted_orbit_defs_ref(),
@@ -214,7 +214,7 @@ fn test_easy_30x30x30_optimal_cycle() {
 #[test_log::test]
 fn test_hard_30x30x30_optimal_cycle() {
     make_guard!(guard);
-    let cube3_def = PuzzleDef::<Cube3>::new(&KPUZZLE_3X3, guard).unwrap();
+    let cube3_def = PuzzleDef::<Cube3>::new(&puzzle("3x3").ksolve(), guard).unwrap();
     let sorted_cycle_structure = SortedCycleStructure::new(
         &[vec![(1, true), (5, true)], vec![(1, true), (1, true)]],
         cube3_def.sorted_orbit_defs_ref(),
@@ -249,7 +249,7 @@ fn test_hard_30x30x30_optimal_cycle() {
 #[test_log::test]
 fn test_3c_optimal_cycle() {
     make_guard!(guard);
-    let cube3_def = PuzzleDef::<Cube3>::new(&KPUZZLE_3X3, guard).unwrap();
+    let cube3_def = PuzzleDef::<Cube3>::new(&puzzle("3x3").ksolve(), guard).unwrap();
     let sorted_cycle_structure = SortedCycleStructure::new(
         &[vec![(3, false)], vec![]],
         cube3_def.sorted_orbit_defs_ref(),
@@ -270,7 +270,7 @@ fn test_3c_optimal_cycle() {
 #[test_log::test]
 fn test_8c8e_optimal_cycle() {
     make_guard!(guard);
-    let cube3_def = PuzzleDef::<Cube3>::new(&KPUZZLE_3X3, guard).unwrap();
+    let cube3_def = PuzzleDef::<Cube3>::new(&puzzle("3x3").ksolve(), guard).unwrap();
     let sorted_cycle_structure = SortedCycleStructure::new(
         &[vec![(8, false)], vec![(8, false)]],
         cube3_def.sorted_orbit_defs_ref(),
@@ -291,7 +291,7 @@ fn test_8c8e_optimal_cycle() {
 #[test_log::test]
 fn test_consecutive_commutative_moves() {
     make_guard!(guard);
-    let cube3_def = PuzzleDef::<Cube3>::new(&KPUZZLE_3X3, guard).unwrap();
+    let cube3_def = PuzzleDef::<Cube3>::new(&puzzle("3x3").ksolve(), guard).unwrap();
     let sorted_cycle_structure = SortedCycleStructure::new(
         &[
             vec![
@@ -322,7 +322,7 @@ fn test_consecutive_commutative_moves() {
 #[test_log::test]
 fn test_commutative_moves_only() {
     make_guard!(guard);
-    let cube3_def = PuzzleDef::<Cube3>::new(&KPUZZLE_3X3, guard).unwrap();
+    let cube3_def = PuzzleDef::<Cube3>::new(&puzzle("3x3").ksolve(), guard).unwrap();
     let sorted_cycle_structure = SortedCycleStructure::new(
         &[vec![(4, false), (4, false)], vec![(4, false), (4, false)]],
         cube3_def.sorted_orbit_defs_ref(),
@@ -343,7 +343,7 @@ fn test_commutative_moves_only() {
 #[test_log::test]
 fn test_sequence_symmetry_wrapping_sequence_edge_case() {
     make_guard!(guard);
-    let cube3_def = PuzzleDef::<Cube3>::new(&KPUZZLE_3X3, guard).unwrap();
+    let cube3_def = PuzzleDef::<Cube3>::new(&puzzle("3x3").ksolve(), guard).unwrap();
     let sorted_cycle_structure = SortedCycleStructure::new(
         &[vec![(2, false), (2, false), (3, false)], vec![(9, false)]],
         cube3_def.sorted_orbit_defs_ref(),
@@ -364,7 +364,7 @@ fn test_sequence_symmetry_wrapping_sequence_edge_case() {
 #[test_log::test]
 fn test_many_optimal_cycles() {
     make_guard!(guard);
-    let mut cube3_def = PuzzleDef::<HeapPuzzle>::new(&KPUZZLE_3X3, guard).unwrap();
+    let mut cube3_def = PuzzleDef::<HeapPuzzle>::new(&puzzle("3x3").ksolve(), guard).unwrap();
 
     // Test cases taken from Michael Gottlieb's order table
     // https://mzrg.com/rubik/orders.shtml

@@ -14,12 +14,12 @@ use cycle_combination_solver::{
 };
 use itertools::Itertools;
 use log::info;
-use puzzle_geometry::ksolve::{KPUZZLE_3X3, KPUZZLE_MEGAMINX, KSolve};
+use puzzle_theory::puzzle_geometry::parsing::puzzle;
 
 #[test_log::test]
 fn playground() {
     make_guard!(guard);
-    let megaminx_def = PuzzleDef::<HeapPuzzle>::new(&KPUZZLE_MEGAMINX, guard).unwrap();
+    let megaminx_def = PuzzleDef::<HeapPuzzle>::new(&puzzle("megaminx").ksolve(), guard).unwrap();
     // info!(
     //     "{}",
     //     megaminx_def.moves.iter().map(|m| m.name()).format(" ")

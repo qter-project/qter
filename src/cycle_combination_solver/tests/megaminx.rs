@@ -4,12 +4,12 @@ use cycle_combination_solver::{
     solver::{CycleStructureSolver, SearchStrategy},
 };
 use generativity::make_guard;
-use puzzle_geometry::ksolve::KPUZZLE_MEGAMINX;
+use puzzle_theory::puzzle_geometry::parsing::puzzle;
 
 #[test_log::test]
 fn test_move_powers() {
     make_guard!(guard);
-    let megaminx_def = PuzzleDef::<HeapPuzzle>::new(&KPUZZLE_MEGAMINX, guard).unwrap();
+    let megaminx_def = PuzzleDef::<HeapPuzzle>::new(&puzzle("megaminx").ksolve(), guard).unwrap();
     let sorted_orbit_defs = megaminx_def.sorted_orbit_defs_ref();
     let mut aux_mem = HeapPuzzle::new_aux_mem(sorted_orbit_defs);
     let solved = megaminx_def.new_solved_state();
@@ -36,7 +36,7 @@ fn test_move_powers() {
 #[test_log::test]
 fn test_random1() {
     make_guard!(guard);
-    let megaminx_def = PuzzleDef::<HeapPuzzle>::new(&KPUZZLE_MEGAMINX, guard).unwrap();
+    let megaminx_def = PuzzleDef::<HeapPuzzle>::new(&puzzle("megaminx").ksolve(), guard).unwrap();
     let sorted_cycle_structure = SortedCycleStructure::new(
         &[
             vec![(2, true), (14, true)],
@@ -60,7 +60,7 @@ fn test_random1() {
 #[test_log::test]
 fn test_random2() {
     make_guard!(guard);
-    let megaminx_def = PuzzleDef::<HeapPuzzle>::new(&KPUZZLE_MEGAMINX, guard).unwrap();
+    let megaminx_def = PuzzleDef::<HeapPuzzle>::new(&puzzle("megaminx").ksolve(), guard).unwrap();
     let sorted_cycle_structure = SortedCycleStructure::new(
         &[
             vec![(1, true), (1, true), (5, false), (9, true)],
@@ -84,7 +84,7 @@ fn test_random2() {
 #[test_log::test]
 fn test_random3() {
     make_guard!(guard);
-    let megaminx_def = PuzzleDef::<HeapPuzzle>::new(&KPUZZLE_MEGAMINX, guard).unwrap();
+    let megaminx_def = PuzzleDef::<HeapPuzzle>::new(&puzzle("megaminx").ksolve(), guard).unwrap();
     let sorted_cycle_structure = SortedCycleStructure::new(
         &[vec![(1, true), (1, true), (9, true)], vec![(13, false)]],
         megaminx_def.sorted_orbit_defs_ref(),

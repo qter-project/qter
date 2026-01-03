@@ -137,7 +137,7 @@ impl<'id, P: PuzzleState<'id>> PuzzleCanonicalFSM<'id, P> {
     }
 
     /// The next state of the FSM given the current state and a move class.
-    /// 
+    ///
     /// None passed in means we're in the initial state
     /// None returned means the move is illegal
     pub unsafe fn next_state(
@@ -185,12 +185,12 @@ mod tests {
     use super::*;
     use crate::puzzle::{PuzzleDef, cube3::Cube3, slice_puzzle::HeapPuzzle};
     use generativity::make_guard;
-    use puzzle_geometry::ksolve::{KPUZZLE_3X3, KPUZZLE_4X4};
+    use puzzle_theory::puzzle_geometry::parsing::puzzle;
 
     #[test]
     fn test_canonical_fsm_puzzle_initially_all_legal() {
         make_guard!(guard);
-        let cube3_def = PuzzleDef::<Cube3>::new(&KPUZZLE_3X3, guard).unwrap();
+        let cube3_def = PuzzleDef::<Cube3>::new(&puzzle("3x3").ksolve(), guard).unwrap();
         let canonical_fsm: PuzzleCanonicalFSM<Cube3> = (&cube3_def).into();
 
         for move_class_index in 0..cube3_def.move_classes.len() {
@@ -205,7 +205,7 @@ mod tests {
     #[test]
     fn test_canonical_fsm_puzzle_prevents_self() {
         make_guard!(guard);
-        let cube3_def = PuzzleDef::<Cube3>::new(&KPUZZLE_3X3, guard).unwrap();
+        let cube3_def = PuzzleDef::<Cube3>::new(&puzzle("3x3").ksolve(), guard).unwrap();
         let canonical_fsm: PuzzleCanonicalFSM<Cube3> = (&cube3_def).into();
         for move_class_index in 0..cube3_def.move_classes.len() {
             assert!(unsafe {
@@ -226,7 +226,7 @@ mod tests {
     #[test]
     fn test_canonical_fsm_puzzle_prevents_self_and_antipode() {
         make_guard!(guard);
-        let cube3_def = PuzzleDef::<Cube3>::new(&KPUZZLE_3X3, guard).unwrap();
+        let cube3_def = PuzzleDef::<Cube3>::new(&puzzle("3x3").ksolve(), guard).unwrap();
         let canonical_fsm: PuzzleCanonicalFSM<Cube3> = (&cube3_def).into();
 
         let mut result_1 = cube3_def.new_solved_state();
@@ -290,7 +290,7 @@ mod tests {
     #[ignore = "big cube stuff isnt working without puzzle working"]
     fn test_big_cube_prevents_move_class() {
         make_guard!(guard);
-        let cube4_def = PuzzleDef::<HeapPuzzle>::new(&KPUZZLE_4X4, guard).unwrap();
+        let cube4_def = PuzzleDef::<HeapPuzzle>::new(&puzzle("4x4").ksolve(), guard).unwrap();
         let canonical_fsm: PuzzleCanonicalFSM<HeapPuzzle> = (&cube4_def).into();
 
         let mut result_1 = cube4_def.new_solved_state();

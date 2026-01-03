@@ -1,7 +1,11 @@
-use cycle_combination_solver::{pruning::{PruningTables, ZeroTable}, puzzle::{PuzzleDef, PuzzleState, slice_puzzle::HeapPuzzle}, solver::{CycleStructureSolver, SearchStrategy}};
-use generativity::make_guard;
-use puzzle_geometry::ksolve::KPUZZLE_4X4;
 use crate::common::OptimalCycleStructureTest;
+use cycle_combination_solver::{
+    pruning::{PruningTables, ZeroTable},
+    puzzle::{PuzzleDef, PuzzleState, slice_puzzle::HeapPuzzle},
+    solver::{CycleStructureSolver, SearchStrategy},
+};
+use generativity::make_guard;
+use puzzle_theory::puzzle_geometry::parsing::puzzle;
 
 mod common;
 
@@ -9,7 +13,7 @@ mod common;
 #[ignore = "big cube stuff isnt working without puzzle working"]
 fn test_big_cube_optimal_cycle() {
     make_guard!(guard);
-    let mut cube4_def = PuzzleDef::<HeapPuzzle>::new(&KPUZZLE_4X4, guard).unwrap();
+    let mut cube4_def = PuzzleDef::<HeapPuzzle>::new(&puzzle("4x4").ksolve(), guard).unwrap();
 
     // Test cases taken from Michael Gottlieb's order table
     // https://mzrg.com/rubik/orders.shtml
