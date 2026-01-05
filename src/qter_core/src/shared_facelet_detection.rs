@@ -26,7 +26,7 @@ fn find_orbits(facelet_count: usize, permutations: &[Permutation]) -> UnionFind<
         let mut contains_facelets_from = HashSet::new();
 
         for (i, permutation) in permutations.iter().enumerate() {
-            if permutation.mapping().get(facelet) != facelet {
+            if permutation.goes_to().get(facelet) != facelet {
                 contains_facelets_from.insert(i);
             }
         }
@@ -38,7 +38,7 @@ fn find_orbits(facelet_count: usize, permutations: &[Permutation]) -> UnionFind<
 
     // Union all facelets that share the same orbit
     for permutation in permutations {
-        for (from, to) in permutation.mapping().all_changes() {
+        for (from, to) in permutation.goes_to().all_changes() {
             // They have the same orbit if one is mapped to the other
             union_find.union(from, to, ());
         }

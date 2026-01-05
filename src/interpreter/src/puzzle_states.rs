@@ -136,7 +136,7 @@ impl<R: RobotLike> PuzzleState for RobotState<R> {
         let state = self.robot.take_picture();
 
         for &facelet in facelets {
-            let maps_to = state.mapping().get(facelet);
+            let maps_to = state.goes_to().get(facelet);
             if self.perm_group.facelet_colors()[maps_to]
                 != self.perm_group.facelet_colors()[facelet]
             {
@@ -228,7 +228,7 @@ impl PuzzleState for SimulatedPuzzle {
 
     fn facelets_solved(&mut self, facelets: &[usize]) -> bool {
         for &facelet in facelets {
-            let maps_to = self.state.mapping().get(facelet);
+            let maps_to = self.state.goes_to().get(facelet);
             if self.perm_group.facelet_colors()[maps_to]
                 != self.perm_group.facelet_colors()[facelet]
             {
@@ -483,7 +483,7 @@ pub fn run_robot_server<C: Connection, R: RobotLike>(
                 writer,
                 "{}",
                 state
-                    .mapping()
+                    .goes_to()
                     .minimal()
                     .iter()
                     .map(ToString::to_string)

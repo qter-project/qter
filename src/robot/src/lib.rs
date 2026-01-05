@@ -40,7 +40,7 @@ impl RobotLike for QterRobot {
     }
 
     fn solve(&mut self) {
-        let alg = solve_rob_twophase(self.take_picture().clone()).unwrap();
+        let alg = solve_rob_twophase(self.take_picture()).unwrap();
 
         self.compose_into(&alg);
     }

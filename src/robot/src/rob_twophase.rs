@@ -10,10 +10,7 @@ use std::{
 use internment::ArcIntern;
 use itertools::Itertools;
 use log::{trace, warn};
-use puzzle_theory::{
-    numbers::{I, Int},
-    permutations::{Algorithm, Permutation},
-};
+use puzzle_theory::permutations::{Algorithm, Permutation};
 
 use crate::CUBE3;
 
@@ -30,17 +27,14 @@ static COLOR_MAPPING: LazyLock<HashMap<ArcIntern<str>, char>> = LazyLock::new(||
     v
 });
 
-fn mk_rob_twophase_input(mut perm: Permutation) -> String {
+fn mk_rob_twophase_input(perm: &Permutation) -> String {
     let cube3 = &*CUBE3;
     let color_mapping = &*COLOR_MAPPING;
-
-    // Convert from goes-to (active) to comes-from (passive) notation
-    perm.exponentiate(-Int::<I>::one());
 
     let mut faces = Vec::new();
 
     for (mut chunk, current) in (0..)
-        .map(|idx| perm.mapping().get(idx))
+        .map(|idx| perm.comes_from().get(idx))
         .chunks(8)
         .into_iter()
         .zip(['U', 'L', 'F', 'R', 'B', 'D'])
@@ -68,7 +62,7 @@ fn mk_rob_twophase_input(mut perm: Permutation) -> String {
     .join("")
 }
 
-pub fn solve_rob_twophase(perm: Permutation) -> Result<Algorithm, std::io::Error> {
+pub fn solve_rob_twophase(perm: &Permutation) -> Result<Algorithm, std::io::Error> {
     solve_rob_twophase_string(&mk_rob_twophase_input(perm))
 }
 
@@ -429,7 +423,7 @@ mod tests {
         for [seq, rob_string] in TESTS {
             let alg = Algorithm::parse_from_string(Arc::clone(&CUBE3), seq).unwrap();
 
-            assert_eq!(mk_rob_twophase_input(alg.permutation().clone()), rob_string);
+            assert_eq!(mk_rob_twophase_input(alg.permutation()), rob_string);
         }
     }
 
@@ -440,7 +434,7 @@ mod tests {
         for [seq, _] in TESTS {
             let alg = Algorithm::parse_from_string(Arc::clone(&CUBE3), seq).unwrap();
 
-            let solution = solve_rob_twophase(alg.permutation().clone()).unwrap();
+            let solution = solve_rob_twophase(alg.permutation()).unwrap();
 
             let mut hopefully_identity = alg.permutation().clone();
             hopefully_identity.compose_into(solution.permutation());
