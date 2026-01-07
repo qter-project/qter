@@ -1,11 +1,17 @@
 use std::{
-    io::{self, BufRead, BufReader, Write}, net::TcpStream, sync::Arc
+    io::{self, BufRead, BufReader, Write},
+    net::TcpStream,
+    sync::Arc,
 };
 
 use log::trace;
-use puzzle_theory::{numbers::{I, Int, U, lcm_iter}, permutations::{Algorithm, Permutation, PermutationGroup}};
+use puzzle_theory::{
+    numbers::{I, Int, U, lcm_iter},
+    permutations::{Algorithm, Permutation, PermutationGroup},
+};
 use qter_core::{
-    Program, PuzzleIdx, TheoreticalIdx, architectures::{chromatic_orders_by_facelets, decode}, 
+    Program, PuzzleIdx, TheoreticalIdx,
+    architectures::{chromatic_orders_by_facelets, decode},
 };
 
 /// An instance of a theoretical register. Analagous to the `Puzzle` structure.
@@ -429,15 +435,9 @@ impl<C: Connection> RobotLike for RemoteRobot<C> {
             writeln!(writer, "!PICTURE").unwrap();
             writer.flush().unwrap();
 
-            let mut mapping_str = String::new();
-            self.conn.reader().read_line(&mut mapping_str).unwrap();
-            let mapping = mapping_str
-                .trim()
-                .split(' ')
-                .map(|v| v.parse::<usize>().unwrap())
-                .collect::<Vec<_>>();
-
-            Permutation::from_mapping(mapping)
+            let mut perm_str = String::new();
+            self.conn.reader().read_line(&mut perm_str).unwrap();
+            perm_str.parse::<Permutation>().unwrap()
         })
     }
 
@@ -467,7 +467,7 @@ pub fn run_robot_server<C: Connection, R: RobotLike>(
         conn.reader().read_line(&mut command)?;
 
         if command.is_empty() {
-            return Ok(())
+            return Ok(());
         }
 
         trace!("{command}");
@@ -479,17 +479,7 @@ pub fn run_robot_server<C: Connection, R: RobotLike>(
         } else if command == "!PICTURE" {
             let state = robot.take_picture();
             let writer = conn.writer();
-            writeln!(
-                writer,
-                "{}",
-                state
-                    .goes_to()
-                    .minimal()
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            )?;
+            writeln!(writer, "{state}")?;
             writer.flush()?;
         } else {
             let alg =
@@ -504,9 +494,15 @@ pub fn run_robot_server<C: Connection, R: RobotLike>(
 
 #[cfg(test)]
 mod tests {
-    use std::{io::{self, BufReader, Read, Write}, sync::{Arc}};
+    use std::{
+        io::{self, BufReader, Read, Write},
+        sync::Arc,
+    };
 
-    use puzzle_theory::{permutations::{Algorithm, Permutation, PermutationGroup}, puzzle_geometry::parsing::puzzle};
+    use puzzle_theory::{
+        permutations::{Algorithm, Permutation, PermutationGroup},
+        puzzle_geometry::parsing::puzzle,
+    };
 
     use crate::puzzle_states::{RemoteRobot, RobotLike, run_robot_server};
 
@@ -517,23 +513,32 @@ mod tests {
         let (mut rx, tx_robot) = io::pipe().unwrap();
         let (rx_robot, mut tx) = io::pipe().unwrap();
 
-        writeln!(tx, "1 0").unwrap();
+        writeln!(tx, "(1, 0)").unwrap();
         drop(tx);
 
         let rx_robot = BufReader::new(rx_robot);
 
         {
-            let mut remote_robot = RemoteRobot::initialize(Arc::clone(&cube3), (rx_robot, tx_robot));
+            let mut remote_robot =
+                RemoteRobot::initialize(Arc::clone(&cube3), (rx_robot, tx_robot));
 
-            remote_robot.compose_into(&Algorithm::parse_from_string(Arc::clone(&cube3), "U D U2 D2 U' D'").unwrap());
-            assert_eq!(remote_robot.take_picture(), &Permutation::from_cycles(vec![vec![0, 1]]));
-            assert_eq!(remote_robot.take_picture(), &Permutation::from_cycles(vec![vec![0, 1]]));
+            remote_robot.compose_into(
+                &Algorithm::parse_from_string(Arc::clone(&cube3), "U D U2 D2 U' D'").unwrap(),
+            );
+            assert_eq!(
+                remote_robot.take_picture(),
+                &Permutation::from_cycles(vec![vec![0, 1]])
+            );
+            assert_eq!(
+                remote_robot.take_picture(),
+                &Permutation::from_cycles(vec![vec![0, 1]])
+            );
             remote_robot.solve();
             assert_eq!(remote_robot.take_picture(), &Permutation::identity());
         }
 
         let mut data = String::new();
-        rx.read_to_string(&mut data).unwrap();        
+        rx.read_to_string(&mut data).unwrap();
         assert_eq!(data, "U D U2 D2 U' D'\n!PICTURE\n!SOLVE\n");
     }
 
@@ -551,7 +556,10 @@ mod tests {
             fn compose_into(&mut self, alg: &Algorithm) {
                 assert_eq!(self.0, 0);
                 self.0 += 1;
-                assert_eq!(alg, &Algorithm::parse_from_string(Arc::clone(&self.1), "U D U2 D2 U' D'").unwrap());
+                assert_eq!(
+                    alg,
+                    &Algorithm::parse_from_string(Arc::clone(&self.1), "U D U2 D2 U' D'").unwrap()
+                );
             }
 
             fn take_picture(&mut self) -> &Permutation {
@@ -565,7 +573,7 @@ mod tests {
                 self.0 += 1;
             }
         }
-        
+
         let (mut rx, tx_robot) = io::pipe().unwrap();
         let (rx_robot, mut tx) = io::pipe().unwrap();
 
@@ -576,7 +584,7 @@ mod tests {
 
         let group = puzzle("3x3").permutation_group();
         let mut robot = TestRobot::initialize(Arc::clone(&group), ());
-        
+
         run_robot_server::<_, TestRobot>((rx_robot, tx_robot), &mut robot, &group).unwrap();
 
         assert_eq!(robot.0, 3);
@@ -584,6 +592,6 @@ mod tests {
         let mut out = String::new();
         rx.read_to_string(&mut out).unwrap();
 
-        assert_eq!(out, "1 0\n");
+        assert_eq!(out, "(0, 1)\n");
     }
 }
