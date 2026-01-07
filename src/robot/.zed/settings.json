@@ -7,7 +7,7 @@
     "rust-analyzer": {
       "binary": {
         "env": {
-          "PATH": "/Users/arhan/.local/share/aarch64-unknown-linux-gnu/bin",
+          "PATH": "/usr/bin:/Users/arhan/.local/share/aarch64-unknown-linux-gnu/bin",
           "CC_aarch64_unknown_linux_gnu": "aarch64-linux-gnu-cc",
           "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER": "aarch64-linux-gnu-cc",
         },

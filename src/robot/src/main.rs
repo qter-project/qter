@@ -13,6 +13,7 @@ use robot::{
         config::{Face, Priority, RobotConfig},
         set_prio,
     },
+    qvis_app::QvisAppHandle,
     rob_twophase::solve_rob_twophase_string,
 };
 use std::{
@@ -59,7 +60,8 @@ enum Commands {
     },
     /// Host a server to allow the robot to be remote-controlled
     Server {
-        port: u16,
+        server_port: u16,
+        qvis_app_port: u16,
     },
     Solve {
         rob_twophase_string: String,
@@ -130,21 +132,23 @@ fn main() {
                 println!("Top 5 = {:?}", &latencies[SAMPLES - 5..SAMPLES]);
             }
         }
-        Commands::Server { port } => {
-            let listener = TcpListener::bind(format!("0.0.0.0:{port}")).unwrap();
+        Commands::Server {
+            server_port,
+            qvis_app_port,
+        } => {
+            let listener = TcpListener::bind(format!("0.0.0.0:{server_port}")).unwrap();
 
-            let handle = RobotHandle::init(robot_config);
-            let group = 
-                puzzle("3x3").permutation_group();
-            let mut robot = QterRobot::initialize(
-                Arc::clone(&group),
-                handle,
-            );
+            let robot_handle = RobotHandle::init(robot_config);
+            let qvis_app_handle = QvisAppHandle::init(qvis_app_port);
+            let group = puzzle("3x3").permutation_group();
+            let mut robot =
+                QterRobot::initialize(Arc::clone(&group), (robot_handle, qvis_app_handle));
 
             loop {
                 let (socket, _) = listener.accept().unwrap();
 
-                run_robot_server::<_, QterRobot>(BufReader::new(socket), &mut robot, &group).unwrap();
+                run_robot_server::<_, QterRobot>(BufReader::new(socket), &mut robot, &group)
+                    .unwrap();
             }
         }
         Commands::Solve {
