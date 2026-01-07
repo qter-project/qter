@@ -1683,7 +1683,7 @@ dependencies = [
 [[package]]
 name = "puzzle_theory"
 version = "0.1.0"
-source = "git+https://github.com/qter-project/puzzle-theory#45629a5d22f0f2d83e9de99a840f50ad4947fc37"
+source = "git+https://github.com/qter-project/puzzle-theory#535ec5f22f8fe353563c451c84a9302fbba1d913"
 dependencies = [
  "algebraics",
  "ariadne",

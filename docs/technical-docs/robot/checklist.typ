@@ -13,6 +13,7 @@ This is intended to be a comprehensive list of hardware that needs to be transpo
     - 7× 370mm Aluminum Extrusions
     - 1× 340mm Aluminum Extrusions
     - 6× Motor mounts
+    - 1× 340mm Alignment string
 - Fasteners
     - 23× Brackets with corresponding t-nuts and screws
         - 1× Corresponding allen wrench
@@ -25,6 +26,15 @@ This is intended to be a comprehensive list of hardware that needs to be transpo
     - 6× Nema 17 motors
     - 6× grippers with shafts
     - 1× 2.2in Rubik's cube that fits grippers
+- Mirrors & Camera
+    - 1× Phone
+        - 1× Charger
+    - 1× Phone mount
+    - Lots of rubber bands
+    - 1× top mirror
+    - 1× side mirror
+    - 2× hexagonal mirrors
+    - 2× hexagonal mirror mounts
 
 == Electronics
 

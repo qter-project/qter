@@ -117,12 +117,12 @@
           src = pkgs.fetchFromGitHub {
             owner = "Myriad-Dreamin";
             repo = "shiroa";
-            rev = "c35a20de53037e560a6114d22803f4aaea1bed39";
+            rev = "fea5b750fb5e6e1ba6841b25f5bc1e7d08f3fa90";
             fetchSubmodules = true;
-            sha256 = "sha256-adrKcGLgKYExyqPk8jiINhw1ClryL0ajqmdDtbM2rC4=";
+            sha256 = "sha256-kvovTHi1WI/LMHUxBI6B1PcGb9DNdXjMxTvDMO51hwQ=";
           };
 
-          cargoHash = "sha256-uFICiSNZGho1K+9sGyokDyrSZTpg9HfJSmbatNebFjg=";
+          cargoHash = "sha256-Gi5Dx8xbCOBpfUTdi3zQTfqFkk5QNSB++lukSw9K7gU=";
 
           meta = {
             description = "A simple tool for creating modern online books in pure typst.";
