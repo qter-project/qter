@@ -1,0 +1,5 @@
+#!/bin/sh
+
+# Enable with `ln -s -f ../../git_hooks/post-merge .git/hooks/post-merge && chmod ug+x git_hooks/*`
+
+cargo update --manifest-path src/Cargo.toml
