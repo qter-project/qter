@@ -159,12 +159,12 @@
 
   users.users.root.shell = pkgs.zsh;
 
-  services.zerotierone = {
-    enable = true;
-    joinNetworks = [
-      "bb720a5aaeebb7cb"
-    ];
-  };
+  # services.zerotierone = {
+  #   enable = true;
+  #   joinNetworks = [
+  #     "bb720a5aaeebb7cb"
+  #   ];
+  # };
 
   # btrfs backups; the device specific config file must mount the btrfs partition at /mnt/btrfs
 
