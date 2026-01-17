@@ -2,7 +2,7 @@
   config,
   pkgs,
   lib,
-  qter,
+  inputs,
   ...
 }:
 
@@ -31,7 +31,9 @@
     config.boot.kernelPackages.perf
     nnn
     (builtins.getAttr pkgs.system inputs.agenix.packages).default
-  ] ++ qter.robot-deps;
+  ];
+
+  nixpkgs.config.allowUnfree = true;
 
   # RTOS stuff
   # boot.kernelPackages = pkgs.linuxPackagesFor (
@@ -95,7 +97,7 @@
 
   # Programs
 
-  home-manager.users.henry = {
+  home-manager.users.robot = {
     home.stateVersion = "23.11";
 
     programs.git = {
@@ -113,12 +115,17 @@
 
     programs.direnv = {
       enable = true;
-      enableNushellIntegration = true;
+      enableZshIntegration = true;
       enableBashIntegration = true;
       nix-direnv.enable = true;
     };
 
-    programs.starship = import ./program-configs/starship.nix;
+    programs.starship = {
+      enable = true;
+      enableZshIntegration = true;
+      settings = builtins.fromTOML (builtins.readFile ./program-configs/starship.toml);
+    };
+
     nix.gc = {
       automatic = lib.mkDefault config.nix.gc.automatic;
       frequency = lib.mkDefault config.nix.gc.dates;
@@ -126,6 +133,7 @@
     };
   };
 
+  programs.zsh.enable = true;
   users.users.robot.shell = pkgs.zsh;
 
   environment.shells = [
@@ -142,7 +150,11 @@
       settings = builtins.fromTOML (builtins.readFile ./program-configs/helix/config.toml);
     };
 
-    programs.starship = builtins.fromTOML ./program-configs/starship.toml;
+    programs.starship = {
+      enable = true;
+      enableZshIntegration = true;
+      settings = builtins.fromTOML (builtins.readFile ./program-configs/starship.toml);
+    };
   };
 
   users.users.root.shell = pkgs.zsh;

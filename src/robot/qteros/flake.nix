@@ -25,9 +25,11 @@
           (final: _prev: {
             unstable = import nixpkgs-unstable {
               system = system;
+              allowUnfree = true;
             };
             nixpkgs-old = import nixpkgs-old {
               system = system;
+              allowUnfree = true;
             };
           })
         ];
