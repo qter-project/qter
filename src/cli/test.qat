@@ -3,28 +3,26 @@
     B, A ← 3x3 builtin (24, 210)
 }
 
-.define a-sub-1 {
-    add A 209
-}
+.define MOD 13
 
 input "Number to modulus:" A
 
 loop:
 
 print "A is now" A
-add B 13
+add B $MOD
 
 while not-solved A {
     solved-goto B loop
-    $a-sub-1
+    add A 209
     add B 23
 }
 
 while not-solved B {
-    $a-sub-1
+    add A 209
     add B 23
 }
 
-add A 13
+add A $MOD
 
 halt "The modulus is" A

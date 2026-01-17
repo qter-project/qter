@@ -158,7 +158,7 @@ fn expand_block(
                                 span,
                                 "Expected a code block, found an integer",
                             ))],
-                            ResolvedValue::Ident(_) => vec![Err(Rich::custom(
+                            ResolvedValue::Ident { ident: _, as_reg: _ } => vec![Err(Rich::custom(
                                 span,
                                 "Expected a code block, found an identifier",
                             ))],
@@ -201,7 +201,6 @@ fn expand_block(
     changed.take()
 }
 
-#[expect(clippy::manual_try_fold)] // Incorrect
 fn expand_code(
     block_id: BlockID,
     expansion_info: &mut ExpansionInfo,
@@ -265,7 +264,7 @@ fn expand_code(
             }
 
             for branch in branches {
-                let defines = match branch.pattern.matches(args) {
+                let defines = match branch.pattern.matches(args, &expansion_info) {
                     Ok(v) => v,
                     Err(returned_args) => {
                         args = returned_args;
@@ -283,6 +282,12 @@ fn expand_code(
                     .cloned()
                     .map(|mut v| {
                         v.1 = Some(block_id);
+
+                        if let Instruction::Label(label) = &mut v.0
+                            && !label.public
+                        {
+                            label.available_in_blocks = Some(vec![block_id]);
+                        }
 
                         v.into_inner()
                     })

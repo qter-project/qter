@@ -3,7 +3,8 @@ use internment::ArcIntern;
 use puzzle_theory::span::{Span, WithSpan};
 
 use crate::{
-    BlockID, Code, ExpansionInfo, Instruction, LabelReference, Macro, Primitive, RegisterReference, ResolvedValue, Value
+    BlockID, Code, ExpansionInfo, Instruction, LabelReference, Macro, Primitive, RegisterReference,
+    ResolvedValue, Value,
 };
 
 use std::collections::HashMap;
@@ -13,29 +14,18 @@ fn expect_reg(
     block_id: BlockID,
     syntax: &ExpansionInfo,
 ) -> Result<RegisterReference, Rich<'static, char, Span>> {
-    match syntax.block_info.resolve_ref(block_id, &**reg_value) {
-        Some(ResolvedValue::Ident(reg_name)) => match syntax.get_register(
-            &RegisterReference::parse(WithSpan::new(
-                ArcIntern::clone(reg_name),
-                reg_value.span().to_owned(),
-            ))
-            .map_err(|e| {
-                Rich::custom(
-                    reg_value.span().clone(),
-                    format!("Could not parse the modulus as a string: {e}"),
-                )
-            })?,
-        ) {
-            Some((reg, _)) => Ok(reg),
+    match syntax.block_info.resolve_ref(block_id, reg_value) {
+        Some(value) => match value.as_reg(syntax) {
+            Some(Ok(reg)) => Ok(reg.0.clone()),
+            Some(Err(reg_name)) => Err(Rich::custom(
+                reg_value.span().clone(),
+                format!("The register {} does not exist", &**reg_name),
+            )),
             None => Err(Rich::custom(
                 reg_value.span().clone(),
-                format!("The register {reg_name} does not exist"),
+                "Expected a register",
             )),
         },
-        Some(_) => Err(Rich::custom(
-            reg_value.span().clone(),
-            "Expected a register",
-        )),
         None => Err(Rich::custom(
             reg_value.span().clone(),
             "Constant not found in this scope",
@@ -49,15 +39,18 @@ fn expect_label(
     syntax: &ExpansionInfo,
 ) -> Result<WithSpan<LabelReference>, Rich<'static, char, Span>> {
     match syntax.block_info.resolve_ref(block_id, label_value) {
-        Some(ResolvedValue::Ident(label_name)) => Ok(WithSpan::new(
+        Some(ResolvedValue::Ident { ident, as_reg: _ }) => Ok(WithSpan::new(
             LabelReference {
-                name: ArcIntern::clone(label_name),
+                name: ArcIntern::clone(ident),
                 block_id,
             },
             label_value.span().to_owned(),
         )),
         Some(_) => Err(Rich::custom(label_value.span().clone(), "Expected a label")),
-        None => Err(Rich::custom(label_value.span().clone(), "Constant not found in this scope")),
+        None => Err(Rich::custom(
+            label_value.span().clone(),
+            "Constant not found in this scope",
+        )),
     }
 }
 
@@ -82,7 +75,7 @@ fn print_like(
     let message = args.pop().unwrap();
     let span = message.span().to_owned();
     let message = match syntax.block_info.resolve(block_id, message.into_inner()) {
-        Some(ResolvedValue::Ident(raw_message)) => WithSpan::new((*raw_message).to_owned(), span),
+        Some(ResolvedValue::Ident { ident, as_reg: _ }) => WithSpan::new((**ident).to_owned(), span),
         Some(_) => {
             return Err(Rich::custom(span, "Expected a message"));
         }
@@ -194,8 +187,8 @@ pub fn builtin_macros(
                 let second_arg = args.pop().unwrap();
                 let span = second_arg.span().to_owned();
                 let message = match syntax.block_info.resolve(block_id, second_arg.into_inner()) {
-                    Some(ResolvedValue::Ident(raw_message)) => {
-                        WithSpan::new(raw_message.trim_matches('"').to_owned(), span)
+                    Some(ResolvedValue::Ident { ident, as_reg: _ }) => {
+                        WithSpan::new(ident.trim_matches('"').to_owned(), span)
                     }
                     Some(_) => {
                         return Err(Rich::custom(span, "Expected a message"));

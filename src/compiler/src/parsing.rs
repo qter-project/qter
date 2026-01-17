@@ -1,10 +1,12 @@
 use crate::{
-    Block, BlockInfo, BlockInfoTracker, Code, Define, DefineValue, ExpansionInfo, Label, LuaCall, MacroArgTy, MacroBranch, MacroPattern, MacroPatternComponent, ResolvedValue, Value, builtin_macros::builtin_macros, lua::LuaMacros
+    Block, BlockInfo, BlockInfoTracker, Code, Define, DefineValue, ExpansionInfo, Label, LuaCall,
+    MacroArgTy, MacroBranch, MacroPattern, MacroPatternComponent, ResolvedValue, Value,
+    builtin_macros::builtin_macros, lua::LuaMacros,
 };
 use std::{
     collections::HashMap,
     rc::Rc,
-    sync::{Arc, LazyLock},
+    sync::{Arc, LazyLock, OnceLock},
 };
 
 use chumsky::{
@@ -123,16 +125,7 @@ fn parser() -> impl Parser<'static, File, MaybeErr<ParsedSyntax>, ExtraAndSyntax
 
         let zero_span = Span::new(data.span().source(), 0, 0);
 
-        let lua_macros = match LuaMacros::new() {
-            Ok(v) => v,
-            Err(e) => {
-                emitter.emit(Rich::custom(
-                    zero_span,
-                    format!("Failed to initialize the Lua runtime. {e}"),
-                ));
-                return MaybeErr::None;
-            }
-        };
+        let lua_macros = LuaMacros::new();
 
         let expansion_info = ExpansionInfo {
             registers: match regs {
@@ -199,9 +192,9 @@ fn parser() -> impl Parser<'static, File, MaybeErr<ParsedSyntax>, ExtraAndSyntax
                         .push(instr.map(|instr| (instr, Some(BlockID(0)))));
                 }
                 Statement::LuaBlock(lua) => {
-                    if let Err(e) = lua_macros.add_code(lua.slice()) {
-                        emitter.emit(Rich::custom(data.span(), e.to_string()));
-                    }
+                    // if let Err(e) = lua_macros.add_code(lua.slice()) {
+                    //     emitter.emit(Rich::custom(data.span(), e.to_string()));
+                    // }
                 }
                 Statement::Import(filename) => {
                     let state_ref = &data.state().0;
@@ -270,7 +263,7 @@ fn req_whitespace<S: Inspector<'static, File> + 'static>()
     choice((
         just(' ').to(()),
         just('\t').to(()),
-        any()
+        group((just("]]--").not(), any()))
             .repeated()
             .delimited_by(just("--[["), just("]]--"))
             .to(()),
@@ -719,7 +712,7 @@ fn value(block_rec: BlockParser) -> impl Parser<'static, File, MaybeErr<WithSpan
     choice((
         intu().map(|v| v.map(|v| Value::Resolved(ResolvedValue::Int(v)))),
         constant().map(|v| MaybeErr::Some(Value::Constant(v.value))),
-        ident().map(|v| MaybeErr::Some(Value::Resolved(ResolvedValue::Ident(v.value)))),
+        ident().map(|v| MaybeErr::Some(Value::Resolved(ResolvedValue::Ident { ident: v, as_reg: OnceLock::new() }))),
         block_rec.map(|v| v.map(|v| Value::Resolved(ResolvedValue::Block(v)))),
     ))
     .map_with(|v, data| v.map(|v| data.span().with(v)))

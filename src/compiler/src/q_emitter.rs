@@ -235,7 +235,6 @@ fn split_all_short_enough(strings: &[ArcIntern<str>], max_line_width: usize) -> 
                     optimal = Some((j, max_len));
                 }
             }
-            println!("{optimal:?}");
 
             if let Some(item) = optimal {
                 next_row.push(item);

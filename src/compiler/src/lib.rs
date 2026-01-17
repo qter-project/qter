@@ -5,7 +5,10 @@
     clippy::single_match_else
 )]
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, OnceLock},
+};
 
 use chumsky::error::Rich;
 use internment::ArcIntern;
@@ -129,11 +132,39 @@ enum Value {
     Constant(ArcIntern<str>),
 }
 
+type RegisterInfo = (RegisterReference, LuaRegInfo);
+
 #[derive(Clone, Debug)]
 enum ResolvedValue {
     Int(Int<U>),
-    Ident(ArcIntern<str>),
+    Ident {
+        ident: WithSpan<ArcIntern<str>>,
+        as_reg: OnceLock<Option<RegisterInfo>>,
+    },
     Block(Block),
+}
+
+impl ResolvedValue {
+    /// If this value is not an identifier, returns `None`. If this value is an identifier that does not refer to a register, returns `Some(Err(_))`. Otherwise returns `Some(Ok(_))`
+    pub fn as_reg(
+        &self,
+        info: &ExpansionInfo,
+    ) -> Option<Result<&(RegisterReference, LuaRegInfo), &WithSpan<ArcIntern<str>>>> {
+        match self {
+            ResolvedValue::Ident { ident, as_reg } => Some(
+                as_reg
+                    .get_or_init(|| {
+                        let reg_ref = RegisterReference::parse(ident.clone()).ok()?;
+
+                        info.register_exists(&reg_ref)
+                            .map(|reg_info| (reg_ref, reg_info))
+                    })
+                    .as_ref()
+                    .ok_or(ident),
+            ),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -202,15 +233,30 @@ impl MacroPatternComponent {
         }
     }
 
-    fn matches(&self, value: &ResolvedValue) -> bool {
+    fn matches(&self, value: &ResolvedValue, info: &ExpansionInfo) -> bool {
         match (self, value) {
-            (MacroPatternComponent::Argument { name: _, ty }, value) => matches!(
-                (**ty, value),
+            (MacroPatternComponent::Argument { name: _, ty }, value) => match (**ty, value) {
                 (MacroArgTy::Int, ResolvedValue::Int(_))
-                    | (MacroArgTy::Reg | MacroArgTy::Ident, ResolvedValue::Ident(_))
-                    | (MacroArgTy::Block, ResolvedValue::Block(_))
-            ),
-            (MacroPatternComponent::Word(word), ResolvedValue::Ident(ident)) => word == ident,
+                | (
+                    MacroArgTy::Ident,
+                    ResolvedValue::Ident {
+                        ident: _,
+                        as_reg: _,
+                    },
+                )
+                | (MacroArgTy::Block, ResolvedValue::Block(_)) => true,
+                (
+                    MacroArgTy::Reg,
+                    ResolvedValue::Ident {
+                        ident: _,
+                        as_reg: _,
+                    },
+                ) => value.as_reg(info).is_some(),
+                _ => false,
+            },
+            (MacroPatternComponent::Word(word), ResolvedValue::Ident { ident, as_reg: _ }) => {
+                word == &**ident
+            }
             _ => false,
         }
     }
@@ -219,8 +265,6 @@ impl MacroPatternComponent {
         &self,
         value: WithSpan<ResolvedValue>,
     ) -> Option<(ArcIntern<str>, DefineResolved)> {
-        assert!(self.matches(&value));
-
         match (self, &*value) {
             (MacroPatternComponent::Argument { name, ty: _ }, _) => Some((
                 ArcIntern::clone(name),
@@ -229,8 +273,8 @@ impl MacroPatternComponent {
                     value,
                 },
             )),
-            (MacroPatternComponent::Word(word), ResolvedValue::Ident(ident)) => {
-                assert_eq!(word, ident);
+            (MacroPatternComponent::Word(word), ResolvedValue::Ident { ident, as_reg: _ }) => {
+                assert_eq!(word, &**ident);
                 None
             }
             _ => unreachable!(),
@@ -266,13 +310,14 @@ impl MacroPattern {
     pub fn matches(
         &self,
         components: Vec<WithSpan<ResolvedValue>>,
+        info: &ExpansionInfo,
     ) -> Result<Vec<(ArcIntern<str>, DefineResolved)>, Vec<WithSpan<ResolvedValue>>> {
         if components.len() != self.0.len()
             || !self
                 .0
                 .iter()
                 .zip(&components)
-                .all(|(pattern, component)| pattern.matches(component))
+                .all(|(pattern, component)| pattern.matches(component, info))
         {
             return Err(components);
         }
@@ -304,12 +349,6 @@ enum Macro {
             BlockID,
         ) -> Result<Vec<Instruction>, Rich<'static, char, Span>>,
     ),
-}
-
-#[derive(Clone, Debug)]
-enum ValueOrReg {
-    Value(Value),
-    Register(RegisterReference),
 }
 
 #[derive(Clone, Debug)]
@@ -352,36 +391,32 @@ struct RegistersDecl {
 }
 
 impl RegistersDecl {
-    fn get_register(&self, reference: &RegisterReference) -> Option<(RegisterReference, &Puzzle)> {
+    fn register_exists(&self, reference: &RegisterReference) -> Option<LuaRegInfo> {
         let reg_name = reference.reg_name.clone();
+
+        let modulus = reference.modulus;
 
         for puzzle in &self.puzzles {
             match puzzle {
                 Puzzle::Theoretical {
                     name: found_name,
-                    order: _,
+                    order,
                 } => {
                     if *reg_name == **found_name {
-                        return Some((
-                            RegisterReference {
-                                reg_name,
-                                modulus: reference.modulus,
-                            },
-                            puzzle,
-                        ));
+                        return Some(LuaRegInfo {
+                            order: modulus.unwrap_or(**order),
+                        });
                     }
                 }
                 Puzzle::Real { architectures } => {
-                    for (names, _, _) in architectures {
-                        for found_name in names {
+                    for (names, arch, _) in architectures {
+                        for (i, found_name) in names.iter().enumerate() {
                             if *reg_name == **found_name {
-                                return Some((
-                                    RegisterReference {
-                                        reg_name,
-                                        modulus: reference.modulus,
-                                    },
-                                    puzzle,
-                                ));
+                                let reg = &arch.value.registers()[i];
+
+                                return Some(LuaRegInfo {
+                                    order: modulus.unwrap_or(reg.order()),
+                                });
                             }
                         }
                     }
@@ -391,6 +426,11 @@ impl RegistersDecl {
 
         None
     }
+}
+
+#[derive(Clone, Debug)]
+struct LuaRegInfo {
+    order: Int<U>,
 }
 
 #[derive(Debug, Clone)]
@@ -490,6 +530,9 @@ impl BlockInfoTracker {
     }
 }
 
+type RegsResolved = WithSpan<RegistersDecl>;
+type RegsUnresolved = Option<WithSpan<RegistersDecl>>;
+
 #[derive(Clone, Debug)]
 struct ExpansionInfo {
     registers: Option<WithSpan<RegistersDecl>>,
@@ -505,9 +548,9 @@ struct ExpansionInfo {
 }
 
 impl ExpansionInfo {
-    fn get_register(&self, reference: &RegisterReference) -> Option<(RegisterReference, &Puzzle)> {
+    fn register_exists(&self, reference: &RegisterReference) -> Option<LuaRegInfo> {
         match &self.registers {
-            Some(regs) => regs.get_register(reference),
+            Some(regs) => regs.register_exists(reference),
             None => None,
         }
     }

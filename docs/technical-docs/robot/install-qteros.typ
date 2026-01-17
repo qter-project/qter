@@ -8,12 +8,12 @@ NOTE: Do this extremely far in advance
 
 1. Pick an SD card to use
 2. Flash the following ISO to the SD card: https://hydra.nixos.org/job/nixos/trunk-combined/nixos.sd_image.aarch64-linux
-3. Connect the pi to a USB keyboard, monitor, and ethernet
-4. Boot the SD card on the pi
-5. Make a `/home/robot` directory, run `sudo -s`, and `cd` into it
-6. Run `nix-shell -p git` to install git temporarily
-7. Clone the qter repository to the pi
-8. `cd` into `qter/src/robot/qteros`
+3. Mount the second partition
+4. In it, create a `/home/robot` directory
+5. Clone the qter repository into that directory
+6. Connect the pi to a USB keyboard, monitor, and ethernet
+7. Boot the SD card on the pi
+8. `cd` into `/home/robot/qter/src/robot/qteros`
 9. Generate the hardware configuration file with the following commands
 
 ```bash
@@ -25,7 +25,7 @@ rm configuration.nix
 
 ```bash
 # Expect this to take overnight; maybe longer
-sudo nixos-rebuild boot --flake .#rpi
+nixos-rebuild boot --flake .#rpi
 reboot
 ```
 

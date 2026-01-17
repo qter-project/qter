@@ -171,7 +171,8 @@ pub fn solve_rob_twophase_string(rob_twophase_string: &str) -> Result<Algorithm,
 mod tests {
     use std::sync::Arc;
 
-    use puzzle_theory::permutations::{Algorithm, Permutation};
+    use itertools::Itertools;
+    use puzzle_theory::{numbers::{I, Int, U}, permutations::{Algorithm, Permutation}};
 
     use crate::{
         CUBE3,

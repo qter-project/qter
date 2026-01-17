@@ -92,6 +92,8 @@
 - 😎Write a tree-sitter grammer for QAT
 - Evaluate repeat instruction for examinx
 - 😎Optimizations
+  - Optimize the `move` macro to use register modulus
+    - Or make this an optimization pass in the optimizer?
   - Asher's repeated move post process optimization: R U R repeated = R then U R2 repeated then R'
   - Unreachable removal with real control flow analysis
   - Dead code removal?
@@ -124,3 +126,20 @@
 
 - ⭐Add robot to the README
 - 😎Build one
+
+## Misc
+
+- 😎Contributor badges
+  - Arhan
+  - Henry
+  - Asher
+  - Daniel
+  - Neel
+  - Tomas Rokicki
+  - Purdue Hackers organizers collectively
+  - Maybe
+    - Kian (Q tree-sitter)
+    - Lillith (Vulcan + designing something during 252 lab + python rewrite of something)
+    - Hazel (soldering protoboard)
+    - Sriram (robot stuff? idk)
+

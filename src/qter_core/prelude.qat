@@ -44,7 +44,6 @@ end-lua
 
 .macro move {
     ($R1:reg to $R2:reg) => {
-        -- TODO: lua to optimize moves using register modulus
         zero_loop:
             solved-goto $R1 move_done
             dec $R1
