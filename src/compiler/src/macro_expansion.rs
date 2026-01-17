@@ -6,8 +6,8 @@ use itertools::{Either, Itertools};
 use puzzle_theory::span::{Span, WithSpan};
 
 use crate::{
-    BlockID, Code, ExpandedCode, ExpandedCodeComponent, ExpansionInfo, Instruction, Macro,
-    ParsedSyntax, RegistersDecl, TaggedInstruction,
+    BlockID, Code, Define, ExpandedCode, ExpandedCodeComponent, ExpansionInfo, Instruction, Macro,
+    ParsedSyntax, RegistersDecl, ResolvedValue, TaggedInstruction,
 };
 
 pub fn expand(mut parsed: ParsedSyntax) -> Result<ExpandedCode, Vec<Rich<'static, char, Span>>> {
@@ -83,7 +83,7 @@ fn expand_block(
             let (instruction, maybe_block_id) = tagged_instruction.into_inner();
             let block_id = maybe_block_id.unwrap();
 
-            let block_info = expansion_info.block_info.0.get_mut(&block_id).unwrap();
+            let block_info = expansion_info.block_info.blocks.get_mut(&block_id).unwrap();
 
             match instruction {
                 Instruction::Label(mut label) => {
@@ -100,16 +100,30 @@ fn expand_block(
                     ))]
                 }
                 Instruction::Define(define) => {
-                    for found_define in &block_info.defines {
-                        if *found_define.name == *define.name {
-                            return vec![Err(Rich::custom(
-                                define.name.span().clone(),
-                                "Cannot shadow a `.define` in the same scope!",
-                            ))];
-                        }
+                    if block_info.defines.contains_key(&define.name) {
+                        return vec![Err(Rich::custom(
+                            define.name.span().clone(),
+                            "Cannot shadow a `.define` in the same scope!",
+                        ))];
                     }
 
-                    block_info.defines.push(define);
+                    let resolved = match expansion_info.resolve(define.value, block_id) {
+                        Ok(v) => v,
+                        Err(errs) => return errs.into_iter().map(Err).collect_vec(),
+                    };
+
+                    let new_define = Define {
+                        name: define.name,
+                        value: resolved,
+                    };
+
+                    expansion_info
+                        .block_info
+                        .blocks
+                        .get_mut(&block_id)
+                        .unwrap()
+                        .defines
+                        .insert(ArcIntern::clone(&new_define.name), new_define);
                     let _ = changed.set(());
 
                     vec![]
@@ -125,7 +139,41 @@ fn expand_block(
                         Err(e) => vec![Err(e)],
                     }
                 }
-                Instruction::Constant(_) => todo!(),
+                Instruction::Constant(name) => {
+                    match expansion_info.block_info.get_define(block_id, &name) {
+                        Some(define) => match &*define.value {
+                            ResolvedValue::Int(_) => vec![Err(Rich::custom(
+                                span,
+                                "Expected a code block, found an integer",
+                            ))],
+                            ResolvedValue::Ident(_) => vec![Err(Rich::custom(
+                                span,
+                                "Expected a code block, found an identifier",
+                            ))],
+                            ResolvedValue::Block(block) => {
+                                let block = block.clone();
+
+                                let (new_id, _) =
+                                    expansion_info.block_info.new_block(block_id);
+
+                                block
+                                    .code
+                                    .into_iter()
+                                    .map(|mut v| {
+                                        v.1 = Some(new_id);
+                                        Ok(v)
+                                    })
+                                    .collect_vec()
+                            }
+                        },
+                        None => {
+                            vec![Err(Rich::custom(
+                                span,
+                                format!("`{name}` was not found in this scope"),
+                            ))]
+                        }
+                    }
+                }
                 Instruction::LuaCall(_) => todo!(),
             }
         })

@@ -11,10 +11,11 @@ use chumsky::error::Rich;
 use internment::ArcIntern;
 use lua::LuaMacros;
 use parsing::parse;
-use puzzle_theory::{numbers::{Int, ParseIntError, U}, span::{File, Span, WithSpan}};
-use qter_core::{
-    Program, architectures::Architecture,
+use puzzle_theory::{
+    numbers::{Int, ParseIntError, U},
+    span::{File, Span, WithSpan},
 };
+use qter_core::{Program, architectures::Architecture};
 use strip_expanded::strip_expanded;
 
 use crate::macro_expansion::expand;
@@ -24,8 +25,8 @@ mod lua;
 mod macro_expansion;
 mod optimization;
 mod parsing;
-mod strip_expanded;
 pub mod q_emitter;
+mod strip_expanded;
 
 /// Compiles a QAT program into a Q program
 ///
@@ -132,6 +133,13 @@ enum Value {
 }
 
 #[derive(Clone, Debug)]
+enum ResolvedValue {
+    Int(Int<U>),
+    Ident(ArcIntern<str>),
+    Block(Block),
+}
+
+#[derive(Clone, Debug)]
 struct MacroCall {
     name: WithSpan<ArcIntern<str>>,
     arguments: WithSpan<Vec<WithSpan<Value>>>,
@@ -155,7 +163,7 @@ enum Instruction {
     Code(Code),
     Constant(ArcIntern<str>),
     LuaCall(LuaCall),
-    Define(Define),
+    Define(DefineUnresolved),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -257,10 +265,13 @@ enum DefineValue {
 }
 
 #[derive(Clone, Debug)]
-struct Define {
+struct Define<V> {
     name: WithSpan<ArcIntern<str>>,
-    value: DefineValue,
+    value: V,
 }
+
+type DefineUnresolved = Define<DefineValue>;
+type DefineResolved = Define<WithSpan<ResolvedValue>>;
 
 #[derive(Clone, Debug)]
 enum Puzzle {
@@ -270,7 +281,11 @@ enum Puzzle {
     },
     Real {
         // The extra span is that of the puzzle definition itself
-        architectures: Vec<(Vec<WithSpan<ArcIntern<str>>>, WithSpan<Arc<Architecture>>, Span)>,
+        architectures: Vec<(
+            Vec<WithSpan<ArcIntern<str>>>,
+            WithSpan<Arc<Architecture>>,
+            Span,
+        )>,
     },
 }
 
@@ -328,19 +343,22 @@ impl RegistersDecl {
 struct BlockInfo {
     parent_block: Option<BlockID>,
     child_blocks: Vec<BlockID>,
-    defines: Vec<Define>,
+    defines: HashMap<ArcIntern<str>, DefineResolved>,
     labels: Vec<Label>,
 }
 
 #[derive(Debug, Clone)]
-struct BlockInfoTracker(HashMap<BlockID, BlockInfo>);
+struct BlockInfoTracker {
+    blocks: HashMap<BlockID, BlockInfo>,
+    block_counter: usize,
+}
 
 impl BlockInfoTracker {
     fn label_scope(&self, reference: &LabelReference) -> Option<LabelReference> {
         let mut current = reference.block_id;
 
         loop {
-            let info = self.0.get(&current)?;
+            let info = self.blocks.get(&current)?;
 
             for label in info
                 .labels
@@ -365,6 +383,51 @@ impl BlockInfoTracker {
             current = info.parent_block?;
         }
     }
+
+    fn get_define(&self, mut block_id: BlockID, name: &ArcIntern<str>) -> Option<&DefineResolved> {
+        loop {
+            let block = self
+                .blocks
+                .get(&block_id)
+                .expect("the block id to be valid");
+            match block.defines.get(name) {
+                Some(v) => return Some(v),
+                None => block_id = block.parent_block?,
+            }
+        }
+    }
+
+    fn resolve(&self, block_id: BlockID, value: Value) -> Option<ResolvedValue> {
+        Some(match value {
+            Value::Int(int) => ResolvedValue::Int(int),
+            Value::Ident(arc_intern) => ResolvedValue::Ident(arc_intern),
+            Value::Block(block) => ResolvedValue::Block(block),
+            Value::Constant(arc_intern) => (*self.get_define(block_id, &arc_intern)?.value).clone(),
+        })
+    }
+
+    fn new_block(&mut self, parent: BlockID) -> (BlockID, &mut BlockInfo) {
+        let new_id = BlockID(self.block_counter);
+        self.block_counter += 1;
+
+        self.blocks
+            .get_mut(&parent)
+            .unwrap()
+            .child_blocks
+            .push(new_id);
+
+        self.blocks.insert(
+            new_id,
+            BlockInfo {
+                parent_block: Some(parent),
+                child_blocks: Vec::new(),
+                defines: HashMap::new(),
+                labels: Vec::new(),
+            },
+        );
+
+        (new_id, self.blocks.get_mut(&new_id).unwrap())
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -372,7 +435,6 @@ struct ExpansionInfo {
     registers: Option<WithSpan<RegistersDecl>>,
     // Each block gets an ID and `block_parent` maps a block ID to it's parent
     // The global scope is block zero and if the block/label hasn't been expanded its ID is None
-    block_counter: usize,
     block_info: BlockInfoTracker,
     /// Map (file contents containing macro definition, macro name) to a macro
     macros: HashMap<(ArcIntern<str>, ArcIntern<str>), WithSpan<Macro>>,
@@ -387,6 +449,25 @@ impl ExpansionInfo {
         match &self.registers {
             Some(regs) => regs.get_register(reference),
             None => None,
+        }
+    }
+
+    fn resolve(
+        &self,
+        value: DefineValue,
+        block_id: BlockID,
+    ) -> Result<WithSpan<ResolvedValue>, Vec<Rich<'static, char, Span>>> {
+        match value {
+            DefineValue::Value(v) => {
+                let span = v.span().clone();
+                let value = v.into_inner();
+                let Some(resolved) = self.block_info.resolve(block_id, value) else {
+                    return Err(vec![Rich::custom(span, "Constant not found in this scope")]);
+                };
+
+                Ok(span.with(resolved))
+            }
+            DefineValue::LuaCall(_) => todo!(),
         }
     }
 }

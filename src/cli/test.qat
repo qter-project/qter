@@ -3,6 +3,10 @@
     B, A ← 3x3 builtin (24, 210)
 }
 
+.define a-sub-1 {
+    add A 209
+}
+
     input "Number to modulus:" A
 loop:
 --    print "A is now" A
@@ -10,12 +14,12 @@ loop:
 decrement:
     solved-goto B loop
     solved-goto A fix
-    add A 209
+    $a-sub-1
     add B 23
     goto decrement
 fix:
     solved-goto B finalize
-    add A 209
+    $a-sub-1
     add B 23
     goto fix
 finalize:

@@ -140,8 +140,7 @@ fn parser() -> impl Parser<'static, File, MaybeErr<ParsedSyntax>, ExtraAndSyntax
                 },
                 None => None,
             },
-            block_counter: 1,
-            block_info: BlockInfoTracker(HashMap::new()),
+            block_info: BlockInfoTracker { blocks: HashMap::new(), block_counter: 1 },
             macros: HashMap::new(),
             available_macros: HashMap::new(),
             lua_macros: HashMap::new(),
@@ -239,12 +238,12 @@ fn parser() -> impl Parser<'static, File, MaybeErr<ParsedSyntax>, ExtraAndSyntax
             .lua_macros
             .insert(data.span().source(), lua_macros);
 
-        parsed_syntax.expansion_info.block_info.0.insert(
+        parsed_syntax.expansion_info.block_info.blocks.insert(
             BlockID(0),
             BlockInfo {
                 parent_block: None,
                 child_blocks: vec![],
-                defines: vec![],
+                defines: HashMap::new(),
                 labels: vec![],
             },
         );
@@ -881,17 +880,17 @@ fn merge_files(
     }
 
     // Block numbers shouldn't be defined deeper than the root in this stage
-    let block_offset = importer.expansion_info.block_counter;
+    let block_offset = importer.expansion_info.block_info.block_counter;
 
     let mut max_block = 0;
 
-    for (block_id, block_info) in importee.expansion_info.block_info.0 {
+    for (block_id, block_info) in importee.expansion_info.block_info.blocks {
         max_block = max_block.max(block_id.0);
 
         importer
             .expansion_info
             .block_info
-            .0
+            .blocks
             .insert(BlockID(block_id.0 + block_offset), block_info);
     }
 
