@@ -368,7 +368,7 @@ pub fn set_prio(prio: Priority) {
     };
 
     if let Err(e) = res {
-        if matches!(e, Error::OS(13)) || matches!(e, Error::OS(1)) {
+        if matches!(e, Error::OS(13) | Error::OS(1)) {
             panic!(
                 "{e} — You need to configure your system such that userspace applications have permission to raise their priorities (unless you're not on unix in which case idk what that error code means)"
             );
@@ -408,12 +408,15 @@ pub fn uart_init(robot_config: &RobotConfig) {
         debug!(target: "uart_init", "Reading initial GCONF");
         let initial_gconf = uart.gconf();
         debug!(target: "uart_init", "Read initial GCONF: initial_value={initial_gconf:?}");
-        let new_gconf = initial_gconf
+        let mut new_gconf = initial_gconf
             .union(GConf::MSTEP_REG_SELECT)
             .union(GConf::PDN_DISABLE)
             .union(GConf::INDEX_OTPW)
             // qter robot turns the opposite direction
             .union(GConf::SHAFT);
+        new_gconf.set(GConf::EN_SPREADCYCLE, !robot_config.stealthchop);
+
+        // if config.
         if initial_gconf == new_gconf {
             debug!(target: "uart_init", "GCONF already configured");
         } else {

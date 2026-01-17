@@ -17,6 +17,7 @@ pub struct RobotConfig {
     pub wait_between_moves: f64,
     pub compensation: u32,
     pub float: bool,
+    pub stealthchop: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
