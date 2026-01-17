@@ -5,7 +5,7 @@
 
 {
   imports = [
-    ./rpi-hardware.nix
+    ./hardware-configuration.nix
     ./software.nix
   ];
 
@@ -69,20 +69,6 @@
     allowedTCPPortRanges = [
       { from = 1000; to = 9000; }
     ];
-  };
-
-  # btrfs backups
-
-  environment.etc = {
-    "btrbk/btrbk.conf".text = ''
-      timestamp_format long
-      snapshot_preserve_min 16h
-      snapshot_preserve 48h 7d 3w 4m 1y
-
-      volume /
-      	snapshot_dir btrbk-snapshots
-      	subvolume .
-    '';
   };
 
   system.stateVersion = "23.11";
