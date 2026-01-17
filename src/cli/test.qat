@@ -7,21 +7,24 @@
     add A 209
 }
 
-    input "Number to modulus:" A
+input "Number to modulus:" A
+
 loop:
---    print "A is now" A
-    add B 13
-decrement:
+
+print "A is now" A
+add B 13
+
+while not-solved A {
     solved-goto B loop
-    solved-goto A fix
     $a-sub-1
     add B 23
-    goto decrement
-fix:
-    solved-goto B finalize
+}
+
+while not-solved B {
     $a-sub-1
     add B 23
-    goto fix
-finalize:
-    add A 13
-    halt "The modulus is" A
+}
+
+add A 13
+
+halt "The modulus is" A

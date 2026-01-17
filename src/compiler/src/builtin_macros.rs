@@ -48,7 +48,7 @@ fn expect_label(
     block_id: BlockID,
     syntax: &ExpansionInfo,
 ) -> Result<WithSpan<LabelReference>, Rich<'static, char, Span>> {
-    match syntax.block_info.resolve_ref(block_id, &**label_value) {
+    match syntax.block_info.resolve_ref(block_id, label_value) {
         Some(ResolvedValue::Ident(label_name)) => Ok(WithSpan::new(
             LabelReference {
                 name: ArcIntern::clone(label_name),

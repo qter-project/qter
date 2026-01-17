@@ -655,7 +655,6 @@ fn parse_macro(
 
             let macro_def = span.with(Macro::UserDefined {
                 branches,
-                after: None,
             });
 
             MaybeErr::Some((name, macro_def))

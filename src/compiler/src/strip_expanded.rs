@@ -3,10 +3,14 @@ use std::{collections::HashMap, sync::Arc};
 use chumsky::error::Rich;
 use internment::ArcIntern;
 use itertools::{Either, Itertools};
-use puzzle_theory::{numbers::{Int, U}, permutations::PermutationGroup, span::{Span, WithSpan}};
+use puzzle_theory::{
+    numbers::{Int, U},
+    permutations::PermutationGroup,
+    span::{Span, WithSpan},
+};
 use qter_core::{
-    ByPuzzleType, Facelets, Halt, Input, Instruction, Print, Program, PuzzleIdx,
-    RegisterGenerator, RepeatUntil, SeparatesByPuzzleType, StateIdx, TheoreticalIdx, 
+    ByPuzzleType, Facelets, Halt, Input, Instruction, Print, Program, PuzzleIdx, RegisterGenerator,
+    RepeatUntil, SeparatesByPuzzleType, StateIdx, TheoreticalIdx,
     architectures::{Architecture, CycleGeneratorSubcycle, new_from_effect},
 };
 
@@ -160,10 +164,9 @@ pub fn strip_expanded(expanded: ExpandedCode) -> Result<Program, Vec<Rich<'stati
                     );
                 }
 
-                global_regs.puzzles.push(WithSpan::new(
-                    architecture.group_arc(),
-                    puzzle_span.clone(),
-                ));
+                global_regs
+                    .puzzles
+                    .push(WithSpan::new(architecture.group_arc(), puzzle_span.clone()));
             }
         }
     }
@@ -171,47 +174,84 @@ pub fn strip_expanded(expanded: ExpandedCode) -> Result<Program, Vec<Rich<'stati
     let global_regs = Arc::new(global_regs);
     let global_regs_for_iter = Arc::clone(&global_regs);
 
-    let instructions_iter = expanded.expanded_code_components.into_iter().map(move |v| {
-        v.map(|v| match v {
-            ExpandedCodeComponent::Instruction(primitive, block_id) => {
-                OptimizingCodeComponent::Instruction(
-                    Box::new(match *primitive {
-                        Primitive::Add { amt, register } => {
-                            match global_regs_for_iter.get_reg(&register) {
-                                ByPuzzleType::Theoretical((theoretical, ())) => {
-                                    OptimizingPrimitive::AddTheoretical { theoretical, amt }
-                                }
-                                ByPuzzleType::Puzzle((puzzle, (reg_idx, arch, modulus))) => {
-                                    OptimizingPrimitive::AddPuzzle {
-                                        puzzle,
-                                        arch,
-                                        amts: vec![(reg_idx, modulus, amt)],
+    let (instructions_mapped, errors) = expanded
+        .expanded_code_components
+        .into_iter()
+        .map(move |v| {
+            let span = v.span().clone();
+            let instr = match v.into_inner() {
+                ExpandedCodeComponent::Instruction(primitive, block_id) => {
+                    OptimizingCodeComponent::Instruction(
+                        Box::new(match *primitive {
+                            Primitive::Add { amt, register } => {
+                                match global_regs_for_iter.get_reg(&register) {
+                                    ByPuzzleType::Theoretical((theoretical, ())) => {
+                                        OptimizingPrimitive::AddTheoretical { theoretical, amt }
+                                    }
+                                    ByPuzzleType::Puzzle((puzzle, (reg_idx, arch, modulus))) => {
+                                        OptimizingPrimitive::AddPuzzle {
+                                            puzzle,
+                                            arch,
+                                            amts: vec![(reg_idx, modulus, amt)],
+                                        }
                                     }
                                 }
                             }
-                        }
-                        Primitive::Goto { label } => OptimizingPrimitive::Goto { label },
-                        Primitive::SolvedGoto { label, register } => {
-                            OptimizingPrimitive::SolvedGoto { label, register }
-                        }
-                        Primitive::Input { message, register } => {
-                            OptimizingPrimitive::Input { message, register }
-                        }
-                        Primitive::Halt { message, register } => {
-                            OptimizingPrimitive::Halt { message, register }
-                        }
-                        Primitive::Print { message, register } => {
-                            OptimizingPrimitive::Print { message, register }
-                        }
-                    }),
-                    block_id,
-                )
-            }
-            ExpandedCodeComponent::Label(label) => OptimizingCodeComponent::Label(label),
-        })
-    });
+                            Primitive::Goto { label } => {
+                                let span = label.span().clone();
+                                let Some(label) = expanded.block_info.label_scope(&label) else {
+                                    return Err(Rich::custom(
+                                        label.span().clone(),
+                                        "Could not find label in scope",
+                                    ));
+                                };
 
-    let optimized = do_optimization(instructions_iter, &global_regs);
+                                OptimizingPrimitive::Goto {
+                                    label: span.with(label),
+                                }
+                            }
+                            Primitive::SolvedGoto { label, register } => {
+                                let span = label.span().clone();
+                                let Some(label) = expanded.block_info.label_scope(&label) else {
+                                    return Err(Rich::custom(
+                                        label.span().clone(),
+                                        "Could not find label in scope",
+                                    ));
+                                };
+
+                                OptimizingPrimitive::SolvedGoto {
+                                    label: span.with(label),
+                                    register,
+                                }
+                            }
+                            Primitive::Input { message, register } => {
+                                OptimizingPrimitive::Input { message, register }
+                            }
+                            Primitive::Halt { message, register } => {
+                                OptimizingPrimitive::Halt { message, register }
+                            }
+                            Primitive::Print { message, register } => {
+                                OptimizingPrimitive::Print { message, register }
+                            }
+                        }),
+                        block_id,
+                    )
+                }
+                ExpandedCodeComponent::Label(label) => OptimizingCodeComponent::Label(label),
+            };
+
+            Ok(span.with(instr))
+        })
+        .partition_map::<Vec<_>, Vec<_>, _, _, _>(|res| match res {
+            Ok(v) => Either::Left(v),
+            Err(e) => Either::Right(e),
+        });
+
+    if !errors.is_empty() {
+        return Err(errors);
+    }
+
+    let optimized = do_optimization(instructions_mapped.into_iter(), &global_regs);
 
     let mut program_counter = 0;
 
@@ -262,26 +302,10 @@ pub fn strip_expanded(expanded: ExpandedCode) -> Result<Program, Vec<Rich<'stati
                 OptimizingPrimitive::AddTheoretical { theoretical, amt } => {
                     Instruction::PerformAlgorithm(ByPuzzleType::Theoretical((theoretical, *amt)))
                 }
-                OptimizingPrimitive::Goto { label } => {
-                    let Some(label) = expanded.block_info.label_scope(&label) else {
-                        return Err(Rich::custom(
-                            label.span().clone(),
-                            "Could not find label in scope",
-                        ));
-                    };
-
-                    Instruction::Goto {
-                        instruction_idx: *label_locations.get(&label).unwrap(),
-                    }
-                }
+                OptimizingPrimitive::Goto { label } => Instruction::Goto {
+                    instruction_idx: *label_locations.get(&label).unwrap(),
+                },
                 OptimizingPrimitive::SolvedGoto { register, label } => {
-                    let Some(label) = expanded.block_info.label_scope(&label) else {
-                        return Err(Rich::custom(
-                            label.span().clone(),
-                            "Could not find label in scope",
-                        ));
-                    };
-
                     let facelets = global_regs.facelets(&register)?;
 
                     let solved_goto = qter_core::SolvedGoto {

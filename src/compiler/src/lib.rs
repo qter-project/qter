@@ -201,6 +201,41 @@ impl MacroPatternComponent {
             (P::Word(a), P::Word(b)) => (a == b).then(|| ArcIntern::clone(a)),
         }
     }
+
+    fn matches(&self, value: &ResolvedValue) -> bool {
+        match (self, value) {
+            (MacroPatternComponent::Argument { name: _, ty }, value) => matches!(
+                (**ty, value),
+                (MacroArgTy::Int, ResolvedValue::Int(_))
+                    | (MacroArgTy::Reg | MacroArgTy::Ident, ResolvedValue::Ident(_))
+                    | (MacroArgTy::Block, ResolvedValue::Block(_))
+            ),
+            (MacroPatternComponent::Word(word), ResolvedValue::Ident(ident)) => word == ident,
+            _ => false,
+        }
+    }
+
+    fn mk_define(
+        &self,
+        value: WithSpan<ResolvedValue>,
+    ) -> Option<(ArcIntern<str>, DefineResolved)> {
+        assert!(self.matches(&value));
+
+        match (self, &*value) {
+            (MacroPatternComponent::Argument { name, ty: _ }, _) => Some((
+                ArcIntern::clone(name),
+                DefineResolved {
+                    name: name.clone(),
+                    value,
+                },
+            )),
+            (MacroPatternComponent::Word(word), ResolvedValue::Ident(ident)) => {
+                assert_eq!(word, ident);
+                None
+            }
+            _ => unreachable!(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -226,6 +261,29 @@ impl MacroPattern {
             })
             .map(|e| format!("{macro_name}{e}"))
     }
+
+    /// Determines whether a series of arguments matches the pattern. If so, returns a series of define statements to be inserted into the new block. Otherwise, returns the list of arguments unchanged.
+    pub fn matches(
+        &self,
+        components: Vec<WithSpan<ResolvedValue>>,
+    ) -> Result<Vec<(ArcIntern<str>, DefineResolved)>, Vec<WithSpan<ResolvedValue>>> {
+        if components.len() != self.0.len()
+            || !self
+                .0
+                .iter()
+                .zip(&components)
+                .all(|(pattern, component)| pattern.matches(component))
+        {
+            return Err(components);
+        }
+
+        Ok(self
+            .0
+            .iter()
+            .zip(components)
+            .filter_map(|(pattern, component)| pattern.mk_define(component))
+            .collect())
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -238,7 +296,6 @@ struct MacroBranch {
 enum Macro {
     UserDefined {
         branches: Vec<WithSpan<MacroBranch>>,
-        after: Option<WithSpan<ArcIntern<str>>>,
     },
     Builtin(
         fn(
@@ -351,6 +408,7 @@ struct BlockInfoTracker {
 }
 
 impl BlockInfoTracker {
+    /// Resolves a reference to a label. The `block_id` of `reference` is the scope where the label is referenced, and the `block_id` of the return value is the block ID where the label exists.
     fn label_scope(&self, reference: &LabelReference) -> Option<LabelReference> {
         let mut current = reference.block_id;
 
@@ -404,7 +462,7 @@ impl BlockInfoTracker {
     fn resolve_ref<'a>(&'a self, block_id: BlockID, value: &'a Value) -> Option<&'a ResolvedValue> {
         Some(match value {
             Value::Resolved(resolved) => resolved,
-            Value::Constant(arc_intern) => &self.get_define(block_id, &arc_intern)?.value,
+            Value::Constant(arc_intern) => &self.get_define(block_id, arc_intern)?.value,
         })
     }
 
@@ -527,11 +585,14 @@ mod tests {
 
         let q_code = emit_q(&program).unwrap();
 
-        assert_eq!(q_code, r"Puzzles
+        assert_eq!(
+            q_code,
+            r"Puzzles
 A: 3x3
 
 0 | U'
-");
+"
+        );
     }
 
     #[test]
@@ -555,7 +616,7 @@ A: 3x3
 
                 assert_eq!(e[0].span().line(), 7);
                 assert_eq!(e[0].span().slice(), "$X");
-            },
+            }
         }
     }
 }

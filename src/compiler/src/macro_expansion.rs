@@ -24,7 +24,10 @@ pub fn expand(mut parsed: ParsedSyntax) -> Result<ExpandedCode, Vec<Rich<'static
         limit -= 1;
 
         if limit == 0 {
-            errs.push(Rich::custom(span, "Recursion limit reached during macro expansion"));
+            errs.push(Rich::custom(
+                span,
+                "Recursion limit reached during macro expansion",
+            ));
             return Err(errs);
         }
     }
@@ -145,7 +148,7 @@ fn expand_block(
                                 Ok(WithSpan::new(tagged_instruction, span.clone()))
                             })
                             .collect_vec(),
-                        Err(e) => vec![Err(e)],
+                        Err(e) => e.into_iter().map(Err).collect(),
                     }
                 }
                 Instruction::Constant(name) => {
@@ -164,8 +167,7 @@ fn expand_block(
 
                                 let block = block.clone();
 
-                                let (new_id, _) =
-                                    expansion_info.block_info.new_block(block_id);
+                                let (new_id, _) = expansion_info.block_info.new_block(block_id);
 
                                 block
                                     .code
@@ -199,12 +201,13 @@ fn expand_block(
     changed.take()
 }
 
+#[expect(clippy::manual_try_fold)] // Incorrect
 fn expand_code(
     block_id: BlockID,
     expansion_info: &mut ExpansionInfo,
     code: Code,
     changed: &OnceCell<Span>,
-) -> Result<Vec<TaggedInstruction>, Rich<'static, char, Span>> {
+) -> Result<Vec<TaggedInstruction>, Vec<Rich<'static, char, Span>>> {
     let macro_call = match code {
         Code::Primitive(prim) => {
             return Ok(vec![(
@@ -221,10 +224,10 @@ fn expand_code(
         macro_call.name.span().source().clone(),
         ArcIntern::clone(&*macro_call.name),
     )) else {
-        return Err(Rich::custom(
+        return Err(vec![Rich::custom(
             macro_call.name.span().clone(),
             "Macro was not found in this scope",
-        ));
+        )]);
     };
 
     let macro_def = expansion_info
@@ -235,16 +238,68 @@ fn expand_code(
         ))
         .unwrap();
 
-    Ok(match &**macro_def {
-        Macro::UserDefined {
-            branches: _,
-            after: _,
-        } => todo!(),
-        Macro::Builtin(macro_fn) => macro_fn(expansion_info, macro_call.arguments, block_id)?
+    match &**macro_def {
+        Macro::UserDefined { branches } => {
+            let args_span = macro_call.arguments.span().clone();
+            let (mut args, errs) = macro_call
+                .arguments
+                .into_inner()
+                .into_iter()
+                .map(|v| {
+                    let span = v.span().clone();
+                    match expansion_info.block_info.resolve(block_id, v.into_inner()) {
+                        Some(v) => Ok(span.with(v)),
+                        None => Err(Rich::<char, Span>::custom(
+                            span,
+                            "Constant was not found in this scope",
+                        )),
+                    }
+                })
+                .partition_map::<Vec<_>, Vec<_>, _, _, _>(|res| match res {
+                    Ok(v) => Either::Left(v),
+                    Err(e) => Either::Right(e),
+                });
+
+            if !errs.is_empty() {
+                return Err(errs);
+            }
+
+            for branch in branches {
+                let defines = match branch.pattern.matches(args) {
+                    Ok(v) => v,
+                    Err(returned_args) => {
+                        args = returned_args;
+                        continue;
+                    }
+                };
+
+                let (block_id, block_info) = expansion_info.block_info.new_block(block_id);
+
+                block_info.defines.extend(defines);
+
+                return Ok(branch
+                    .code
+                    .iter()
+                    .cloned()
+                    .map(|mut v| {
+                        v.1 = Some(block_id);
+
+                        v.into_inner()
+                    })
+                    .collect());
+            }
+
+            Err(vec![Rich::custom(
+                args_span,
+                "These arguments did not match any of the patterns of this macro",
+            )])
+        }
+        Macro::Builtin(macro_fn) => Ok(macro_fn(expansion_info, macro_call.arguments, block_id)
+            .map_err(|err| vec![err])?
             .into_iter()
             .map(|instruction| (instruction, Some(block_id)))
-            .collect_vec(),
-    })
+            .collect_vec()),
+    }
 }
 
 #[cfg(test)]
