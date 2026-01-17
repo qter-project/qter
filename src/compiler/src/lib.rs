@@ -63,7 +63,6 @@ type TaggedInstruction = (Instruction, Option<BlockID>);
 #[derive(Clone, Debug)]
 struct Block {
     code: Vec<WithSpan<TaggedInstruction>>,
-    maybe_id: Option<BlockID>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -126,10 +125,8 @@ enum Primitive {
 
 #[derive(Clone, Debug)]
 enum Value {
-    Int(Int<U>),
+    Resolved(ResolvedValue),
     Constant(ArcIntern<str>),
-    Ident(ArcIntern<str>),
-    Block(Block),
 }
 
 #[derive(Clone, Debug)]
@@ -399,10 +396,15 @@ impl BlockInfoTracker {
 
     fn resolve(&self, block_id: BlockID, value: Value) -> Option<ResolvedValue> {
         Some(match value {
-            Value::Int(int) => ResolvedValue::Int(int),
-            Value::Ident(arc_intern) => ResolvedValue::Ident(arc_intern),
-            Value::Block(block) => ResolvedValue::Block(block),
+            Value::Resolved(resolved) => resolved,
             Value::Constant(arc_intern) => (*self.get_define(block_id, &arc_intern)?.value).clone(),
+        })
+    }
+
+    fn resolve_ref<'a>(&'a self, block_id: BlockID, value: &'a Value) -> Option<&'a ResolvedValue> {
+        Some(match value {
+            Value::Resolved(resolved) => resolved,
+            Value::Constant(arc_intern) => &self.get_define(block_id, &arc_intern)?.value,
         })
     }
 
@@ -489,4 +491,71 @@ struct ExpandedCode {
     registers: RegistersDecl,
     block_info: BlockInfoTracker,
     expanded_code_components: Vec<WithSpan<ExpandedCodeComponent>>,
+}
+
+#[cfg(test)]
+mod tests {
+    use puzzle_theory::span::File;
+
+    use crate::{compile, q_emitter::emit_q};
+
+    #[test]
+    fn test_define() {
+        let code = "
+            .registers {
+                A <- 3x3 (U)
+            }
+
+            .define one 1
+            .define var A
+
+            .define X {
+                add $var $one
+            }
+            .define Y $X
+            .define Z $Y
+
+            $X
+            $Y
+            $Z
+        ";
+
+        let program = match compile(&File::from(code), |_| unreachable!()) {
+            Ok(v) => v,
+            Err(e) => panic!("{e:?}"),
+        };
+
+        let q_code = emit_q(&program).unwrap();
+
+        assert_eq!(q_code, r"Puzzles
+A: 3x3
+
+0 | U'
+");
+    }
+
+    #[test]
+    fn test_recursion_limit() {
+        let code = "
+            .registers {
+                A <- 3x3 (U)
+            }
+
+            .define X {
+                $X
+            }
+
+            $X
+        ";
+
+        match compile(&File::from(code), |_| unreachable!()) {
+            Ok(v) => panic!("{v:?}"),
+            Err(e) => {
+                assert_eq!(e.len(), 1);
+
+                assert_eq!(e[0].span().line(), 7);
+                assert_eq!(e[0].span().slice(), "$X");
+            },
+        }
+    }
 }

@@ -3,18 +3,18 @@ use internment::ArcIntern;
 use puzzle_theory::span::{Span, WithSpan};
 
 use crate::{
-    BlockID, Code, ExpansionInfo, Instruction, LabelReference, Macro, Primitive, RegisterReference,
-    Value,
+    BlockID, Code, ExpansionInfo, Instruction, LabelReference, Macro, Primitive, RegisterReference, ResolvedValue, Value
 };
 
 use std::collections::HashMap;
 
 fn expect_reg(
     reg_value: &WithSpan<Value>,
+    block_id: BlockID,
     syntax: &ExpansionInfo,
 ) -> Result<RegisterReference, Rich<'static, char, Span>> {
-    match &**reg_value {
-        Value::Ident(reg_name) => match syntax.get_register(
+    match syntax.block_info.resolve_ref(block_id, &**reg_value) {
+        Some(ResolvedValue::Ident(reg_name)) => match syntax.get_register(
             &RegisterReference::parse(WithSpan::new(
                 ArcIntern::clone(reg_name),
                 reg_value.span().to_owned(),
@@ -32,9 +32,13 @@ fn expect_reg(
                 format!("The register {reg_name} does not exist"),
             )),
         },
-        _ => Err(Rich::custom(
+        Some(_) => Err(Rich::custom(
             reg_value.span().clone(),
             "Expected a register",
+        )),
+        None => Err(Rich::custom(
+            reg_value.span().clone(),
+            "Constant not found in this scope",
         )),
     }
 }
@@ -42,22 +46,25 @@ fn expect_reg(
 fn expect_label(
     label_value: &WithSpan<Value>,
     block_id: BlockID,
+    syntax: &ExpansionInfo,
 ) -> Result<WithSpan<LabelReference>, Rich<'static, char, Span>> {
-    match &**label_value {
-        Value::Ident(label_name) => Ok(WithSpan::new(
+    match syntax.block_info.resolve_ref(block_id, &**label_value) {
+        Some(ResolvedValue::Ident(label_name)) => Ok(WithSpan::new(
             LabelReference {
                 name: ArcIntern::clone(label_name),
                 block_id,
             },
             label_value.span().to_owned(),
         )),
-        _ => Err(Rich::custom(label_value.span().clone(), "Expected a label")),
+        Some(_) => Err(Rich::custom(label_value.span().clone(), "Expected a label")),
+        None => Err(Rich::custom(label_value.span().clone(), "Constant not found in this scope")),
     }
 }
 
 fn print_like(
     syntax: &ExpansionInfo,
     mut args: WithSpan<Vec<WithSpan<Value>>>,
+    block_id: BlockID,
 ) -> Result<(Option<RegisterReference>, WithSpan<String>), Rich<'static, char, Span>> {
     if args.len() > 2 {
         return Err(Rich::custom(
@@ -67,17 +74,20 @@ fn print_like(
     }
 
     let maybe_reg = if args.len() == 2 {
-        Some(expect_reg(args.pop().as_ref().unwrap(), syntax)?)
+        Some(expect_reg(args.pop().as_ref().unwrap(), block_id, syntax)?)
     } else {
         None
     };
 
     let message = args.pop().unwrap();
     let span = message.span().to_owned();
-    let message = match message.into_inner() {
-        Value::Ident(raw_message) => WithSpan::new((*raw_message).to_owned(), span),
-        _ => {
+    let message = match syntax.block_info.resolve(block_id, message.into_inner()) {
+        Some(ResolvedValue::Ident(raw_message)) => WithSpan::new((*raw_message).to_owned(), span),
+        Some(_) => {
             return Err(Rich::custom(span, "Expected a message"));
+        }
+        None => {
+            return Err(Rich::custom(span, "Constant not found in this scope"));
         }
     };
 
@@ -94,7 +104,7 @@ pub fn builtin_macros(
     macros.insert(
         (prelude.clone(), ArcIntern::from("add")),
         WithSpan::new(
-            Macro::Builtin(|syntax, mut args, _| {
+            Macro::Builtin(|syntax, mut args, block_id| {
                 if args.len() != 2 {
                     return Err(Rich::custom(
                         args.span().clone(),
@@ -103,14 +113,18 @@ pub fn builtin_macros(
                 }
 
                 let second_arg = args.pop().unwrap();
-                let amt = match *second_arg {
-                    Value::Int(int) => WithSpan::new(int, second_arg.span().to_owned()),
-                    _ => {
-                        return Err(Rich::custom(second_arg.span().clone(), "Expected a number"));
+                let span = second_arg.span().clone();
+                let amt = match syntax.block_info.resolve(block_id, second_arg.into_inner()) {
+                    Some(ResolvedValue::Int(int)) => WithSpan::new(int, span),
+                    Some(_) => {
+                        return Err(Rich::custom(span, "Expected a number"));
+                    }
+                    None => {
+                        return Err(Rich::custom(span, "Constant not found in this scope"));
                     }
                 };
 
-                let register = expect_reg(args.pop().as_ref().unwrap(), syntax)?;
+                let register = expect_reg(args.pop().as_ref().unwrap(), block_id, syntax)?;
 
                 Ok(vec![Instruction::Code(Code::Primitive(Primitive::Add {
                     amt,
@@ -124,7 +138,7 @@ pub fn builtin_macros(
     macros.insert(
         (prelude.to_owned(), ArcIntern::from("goto")),
         WithSpan::new(
-            Macro::Builtin(|_syntax, mut args, block_id| {
+            Macro::Builtin(|syntax, mut args, block_id| {
                 if args.len() != 1 {
                     return Err(Rich::custom(
                         args.span().clone(),
@@ -132,7 +146,7 @@ pub fn builtin_macros(
                     ));
                 }
 
-                let label = expect_label(args.pop().as_ref().unwrap(), block_id)?;
+                let label = expect_label(args.pop().as_ref().unwrap(), block_id, syntax)?;
 
                 Ok(vec![Instruction::Code(Code::Primitive(Primitive::Goto {
                     label,
@@ -153,8 +167,8 @@ pub fn builtin_macros(
                     ));
                 }
 
-                let label = expect_label(args.pop().as_ref().unwrap(), block_id)?;
-                let register = expect_reg(args.pop().as_ref().unwrap(), syntax)?;
+                let label = expect_label(args.pop().as_ref().unwrap(), block_id, syntax)?;
+                let register = expect_reg(args.pop().as_ref().unwrap(), block_id, syntax)?;
 
                 Ok(vec![Instruction::Code(Code::Primitive(
                     Primitive::SolvedGoto { register, label },
@@ -167,7 +181,7 @@ pub fn builtin_macros(
     macros.insert(
         (prelude.to_owned(), ArcIntern::from("input")),
         WithSpan::new(
-            Macro::Builtin(|syntax, mut args, _| {
+            Macro::Builtin(|syntax, mut args, block_id| {
                 if args.len() != 2 {
                     return Err(Rich::custom(
                         args.span().clone(),
@@ -175,16 +189,19 @@ pub fn builtin_macros(
                     ));
                 }
 
-                let register = expect_reg(args.pop().as_ref().unwrap(), syntax)?;
+                let register = expect_reg(args.pop().as_ref().unwrap(), block_id, syntax)?;
 
                 let second_arg = args.pop().unwrap();
                 let span = second_arg.span().to_owned();
-                let message = match second_arg.into_inner() {
-                    Value::Ident(raw_message) => {
+                let message = match syntax.block_info.resolve(block_id, second_arg.into_inner()) {
+                    Some(ResolvedValue::Ident(raw_message)) => {
                         WithSpan::new(raw_message.trim_matches('"').to_owned(), span)
                     }
-                    _ => {
+                    Some(_) => {
                         return Err(Rich::custom(span, "Expected a message"));
+                    }
+                    None => {
+                        return Err(Rich::custom(span, "Constant not found in this scope"));
                     }
                 };
 
@@ -200,8 +217,8 @@ pub fn builtin_macros(
     macros.insert(
         (prelude.to_owned(), ArcIntern::from("halt")),
         WithSpan::new(
-            Macro::Builtin(|syntax, args, _| {
-                let (register, message) = print_like(syntax, args)?;
+            Macro::Builtin(|syntax, args, block_id| {
+                let (register, message) = print_like(syntax, args, block_id)?;
 
                 Ok(vec![Instruction::Code(Code::Primitive(Primitive::Halt {
                     register,
@@ -215,8 +232,8 @@ pub fn builtin_macros(
     macros.insert(
         (prelude.to_owned(), ArcIntern::from("print")),
         WithSpan::new(
-            Macro::Builtin(|syntax, args, _| {
-                let (register, message) = print_like(syntax, args)?;
+            Macro::Builtin(|syntax, args, block_id| {
+                let (register, message) = print_like(syntax, args, block_id)?;
 
                 Ok(vec![Instruction::Code(Code::Primitive(Primitive::Print {
                     register,

@@ -1,7 +1,5 @@
 use crate::{
-    Block, BlockInfo, BlockInfoTracker, Code, Define, DefineValue, ExpansionInfo, Label, LuaCall,
-    MacroArgTy, MacroBranch, MacroPattern, MacroPatternComponent, Value,
-    builtin_macros::builtin_macros, lua::LuaMacros,
+    Block, BlockInfo, BlockInfoTracker, Code, Define, DefineValue, ExpansionInfo, Label, LuaCall, MacroArgTy, MacroBranch, MacroPattern, MacroPatternComponent, ResolvedValue, Value, builtin_macros::builtin_macros, lua::LuaMacros
 };
 use std::{
     collections::HashMap,
@@ -18,8 +16,12 @@ use chumsky::{
 };
 use internment::ArcIntern;
 use itertools::Itertools;
-use puzzle_theory::{numbers::{Int, U}, puzzle_geometry::parsing::puzzle_definition, span::{Extra, File, MaybeErr, Span, WithSpan}};
-use qter_core::architectures::{Architecture, with_presets };
+use puzzle_theory::{
+    numbers::{Int, U},
+    puzzle_geometry::parsing::puzzle_definition,
+    span::{Extra, File, MaybeErr, Span, WithSpan},
+};
+use qter_core::architectures::{Architecture, with_presets};
 
 use crate::{BlockID, Macro, ParsedSyntax, Puzzle, RegistersDecl};
 
@@ -140,7 +142,10 @@ fn parser() -> impl Parser<'static, File, MaybeErr<ParsedSyntax>, ExtraAndSyntax
                 },
                 None => None,
             },
-            block_info: BlockInfoTracker { blocks: HashMap::new(), block_counter: 1 },
+            block_info: BlockInfoTracker {
+                blocks: HashMap::new(),
+                block_counter: 1,
+            },
             macros: HashMap::new(),
             available_macros: HashMap::new(),
             lua_macros: HashMap::new(),
@@ -385,7 +390,7 @@ fn tag_ident<S: Inspector<'static, File> + 'static>()
 
 fn constant<S: Inspector<'static, File> + 'static>()
 -> impl Parser<'static, File, WithSpan<ArcIntern<str>>, ExtraAndState<S>> {
-    group((just('$'), ident())).map(|(_, v)| v)
+    group((just('$'), ident())).validate(|(_, v), data, _| data.span().with(v.into_inner()))
 }
 
 fn registers() -> impl Parser<'static, File, MaybeErr<RegistersDecl>, Extra> {
@@ -436,7 +441,10 @@ fn register_decl_unswitchable() -> impl Parser<'static, File, MaybeErr<Puzzle>, 
                         MaybeErr::None
                     }
                 }
-                PuzzleUnnamed::Real { architecture, def_span } => {
+                PuzzleUnnamed::Real {
+                    architecture,
+                    def_span,
+                } => {
                     if architecture.registers().len() == names.len() {
                         MaybeErr::Some(Puzzle::Real {
                             architectures: vec![(names, architecture, def_span)],
@@ -679,7 +687,6 @@ fn macro_branch(
             instruction(block_rec.clone()).map_with(|instr, data| {
                 instr.map(|instr| Block {
                     code: vec![data.span().with((instr.value, None))],
-                    maybe_id: None,
                 })
             }),
             block_rec,
@@ -711,10 +718,10 @@ fn macro_arg_ty() -> impl Parser<'static, File, WithSpan<MacroArgTy>, Extra> {
 
 fn value(block_rec: BlockParser) -> impl Parser<'static, File, MaybeErr<WithSpan<Value>>, Extra> {
     choice((
-        intu().map(|v| v.map(Value::Int)),
+        intu().map(|v| v.map(|v| Value::Resolved(ResolvedValue::Int(v)))),
         constant().map(|v| MaybeErr::Some(Value::Constant(v.value))),
-        ident().map(|v| MaybeErr::Some(Value::Ident(v.value))),
-        block_rec.map(|v| v.map(Value::Block)),
+        ident().map(|v| MaybeErr::Some(Value::Resolved(ResolvedValue::Ident(v.value)))),
+        block_rec.map(|v| v.map(|v| Value::Resolved(ResolvedValue::Block(v)))),
     ))
     .map_with(|v, data| v.map(|v| data.span().with(v)))
 }
@@ -850,12 +857,7 @@ fn block(block_rec: BlockParser) -> impl Parser<'static, File, MaybeErr<Block>, 
             .allow_leading()
             .allow_trailing()
             .collect::<MaybeErr<Vec<_>>>()
-            .map(|code| {
-                code.map(|code| Block {
-                    code,
-                    maybe_id: None,
-                })
-            })
+            .map(|code| code.map(|code| Block { code }))
             .delimited_by(just('{'), just('}')),
     )
 }

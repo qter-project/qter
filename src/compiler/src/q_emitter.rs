@@ -60,7 +60,7 @@ pub fn emit_q(program: &Program) -> Result<String, Vec<Rich<'static, char, Span>
 
     let instrs = convert_instructions(&program.instructions);
 
-    let digits = (instrs.len() - 1).ilog10() as usize + 1;
+    let digits = (instrs.len().max(2) - 1).ilog10() as usize + 1;
 
     let padding = " ".repeat(digits + 3);
 

@@ -384,6 +384,10 @@ mod tests {
                 B, A ← 3x3 builtin (24, 210)
             }
 
+            .define dec-a {
+                add A 209
+            }
+
                 input \"Number to modulus:\" A
             loop:
                 print \"A is now\" A
@@ -391,12 +395,12 @@ mod tests {
             decrement:
                 solved-goto B loop
                 solved-goto A fix
-                add A 209
+                $dec-a
                 add B 23
                 goto decrement
             fix:
                 solved-goto B finalize
-                add A 209
+                $dec-a
                 add B 23
                 goto fix
             finalize:

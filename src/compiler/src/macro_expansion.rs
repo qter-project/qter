@@ -13,12 +13,21 @@ use crate::{
 pub fn expand(mut parsed: ParsedSyntax) -> Result<ExpandedCode, Vec<Rich<'static, char, Span>>> {
     let mut errs = Vec::new();
 
-    while expand_block(
+    let mut limit = 100;
+
+    while let Some(span) = expand_block(
         BlockID(0),
         &mut parsed.expansion_info,
         &mut parsed.code,
         &mut errs,
-    ) {}
+    ) {
+        limit -= 1;
+
+        if limit == 0 {
+            errs.push(Rich::custom(span, "Recursion limit reached during macro expansion"));
+            return Err(errs);
+        }
+    }
 
     if !errs.is_empty() {
         return Err(errs);
@@ -62,9 +71,9 @@ fn expand_block(
     expansion_info: &mut ExpansionInfo,
     code: &mut Vec<WithSpan<TaggedInstruction>>,
     errs: &mut Vec<Rich<'static, char, Span>>,
-) -> bool {
+) -> Option<Span> {
     // Will be set if anything is ever changed
-    let changed = OnceCell::<()>::new();
+    let mut changed = OnceCell::<Span>::new();
 
     let (new_code, new_errs) = mem::take(code)
         .into_iter()
@@ -72,7 +81,7 @@ fn expand_block(
             let maybe_block_id = &mut tagged_instruction.1;
             if maybe_block_id.is_none() {
                 *maybe_block_id = Some(block_id);
-                let _ = changed.set(());
+                let _ = changed.set(tagged_instruction.span().clone());
             }
 
             tagged_instruction
@@ -89,7 +98,7 @@ fn expand_block(
                 Instruction::Label(mut label) => {
                     if label.maybe_block_id.is_none() {
                         label.maybe_block_id = Some(block_id);
-                        let _ = changed.set(());
+                        let _ = changed.set(span.clone());
                     }
 
                     block_info.labels.push(label.clone());
@@ -124,7 +133,7 @@ fn expand_block(
                         .unwrap()
                         .defines
                         .insert(ArcIntern::clone(&new_define.name), new_define);
-                    let _ = changed.set(());
+                    let _ = changed.set(span);
 
                     vec![]
                 }
@@ -151,6 +160,8 @@ fn expand_block(
                                 "Expected a code block, found an identifier",
                             ))],
                             ResolvedValue::Block(block) => {
+                                let _ = changed.set(span);
+
                                 let block = block.clone();
 
                                 let (new_id, _) =
@@ -185,14 +196,14 @@ fn expand_block(
     errs.extend_from_slice(&new_errs);
     *code = new_code;
 
-    changed.get().is_some()
+    changed.take()
 }
 
 fn expand_code(
     block_id: BlockID,
     expansion_info: &mut ExpansionInfo,
     code: Code,
-    changed: &OnceCell<()>,
+    changed: &OnceCell<Span>,
 ) -> Result<Vec<TaggedInstruction>, Rich<'static, char, Span>> {
     let macro_call = match code {
         Code::Primitive(prim) => {
@@ -204,7 +215,7 @@ fn expand_code(
         Code::Macro(mac) => mac,
     };
 
-    let _ = changed.set(());
+    let _ = changed.set(macro_call.name.span().clone());
 
     let Some(macro_access) = expansion_info.available_macros.get(&(
         macro_call.name.span().source().clone(),
