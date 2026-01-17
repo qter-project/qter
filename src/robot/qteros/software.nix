@@ -18,6 +18,7 @@
   # Programs
 
   environment.systemPackages = with pkgs; [
+    git
     zoxide
     difftastic
     btrbk

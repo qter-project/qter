@@ -17,7 +17,7 @@
     qter.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { nixpkgs-unstable, nixpkgs-old, nixpkgs, nixos-hardware, home-manager, ... } @inputs: let
+  outputs = { nixpkgs-unstable, nixpkgs-old, nixpkgs, nixos-hardware, home-manager, agenix, ... } @inputs: let
     defaultModules = system: [
       home-manager.nixosModules.home-manager
       {
@@ -40,6 +40,7 @@
         specialArgs = { inherit inputs; };
         modules = (defaultModules "aarch64-linux") ++ [
           ./rpi.nix
+          agenix.nixosModules.default
           nixos-hardware.nixosModules.raspberry-pi-4
         ];
       };
