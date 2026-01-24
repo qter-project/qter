@@ -4,9 +4,7 @@ use crate::{
     builtin_macros::builtin_macros, lua::LuaMacros,
 };
 use std::{
-    collections::HashMap,
-    rc::Rc,
-    sync::{Arc, LazyLock, OnceLock},
+    cell::LazyCell, collections::HashMap, rc::Rc, sync::{Arc, OnceLock}
 };
 
 use chumsky::{
@@ -29,46 +27,48 @@ use crate::{BlockID, Macro, ParsedSyntax, Puzzle, RegistersDecl};
 
 use super::Instruction;
 
-static PRELUDE: LazyLock<ParsedSyntax> = LazyLock::new(|| {
-    let prelude = File::from(include_str!("../../qter_core/prelude.qat"));
+thread_local! {
+    static PRELUDE: LazyCell<ParsedSyntax> = LazyCell::new(|| {
+        let prelude = File::from(include_str!("../../qter_core/prelude.qat"));
 
-    let mut parsed_prelude = match parse(
-        &prelude,
-        |_| {
-            panic!(
-                "Prelude should not import files (because it's easier not to implement; message henry if you need this feature)"
-            )
-        },
-        true,
-    ) {
-        Ok(v) => v,
-        Err(errs) => {
-            for err in &errs {
-                println!(
-                    "{err}; {:?}; `{}`",
-                    err.span().line_and_col(),
-                    err.span().slice()
-                );
+        let mut parsed_prelude = match parse(
+            &prelude,
+            |_| {
+                panic!(
+                    "Prelude should not import files (because it's easier not to implement; message henry if you need this feature)"
+                )
+            },
+            true,
+        ) {
+            Ok(v) => v,
+            Err(errs) => {
+                for err in &errs {
+                    println!(
+                        "{err}; {:?}; `{}`",
+                        err.span().line_and_col(),
+                        err.span().slice()
+                    );
+                }
+
+                panic!();
             }
+        };
 
-            panic!();
-        }
-    };
+        let builtin_macros = builtin_macros(&prelude.inner());
+        parsed_prelude
+            .expansion_info
+            .available_macros
+            .extend(builtin_macros.keys().map(|source_and_macro_name| {
+                (
+                    source_and_macro_name.to_owned(),
+                    source_and_macro_name.0.clone(),
+                )
+            }));
+        parsed_prelude.expansion_info.macros.extend(builtin_macros);
 
-    let builtin_macros = builtin_macros(&prelude.inner());
-    parsed_prelude
-        .expansion_info
-        .available_macros
-        .extend(builtin_macros.keys().map(|source_and_macro_name| {
-            (
-                source_and_macro_name.to_owned(),
-                source_and_macro_name.0.clone(),
-            )
-        }));
-    parsed_prelude.expansion_info.macros.extend(builtin_macros);
-
-    parsed_prelude
-});
+        parsed_prelude
+    });
+}
 
 type ExtraAndSyntax = Full<
     Rich<'static, char, Span>,
@@ -156,7 +156,7 @@ fn parser() -> impl Parser<'static, File, MaybeErr<ParsedSyntax>, ExtraAndSyntax
             merge_files(
                 &mut parsed_syntax,
                 &qat,
-                (*PRELUDE).clone(),
+                PRELUDE.with(|v| (**v).clone()),
                 data.span(),
                 emitter,
             );

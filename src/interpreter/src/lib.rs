@@ -408,7 +408,7 @@ mod tests {
                 halt \"The modulus is\" A
         ";
 
-        let program = match compile(&File::from(code), |_| unreachable!()) {
+        let (program, _) = match compile(&File::from(code), |_| unreachable!()) {
             Ok(v) => v,
             Err(e) => panic!("{e:?}"),
         };
@@ -483,7 +483,7 @@ mod tests {
                 halt \"The modulus is\" B
         ";
 
-        let program = match compile(&File::from(code), |_| unreachable!()) {
+        let (program, _) = match compile(&File::from(code), |_| unreachable!()) {
             Ok(v) => v,
             Err(e) => panic!("{e:?}"),
         };
@@ -597,7 +597,7 @@ mod tests {
                 goto continue_1
         ";
 
-        let program = match compile(&File::from(code), |_| unreachable!()) {
+        let (program, _) = match compile(&File::from(code), |_| unreachable!()) {
             Ok(v) => v,
             Err(e) => panic!("{e:?}"),
         };
@@ -719,7 +719,7 @@ A: 3x3
             halt \"Done\"
         ";
 
-        let program = match compile(&File::from(code), |_| unreachable!()) {
+        let (program, _) = match compile(&File::from(code), |_| unreachable!()) {
             Ok(v) => v,
             Err(e) => panic!("{e:?}"),
         };
@@ -819,7 +819,7 @@ A: 3x3
                 halt \"A=\" A
         ";
 
-        let program = match compile(&File::from(code), |_| unreachable!()) {
+        let (program, _) = match compile(&File::from(code), |_| unreachable!()) {
             Ok(v) => v,
             Err(e) => panic!("{e:?}"),
         };
@@ -913,7 +913,7 @@ A: 3x3
                 halt \"A=\" A
         ";
 
-        let program = match compile(&File::from(code), |_| unreachable!()) {
+        let (program, _) = match compile(&File::from(code), |_| unreachable!()) {
             Ok(v) => v,
             Err(e) => panic!("{e:?}"),
         };
@@ -974,7 +974,7 @@ A: 3x3
                 add A 20
         ";
 
-        let program = match compile(&File::from(code), |_| unreachable!()) {
+        let (program, _) = match compile(&File::from(code), |_| unreachable!()) {
             Ok(v) => v,
             Err(e) => panic!("{e:?}"),
         };
@@ -1052,7 +1052,7 @@ A: 3x3
                 halt \"C=\" C
         ";
 
-        let program = match compile(&File::from(code), |_| unreachable!()) {
+        let (program, _) = match compile(&File::from(code), |_| unreachable!()) {
             Ok(v) => v,
             Err(e) => panic!("{e:?}"),
         };

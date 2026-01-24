@@ -113,7 +113,7 @@ fn compile_qat(file: &Path) -> color_eyre::Result<(Program, File)> {
             Err(e) => Err(e.to_string()),
         }
     }) {
-        Ok(v) => Ok((v, qat)),
+        Ok((v, _)) => Ok((v, qat)),
         Err(errs) => {
             Err(process_errors(errs, file, &qat))
         }

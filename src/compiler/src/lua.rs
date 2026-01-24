@@ -1,4 +1,4 @@
-use std::{fmt::Debug, sync::Arc};
+use std::{cell::RefCell, fmt::Debug, rc::Rc, sync::Arc};
 
 use chumsky::error::Rich;
 use piccolo::Lua;
@@ -8,7 +8,7 @@ use crate::{RegisterInfo, ResolvedValue};
 
 #[derive(Clone)]
 pub struct LuaMacros {
-    // lua_vm: Arc<Lua>,
+    lua_vm: Rc<RefCell<Lua>>,
 }
 
 impl Debug for LuaMacros {
@@ -19,8 +19,8 @@ impl Debug for LuaMacros {
 
 impl LuaMacros {
     pub fn new() -> LuaMacros {
-        // let mut lua_vm = Lua::empty();
-        // lua_vm.load_core();
+        let mut lua_vm = Lua::empty();
+        lua_vm.load_core();
 
         // lua_vm.enter(|ctx| {});
 
@@ -33,7 +33,7 @@ impl LuaMacros {
 
         // lua_vm.globals().set("big", to_big)?;
 
-        LuaMacros { }
+        LuaMacros { lua_vm: Rc::new(RefCell::new(lua_vm)) }
     }
 
     pub fn add_code(&self, code: &str) {

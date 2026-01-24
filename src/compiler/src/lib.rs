@@ -31,7 +31,7 @@ mod parsing;
 pub mod q_emitter;
 mod strip_expanded;
 
-/// Compiles a QAT program into a Q program
+/// Compiles a QAT program into a Q program while returning the register architecture used.
 ///
 /// # Errors
 ///
@@ -39,12 +39,14 @@ mod strip_expanded;
 pub fn compile(
     qat: &File,
     find_import: impl Fn(&str) -> Result<ArcIntern<str>, String> + 'static,
-) -> Result<Program, Vec<Rich<'static, char, Span>>> {
+) -> Result<(Program, Option<WithSpan<RegistersDecl>>), Vec<Rich<'static, char, Span>>> {
     let parsed = parse(qat, find_import, false)?;
+
+    let arch = parsed.expansion_info.registers.clone();
 
     let expanded = expand(parsed)?;
 
-    strip_expanded(expanded)
+    strip_expanded(expanded).map(|v| (v, arch))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -367,7 +369,7 @@ type DefineUnresolved = Define<DefineValue>;
 type DefineResolved = Define<WithSpan<ResolvedValue>>;
 
 #[derive(Clone, Debug)]
-enum Puzzle {
+pub enum Puzzle {
     Theoretical {
         name: WithSpan<ArcIntern<str>>,
         order: WithSpan<Int<U>>,
@@ -386,7 +388,7 @@ enum Puzzle {
 struct BlockID(pub usize);
 
 #[derive(Clone, Debug)]
-struct RegistersDecl {
+pub struct RegistersDecl {
     puzzles: Vec<Puzzle>,
 }
 
@@ -621,7 +623,7 @@ mod tests {
             $Z
         ";
 
-        let program = match compile(&File::from(code), |_| unreachable!()) {
+        let (program, _) = match compile(&File::from(code), |_| unreachable!()) {
             Ok(v) => v,
             Err(e) => panic!("{e:?}"),
         };
