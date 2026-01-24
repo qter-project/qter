@@ -1,0 +1,78 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="index.css">
+    <script type="importmap">
+        {
+            "imports": {
+                "web-tree-sitter": "./web-tree-sitter.js"
+            }
+        }
+    </script>
+    <link rel="modulepreload" href="index.js">
+    <script type="module" src="init.js"></script>
+    <title>Qter Visualiser</title>
+</head>
+<body>
+    <dialog id="loading-dialog" closedBy="none">
+        <p id="loading-message">Loading...</p>
+        <script>document.getElementById("loading-dialog").showModal();</script>
+    </dialog>
+    <main inert>
+        <section id="code-view">
+            <nav id="code-nav">
+                <select id="preset-selector"></select>
+                <button command="show-modal" commandfor="save-code-dialog">Save</button>
+                <dialog id="save-code-dialog">
+                    <p>Save your code to let other visitors see your creation!</p>
+                    <form method="dialog">
+                        <div>
+                            <label>Description<br>
+                                <input type="text" name="desc" required maxlength="20" placeholder="A descriptive name for your code" autofocus></label>
+                        </div>
+                        <div>
+                            <label>Your name<br>
+                                <input type="text" name="name" required maxlength="20" placeholder="Initials work too!"></label>
+                        </div>
+                        <div>
+                            <button formnovalidate value="cancel">Cancel</button>
+                            <button value="save">Save</button>
+                        </div>
+                    </form>
+                </dialog>
+                <button id="execute-button">Start</button>
+                <button id="run-button">Run</button>
+                <button id="step-button">Step</button>
+            </nav>
+            <div id="code-text">
+                <div id="editor-pane">
+                    <code>
+                        <pre id="editor-code-container"></pre>
+                    </code>
+                </div>
+                <div id="compiled-pane">
+                    <output>
+                        <code>
+                            <pre id="compiled-code-output"></pre>
+                        </code>
+                    </output>
+                </div>
+            </div>
+            <div id="code-program-output">
+                <pre id="program-output-container"></pre>
+                <!-- <input type="number" id="user-input"> -->
+            </div>
+        </section>
+        <section id="cube-view">
+            <div id="registers">
+
+            </div>
+            <div>
+                <cube-pair-view id="registers-cube"></cube-pair-view>
+                <cube-pair-view id="state-cube"></cube-pair-view>
+            </div>
+        </section>
+    </main>
+</body>
+</html>

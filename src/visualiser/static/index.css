@@ -1,0 +1,160 @@
+* {
+    box-sizing: border-box;
+}
+
+pre {
+    margin: 0;
+}
+
+body {
+    margin: 0;
+    background-color: #0F111A;
+    color: #eeffff;
+}
+
+main {
+    width: 100%;
+    height: 100%;
+}
+
+#loading-dialog::backdrop {
+    background-color: black
+}
+
+main {
+    display: flex;
+    flex-flow: row nowrap;
+    align-items: stretch;
+
+    #code-view {
+        flex: 5;
+    }
+
+    #cube-view {
+        flex: 2;
+    }
+}
+
+#code-view {
+    display: flex;
+    flex-flow: column nowrap;
+
+    #code-text {
+        flex: 1;
+    }
+}
+
+#code-nav {
+    display: flex;
+    flex-wrap: row nowrap;
+    padding: 0.5em;
+    gap: 0.7em;
+    border-bottom: 1px solid white;
+}
+
+#code-text {
+    display: flex;
+    flex-direction: row nowrap;
+
+    >* {
+        flex: 1;
+    }
+}
+
+#editor-pane,
+#compiled-pane {
+    overflow: auto;
+
+    pre {
+        height: 100%;
+        width: 100%;
+        padding: 0.5em;
+    }
+}
+
+#editor-pane {
+    border-right: 1px solid white;
+}
+
+#code-program-output {
+    padding: 0.5em;
+    border-top: 1px solid white;
+
+    #program-output-container {
+        height: 15lh;
+    }
+}
+
+#cube-view {
+    border-left: 1px solid white;
+
+    display: flex;
+    flex-flow: column nowrap;
+    justify-content: space-between;
+    padding: 1em;
+}
+
+::highlight(comment) {
+    color: #546E7A;
+}
+
+::highlight(string) {
+    color: #C3E88D;
+}
+
+::highlight(number) {
+    color: #F78C6C;
+}
+
+::highlight(variable) {
+    color: #EEFFFF;
+}
+
+::highlight(label) {
+    color: #F78C6C;
+}
+
+::highlight(keyword) {
+    color: #C792EA;
+}
+
+::highlight(keyword\.repeat) {
+    color: #C792EA;
+}
+
+::highlight(keyword\.conditional) {
+    color: #C792EA;
+}
+
+::highlight(keyword\.return) {
+    color: #C792EA;
+}
+
+::highlight(keyword\.operator) {
+    color: #89DDFF;
+}
+
+::highlight(keyword\.directive) {
+    color: #C792EA;
+}
+
+::highlight(function\.builtin) {
+    color: #82AAFF;
+}
+
+::highlight(punctuation\.delimiter) {
+    color: #89DDFF;
+}
+
+::highlight(type\.builtin) {
+    color: #FFCB6B;
+}
+
+::highlight(error) {
+    text-decoration: red wavy underline;
+}
+
+::highlight(current-instr) {
+    /* background-color: #181b29; */
+    background-color: rgb(200 200 0 / 75%);
+}

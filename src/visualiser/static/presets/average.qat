@@ -1,0 +1,23 @@
+.registers {
+    A, B <- 3x3 builtin (90, 90)
+}
+    // Calculate the average of two numbers
+    input "First number:" A
+    input "Second number:" B
+    print "Calculating average..."
+sum_loop:
+    add A 1
+    add B 89
+    solved-goto B found_sum
+    goto sum_loop
+found_sum:
+    add A 1
+divide_by_2:
+    add A 89
+    solved-goto A stop
+    add A 89
+    solved-goto A stop
+    add B 1
+    goto divide_by_2
+stop:
+    halt "The average is" B

@@ -1,0 +1,4 @@
+/node_modules
+/tree-sitter-q
+/dist
+/package-lock.json

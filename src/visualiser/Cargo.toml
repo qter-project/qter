@@ -1,0 +1,38 @@
+[package]
+name = "visualiser"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wasm-bindgen = "0.2.108"
+qter_core.workspace = true
+chumsky.workspace = true
+internment.workspace = true
+tokio = "1.49.0"
+puzzle_theory.workspace = true
+compiler.workspace = true
+interpreter = { workspace = true, features = ["remote_robot"] }
+web-sys = { version = "0.3.85", features = ["console"] }
+wasm-streams = "0.5.0"
+tokio-util = { version = "0.7.18", features = ["compat"] }
+wasm-bindgen-futures = "0.4.58"
+tsify = "0.5.6"
+serde = { version = "1.0.228", features = ["derive"] }
+serde-wasm-bindgen = "0.6.5"
+console_error_panic_hook = "0.1.7"
+
+[dependencies.getrandom3]
+package = "getrandom"
+version = "0.3"
+features = ["wasm_js"]
+
+[dependencies.getrandom2]
+package = "getrandom"
+version = "0.2"
+features = ["js"]
+
+[lints]
+workspace = true

@@ -1,0 +1,9 @@
+{
+  "type": "module",
+  "devDependencies": {
+    "tree-sitter-cli": "^0.26.5"
+  },
+  "dependencies": {
+    "web-tree-sitter": "^0.26.5"
+  }
+}
