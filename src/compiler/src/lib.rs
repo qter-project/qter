@@ -428,6 +428,11 @@ impl RegistersDecl {
 
         None
     }
+
+    #[must_use] 
+    pub fn puzzles(&self) -> &[Puzzle] {
+        &self.puzzles
+    }
 }
 
 #[derive(Clone, Debug)]
