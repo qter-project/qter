@@ -10,6 +10,9 @@ compiler = { path = "../compiler" }
 log = "0.4.28"
 puzzle_theory = { git = "https://github.com/qter-project/puzzle-theory" }
 pretty_assertions = "1.4.1"
+tokio = { version = "1.49.0", default-features = false, features = ["io-util", "macros", "net", "rt"] }
+tokio-stream = "0.1.18"
+tokio-util = { version = "0.7.18", features = ["io"] }
 
 [lints]
 workspace = true

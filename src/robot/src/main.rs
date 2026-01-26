@@ -16,9 +16,8 @@ use robot::{
     qvis_app::QvisAppHandle,
     rob_twophase::solve_rob_twophase_string,
 };
+use tokio::{io::BufReader, net::TcpListener};
 use std::{
-    io::BufReader,
-    net::TcpListener,
     path::PathBuf,
     sync::Arc,
     thread,
@@ -68,7 +67,8 @@ enum Commands {
     },
 }
 
-fn main() {
+#[tokio::main]
+async fn main() -> color_eyre::Result<()> {
     let cli = Cli::parse();
 
     env_logger::Builder::new()
@@ -136,19 +136,19 @@ fn main() {
             server_port,
             qvis_app_port,
         } => {
-            let listener = TcpListener::bind(format!("0.0.0.0:{server_port}")).unwrap();
+            let listener = TcpListener::bind(format!("0.0.0.0:{server_port}")).await?;
 
             let robot_handle = RobotHandle::init(robot_config);
             let qvis_app_handle = QvisAppHandle::init(qvis_app_port);
             let group = puzzle("3x3").permutation_group();
             let mut robot =
-                QterRobot::initialize(Arc::clone(&group), (robot_handle, qvis_app_handle));
+                QterRobot::initialize(Arc::clone(&group), (robot_handle, qvis_app_handle)).await?;
 
             loop {
-                let (socket, _) = listener.accept().unwrap();
+                let (socket, _) = listener.accept().await?;
 
                 run_robot_server::<_, QterRobot>(BufReader::new(socket), &mut robot, &group)
-                    .unwrap();
+                    .await?;
             }
         }
         Commands::Solve {
@@ -161,5 +161,8 @@ fn main() {
             robot_handle.await_moves();
         }
     }
+
     println!("Exiting");
+
+    Ok(())
 }

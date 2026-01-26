@@ -3,7 +3,13 @@
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::needless_pass_by_value)]
 
-use std::{fs, io, net::SocketAddr, path::{Path, PathBuf}, sync::Arc};
+use std::{
+    error::Error,
+    fs, io,
+    net::SocketAddr,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use ariadne::{Color, Label, Report, ReportKind, Source};
 use chumsky::error::Rich;
@@ -24,7 +30,8 @@ use puzzle_theory::{
     span::{File, Span},
 };
 use qter_core::{
-    ByPuzzleType, Program, table_encoding::{decode_table, encode_table}
+    ByPuzzleType, Program,
+    table_encoding::{decode_table, encode_table},
 };
 
 /// Compiles and interprets qter programs
@@ -75,7 +82,11 @@ enum Commands {
     },
 }
 
-fn process_errors(errs: Vec<Rich<'static, char, Span>>, file: &Path, source: &File) -> color_eyre::Report {
+fn process_errors(
+    errs: Vec<Rich<'static, char, Span>>,
+    file: &Path,
+    source: &File,
+) -> color_eyre::Report {
     for err in &errs {
         Report::build(ReportKind::Error, err.span().clone())
             .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
@@ -114,19 +125,21 @@ fn compile_qat(file: &Path) -> color_eyre::Result<(Program, File)> {
         }
     }) {
         Ok((v, _)) => Ok((v, qat)),
-        Err(errs) => {
-            Err(process_errors(errs, file, &qat))
-        }
+        Err(errs) => Err(process_errors(errs, file, &qat)),
     }
 }
 
-fn main() -> color_eyre::Result<()> {
+#[tokio::main]
+async fn main() -> color_eyre::Result<()> {
     let args = Commands::parse();
 
     match args {
         Commands::Compile { file } => {
             if file.extension().and_then(|v| v.to_str()) != Some("qat") {
-                return Err(eyre!("The file `{}` does not have an extension of `.qat`.", file.display()))
+                return Err(eyre!(
+                    "The file `{}` does not have an extension of `.qat`.",
+                    file.display()
+                ));
             }
 
             let (program, qat) = compile_qat(&file)?;
@@ -135,7 +148,7 @@ fn main() -> color_eyre::Result<()> {
                 Ok(v) => v,
                 Err(errs) => {
                     return Err(process_errors(errs, &file, &qat));
-                },
+                }
             };
 
             let path = file.with_extension("q");
@@ -145,9 +158,7 @@ fn main() -> color_eyre::Result<()> {
         Commands::Interpret { file, trace_level } => {
             let program = match file.extension().and_then(|v| v.to_str()) {
                 Some("q") => todo!(),
-                Some("qat") => {
-                    compile_qat(&file)?.0
-                }
+                Some("qat") => compile_qat(&file)?.0,
                 _ => {
                     return Err(eyre!(
                         "The file `{}` does not have an extension of `.qat` or `.q`.",
@@ -156,8 +167,8 @@ fn main() -> color_eyre::Result<()> {
                 }
             };
 
-            let interpreter = Interpreter::<SimulatedPuzzle>::new(Arc::new(program), ());
-            interpret(interpreter, trace_level)?;
+            let interpreter = Interpreter::<SimulatedPuzzle>::new(Arc::new(program), ()).await?;
+            interpret(interpreter, trace_level).await?;
         }
         Commands::Debug { file: _ } => todo!(),
         Commands::Test { file: _ } => todo!(),
@@ -206,15 +217,18 @@ fn main() -> color_eyre::Result<()> {
     Ok(())
 }
 
-fn interpret<P: PuzzleState>(
+async fn interpret<P: PuzzleState>(
     mut interpreter: Interpreter<P>,
     trace_level: u8,
-) -> color_eyre::Result<()> {
+) -> color_eyre::Result<()>
+where
+    P::Error: Error + Sync + 'static,
+{
     if trace_level > 0 {
-        return interpret_traced(interpreter, trace_level);
+        return interpret_traced(interpreter, trace_level).await;
     }
     loop {
-        let paused_state = interpreter.step_until_halt();
+        let paused_state = interpreter.step_until_halt().await?;
 
         let is_input_state = matches!(
             paused_state,
@@ -229,21 +243,24 @@ fn interpret<P: PuzzleState>(
         }
 
         if is_input_state {
-            give_number_input(&mut interpreter)?;
+            give_number_input(&mut interpreter).await?;
         } else {
             break Ok(());
         }
     }
 }
 
-fn give_number_input<P: PuzzleState>(
+async fn give_number_input<P: PuzzleState>(
     interpreter: &mut Interpreter<P>,
-) -> color_eyre::Result<ByPuzzleType<'static, InputRet>> {
+) -> color_eyre::Result<ByPuzzleType<'static, InputRet>>
+where
+    P::Error: Error + Sync + 'static,
+{
     loop {
         let mut number = String::new();
         io::stdin().read_line(&mut number)?;
         match number.parse::<Int<I>>() {
-            Ok(value) => match interpreter.give_input(value) {
+            Ok(value) => match interpreter.give_input(value).await? {
                 Ok(input_ret) => {
                     break Ok(input_ret);
                 }
@@ -254,14 +271,17 @@ fn give_number_input<P: PuzzleState>(
     }
 }
 
-fn interpret_traced<P: PuzzleState>(
+async fn interpret_traced<P: PuzzleState>(
     mut interpreter: Interpreter<P>,
     trace_level: u8,
-) -> color_eyre::Result<()> {
+) -> color_eyre::Result<()>
+where
+    P::Error: Error + Sync + 'static,
+{
     loop {
         let program_counter = interpreter.state().program_counter() + 1;
 
-        let action = interpreter.step();
+        let action = interpreter.step().await?;
 
         if trace_level >= 3 {
             eprint!("{program_counter} | ");
@@ -371,7 +391,7 @@ fn interpret_traced<P: PuzzleState>(
         }
 
         if should_give_input {
-            let input_ret = give_number_input(&mut interpreter)?;
+            let input_ret = give_number_input(&mut interpreter).await?;
 
             match input_ret {
                 ByPuzzleType::Theoretical(_) => {}

@@ -6,7 +6,7 @@ use puzzle_theory::{
     permutations::{Algorithm, Permutation, PermutationGroup},
     puzzle_geometry::parsing::puzzle,
 };
-use std::sync::{Arc, LazyLock};
+use std::{convert::Infallible, sync::{Arc, LazyLock}};
 
 pub mod hardware;
 pub mod qvis_app;
@@ -24,28 +24,32 @@ pub struct QterRobot {
 
 impl RobotLike for QterRobot {
     type InitializationArgs = (RobotHandle, QvisAppHandle);
+    // TODO: Overtemperature warning, comms issue with the phone camera
+    type Error = Infallible;
 
-    fn initialize(
+    async fn initialize(
         _: Arc<PermutationGroup>,
         robot_and_qvis_app_handles: (RobotHandle, QvisAppHandle),
-    ) -> Self {
-        QterRobot {
+    ) -> Result<Self, Self::Error> {
+        Ok(QterRobot {
             robot_handle: robot_and_qvis_app_handles.0,
             qvis_app_handle: robot_and_qvis_app_handles.1,
             simulated_state: Permutation::identity(),
             cached_picture_state: Some(Permutation::identity()),
-        }
+        })
     }
 
-    fn compose_into(&mut self, alg: &Algorithm) {
+    async fn compose_into(&mut self, alg: &Algorithm) -> Result<(), Self::Error> {
         self.simulated_state.compose_into(alg.permutation());
 
         self.robot_handle.queue_move_seq(alg);
         self.cached_picture_state.take();
+
+        Ok(())
     }
 
-    fn take_picture(&mut self) -> &Permutation {
-        self.cached_picture_state.get_or_insert_with(|| {
+    async fn take_picture(&mut self) -> Result<&Permutation, Self::Error> {
+        Ok(self.cached_picture_state.get_or_insert_with(|| {
             self.robot_handle.await_moves();
 
             let ret = self.qvis_app_handle.take_picture();
@@ -55,12 +59,14 @@ impl RobotLike for QterRobot {
             );
 
             ret
-        })
+        }))
     }
 
-    fn solve(&mut self) {
-        let alg = solve_rob_twophase(self.take_picture()).unwrap();
+    async fn solve(&mut self) -> Result<(), Self::Error> {
+        let alg = solve_rob_twophase(self.take_picture().await?).unwrap();
 
-        self.compose_into(&alg);
+        self.compose_into(&alg).await?;
+
+        Ok(())
     }
 }

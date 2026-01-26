@@ -8,10 +8,13 @@ use std::{collections::VecDeque, mem, sync::Arc};
 
 use instructions::do_instr;
 use puzzle_states::{PuzzleState, PuzzleStates};
-use puzzle_theory::{numbers::{I, Int, U}, permutations::Algorithm};
+use puzzle_theory::{
+    numbers::{I, Int, U},
+    permutations::Algorithm,
+};
 use qter_core::{
-    ByPuzzleType, Facelets,  Instruction,  Program, PuzzleIdx, SeparatesByPuzzleType,
-    StateIdx, TheoreticalIdx, 
+    ByPuzzleType, Facelets, Instruction, Program, PuzzleIdx, SeparatesByPuzzleType, StateIdx,
+    TheoreticalIdx,
 };
 
 pub struct PuzzleAndRegister;
@@ -71,7 +74,7 @@ impl SeparatesByPuzzleType for FailedSolvedGoto {
 }
 
 pub struct SucceededSolvedGoto {
-    jumped_to: usize,
+    pub jumped_to: usize,
 }
 
 impl SeparatesByPuzzleType for SucceededSolvedGoto {
@@ -151,45 +154,57 @@ impl<P: PuzzleState> Interpreter<P> {
         &mut self.state
     }
 
-    /// Create a new interpreter from a program and initial states for registers
+    /// Create a new interpreter from a program.
     ///
-    /// If an initial state isn't specified, it defaults to zero.
-    #[must_use]
-    pub fn new(program: Arc<Program>, args: P::InitializationArgs) -> Self where P::InitializationArgs: Clone {
+    /// # Errors
+    ///
+    /// Returns an error when initialization of any of the puzzle states fails.
+    pub async fn new(program: Arc<Program>, args: P::InitializationArgs) -> Result<Self, P::Error>
+    where
+        P::InitializationArgs: Clone,
+    {
         let state = InterpreterState {
-            puzzle_states: PuzzleStates::new(&program, args),
+            puzzle_states: PuzzleStates::new(&program, args).await?,
             program_counter: 0,
             messages: VecDeque::new(),
             execution_state: ExecutionState::Running,
         };
 
-        Interpreter { state, program }
+        Ok(Interpreter { state, program })
     }
 
-    /// Create a new interpreter from a program and initial states for registers, while assuming that the program only contains one puzzle.
+    /// Create a new interpreter from a program, while assuming that the program only contains one puzzle.
     ///
-    /// If an initial state isn't specified, it defaults to zero.
-    #[must_use]
-    pub fn new_only_one_puzzle(program: Arc<Program>, args: P::InitializationArgs) -> Self {
+    /// # Errors
+    ///
+    /// Returns an error when initialization of the puzzle state fails.
+    pub async fn new_only_one_puzzle(
+        program: Arc<Program>,
+        args: P::InitializationArgs,
+    ) -> Result<Self, P::Error> {
         let state = InterpreterState {
-            puzzle_states: PuzzleStates::new_only_one_puzzle(&program, args),
+            puzzle_states: PuzzleStates::new_only_one_puzzle(&program, args).await?,
             program_counter: 0,
             messages: VecDeque::new(),
             execution_state: ExecutionState::Running,
         };
 
-        Interpreter { state, program }
+        Ok(Interpreter { state, program })
     }
 
     /// Execute one instruction
-    pub fn step(&mut self) -> ActionPerformed<'_> {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the puzzle state fails to execute the instruction.
+    pub async fn step(&mut self) -> Result<ActionPerformed<'_>, P::Error> {
         if let ExecutionState::Paused(_) = self.state.execution_state() {
-            return ActionPerformed::Paused;
+            return Ok(ActionPerformed::Paused);
         }
         let Some(instruction) = self.program.instructions.get(self.state.program_counter) else {
-            return self.state.panic(
+            return Ok(self.state.panic(
                 "Execution fell through the end of the program without reaching a halt instruction!"
-            );
+            ));
         };
 
         match &**instruction {
@@ -197,15 +212,15 @@ impl<P: PuzzleState> Interpreter<P> {
                 self.state.program_counter = instruction_idx;
                 self.state.execution_state = ExecutionState::Running;
 
-                ActionPerformed::Goto { instruction_idx }
+                Ok(ActionPerformed::Goto { instruction_idx })
             }
-            Instruction::SolvedGoto(instr) => do_instr(instr, &mut self.state),
-            Instruction::Input(instr) => do_instr(instr, &mut self.state),
-            Instruction::Halt(instr) => do_instr(instr, &mut self.state),
-            Instruction::Print(instr) => do_instr(instr, &mut self.state),
-            Instruction::PerformAlgorithm(instr) => do_instr(instr, &mut self.state),
-            Instruction::Solve(instr) => do_instr(instr, &mut self.state),
-            Instruction::RepeatUntil(instr) => do_instr(instr, &mut self.state),
+            Instruction::SolvedGoto(instr) => do_instr(instr, &mut self.state).await,
+            Instruction::Input(instr) => do_instr(instr, &mut self.state).await,
+            Instruction::Halt(instr) => do_instr(instr, &mut self.state).await,
+            Instruction::Print(instr) => do_instr(instr, &mut self.state).await,
+            Instruction::PerformAlgorithm(instr) => do_instr(instr, &mut self.state).await,
+            Instruction::Solve(instr) => do_instr(instr, &mut self.state).await,
+            Instruction::RepeatUntil(instr) => do_instr(instr, &mut self.state).await,
         }
     }
 
@@ -213,18 +228,22 @@ impl<P: PuzzleState> Interpreter<P> {
     ///
     /// Returns details of the paused state reached
     ///
+    /// # Errors
+    ///
+    /// Returns an error when a puzzle state fails to perform any instruction. In that case, the interpreter will stop early.
+    ///
     /// # Panics
     ///
     /// Panics if the interpreter is not in a paused state
-    pub fn step_until_halt(&mut self) -> &PausedState {
+    pub async fn step_until_halt(&mut self) -> Result<&PausedState, P::Error> {
         loop {
             // println!("{}", self.state.program_counter);
-            if let ActionPerformed::Paused | ActionPerformed::Panicked = self.step() {
+            if let ActionPerformed::Paused | ActionPerformed::Panicked = self.step().await? {
                 break;
             }
         }
         match self.state.execution_state() {
-            ExecutionState::Paused(v) => v,
+            ExecutionState::Paused(v) => Ok(v),
             ExecutionState::Running => panic!("Cannot be halted while running"),
         }
     }
@@ -238,7 +257,10 @@ impl<P: PuzzleState> Interpreter<P> {
     /// # Panics
     ///
     /// Panics if the interpreter is not executing an `input` instruction
-    pub fn give_input(&mut self, value: Int<I>) -> Result<ByPuzzleType<'static, InputRet>, String> {
+    pub async fn give_input(
+        &mut self,
+        value: Int<I>,
+    ) -> Result<Result<ByPuzzleType<'static, InputRet>, String>, P::Error> {
         let &ExecutionState::Paused(PausedState::Input { max_input, data: _ }) =
             &self.state.execution_state
         else {
@@ -246,10 +268,15 @@ impl<P: PuzzleState> Interpreter<P> {
         };
 
         if value > max_input {
-            return Err(format!("Your input must not be greater than {max_input}."));
+            return Ok(Err(format!(
+                "Your input must not be greater than {max_input}."
+            )));
         }
         if value < -max_input {
-            return Err(format!("Your input must not be less than {}.", -max_input));
+            return Ok(Err(format!(
+                "Your input must not be less than {}.",
+                -max_input
+            )));
         }
 
         // The code is weird to appease the borrow checker
@@ -273,7 +300,7 @@ impl<P: PuzzleState> Interpreter<P> {
                 let puzzle = self.state.puzzle_states.puzzle_state_mut(idx);
                 algorithm.exponentiate(value);
 
-                puzzle.compose_into(&algorithm);
+                puzzle.compose_into(&algorithm).await?;
 
                 ByPuzzleType::Puzzle((idx, algorithm))
             }
@@ -282,7 +309,7 @@ impl<P: PuzzleState> Interpreter<P> {
         self.state.execution_state = ExecutionState::Running;
         self.state.program_counter += 1;
 
-        Ok(ret)
+        Ok(Ok(ret))
     }
 }
 
@@ -300,33 +327,35 @@ mod tests {
     use crate::{Interpreter, PausedState, puzzle_states::SimulatedPuzzle};
     use compiler::{compile, q_emitter::emit_q};
     use internment::ArcIntern;
+    use pretty_assertions::{assert_eq, assert_str_eq};
     use puzzle_theory::{puzzle_geometry::parsing::puzzle, span::File};
     use qter_core::architectures::{new_from_effect, with_presets};
     use std::sync::Arc;
-    use pretty_assertions::{assert_eq, assert_str_eq};
 
-    #[test]
-    fn facelets_solved() {
+    #[tokio::test]
+    async fn facelets_solved() {
         let perm_group = with_presets(puzzle("3x3"));
 
         let mut cube: SimulatedPuzzle =
-            SimulatedPuzzle::initialize(Arc::clone(&perm_group.perm_group), ());
+            SimulatedPuzzle::initialize(Arc::clone(&perm_group.perm_group), ())
+                .await
+                .unwrap();
 
         // Remember that the decoder will subtract the smallest facelet found in the definition to make it zero based
-        assert!(cube.facelets_solved(&[0, 8, 16, 24]));
+        assert!(cube.facelets_solved(&[0, 8, 16, 24]).await.unwrap());
 
         perm_group
             .perm_group
             .compose_generators_into(&mut cube.state, [ArcIntern::from("U")].iter())
             .unwrap();
 
-        assert!(cube.facelets_solved(&[0, 12, 15, 7, 40]));
+        assert!(cube.facelets_solved(&[0, 12, 15, 7, 40]).await.unwrap());
 
-        assert!(!cube.facelets_solved(&[1, 12, 15, 7, 24]));
+        assert!(!cube.facelets_solved(&[1, 12, 15, 7, 24]).await.unwrap());
     }
 
-    #[test]
-    fn complicated_solved_decode_test() {
+    #[tokio::test]
+    async fn complicated_solved_decode_test() {
         let perm_group = with_presets(puzzle("3x3"));
 
         let arch = perm_group
@@ -340,21 +369,29 @@ mod tests {
         let b_permutation = new_from_effect(&arch, vec![(1, Int::one())]);
 
         let mut cube: SimulatedPuzzle =
-            SimulatedPuzzle::initialize(Arc::clone(&perm_group.perm_group), ());
+            SimulatedPuzzle::initialize(Arc::clone(&perm_group.perm_group), ())
+                .await
+                .unwrap();
 
         for i in 1..=23 {
             cube.state.compose_into(b_permutation.permutation());
             assert_eq!(
-                cube.print(b_facelets.facelets(), &b_permutation).unwrap(),
+                cube.print(b_facelets.facelets(), &b_permutation)
+                    .await
+                    .unwrap()
+                    .unwrap(),
                 Int::from(i)
             );
-            assert!(!cube.facelets_solved(b_facelets.facelets()));
+            assert!(!cube.facelets_solved(b_facelets.facelets()).await.unwrap());
         }
 
         cube.state.compose_into(b_permutation.permutation());
-        assert!(cube.facelets_solved(b_facelets.facelets()));
+        assert!(cube.facelets_solved(b_facelets.facelets()).await.unwrap());
         assert_eq!(
-            cube.print(b_facelets.facelets(), &b_permutation).unwrap(),
+            cube.print(b_facelets.facelets(), &b_permutation)
+                .await
+                .unwrap()
+                .unwrap(),
             Int::<U>::zero()
         );
 
@@ -362,11 +399,17 @@ mod tests {
             println!("{i}");
             for j in 0..210 {
                 assert_eq!(
-                    cube.print(b_facelets.facelets(), &b_permutation).unwrap(),
+                    cube.print(b_facelets.facelets(), &b_permutation)
+                        .await
+                        .unwrap()
+                        .unwrap(),
                     Int::from(i)
                 );
                 assert_eq!(
-                    cube.print(a_facelets.facelets(), &a_permutation).unwrap(),
+                    cube.print(a_facelets.facelets(), &a_permutation)
+                        .await
+                        .unwrap()
+                        .unwrap(),
                     Int::from(j)
                 );
 
@@ -377,8 +420,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn modulus() {
+    #[tokio::test]
+    async fn modulus() {
         let code = "
             .registers {
                 B, A ← 3x3 builtin (24, 210)
@@ -413,9 +456,10 @@ mod tests {
             Err(e) => panic!("{e:?}"),
         };
 
-        let mut interpreter: Interpreter<SimulatedPuzzle> = Interpreter::new(Arc::new(program), ());
+        let mut interpreter: Interpreter<SimulatedPuzzle> =
+            Interpreter::new(Arc::new(program), ()).await.unwrap();
 
-        assert!(match interpreter.step_until_halt() {
+        assert!(match interpreter.step_until_halt().await.unwrap() {
             PausedState::Input {
                 max_input,
                 data: ByPuzzleType::Puzzle(_),
@@ -423,10 +467,16 @@ mod tests {
             _ => false,
         });
 
-        assert!(interpreter.give_input(Int::from(133_u64)).is_ok());
+        assert!(
+            interpreter
+                .give_input(Int::from(133_u64))
+                .await
+                .unwrap()
+                .is_ok()
+        );
 
         assert!(matches!(
-            interpreter.step_until_halt(),
+            interpreter.step_until_halt().await.unwrap(),
             PausedState::Halt {
                 maybe_puzzle_idx_and_register: Some(ByPuzzleType::Puzzle((PuzzleIdx(0), _, _))),
             }
@@ -465,8 +515,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn modulus_2() {
+    #[tokio::test]
+    async fn modulus_2() {
         let code = "
             .registers {
                 A, B ← 3x3 builtin (90, 90)
@@ -488,9 +538,10 @@ mod tests {
             Err(e) => panic!("{e:?}"),
         };
 
-        let mut interpreter: Interpreter<SimulatedPuzzle> = Interpreter::new(Arc::new(program), ());
+        let mut interpreter: Interpreter<SimulatedPuzzle> =
+            Interpreter::new(Arc::new(program), ()).await.unwrap();
 
-        let halted_state = interpreter.step_until_halt();
+        let halted_state = interpreter.step_until_halt().await.unwrap();
         assert!(
             match halted_state {
                 PausedState::Input {
@@ -502,10 +553,16 @@ mod tests {
             "{halted_state:?}"
         );
 
-        assert!(interpreter.give_input(Int::from(77_u64)).is_ok());
+        assert!(
+            interpreter
+                .give_input(Int::from(77_u64))
+                .await
+                .unwrap()
+                .is_ok()
+        );
 
         assert!(matches!(
-            interpreter.step_until_halt(),
+            interpreter.step_until_halt().await.unwrap(),
             PausedState::Halt {
                 maybe_puzzle_idx_and_register: Some(ByPuzzleType::Puzzle((PuzzleIdx(0), _, _))),
             }
@@ -539,8 +596,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn fib() {
+    #[tokio::test]
+    async fn fib() {
         // TODO: a test directory of qat files?
         let code = "
             .registers {
@@ -604,7 +661,9 @@ mod tests {
 
         let q = emit_q(&program).unwrap();
 
-        assert_str_eq!(q, r#"Puzzles
+        assert_str_eq!(
+            q,
+            r#"Puzzles
 A: 3x3
 
 0  | input "Which Fibonacci number to calculate:"
@@ -642,11 +701,13 @@ A: 3x3
             B R2 D' R B D F2 U2 D'
             F' L2 F D2 F B2 D' L' U'
 20 | goto 5
-"#);
+"#
+        );
 
-        let mut interpreter: Interpreter<SimulatedPuzzle> = Interpreter::new(Arc::new(program), ());
+        let mut interpreter: Interpreter<SimulatedPuzzle> =
+            Interpreter::new(Arc::new(program), ()).await.unwrap();
 
-        assert!(match interpreter.step_until_halt() {
+        assert!(match interpreter.step_until_halt().await.unwrap() {
             PausedState::Input {
                 max_input,
                 data: ByPuzzleType::Puzzle(_),
@@ -654,10 +715,16 @@ A: 3x3
             _ => false,
         });
 
-        assert!(interpreter.give_input(Int::from(8_u64)).is_ok());
+        assert!(
+            interpreter
+                .give_input(Int::from(8_u64))
+                .await
+                .unwrap()
+                .is_ok()
+        );
 
         assert!(matches!(
-            interpreter.step_until_halt(),
+            interpreter.step_until_halt().await.unwrap(),
             PausedState::Halt {
                 maybe_puzzle_idx_and_register: Some(ByPuzzleType::Puzzle((PuzzleIdx(0), _, _))),
             }
@@ -685,8 +752,8 @@ A: 3x3
         }
     }
 
-    #[test]
-    fn add_coalesce() {
+    #[tokio::test]
+    async fn add_coalesce() {
         let code = "
             .registers {
                 A, B <- 3x3 builtin (90, 90)
@@ -726,12 +793,13 @@ A: 3x3
 
         assert_eq!(program.instructions.len(), 4 + 6 + 1);
 
-        let mut interpreter: Interpreter<SimulatedPuzzle> = Interpreter::new(Arc::new(program), ());
+        let mut interpreter: Interpreter<SimulatedPuzzle> =
+            Interpreter::new(Arc::new(program), ()).await.unwrap();
 
         let expected_output = ["A 2", "B 2", "C 2", "D 2", "E 2", "F 2", "Done"];
 
         assert!(matches!(
-            interpreter.step_until_halt(),
+            interpreter.step_until_halt().await.unwrap(),
             PausedState::Halt {
                 maybe_puzzle_idx_and_register: None,
             }
@@ -754,8 +822,8 @@ A: 3x3
         }
     }
 
-    #[test]
-    fn repeat_until() {
+    #[tokio::test]
+    async fn repeat_until() {
         let code = "
             .registers {
                 A, B <- 3x3 builtin (4, 4)
@@ -826,7 +894,9 @@ A: 3x3
 
         let q = emit_q(&program).unwrap();
 
-        assert_str_eq!(q, r#"Puzzles
+        assert_str_eq!(
+            q,
+            r#"Puzzles
 A: 3x3
 
 0 | U
@@ -846,14 +916,16 @@ A: 3x3
 8 | halt "A="
          U'
          counting-until UFL
-"#);
+"#
+        );
 
-        let mut interpreter: Interpreter<SimulatedPuzzle> = Interpreter::new(Arc::new(program), ());
+        let mut interpreter: Interpreter<SimulatedPuzzle> =
+            Interpreter::new(Arc::new(program), ()).await.unwrap();
 
         let expected_output = ["A= 0"];
 
         assert!(matches!(
-            interpreter.step_until_halt(),
+            interpreter.step_until_halt().await.unwrap(),
             PausedState::Halt {
                 maybe_puzzle_idx_and_register: Some(ByPuzzleType::Puzzle((PuzzleIdx(0), _, _))),
             }
@@ -876,8 +948,8 @@ A: 3x3
         }
     }
 
-    #[test]
-    fn repeat_until_two_cubes() {
+    #[tokio::test]
+    async fn repeat_until_two_cubes() {
         let code = "
             .registers {
                 A <- 3x3 builtin (1260)
@@ -921,12 +993,13 @@ A: 3x3
         // println!("{:#?}", program);
         assert_eq!(program.instructions.len(), 3 + 4 + 4 + 1);
 
-        let mut interpreter: Interpreter<SimulatedPuzzle> = Interpreter::new(Arc::new(program), ());
+        let mut interpreter: Interpreter<SimulatedPuzzle> =
+            Interpreter::new(Arc::new(program), ()).await.unwrap();
 
         let expected_output = ["A= 89"];
 
         assert!(matches!(
-            interpreter.step_until_halt(),
+            interpreter.step_until_halt().await.unwrap(),
             PausedState::Halt {
                 maybe_puzzle_idx_and_register: Some(ByPuzzleType::Puzzle((PuzzleIdx(0), _, _))),
             }
@@ -949,8 +1022,8 @@ A: 3x3
         }
     }
 
-    #[test]
-    fn dead_code() {
+    #[tokio::test]
+    async fn dead_code() {
         let code = "
             .registers {
                 A, B <- 3x3 builtin (90, 90)
@@ -981,21 +1054,25 @@ A: 3x3
 
         let q_code = emit_q(&program).unwrap();
 
-        assert_eq!(q_code, r#"Puzzles
+        assert_eq!(
+            q_code,
+            r#"Puzzles
 A: 3x3
 
 0 | R' F' L U' L U L F U' R
 1 | halt "A="
          R' U F' L' U' L' U L' F R
          counting-until UBL UB
-"#);
+"#
+        );
 
-        let mut interpreter: Interpreter<SimulatedPuzzle> = Interpreter::new(Arc::new(program), ());
+        let mut interpreter: Interpreter<SimulatedPuzzle> =
+            Interpreter::new(Arc::new(program), ()).await.unwrap();
 
         let expected_output = ["A= 1"];
 
         assert!(matches!(
-            interpreter.step_until_halt(),
+            interpreter.step_until_halt().await.unwrap(),
             PausedState::Halt {
                 maybe_puzzle_idx_and_register: Some(ByPuzzleType::Puzzle((PuzzleIdx(0), _, _))),
             }
@@ -1018,8 +1095,8 @@ A: 3x3
         }
     }
 
-    #[test]
-    fn solve() {
+    #[tokio::test]
+    async fn solve() {
         let code = "
             .registers {
                 A, B, C <- 3x3 builtin (30, 30, 30)
@@ -1059,7 +1136,9 @@ A: 3x3
 
         let q_code = emit_q(&program).unwrap();
 
-        assert_eq!(q_code, r#"Puzzles
+        assert_eq!(
+            q_code,
+            r#"Puzzles
 A: 3x3
 
 0 | U2 D2 F2 L' B L2 D L D2 B U2 D' F2 R2 B2
@@ -1073,14 +1152,16 @@ A: 3x3
 4 | halt "C="
          U L U' D' F' L U F D F' L U' F2 L2
          counting-until UBR FR
-"#);
+"#
+        );
 
-        let mut interpreter: Interpreter<SimulatedPuzzle> = Interpreter::new(Arc::new(program), ());
+        let mut interpreter: Interpreter<SimulatedPuzzle> =
+            Interpreter::new(Arc::new(program), ()).await.unwrap();
 
         let expected_output = ["A= 0", "B= 0", "C= 0"];
 
         assert!(matches!(
-            interpreter.step_until_halt(),
+            interpreter.step_until_halt().await.unwrap(),
             PausedState::Halt {
                 maybe_puzzle_idx_and_register: Some(ByPuzzleType::Puzzle((PuzzleIdx(0), _, _))),
             }
