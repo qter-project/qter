@@ -34,7 +34,7 @@ fn mk_rob_twophase_input(perm: &Permutation) -> String {
     let mut faces = Vec::new();
 
     for (mut chunk, current) in (0..)
-        .map(|idx| perm.comes_from().get(idx))
+        .map(|idx| perm.state().get(idx))
         .chunks(8)
         .into_iter()
         .zip(['U', 'L', 'F', 'R', 'B', 'D'])
@@ -171,8 +171,7 @@ pub fn solve_rob_twophase_string(rob_twophase_string: &str) -> Result<Algorithm,
 mod tests {
     use std::sync::Arc;
 
-    use itertools::Itertools;
-    use puzzle_theory::{numbers::{I, Int, U}, permutations::{Algorithm, Permutation}};
+    use puzzle_theory::permutations::{Algorithm, Permutation};
 
     use crate::{
         CUBE3,

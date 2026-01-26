@@ -633,7 +633,7 @@ pub fn decode(
     generator: &Algorithm,
 ) -> Option<Int<U>> {
     chinese_remainder_theorem(facelets.iter().map(|&facelet| {
-        let maps_to = permutation.goes_to().get(facelet);
+        let maps_to = permutation.mapping().get(facelet);
 
         let chromatic_order = chromatic_orders_by_facelets(generator)[facelet];
 
@@ -643,7 +643,7 @@ pub fn decode(
 
         let mut i = Int::<U>::one();
         let mut maps_to_found_at = None;
-        let mut facelet_at = generator.permutation().goes_to().get(facelet);
+        let mut facelet_at = generator.permutation().mapping().get(facelet);
 
         while facelet_at != facelet {
             if facelet_at == maps_to {
@@ -651,7 +651,7 @@ pub fn decode(
                 break;
             }
 
-            facelet_at = generator.permutation().goes_to().get(facelet_at);
+            facelet_at = generator.permutation().mapping().get(facelet_at);
             i += Int::<U>::one();
         }
 

@@ -160,7 +160,7 @@ impl<R: RobotLike + Send> PuzzleState for RobotState<R> {
         let state = self.robot.take_picture().await?;
 
         for &facelet in facelets {
-            let maps_to = state.goes_to().get(facelet);
+            let maps_to = state.mapping().get(facelet);
             if self.perm_group.facelet_colors()[maps_to]
                 != self.perm_group.facelet_colors()[facelet]
             {
@@ -268,7 +268,7 @@ impl PuzzleState for SimulatedPuzzle {
 
     async fn facelets_solved(&mut self, facelets: &[usize]) -> Result<bool, Infallible> {
         for &facelet in facelets {
-            let maps_to = self.state.goes_to().get(facelet);
+            let maps_to = self.state.mapping().get(facelet);
             if self.perm_group.facelet_colors()[maps_to]
                 != self.perm_group.facelet_colors()[facelet]
             {
