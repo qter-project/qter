@@ -222,7 +222,7 @@ async fn interpret<P: PuzzleState>(
     trace_level: u8,
 ) -> color_eyre::Result<()>
 where
-    P::Error: Error + Sync + 'static,
+    P::Error: Error + Send + Sync + 'static,
 {
     if trace_level > 0 {
         return interpret_traced(interpreter, trace_level).await;
@@ -254,7 +254,7 @@ async fn give_number_input<P: PuzzleState>(
     interpreter: &mut Interpreter<P>,
 ) -> color_eyre::Result<ByPuzzleType<'static, InputRet>>
 where
-    P::Error: Error + Sync + 'static,
+    P::Error: Error + Send + Sync + 'static,
 {
     loop {
         let mut number = String::new();
@@ -276,7 +276,7 @@ async fn interpret_traced<P: PuzzleState>(
     trace_level: u8,
 ) -> color_eyre::Result<()>
 where
-    P::Error: Error + Sync + 'static,
+    P::Error: Error + Send + Sync + 'static,
 {
     loop {
         let program_counter = interpreter.state().program_counter() + 1;

@@ -1,3 +1,5 @@
+#![expect(async_fn_in_trait)] // Our interpreter doesn't care whether whether our futures are `Send` and any code using the interpreter is likely to hardcode a particular `PuzzleState` impl so will know statically whether the future is `Send`
+
 use std::{convert::Infallible, io::Error, sync::Arc};
 
 use log::trace;
@@ -48,86 +50,77 @@ impl TheoreticalState {
     }
 }
 
-pub trait PuzzleState: Send {
-    type InitializationArgs: Send;
-    type Error: Send;
+pub trait PuzzleState {
+    type InitializationArgs;
+    type Error;
 
     /// Initialize the `Puzzle` in the solved state
-    fn initialize(
+    async fn initialize(
         perm_group: Arc<PermutationGroup>,
         args: Self::InitializationArgs,
-    ) -> impl Future<Output = Result<Self, Self::Error>> + Send
+    ) -> Result<Self, Self::Error>
     where
         Self: Sized;
 
     /// Perform an algorithm on the puzzle state
-    fn compose_into(
-        &mut self,
-        alg: &Algorithm,
-    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+    async fn compose_into(&mut self, alg: &Algorithm) -> Result<(), Self::Error>;
 
     /// Check whether the given facelets are solved
-    fn facelets_solved(
-        &mut self,
-        facelets: &[usize],
-    ) -> impl Future<Output = Result<bool, Self::Error>> + Send;
+    async fn facelets_solved(&mut self, facelets: &[usize]) -> Result<bool, Self::Error>;
 
     /// Decode the permutation using the register generator and the given facelets.
     ///
     /// In general, an arbitrary scramble cannot be decoded. If this is the case, the function will return `None`.
     ///
     /// This function should not alter the cube state unless it returns `None`.
-    fn print(
+    async fn print(
         &mut self,
         facelets: &[usize],
         generator: &Algorithm,
-    ) -> impl Future<Output = Result<Option<Int<U>>, Self::Error>> + Send;
+    ) -> Result<Option<Int<U>>, Self::Error>;
 
     /// Decode the register without requiring the cube state to be unaltered.
-    fn halt(
+    async fn halt(
         &mut self,
         facelets: &[usize],
         generator: &Algorithm,
-    ) -> impl Future<Output = Result<Option<Int<U>>, Self::Error>> + Send {
-        async { self.print(facelets, generator).await }
+    ) -> Result<Option<Int<U>>, Self::Error> {
+        self.print(facelets, generator).await
     }
 
     /// Repeat the algorithm until the given facelets are solved.
     ///
     /// Returns None if the facelets cannot be solved by repeating the algorithm.
-    fn repeat_until(
+    async fn repeat_until(
         &mut self,
         facelets: &[usize],
         generator: &Algorithm,
-    ) -> impl Future<Output = Result<Option<()>, Self::Error>> + Send;
+    ) -> Result<Option<()>, Self::Error>;
 
     /// Bring the puzzle to the solved state
-    fn solve(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send;
+    async fn solve(&mut self) -> Result<(), Self::Error>;
 }
 
-pub trait RobotLike: Send {
-    type InitializationArgs: Send;
-    type Error: Send;
+pub trait RobotLike {
+    type InitializationArgs;
+    type Error;
 
     /// Initialize the puzzle in the solved state
-    fn initialize(
+    async fn initialize(
         perm_group: Arc<PermutationGroup>,
         args: Self::InitializationArgs,
-    ) -> impl Future<Output = Result<Self, Self::Error>> + Send
+    ) -> Result<Self, Self::Error>
     where
         Self: Sized;
 
     /// Perform an algorithm on the puzzle
-    fn compose_into(
-        &mut self,
-        alg: &Algorithm,
-    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+    async fn compose_into(&mut self, alg: &Algorithm) -> Result<(), Self::Error>;
 
     /// Return the puzzle state as a permutation
-    fn take_picture(&mut self) -> impl Future<Output = Result<&Permutation, Self::Error>> + Send;
+    async fn take_picture(&mut self) -> Result<&Permutation, Self::Error>;
 
     /// Solve the puzzle
-    fn solve(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send;
+    async fn solve(&mut self) -> Result<(), Self::Error>;
 }
 
 pub struct RobotState<R: RobotLike> {
@@ -135,7 +128,7 @@ pub struct RobotState<R: RobotLike> {
     perm_group: Arc<PermutationGroup>,
 }
 
-impl<R: RobotLike + Send> PuzzleState for RobotState<R> {
+impl<R: RobotLike> PuzzleState for RobotState<R> {
     type InitializationArgs = R::InitializationArgs;
     type Error = R::Error;
 
@@ -146,10 +139,7 @@ impl<R: RobotLike + Send> PuzzleState for RobotState<R> {
     async fn initialize(
         perm_group: Arc<PermutationGroup>,
         args: Self::InitializationArgs,
-    ) -> Result<Self, Self::Error>
-    where
-        <R as RobotLike>::InitializationArgs: Send,
-    {
+    ) -> Result<Self, Self::Error> {
         Ok(RobotState {
             perm_group: Arc::clone(&perm_group),
             robot: R::initialize(perm_group, args).await?,
@@ -406,15 +396,15 @@ impl<P: PuzzleState> PuzzleStates<P> {
     }
 }
 
-pub trait Connection: Send {
-    type Reader: AsyncBufRead + Unpin + Send + ?Sized;
-    type Writer: AsyncWrite + Unpin + Send + ?Sized;
+pub trait Connection {
+    type Reader: AsyncBufRead + Unpin + ?Sized;
+    type Writer: AsyncWrite + Unpin + ?Sized;
 
     fn reader(&mut self) -> &mut Self::Reader;
     fn writer(&mut self) -> &mut Self::Writer;
 }
 
-impl<R: AsyncBufRead + Unpin + Send, W: AsyncWrite + Unpin + Send> Connection for (R, W) {
+impl<R: AsyncBufRead + Unpin, W: AsyncWrite + Unpin> Connection for (R, W) {
     type Reader = R;
     type Writer = W;
 
@@ -427,7 +417,7 @@ impl<R: AsyncBufRead + Unpin + Send, W: AsyncWrite + Unpin + Send> Connection fo
     }
 }
 
-impl<T: AsyncRead + AsyncWrite + Unpin + Send> Connection for BufReader<T> {
+impl<T: AsyncRead + AsyncWrite + Unpin> Connection for BufReader<T> {
     type Reader = Self;
     type Writer = T;
 
@@ -445,7 +435,7 @@ pub struct RemoteRobot<C: Connection> {
     current_state: Option<Permutation>,
 }
 
-async fn ack_or_err<C: Connection + Send>(conn: &mut C) -> Result<(), Error> {
+async fn ack_or_err<C: Connection>(conn: &mut C) -> Result<(), Error> {
     let reader = conn.reader();
 
     let mut which = [0; 5];
@@ -468,7 +458,7 @@ async fn ack_or_err<C: Connection + Send>(conn: &mut C) -> Result<(), Error> {
     }
 }
 
-impl<C: Connection + Send> RobotLike for RemoteRobot<C> {
+impl<C: Connection> RobotLike for RemoteRobot<C> {
     type InitializationArgs = C;
     type Error = Error;
 
@@ -624,9 +614,11 @@ mod tests {
         let (robot_tx, mut rx) = simplex::new(1000);
 
         let task = tokio::spawn(async move {
-            tx.write_all(b"!ACK\n!ACK\n(1, 0)\n!ACK\n!ERR\n\0\x03ABC!ERR\n\0\x04ABCD!ERR\n\0\x05ABCDE")
-                .await
-                .unwrap();
+            tx.write_all(
+                b"!ACK\n!ACK\n(1, 0)\n!ACK\n!ERR\n\0\x03ABC!ERR\n\0\x04ABCD!ERR\n\0\x05ABCDE",
+            )
+            .await
+            .unwrap();
             println!("Dropping");
             drop(tx);
 
@@ -771,7 +763,7 @@ mod tests {
                 .await
                 .unwrap();
             drop(tx);
-            
+
             let mut out = String::new();
             rx.read_to_string(&mut out).await.unwrap();
 
