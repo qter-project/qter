@@ -12,7 +12,7 @@ use std::{
 
 use chumsky::error::Rich;
 use internment::ArcIntern;
-use lua::LuaMacros;
+use rhai::RhaiMacros;
 use parsing::parse;
 use puzzle_theory::{
     numbers::{Int, ParseIntError, U},
@@ -24,7 +24,7 @@ use strip_expanded::strip_expanded;
 use crate::macro_expansion::expand;
 
 mod builtin_macros;
-mod lua;
+mod rhai;
 mod macro_expansion;
 mod optimization;
 mod parsing;
@@ -101,6 +101,15 @@ impl RegisterReference {
     }
 }
 
+impl ToString for RegisterReference {
+    fn to_string(&self) -> String {
+        match self.modulus {
+            Some(modulus) => format!("{}%{}", &**self.reg_name, modulus),
+            None => (**self.reg_name).to_owned(),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 enum Primitive {
     Add {
@@ -134,7 +143,7 @@ enum Value {
     Constant(ArcIntern<str>),
 }
 
-type RegisterInfo = (RegisterReference, LuaRegInfo);
+type RegisterInfo = (RegisterReference, RhaiRegInfo);
 
 #[derive(Clone, Debug)]
 enum ResolvedValue {
@@ -151,7 +160,7 @@ impl ResolvedValue {
     pub fn as_reg(
         &self,
         info: &ExpansionInfo,
-    ) -> Option<Result<&(RegisterReference, LuaRegInfo), &WithSpan<ArcIntern<str>>>> {
+    ) -> Option<Result<&(RegisterReference, RhaiRegInfo), &WithSpan<ArcIntern<str>>>> {
         match self {
             ResolvedValue::Ident { ident, as_reg } => Some(
                 as_reg
@@ -182,7 +191,7 @@ enum Code {
 }
 
 #[derive(Clone, Debug)]
-struct LuaCall {
+struct RhaiCall {
     function_name: WithSpan<ArcIntern<str>>,
     args: Vec<WithSpan<Value>>,
 }
@@ -192,7 +201,7 @@ enum Instruction {
     Label(Label),
     Code(Code),
     Constant(ArcIntern<str>),
-    LuaCall(LuaCall),
+    RhaiCall(RhaiCall),
     Define(DefineUnresolved),
 }
 
@@ -356,7 +365,7 @@ enum Macro {
 #[derive(Clone, Debug)]
 enum DefineValue {
     Value(WithSpan<Value>),
-    LuaCall(WithSpan<LuaCall>),
+    RhaiCall(WithSpan<RhaiCall>),
 }
 
 #[derive(Clone, Debug)]
@@ -393,7 +402,7 @@ pub struct RegistersDecl {
 }
 
 impl RegistersDecl {
-    fn register_exists(&self, reference: &RegisterReference) -> Option<LuaRegInfo> {
+    fn register_exists(&self, reference: &RegisterReference) -> Option<RhaiRegInfo> {
         let reg_name = reference.reg_name.clone();
 
         let modulus = reference.modulus;
@@ -405,7 +414,7 @@ impl RegistersDecl {
                     order,
                 } => {
                     if *reg_name == **found_name {
-                        return Some(LuaRegInfo {
+                        return Some(RhaiRegInfo {
                             order: modulus.unwrap_or(**order),
                         });
                     }
@@ -416,7 +425,7 @@ impl RegistersDecl {
                             if *reg_name == **found_name {
                                 let reg = &arch.value.registers()[i];
 
-                                return Some(LuaRegInfo {
+                                return Some(RhaiRegInfo {
                                     order: modulus.unwrap_or(reg.order()),
                                 });
                             }
@@ -436,7 +445,7 @@ impl RegistersDecl {
 }
 
 #[derive(Clone, Debug)]
-struct LuaRegInfo {
+struct RhaiRegInfo {
     order: Int<U>,
 }
 
@@ -551,11 +560,11 @@ struct ExpansionInfo {
     /// Map each (file contents containing macro call, macro name) to the file contents that the macro definition is in
     available_macros: HashMap<(ArcIntern<str>, ArcIntern<str>), ArcIntern<str>>,
     /// Each file has its own `LuaMacros`; use the file contents as the key
-    lua_macros: HashMap<ArcIntern<str>, LuaMacros>,
+    rhai_macros: HashMap<ArcIntern<str>, RhaiMacros>,
 }
 
 impl ExpansionInfo {
-    fn register_exists(&self, reference: &RegisterReference) -> Option<LuaRegInfo> {
+    fn register_exists(&self, reference: &RegisterReference) -> Option<RhaiRegInfo> {
         match &self.registers {
             Some(regs) => regs.register_exists(reference),
             None => None,
@@ -577,7 +586,7 @@ impl ExpansionInfo {
 
                 Ok(span.with(resolved))
             }
-            DefineValue::LuaCall(_) => todo!(),
+            DefineValue::RhaiCall(_) => todo!(),
         }
     }
 }

@@ -1,37 +1,22 @@
-.start-lua
-    local function validate_equals_order(r1, r2, r3)
-        if order_of_reg(r3) < order_of_reg(r1) or
-            order_of_reg(r3) < order_of_reg(r2) then
-            error("Register 3 must not be the minimum order (" ..
-                order_of_reg(r3) .. " < min(" .. order_of_reg(r1) .. ", " ..
-                order_of_reg(r2) .. ")"
-            )
-        end
+.start-rhai
+    fn validate_equals_order(r1, r2, r3) {
+        let o1 = r1.order();
+        let o2 = r2.order();
+        let o3 = r3.order();
+        if o1 != o2 || o1 != o3 {
+            throw `Expected the orders of ${r1}, ${r2}, and ${r3} to be equal. Got orders of ${o1}, ${o2}, {o3}.`;
+        }
 
-        -- functions that do not output qat must otherwise return nil
-        return nil
-    end
+        return ();
+    }
 
-    function validate_same_orders(...)
-        local args = {...}
-        local first = order_of_reg(args[1])
-
-        for i = 2, #args do
-            if order_of_reg(args[i]) ~= first then
-                error("Arguments are not all the same value")
-            end
-        end
-
-        return nil
-    end
-
-    function subtract_order_relative(r1, n)
-        return { { "add", r1, order_of_reg(r1) - n } }
-    end
-end-lua
+    fn subtract_order_relative(r1, n) {
+        return [ [ "add", r1, (-n) % r1.order() ] ];
+    }
+end-rhai
 
 .macro sub {
-    ($R:reg $N:int) => lua subtract_order_relative($R, $N)
+    ($R:reg $N:int) => rhai subtract_order_relative($R, $N)
 }
 
 .macro inc {
@@ -125,7 +110,7 @@ end-lua
         }
     }
     (equals $R1:reg $R2:reg using $R3:reg $code:block) => {
-            lua validate_equals_order($R1, $R2, $R3)
+            rhai validate_equals_order($R1, $R2, $R3)
             set $R3 to 0
         equals_loop:
             solved-goto $R1 first_zero
@@ -153,7 +138,7 @@ end-lua
         fail:
     }
     (not-equals $R1:reg $R2:reg using $R3:reg $code:block) => {
-            lua validate_equals_order($R1, $R2, $R3)
+            rhai validate_equals_order($R1, $R2, $R3)
             set $R3 to 0
         equals_loop:
             solved-goto $R1 first_zero
@@ -257,46 +242,49 @@ end-lua
     }
 }
 
-.start-lua
-    -- `repeat` is a lua keyword
-    function repeat_(code, start, end_, var)
-        local output = {}
+.start-rhai
+    fn repeat(code, start, end) {
+        repeat(code, start, end, ())
+    }
 
-        for i = start, end_ do
-            if var ~= nil then
-                output[#output + 1] = { ".define", "$" .. var, i }
-            end
-            output[#output + 1] = { code }
-        end
+    fn repeat(code, start, end, name) {
+        let output = [];
 
-        return output
-    end
-end-lua
+        for i in range(start, end) {
+            if name != () {
+                output.push([ ".define", `\$${name}`, i ]);
+            }
+            output.extend(code);
+        }
+
+        return output;
+    }
+end-rhai
 
 .macro repeat {
-    ($times:int $code:block) => lua repeat_($code, 1, $times)
+    ($times:int $code:block) => rhai repeat_($code, 1, $times)
 
-    ($times:int $var:ident $code:block) => lua repeat_($code, 1, $times, $var)
+    ($times:int $var:ident $code:block) => rhai repeat_($code, 1, $times, $var)
 
     -- should parse nested for loops such as `repeat j from $i to 10 { ... }`
     -- because the outer $i should be evaluated first
     ($var:ident from $start:int to $end:int $code:block) => {
-        lua repeat_($code, $start, $end, $var)
+        rhai repeat_($code, $start, $end, $var)
     }
 }
 
-.start-lua
-    function multiply(r1, r2, r3)
-        validate_same_orders(r1, r2, r3)
-        local output = {}
-        -- TODO: Implement multiplication. Result in register r1, nullify r2/r3
-        return output
-    end
-end-lua
+.start-rhai
+    fn multiply(r1, r2, r3) {
+        validate_same_orders(r1, r2, r3);
+        // TODO: Implement multiplication. Result in register r1, nullify r2/r3
+
+        throw "Three register multiplication is unimplemented";
+    }
+end-rhai
 
 .macro multiply {
     ($R1:reg $R2:reg using $R3:reg) => {
-        lua multiply($R1, $R2, $R3)
+        rhai multiply($R1, $R2, $R3)
     }
     ($R1:reg $N:int at $R2:reg) => {
         multiply_loop:

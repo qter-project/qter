@@ -77,6 +77,7 @@
 - ⭐QAT Macros
   - ⭐Actual expansion
   - ⭐Lua stuff
+- 😎Translate QAT comments into Q
 - ⭐Memory tapes
   - ⭐Implement in QAT
 - Dynamically shuffle sub-cycles with syntax X ← A\*B\*C\*D, Y ← E\*F\*G\*H

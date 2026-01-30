@@ -187,7 +187,7 @@ fn expand_block(
                         }
                     }
                 }
-                Instruction::LuaCall(_) => todo!(),
+                Instruction::RhaiCall(_) => todo!(),
             }
         })
         .partition_map::<Vec<_>, Vec<_>, _, _, _>(|res| match res {

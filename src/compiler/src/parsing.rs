@@ -1,10 +1,10 @@
 use crate::{
-    Block, BlockInfo, BlockInfoTracker, Code, Define, DefineValue, ExpansionInfo, Label, LuaCall,
+    Block, BlockInfo, BlockInfoTracker, Code, Define, DefineValue, ExpansionInfo, Label, RhaiCall,
     MacroArgTy, MacroBranch, MacroPattern, MacroPatternComponent, ResolvedValue, Value,
-    builtin_macros::builtin_macros, lua::LuaMacros,
+    builtin_macros::builtin_macros, rhai::RhaiMacros,
 };
 use std::{
-    cell::LazyCell, collections::HashMap, rc::Rc, sync::{Arc, OnceLock}
+    collections::HashMap, rc::Rc, sync::{Arc, OnceLock}
 };
 
 use chumsky::{
@@ -28,7 +28,7 @@ use crate::{BlockID, Macro, ParsedSyntax, Puzzle, RegistersDecl};
 use super::Instruction;
 
 thread_local! {
-    static PRELUDE: LazyCell<ParsedSyntax> = LazyCell::new(|| {
+    static PRELUDE: ParsedSyntax = {
         let prelude = File::from(include_str!("../../qter_core/prelude.qat"));
 
         let mut parsed_prelude = match parse(
@@ -43,6 +43,10 @@ thread_local! {
             Ok(v) => v,
             Err(errs) => {
                 for err in &errs {
+                    for (ctx, span) in err.contexts() {
+                        println!("{span} {ctx}");
+                    }
+                    
                     println!(
                         "{err}; {:?}; `{}`",
                         err.span().line_and_col(),
@@ -67,7 +71,7 @@ thread_local! {
         parsed_prelude.expansion_info.macros.extend(builtin_macros);
 
         parsed_prelude
-    });
+    };
 }
 
 type ExtraAndSyntax = Full<
@@ -106,13 +110,16 @@ type ExtraAndState<S> = Full<Rich<'static, char, Span>, S, ()>;
 
 fn parser() -> impl Parser<'static, File, MaybeErr<ParsedSyntax>, ExtraAndSyntax> {
     group((
+        nlm(),
         shebang().or_not(),
+        nlm(),
         registers()
             .with_state(())
             .map_with(|regs, data: &mut MapExtra<'_, '_, File, ExtraAndSyntax>| {
                 data.span().with(regs)
             })
             .or_not(),
+        nlm(),
         statement()
             .with_state(())
             .separated_by(nl())
@@ -120,12 +127,10 @@ fn parser() -> impl Parser<'static, File, MaybeErr<ParsedSyntax>, ExtraAndSyntax
             .collect::<Vec<_>>(),
         nlm(),
     ))
-    .validate(|(_, regs, statements, ()), data, emitter| {
+    .validate(|((), _, (), regs, (), statements, ()), data, emitter| {
         let qat = data.span().source();
 
-        let zero_span = Span::new(data.span().source(), 0, 0);
-
-        let lua_macros = LuaMacros::new();
+        let mut rhai_macros = RhaiMacros::new();
 
         let expansion_info = ExpansionInfo {
             registers: match regs {
@@ -141,7 +146,7 @@ fn parser() -> impl Parser<'static, File, MaybeErr<ParsedSyntax>, ExtraAndSyntax
             },
             macros: HashMap::new(),
             available_macros: HashMap::new(),
-            lua_macros: HashMap::new(),
+            rhai_macros: HashMap::new(),
         };
 
         let code = Vec::new();
@@ -156,7 +161,7 @@ fn parser() -> impl Parser<'static, File, MaybeErr<ParsedSyntax>, ExtraAndSyntax
             merge_files(
                 &mut parsed_syntax,
                 &qat,
-                PRELUDE.with(|v| (**v).clone()),
+                PRELUDE.with(|v| (*v).clone()),
                 data.span(),
                 emitter,
             );
@@ -191,10 +196,10 @@ fn parser() -> impl Parser<'static, File, MaybeErr<ParsedSyntax>, ExtraAndSyntax
                         .code
                         .push(instr.map(|instr| (instr, Some(BlockID(0)))));
                 }
-                Statement::LuaBlock(lua) => {
-                    // if let Err(e) = lua_macros.add_code(lua.slice()) {
-                    //     emitter.emit(Rich::custom(data.span(), e.to_string()));
-                    // }
+                Statement::RhaiBlock(rhai) => {
+                    if let Err(e) = rhai_macros.add_code(rhai.slice()) {
+                        emitter.emit(Rich::custom(data.span(), e.to_string()));
+                    }
                 }
                 Statement::Import(filename) => {
                     let state_ref = &data.state().0;
@@ -233,8 +238,8 @@ fn parser() -> impl Parser<'static, File, MaybeErr<ParsedSyntax>, ExtraAndSyntax
 
         parsed_syntax
             .expansion_info
-            .lua_macros
-            .insert(data.span().source(), lua_macros);
+            .rhai_macros
+            .insert(data.span().source(), rhai_macros);
 
         parsed_syntax.expansion_info.block_info.blocks.insert(
             BlockID(0),
@@ -356,7 +361,7 @@ fn simple_ident<S: Inspector<'static, File> + 'static>()
             .at_least(1)
             .to_span()
             .filter(|span: &Span| {
-                span.slice().chars().any(|c| !c.is_ascii_digit()) && span.slice() != "lua"
+                span.slice().chars().any(|c| !c.is_ascii_digit()) && span.slice() != "rhai"
             }),
         |v| WithSpan::new(ArcIntern::from(v.slice()), v),
     )
@@ -588,7 +593,7 @@ enum Statement {
         def: WithSpan<Macro>,
     },
     Instruction(WithSpan<Instruction>),
-    LuaBlock(Span),
+    RhaiBlock(Span),
     Import(Span),
 }
 
@@ -599,7 +604,7 @@ fn statement() -> impl Parser<'static, File, MaybeErr<Statement>, Extra> {
     choice((
         parse_macro(block_rec.clone()).map(|v| v.map(|(name, def)| Statement::Macro { name, def })),
         instruction(block_rec).map(|instr| instr.map(Statement::Instruction)),
-        lua_block().map(|v| MaybeErr::Some(Statement::LuaBlock(v))),
+        rhai_block().map(|v| MaybeErr::Some(Statement::RhaiBlock(v))),
         import().map(|v| v.map(Statement::Import)),
     ))
 }
@@ -725,7 +730,7 @@ fn instruction(
         label().map(MaybeErr::Some),
         code(block_rec.clone()),
         constant().map(|v| MaybeErr::Some(v.span().clone().with(Instruction::Constant(v.value)))),
-        lua_call(block_rec.clone()).map(|v| v.map(|v| v.map(Instruction::LuaCall))),
+        rhai_call(block_rec.clone()).map(|v| v.map(|v| v.map(Instruction::RhaiCall))),
         define(block_rec),
     ))
 }
@@ -764,11 +769,11 @@ fn code(
     })
 }
 
-fn lua_call(
+fn rhai_call(
     block_rec: BlockParser,
-) -> impl Parser<'static, File, MaybeErr<WithSpan<LuaCall>>, Extra> {
+) -> impl Parser<'static, File, MaybeErr<WithSpan<RhaiCall>>, Extra> {
     group((
-        just("lua"),
+        just("rhai"),
         req_whitespace(),
         ident(),
         whitespace(),
@@ -779,7 +784,7 @@ fn lua_call(
     ))
     .map_with(|(_, (), name, (), args), data| {
         args.map(|args| {
-            data.span().with(LuaCall {
+            data.span().with(RhaiCall {
                 function_name: name,
                 args,
             })
@@ -796,7 +801,7 @@ fn define(
         ident(),
         req_whitespace(),
         choice((
-            lua_call(block_rec.clone()).map(|v| v.map(DefineValue::LuaCall)),
+            rhai_call(block_rec.clone()).map(|v| v.map(DefineValue::RhaiCall)),
             value(block_rec).map(|v| v.map(DefineValue::Value)),
         )),
     ))
@@ -808,11 +813,11 @@ fn define(
     })
 }
 
-fn lua_block() -> impl Parser<'static, File, Span, Extra> {
+fn rhai_block() -> impl Parser<'static, File, Span, Extra> {
     group((
-        just(".start-lua"),
-        group((just("end-lua").not(), any())).repeated().to_span(),
-        just("end-lua"),
+        just(".start-rhai"),
+        group((just("end-rhai").not(), any())).repeated().to_span(),
+        just("end-rhai"),
     ))
     .map(|(_, span, _)| span)
 }
@@ -910,8 +915,8 @@ fn merge_files(
     }
     importer
         .expansion_info
-        .lua_macros
-        .extend(importee.expansion_info.lua_macros);
+        .rhai_macros
+        .extend(importee.expansion_info.rhai_macros);
 
     importee.code.iter_mut().for_each(|tagged_instruction| {
         if let Some(block_id) = &mut tagged_instruction.1 {
@@ -947,13 +952,13 @@ mod tests {
         ident::<()>().parse(File::from("A")).unwrap();
         ident::<()>().parse(File::from("3x3")).unwrap();
         ident::<()>().parse(File::from("thingy")).unwrap();
-        ident::<()>().parse(File::from("pluah")).unwrap();
+        ident::<()>().parse(File::from("prhaih")).unwrap();
         ident::<()>().parse(File::from("->")).unwrap();
         ident::<()>().parse(File::from("\"345\"")).unwrap();
-        ident::<()>().parse(File::from("\"lua\"")).unwrap();
+        ident::<()>().parse(File::from("\"rhai\"")).unwrap();
 
         assert!(ident::<()>().parse(File::from("345")).has_errors());
-        assert!(ident::<()>().parse(File::from("lua")).has_errors());
+        assert!(ident::<()>().parse(File::from("rhai")).has_errors());
         assert!(ident::<()>().parse(File::from("thing<-thing")).has_errors());
         assert!(ident::<()>().parse(File::from("aa.aa")).has_errors());
         assert!(ident::<()>().parse(File::from("!aaaa")).has_errors());
@@ -1005,20 +1010,20 @@ mod tests {
                 }
             }
 
-            .start-lua
-                function bruh()
+            .start-rhai
+                fn bruh() {
                     print(\"skibidi\")
-                end
-            end-lua
+                }
+            end-rhai
 
             bruh :
             bruhy:
             add 1 a
             goto bruh
 
-            lua bruh( 1,2 , 3)
+            rhai bruh( 1,2 , 3)
 
-            .define yeet lua bruh(1, 2, 3)
+            .define yeet rhai bruh(1, 2, 3)
             .define pog 4
 
             .import pog.qat
