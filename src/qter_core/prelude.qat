@@ -161,7 +161,7 @@ end-rhai
             inc $R2
             dec $R3
             goto success_loop
-        -- Only change is to swap these two labels
+        // Only change is to swap these two labels
         fail:
             $code
         success:
@@ -266,8 +266,8 @@ end-rhai
 
     ($times:int $var:ident $code:block) => rhai repeat_($code, 1, $times, $var)
 
-    -- should parse nested for loops such as `repeat j from $i to 10 { ... }`
-    -- because the outer $i should be evaluated first
+    // should parse nested for loops such as `repeat j from $i to 10 { ... }`
+    // because the outer $i should be evaluated first
     ($var:ident from $start:int to $end:int $code:block) => {
         rhai repeat_($code, $start, $end, $var)
     }

@@ -268,9 +268,9 @@ fn req_whitespace<S: Inspector<'static, File> + 'static>()
     choice((
         just(' ').to(()),
         just('\t').to(()),
-        group((just("]]--").not(), any()))
+        group((just("*/").not(), any()))
             .repeated()
-            .delimited_by(just("--[["), just("]]--"))
+            .delimited_by(just("/*"), just("*/"))
             .to(()),
     ))
     .repeated()
@@ -286,7 +286,7 @@ fn line_comment<S: Inspector<'static, File> + 'static>()
 -> impl Parser<'static, File, (), ExtraAndState<S>> {
     group((just('\n').not(), any()))
         .repeated()
-        .delimited_by(just("--"), just('\n'))
+        .delimited_by(just("//"), just('\n'))
         .to(())
 }
 
@@ -343,7 +343,8 @@ fn simple_ident<S: Inspector<'static, File> + 'static>()
         just('.').to(()),
         just(':').to(()),
         just('$').to(()),
-        just("--").to(()),
+        just("/").to(()),
+        just("*").to(()),
         just(',').to(()),
         just("<-").to(()),
         just('←').to(()),
