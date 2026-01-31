@@ -3,7 +3,16 @@
     B, A ← 3x3 builtin (24, 210)
 }
 
+.start-rhai
+    fn get(reg) {
+        return reg.order - 1;
+    }
+end-rhai
+
 .define MOD 13
+
+.define SUBA rhai get(A)
+.define SUBB rhai get(B)
 
 input "Number to modulus:" A
 
@@ -14,13 +23,13 @@ add B $MOD
 
 while not-solved A {
     solved-goto B loop
-    add A 209
-    add B 23
+    add A $SUBA
+    add B $SUBB
 }
 
 while not-solved B {
-    add A 209
-    add B 23
+    add A $SUBA
+    add B $SUBB
 }
 
 add A $MOD

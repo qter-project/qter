@@ -1,9 +1,15 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, sync::OnceLock};
 
-use puzzle_theory::numbers::{I, Int};
-use rhai::{AST, CustomType, Engine, ParseError, Scope};
+use chumsky::error::Rich;
+use internment::ArcIntern;
+use itertools::Itertools;
+use puzzle_theory::{
+    numbers::{I, Int, U},
+    span::{Span, WithSpan},
+};
+use rhai::{AST, CustomType, Dynamic, Engine, ImmutableString, ParseError, Scope};
 
-use crate::RegisterInfo;
+use crate::{BlockID, ExpansionInfo, RegisterInfo, ResolvedValue};
 
 thread_local! {
     static ENGINE: Engine = {
@@ -62,9 +68,9 @@ impl CustomType for W<RegisterInfo> {
         builder
             .with_name("Register")
             .on_print(|v| v.0.0.to_string())
-            .with_get("order", |v: &mut W<RegisterInfo>| v.0.1.order)
+            .with_get("order", |v: &mut W<RegisterInfo>| W(Int::<I>::from(v.0.1.order)))
             .with_get("name", |v: &mut W<RegisterInfo>| {
-                (**v.0.0.reg_name).to_owned()
+                ImmutableString::from(&**v.0.0.reg_name)
             });
     }
 }
@@ -72,7 +78,6 @@ impl CustomType for W<RegisterInfo> {
 #[derive(Clone)]
 pub struct RhaiMacros {
     rhai_ast: AST,
-    scope: Scope<'static>,
 }
 
 impl Debug for RhaiMacros {
@@ -85,7 +90,6 @@ impl RhaiMacros {
     pub fn new() -> RhaiMacros {
         RhaiMacros {
             rhai_ast: AST::empty(),
-            scope: Scope::new(),
         }
     }
 
@@ -97,17 +101,100 @@ impl RhaiMacros {
         Ok(())
     }
 
-    // fn do_lua_call(&self, span: Span, name: &str, args: Vec<WithSpan<ResolvedValue>>) -> Result<ResolvedValue, Vec<Rich<'static, char, Span>>> {
-    //     self.lua_vm
+    pub fn do_rhai_call(
+        &self,
+        name: &str,
+        args: Vec<WithSpan<ResolvedValue>>,
+        span: Span,
+        block_id: BlockID,
+        info: &ExpansionInfo,
+    ) -> Result<ResolvedValue, Vec<Rich<'static, char, Span>>> {
+        let args = args.into_iter().map(|v| into_rhai(v.into_inner(), info)).collect_vec();
 
-    //     todo!()
-    // }
+        let result = ENGINE.with(|engine| {
+            let mut scope = Scope::new();
+            engine.call_fn::<Dynamic>(&mut scope, &self.rhai_ast, name, args)
+        });
+
+        let value = match result {
+            Ok(v) => v,
+            Err(e) => return Err(vec![Rich::custom(span, e)]),
+        };
+
+        from_rhai(value, span.clone()).map_err(|v| vec![Rich::custom(span, v)])
+    }
+}
+
+fn into_rhai(arg: ResolvedValue, info: &ExpansionInfo) -> Dynamic {
+    match arg {
+        ResolvedValue::Int(int) => Dynamic::from(W(int)),
+        ResolvedValue::Ident {
+            ref ident,
+            as_reg: _,
+        } => match arg.as_reg(info) {
+            Some(Ok(reg)) => Dynamic::from(W(reg.to_owned())),
+            Some(Err(_)) | None => {
+                let str = ImmutableString::from(&***ident);
+                Dynamic::from(str)
+            }
+        },
+        ResolvedValue::Block(block) => {
+            todo!()
+        }
+    }
+}
+
+fn from_rhai(value: Dynamic, span: Span) -> Result<ResolvedValue, String> {
+    if let Ok(int) = value.as_int() {
+        let Ok(v) = u64::try_from(int) else {
+            return Err(format!("Integer values must be positive. Found {int}"));
+        };
+
+        return Ok(ResolvedValue::Int(Int::<U>::from(v)));
+    }
+
+    let value = match value.try_cast_result::<W<Int<I>>>() {
+        Ok(W(int)) => {
+            if int < Int::<I>::zero() {
+                return Err(format!("Integer values must be positive. Found {int}"));
+            }
+
+            return Ok(ResolvedValue::Int(int.abs()));
+        }
+        Err(v) => v,
+    };
+
+    let value = match value.try_cast_result::<ImmutableString>() {
+        Ok(str) => {
+            return Ok(ResolvedValue::Ident {
+                ident: span.with(ArcIntern::from(&*str)),
+                as_reg: OnceLock::new(),
+            });
+        }
+        Err(v) => v,
+    };
+
+    let value = match value.try_cast_result::<W<RegisterInfo>>() {
+        Ok(W(str)) => {
+            let span = str.0.reg_name.span().clone();
+
+            return Ok(ResolvedValue::Ident {
+                ident: span.with(ArcIntern::from(str.0.to_string())),
+                as_reg: OnceLock::new(),
+            });
+        }
+        Err(v) => v,
+    };
+
+    Err(format!(
+        "Unable to interpret `{value}` as a positive integer, identifier, register, or code block."
+    ))
 }
 
 #[cfg(test)]
 mod tests {
     use puzzle_theory::numbers::{I, Int};
-    use rhai::Dynamic;
+    use rhai::{Dynamic, Scope};
 
     use crate::rhai::{ENGINE, W};
 
@@ -147,8 +234,9 @@ mod tests {
             .unwrap();
 
         ENGINE.with(|v| {
+            let mut scope = Scope::new();
             assert!(
-                v.call_fn::<Dynamic>(&mut rhai_vm.scope, &rhai_vm.rhai_ast, "fail", ())
+                v.call_fn::<Dynamic>(&mut scope, &rhai_vm.rhai_ast, "fail", ())
                     .is_err()
             );
         });
@@ -159,8 +247,9 @@ mod tests {
         let tenth_too_big = W(too_big0 * too_big0 / Int::<I>::from(10));
 
         ENGINE.with(|v| {
+            let mut scope = Scope::new();
             let status = v.call_fn::<Dynamic>(
-                &mut rhai_vm.scope,
+                &mut scope,
                 &rhai_vm.rhai_ast,
                 "test",
                 (zero, too_big, tenth_too_big),

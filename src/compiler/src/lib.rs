@@ -12,23 +12,24 @@ use std::{
 
 use chumsky::error::Rich;
 use internment::ArcIntern;
-use rhai::RhaiMacros;
+use itertools::{Either, Itertools};
 use parsing::parse;
 use puzzle_theory::{
     numbers::{Int, ParseIntError, U},
     span::{File, Span, WithSpan},
 };
 use qter_core::{Program, architectures::Architecture};
+use rhai::RhaiMacros;
 use strip_expanded::strip_expanded;
 
 use crate::macro_expansion::expand;
 
 mod builtin_macros;
-mod rhai;
 mod macro_expansion;
 mod optimization;
 mod parsing;
 pub mod q_emitter;
+mod rhai;
 mod strip_expanded;
 
 /// Compiles a QAT program into a Q program while returning the register architecture used.
@@ -194,6 +195,38 @@ enum Code {
 struct RhaiCall {
     function_name: WithSpan<ArcIntern<str>>,
     args: Vec<WithSpan<Value>>,
+}
+
+impl RhaiCall {
+    fn perform(
+        self,
+        span: Span,
+        info: &ExpansionInfo,
+        block_id: BlockID,
+    ) -> Result<WithSpan<ResolvedValue>, Vec<Rich<'static, char, Span>>> {
+        let (args, errs) = self
+            .args
+            .into_iter()
+            .map(|value| info.resolve(DefineValue::Value(value), block_id))
+            .flat_map(|v| match v {
+                Ok(v) => vec![Ok(v)],
+                Err(errs) => errs.into_iter().map(Err).collect_vec(),
+            })
+            .partition_map::<Vec<_>, Vec<_>, _, _, _>(|res| match res {
+                Ok(v) => Either::Left(v),
+                Err(e) => Either::Right(e),
+            });
+
+        if !errs.is_empty() {
+            return Err(errs);
+        }
+
+        let rhai = info.rhai_macros.get(&span.source()).unwrap();
+
+        let result = rhai.do_rhai_call(&self.function_name, args, span.clone(), block_id, info)?;
+
+        Ok(span.with(result))
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -438,7 +471,7 @@ impl RegistersDecl {
         None
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn puzzles(&self) -> &[Puzzle] {
         &self.puzzles
     }
@@ -586,7 +619,10 @@ impl ExpansionInfo {
 
                 Ok(span.with(resolved))
             }
-            DefineValue::RhaiCall(_) => todo!(),
+            DefineValue::RhaiCall(call) => {
+                let span = call.span().clone();
+                call.into_inner().perform(span, self, block_id)
+            }
         }
     }
 }

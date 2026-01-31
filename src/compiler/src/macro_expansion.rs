@@ -158,7 +158,10 @@ fn expand_block(
                                 span,
                                 "Expected a code block, found an integer",
                             ))],
-                            ResolvedValue::Ident { ident: _, as_reg: _ } => vec![Err(Rich::custom(
+                            ResolvedValue::Ident {
+                                ident: _,
+                                as_reg: _,
+                            } => vec![Err(Rich::custom(
                                 span,
                                 "Expected a code block, found an identifier",
                             ))],
@@ -187,7 +190,18 @@ fn expand_block(
                         }
                     }
                 }
-                Instruction::RhaiCall(_) => todo!(),
+                Instruction::RhaiCall(call) => {
+                    let value = match call.perform(span.clone(), expansion_info, block_id) {
+                        Ok(v) => v,
+                        Err(errs) => return errs.into_iter().map(Err).collect_vec(),
+                    };
+
+                    match value.into_inner() {
+                        ResolvedValue::Int(_) => vec![Err(Rich::custom(span, "Expected the macro to return a code block; actually returned an integer"))],
+                        ResolvedValue::Ident { ident: _, as_reg: _ } => vec![Err(Rich::custom(span, "Expected the macro to return a code block; actually returned an identifier"))],
+                        ResolvedValue::Block(block) => block.code.into_iter().map(Ok).collect_vec(),
+                    }
+                }
             }
         })
         .partition_map::<Vec<_>, Vec<_>, _, _, _>(|res| match res {
@@ -264,7 +278,7 @@ fn expand_code(
             }
 
             for branch in branches {
-                let defines = match branch.pattern.matches(args, &expansion_info) {
+                let defines = match branch.pattern.matches(args, expansion_info) {
                     Ok(v) => v,
                     Err(returned_args) => {
                         args = returned_args;
