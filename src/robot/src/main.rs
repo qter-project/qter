@@ -93,12 +93,12 @@ async fn main() -> color_eyre::Result<()> {
             robot_handle.queue_move_seq(
                 &Algorithm::parse_from_string(Arc::clone(&CUBE3), &sequence)
                     .expect("The algorithm is invalid"),
-            );
-            robot_handle.await_moves();
+            )?;
+            robot_handle.await_moves()?.await?;
         }
         Commands::Motor { face } => {
             let mut robot_handle = RobotHandle::init(robot_config);
-            robot_handle.loop_face_turn(face);
+            robot_handle.loop_face_turn(face).await?;
         }
         Commands::Float => {
             robot::hardware::float(&robot_config);
@@ -157,8 +157,8 @@ async fn main() -> color_eyre::Result<()> {
             let alg = solve_rob_twophase_string(&rob_twophase_string).unwrap();
 
             let mut robot_handle = RobotHandle::init(robot_config);
-            robot_handle.queue_move_seq(&alg);
-            robot_handle.await_moves();
+            robot_handle.queue_move_seq(&alg)?;
+            robot_handle.await_moves()?.await?;
         }
     }
 

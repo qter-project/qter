@@ -262,14 +262,14 @@ end-rhai
 end-rhai
 
 .macro repeat {
-    ($times:int $code:block) => rhai repeat_($code, 1, $times)
+    ($times:int $code:block) => rhai repeat($code, 1, $times)
 
-    ($times:int $var:ident $code:block) => rhai repeat_($code, 1, $times, $var)
+    ($times:int $var:ident $code:block) => rhai repeat($code, 1, $times, $var)
 
     // should parse nested for loops such as `repeat j from $i to 10 { ... }`
     // because the outer $i should be evaluated first
     ($var:ident from $start:int to $end:int $code:block) => {
-        rhai repeat_($code, $start, $end, $var)
+        rhai repeat($code, $start, $end, $var)
     }
 }
 

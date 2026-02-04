@@ -1,5 +1,4 @@
 use clap::ValueEnum;
-use crossbeam::sync::{Parker, Unparker};
 use log::{debug, info};
 use puzzle_theory::permutations::Algorithm;
 use std::{
@@ -15,6 +14,7 @@ use thread_priority::{
     set_thread_priority_and_policy, thread_native_id,
     unix::{ThreadSchedulePolicy, set_current_thread_priority},
 };
+use tokio::sync::oneshot;
 
 use crate::hardware::{
     config::{Face, Priority, RobotConfig},
@@ -32,9 +32,61 @@ pub mod uart;
 pub const FULLSTEPS_PER_REVOLUTION: u32 = 200;
 pub const FULLSTEPS_PER_QUARTER: u32 = FULLSTEPS_PER_REVOLUTION / 4;
 
+#[derive(Debug, Clone, Copy)]
+pub enum ErrorKind {
+    MotorThreadDied,
+    // TODO: IMPLEMENT!!!!!
+    OverTemperature,
+}
+
+impl Display for ErrorKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                ErrorKind::MotorThreadDied => "MotorThreadDied",
+                ErrorKind::OverTemperature => "OverTemperature",
+            }
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MotorError {
+    kind: ErrorKind,
+    message: String,
+}
+
+impl Display for MotorError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{ kind: {}, message: {} }}", self.kind, self.message)
+    }
+}
+
+impl core::error::Error for MotorError {}
+
+impl From<oneshot::error::RecvError> for MotorError {
+    fn from(value: oneshot::error::RecvError) -> Self {
+        MotorError {
+            kind: ErrorKind::MotorThreadDied,
+            message: value.to_string(),
+        }
+    }
+}
+
+impl<T> From<mpsc::SendError<T>> for MotorError {
+    fn from(value: mpsc::SendError<T>) -> Self {
+        MotorError {
+            kind: ErrorKind::MotorThreadDied,
+            message: value.to_string(),
+        }
+    }
+}
+
 enum MotorMessage {
     QueueMove((Face, Dir)),
-    PrevMovesDone(Unparker),
+    PrevMovesDone(oneshot::Sender<Result<(), MotorError>>),
 }
 
 pub struct RobotHandle {
@@ -64,17 +116,16 @@ impl RobotHandle {
         &self.config
     }
 
-    pub fn loop_face_turn(&mut self, face: Face) {
+    pub async fn loop_face_turn(&mut self, face: Face) -> Result<(), MotorError> {
         loop {
             self.motor_thread_handle
-                .send(MotorMessage::QueueMove((face, Dir::Normal)))
-                .unwrap();
-            self.await_moves();
+                .send(MotorMessage::QueueMove((face, Dir::Normal)))?;
+            self.await_moves()?.await?;
         }
     }
 
     /// Queue a sequence of moves to be performed by the robot
-    pub fn queue_move_seq(&mut self, alg: &Algorithm) {
+    pub fn queue_move_seq(&mut self, alg: &Algorithm) -> Result<(), MotorError> {
         for move_ in alg.move_seq_iter() {
             let mut move_ = &**move_;
             let dir = if let Some(rest) = move_.strip_suffix('\'') {
@@ -90,20 +141,20 @@ impl RobotHandle {
             let face: Face = move_.parse().expect("invalid move: {move_}");
 
             self.motor_thread_handle
-                .send(MotorMessage::QueueMove((face, dir)))
-                .unwrap();
+                .send(MotorMessage::QueueMove((face, dir)))?;
         }
+
+        Ok(())
     }
 
     /// Wait for all moves in the queue to be performed
-    pub fn await_moves(&self) {
-        let parker = Parker::new();
+    pub fn await_moves(&self) -> Result<impl Future<Output = Result<(), MotorError>> + 'static, MotorError> {
+        let (tx, rx) = oneshot::channel();
 
         self.motor_thread_handle
-            .send(MotorMessage::PrevMovesDone(parker.unparker().clone()))
-            .unwrap();
+            .send(MotorMessage::PrevMovesDone(tx))?;
 
-        parker.park();
+        Ok(async { rx.await? })
     }
 }
 
@@ -263,14 +314,14 @@ fn motor_thread(rx: mpsc::Receiver<MotorMessage>, robot_config: RobotConfig) {
     let mut fsm = CommutativeMoveFsm::new();
 
     // Unparkers from after the previously executed move
-    let mut unparkers = Vec::<Unparker>::new();
+    let mut unparkers = Vec::<oneshot::Sender<Result<(), MotorError>>>::new();
 
     let iter = from_fn(move || {
         const SHORT_TIMEOUT: Duration = Duration::from_millis(50);
         const NO_TIMEOUT: Duration = Duration::MAX;
 
         for unparker in unparkers.drain(..) {
-            unparker.unpark();
+            let _ = unparker.send(Ok(()));
         }
 
         let mut timeout = SHORT_TIMEOUT;
@@ -284,11 +335,11 @@ fn motor_thread(rx: mpsc::Receiver<MotorMessage>, robot_config: RobotConfig) {
                         return Some(instr);
                     }
                 }
-                Ok(MotorMessage::PrevMovesDone(unparker)) => {
+                Ok(MotorMessage::PrevMovesDone(signal)) => {
                     if fsm.is_empty() {
-                        unparker.unpark();
+                        let _ = signal.send(Ok(()));
                     } else {
-                        unparkers.push(unparker);
+                        unparkers.push(signal);
                     }
                 }
                 Err(RecvTimeoutError::Timeout) => {

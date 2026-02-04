@@ -1,12 +1,16 @@
 #![feature(gen_blocks)]
 
-use crate::{hardware::RobotHandle, qvis_app::QvisAppHandle, rob_twophase::solve_rob_twophase};
+use crate::{
+    hardware::{MotorError, RobotHandle},
+    qvis_app::QvisAppHandle,
+    rob_twophase::solve_rob_twophase,
+};
 use interpreter::puzzle_states::RobotLike;
 use puzzle_theory::{
     permutations::{Algorithm, Permutation, PermutationGroup},
     puzzle_geometry::parsing::puzzle,
 };
-use std::{convert::Infallible, sync::{Arc, LazyLock}};
+use std::sync::{Arc, LazyLock};
 
 pub mod hardware;
 pub mod qvis_app;
@@ -25,7 +29,7 @@ pub struct QterRobot {
 impl RobotLike for QterRobot {
     type InitializationArgs = (RobotHandle, QvisAppHandle);
     // TODO: Overtemperature warning, comms issue with the phone camera
-    type Error = Infallible;
+    type Error = MotorError;
 
     async fn initialize(
         _: Arc<PermutationGroup>,
@@ -42,15 +46,16 @@ impl RobotLike for QterRobot {
     async fn compose_into(&mut self, alg: &Algorithm) -> Result<(), Self::Error> {
         self.simulated_state.compose_into(alg.permutation());
 
-        self.robot_handle.queue_move_seq(alg);
+        self.robot_handle.queue_move_seq(alg)?;
         self.cached_picture_state.take();
 
         Ok(())
     }
 
     async fn take_picture(&mut self) -> Result<&Permutation, Self::Error> {
-        Ok(self.cached_picture_state.get_or_insert_with(|| {
-            self.robot_handle.await_moves();
+        // Refactor once polonius exists
+        if self.cached_picture_state.is_none() {
+            self.robot_handle.await_moves()?.await?;
 
             let ret = self.qvis_app_handle.take_picture();
             assert_eq!(
@@ -58,8 +63,10 @@ impl RobotLike for QterRobot {
                 "Simulated state does not match actual state."
             );
 
-            ret
-        }))
+            self.cached_picture_state = Some(ret);
+        }
+
+        Ok(self.cached_picture_state.as_ref().unwrap())
     }
 
     async fn solve(&mut self) -> Result<(), Self::Error> {

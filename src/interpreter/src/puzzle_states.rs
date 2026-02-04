@@ -116,6 +116,11 @@ pub trait RobotLike {
     /// Perform an algorithm on the puzzle
     async fn compose_into(&mut self, alg: &Algorithm) -> Result<(), Self::Error>;
 
+    // Wait for all queued moves to finish. Returns a oneshot that will be triggered either when all previously queued moves are finished, or
+    // async fn await_moves(
+    //     &mut self,
+    // ) -> Result<impl Future<Output = Result<(), Self::Error>>, Self::Error>;
+
     /// Return the puzzle state as a permutation
     async fn take_picture(&mut self) -> Result<&Permutation, Self::Error>;
 
