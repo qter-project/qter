@@ -16,13 +16,13 @@ use robot::{
     qvis_app::QvisAppHandle,
     rob_twophase::solve_rob_twophase_string,
 };
-use tokio::{io::BufReader, net::TcpListener};
 use std::{
     path::PathBuf,
     sync::Arc,
     thread,
     time::{Duration, Instant},
 };
+use tokio::{io::BufReader, net::TcpListener};
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -60,7 +60,6 @@ enum Commands {
     /// Host a server to allow the robot to be remote-controlled
     Server {
         server_port: u16,
-        qvis_app_port: u16,
     },
     Solve {
         rob_twophase_string: String,
@@ -132,23 +131,27 @@ async fn main() -> color_eyre::Result<()> {
                 println!("Top 5 = {:?}", &latencies[SAMPLES - 5..SAMPLES]);
             }
         }
-        Commands::Server {
-            server_port,
-            qvis_app_port,
-        } => {
+        Commands::Server { server_port } => {
             let listener = TcpListener::bind(format!("0.0.0.0:{server_port}")).await?;
 
             let robot_handle = RobotHandle::init(robot_config);
-            let qvis_app_handle = QvisAppHandle::init(qvis_app_port);
-            let group = puzzle("3x3").permutation_group();
-            let mut robot =
-                QterRobot::initialize(Arc::clone(&group), (robot_handle, qvis_app_handle)).await?;
+            let qvis_app_handle = QvisAppHandle::init();
+            let cube3_permutation_group = puzzle("3x3").permutation_group();
+            let mut robot = QterRobot::initialize(
+                Arc::clone(&cube3_permutation_group),
+                (robot_handle, qvis_app_handle),
+            )
+            .await?;
 
             loop {
                 let (socket, _) = listener.accept().await?;
 
-                run_robot_server::<_, QterRobot>(BufReader::new(socket), &mut robot, &group)
-                    .await?;
+                run_robot_server::<_, QterRobot>(
+                    BufReader::new(socket),
+                    &mut robot,
+                    &cube3_permutation_group,
+                )
+                .await?;
             }
         }
         Commands::Solve {

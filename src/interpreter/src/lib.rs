@@ -159,9 +159,9 @@ impl<P: PuzzleState> Interpreter<P> {
     /// # Errors
     ///
     /// Returns an error when initialization of any of the puzzle states fails.
-    pub async fn new(program: Arc<Program>, args: P::InitializationArgs) -> Result<Self, P::Error>
+    pub async fn new(program: Arc<Program>, args: P::InitializationArg) -> Result<Self, P::Error>
     where
-        P::InitializationArgs: Clone,
+        P::InitializationArg: Clone,
     {
         let state = InterpreterState {
             puzzle_states: PuzzleStates::new(&program, args).await?,
@@ -180,7 +180,7 @@ impl<P: PuzzleState> Interpreter<P> {
     /// Returns an error when initialization of the puzzle state fails.
     pub async fn new_only_one_puzzle(
         program: Arc<Program>,
-        args: P::InitializationArgs,
+        args: P::InitializationArg,
     ) -> Result<Self, P::Error> {
         let state = InterpreterState {
             puzzle_states: PuzzleStates::new_only_one_puzzle(&program, args).await?,

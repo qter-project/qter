@@ -51,13 +51,13 @@ impl TheoreticalState {
 }
 
 pub trait PuzzleState {
-    type InitializationArgs;
+    type InitializationArg;
     type Error;
 
     /// Initialize the `Puzzle` in the solved state
     async fn initialize(
         perm_group: Arc<PermutationGroup>,
-        args: Self::InitializationArgs,
+        args: Self::InitializationArg,
     ) -> Result<Self, Self::Error>
     where
         Self: Sized;
@@ -102,13 +102,13 @@ pub trait PuzzleState {
 }
 
 pub trait RobotLike {
-    type InitializationArgs;
+    type InitializationArg;
     type Error;
 
     /// Initialize the puzzle in the solved state
     async fn initialize(
         perm_group: Arc<PermutationGroup>,
-        args: Self::InitializationArgs,
+        args: Self::InitializationArg,
     ) -> Result<Self, Self::Error>
     where
         Self: Sized;
@@ -134,7 +134,7 @@ pub struct RobotState<R: RobotLike> {
 }
 
 impl<R: RobotLike> PuzzleState for RobotState<R> {
-    type InitializationArgs = R::InitializationArgs;
+    type InitializationArg = R::InitializationArg;
     type Error = R::Error;
 
     async fn compose_into(&mut self, alg: &Algorithm) -> Result<(), Self::Error> {
@@ -143,7 +143,7 @@ impl<R: RobotLike> PuzzleState for RobotState<R> {
 
     async fn initialize(
         perm_group: Arc<PermutationGroup>,
-        args: Self::InitializationArgs,
+        args: Self::InitializationArg,
     ) -> Result<Self, Self::Error> {
         Ok(RobotState {
             perm_group: Arc::clone(&perm_group),
@@ -246,7 +246,7 @@ impl SimulatedPuzzle {
 }
 
 impl PuzzleState for SimulatedPuzzle {
-    type InitializationArgs = ();
+    type InitializationArg = ();
     type Error = Infallible;
 
     async fn initialize(perm_group: Arc<PermutationGroup>, (): ()) -> Result<Self, Infallible> {
@@ -304,7 +304,7 @@ impl PuzzleState for SimulatedPuzzle {
 }
 
 impl RobotLike for SimulatedPuzzle {
-    type InitializationArgs = ();
+    type InitializationArg = ();
     type Error = Infallible;
 
     async fn initialize(perm_group: Arc<PermutationGroup>, (): ()) -> Result<Self, Infallible> {
@@ -332,11 +332,11 @@ pub(crate) struct PuzzleStates<P: PuzzleState> {
 
 impl<P: PuzzleState> PuzzleStates<P>
 where
-    P::InitializationArgs: Clone,
+    P::InitializationArg: Clone,
 {
     pub(crate) async fn new(
         program: &Program,
-        args: P::InitializationArgs,
+        args: P::InitializationArg,
     ) -> Result<Self, P::Error> {
         let theoretical_states = program
             .theoretical
@@ -362,7 +362,7 @@ where
 impl<P: PuzzleState> PuzzleStates<P> {
     pub(crate) async fn new_only_one_puzzle(
         program: &Program,
-        args: P::InitializationArgs,
+        args: P::InitializationArg,
     ) -> Result<Self, P::Error> {
         let theoretical_states = program
             .theoretical
@@ -464,7 +464,7 @@ async fn ack_or_err<C: Connection>(conn: &mut C) -> Result<(), Error> {
 }
 
 impl<C: Connection> RobotLike for RemoteRobot<C> {
-    type InitializationArgs = C;
+    type InitializationArg = C;
     type Error = Error;
 
     async fn initialize(_: Arc<PermutationGroup>, conn: C) -> Result<Self, Self::Error> {
@@ -691,12 +691,12 @@ mod tests {
     struct TestRobot(VecDeque<Command>, Option<Permutation>);
 
     impl RobotLike for TestRobot {
-        type InitializationArgs = ();
+        type InitializationArg = ();
         type Error = String;
 
         async fn initialize(
             perm_group: Arc<PermutationGroup>,
-            (): Self::InitializationArgs,
+            (): Self::InitializationArg,
         ) -> Result<Self, String> {
             Ok(TestRobot(
                 VecDeque::from(vec![
