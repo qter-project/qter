@@ -1,15 +1,24 @@
 use std::{
-    collections::{HashSet, VecDeque}, sync::Arc
+    collections::{HashSet, VecDeque},
+    sync::Arc,
 };
 
 use itertools::Itertools;
-use puzzle_theory::{numbers::{Int, U}, span::WithSpan};
-use qter_core::{
-    ByPuzzleType,  PuzzleIdx, TheoreticalIdx, architectures::Architecture,
+use puzzle_theory::{
+    numbers::{Int, U},
+    span::WithSpan,
 };
+use qter_core::{ByPuzzleType, PuzzleIdx, TheoreticalIdx, architectures::Architecture};
 
 use crate::{
-    BlockID, optimization::{OptimizingPrimitive, combinators::{PeepholeRewriter, Rewriter}, extend_from_start}, primitive_match, strip_expanded::GlobalRegs,
+    BlockID,
+    optimization::{
+        OptimizingPrimitive,
+        combinators::{PeepholeRewriter, Rewriter},
+        extend_from_start,
+    },
+    primitive_match,
+    strip_expanded::GlobalRegs,
 };
 
 use super::OptimizingCodeComponent;
@@ -23,7 +32,7 @@ pub struct RemoveUnreachableCode {
 impl Rewriter for RemoveUnreachableCode {
     type Component = WithSpan<OptimizingCodeComponent>;
     type GlobalData = GlobalRegs;
-    
+
     fn rewrite(
         &mut self,
         component: WithSpan<OptimizingCodeComponent>,
@@ -67,10 +76,7 @@ impl PeepholeRewriter for RemoveUselessJumps {
 
     const MAX_WINDOW_SIZE: usize = 2;
 
-    fn try_match(
-        window: &mut VecDeque<WithSpan<OptimizingCodeComponent>>,
-        _: &GlobalRegs,
-    ) {
+    fn try_match(window: &mut VecDeque<WithSpan<OptimizingCodeComponent>>, _: &GlobalRegs) {
         let Some(OptimizingCodeComponent::Label(label)) = window.get(1).map(|v| &**v) else {
             return;
         };
@@ -480,7 +486,7 @@ impl PeepholeRewriter for RepeatUntil3 {
         );
 
         if maybe_spot1.name != spot1.name || maybe_spot1.block_id != spot1.maybe_block_id.unwrap() {
-            return ;
+            return;
         }
 
         let mut amts = amts.to_owned();

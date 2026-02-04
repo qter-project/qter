@@ -216,7 +216,7 @@ fn split_all_short_enough(strings: &[ArcIntern<str>], max_line_width: usize) -> 
             next_row.push((0, 0));
         }
 
-        for i in dp.len()+1..=strings.len() {
+        for i in dp.len() + 1..=strings.len() {
             let mut optimal: Option<(usize, usize)> = None;
 
             for j in 1..=i - dp.len() {

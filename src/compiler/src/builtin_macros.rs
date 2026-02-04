@@ -1,6 +1,6 @@
 use chumsky::error::Rich;
 use internment::ArcIntern;
-use puzzle_theory::span::{Span, WithSpan};
+use puzzle_theory::span::{File, Span, WithSpan};
 
 use crate::{
     BlockID, Code, ExpansionInfo, Instruction, LabelReference, Macro, Primitive, RegisterReference,
@@ -75,7 +75,9 @@ fn print_like(
     let message = args.pop().unwrap();
     let span = message.span().to_owned();
     let message = match syntax.block_info.resolve(block_id, message.into_inner()) {
-        Some(ResolvedValue::Ident { ident, as_reg: _ }) => WithSpan::new((**ident).to_owned(), span),
+        Some(ResolvedValue::Ident { ident, as_reg: _ }) => {
+            WithSpan::new((**ident).to_owned(), span)
+        }
         Some(_) => {
             return Err(Rich::custom(span, "Expected a message"));
         }
@@ -88,11 +90,11 @@ fn print_like(
 }
 
 pub fn builtin_macros(
-    prelude: &ArcIntern<str>,
-) -> HashMap<(ArcIntern<str>, ArcIntern<str>), WithSpan<Macro>> {
+    prelude: &File,
+) -> HashMap<(File, ArcIntern<str>), WithSpan<Macro>> {
     let mut macros = HashMap::new();
 
-    let dummy_span = Span::new(ArcIntern::from(" "), 0, 0);
+    let dummy_span = Span::new(File::new(ArcIntern::from("BUILTIN"), ArcIntern::from(" ")), 0, 0);
 
     macros.insert(
         (prelude.clone(), ArcIntern::from("add")),

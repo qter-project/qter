@@ -1,10 +1,12 @@
 use crate::{
-    Block, BlockInfo, BlockInfoTracker, Code, Define, DefineValue, ExpansionInfo, Label, RhaiCall,
-    MacroArgTy, MacroBranch, MacroPattern, MacroPatternComponent, ResolvedValue, Value,
+    Block, BlockInfo, BlockInfoTracker, Code, Define, DefineValue, ExpansionInfo, Label,
+    MacroArgTy, MacroBranch, MacroPattern, MacroPatternComponent, ResolvedValue, RhaiCall, Value,
     builtin_macros::builtin_macros, rhai::RhaiMacros,
 };
 use std::{
-    collections::HashMap, rc::Rc, sync::{Arc, OnceLock}
+    collections::HashMap,
+    rc::Rc,
+    sync::{Arc, OnceLock},
 };
 
 use chumsky::{
@@ -29,7 +31,7 @@ use super::Instruction;
 
 thread_local! {
     static PRELUDE: ParsedSyntax = {
-        let prelude = File::from(include_str!("../../qter_core/prelude.qat"));
+        let prelude = File::new(ArcIntern::from("prelude.qat"), ArcIntern::from(include_str!("../../qter_core/prelude.qat")));
 
         let mut parsed_prelude = match parse(
             &prelude,
@@ -46,7 +48,7 @@ thread_local! {
                     for (ctx, span) in err.contexts() {
                         println!("{span} {ctx}");
                     }
-                    
+
                     println!(
                         "{err}; {:?}; `{}`",
                         err.span().line_and_col(),
@@ -58,7 +60,7 @@ thread_local! {
             }
         };
 
-        let builtin_macros = builtin_macros(&prelude.inner());
+        let builtin_macros = builtin_macros(&prelude);
         parsed_prelude
             .expansion_info
             .available_macros
@@ -173,7 +175,7 @@ fn parser() -> impl Parser<'static, File, MaybeErr<ParsedSyntax>, ExtraAndSyntax
                     if parsed_syntax
                         .expansion_info
                         .macros
-                        .contains_key(&(ArcIntern::clone(&qat), ArcIntern::clone(&name)))
+                        .contains_key(&(qat.clone(), ArcIntern::clone(&name)))
                     {
                         emitter.emit(Rich::custom(
                             name.span().clone(),
@@ -185,11 +187,11 @@ fn parser() -> impl Parser<'static, File, MaybeErr<ParsedSyntax>, ExtraAndSyntax
                     parsed_syntax
                         .expansion_info
                         .macros
-                        .insert((ArcIntern::clone(&qat), ArcIntern::clone(&name)), def);
+                        .insert((qat.clone(), ArcIntern::clone(&name)), def);
                     parsed_syntax
                         .expansion_info
                         .available_macros
-                        .insert((ArcIntern::clone(&qat), name.into_inner()), qat.clone());
+                        .insert((qat.clone(), name.into_inner()), qat.clone());
                 }
                 Statement::Instruction(instr) => {
                     parsed_syntax
@@ -220,7 +222,7 @@ fn parser() -> impl Parser<'static, File, MaybeErr<ParsedSyntax>, ExtraAndSyntax
                     };
 
                     let importee =
-                        match parse(&File::from(import), move |v| (find_import)(v), is_prelude) {
+                        match parse(&File::new(ArcIntern::from(filename.slice()), import), move |v| (find_import)(v), is_prelude) {
                             Ok(v) => v,
                             Err(errs) => {
                                 for err in errs {
@@ -718,7 +720,12 @@ fn value(block_rec: BlockParser) -> impl Parser<'static, File, MaybeErr<WithSpan
     choice((
         intu().map(|v| v.map(|v| Value::Resolved(ResolvedValue::Int(v)))),
         constant().map(|v| MaybeErr::Some(Value::Constant(v.value))),
-        ident().map(|v| MaybeErr::Some(Value::Resolved(ResolvedValue::Ident { ident: v, as_reg: OnceLock::new() }))),
+        ident().map(|v| {
+            MaybeErr::Some(Value::Resolved(ResolvedValue::Ident {
+                ident: v,
+                as_reg: OnceLock::new(),
+            }))
+        }),
         block_rec.map(|v| v.map(|v| Value::Resolved(ResolvedValue::Block(v)))),
     ))
     .map_with(|v, data| v.map(|v| data.span().with(v)))
@@ -862,7 +869,7 @@ fn block(block_rec: BlockParser) -> impl Parser<'static, File, MaybeErr<Block>, 
 
 fn merge_files(
     importer: &mut ParsedSyntax,
-    importer_contents: &ArcIntern<str>,
+    importer_contents: &File,
     mut importee: ParsedSyntax,
     span: Span,
     emitter: &mut Emitter<Rich<'static, char, Span>>,
@@ -904,10 +911,10 @@ fn merge_files(
             .expansion_info
             .available_macros
             .entry((
-                ArcIntern::clone(importer_contents),
+                importer_contents.clone(),
                 ArcIntern::clone(&source_and_macro_name.1),
             ))
-            .or_insert_with(|| ArcIntern::clone(&macro_file));
+            .or_insert_with(|| macro_file.clone());
 
         importer
             .expansion_info
@@ -928,42 +935,46 @@ fn merge_files(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use chumsky::Parser;
     use internment::ArcIntern;
     use puzzle_theory::span::File;
 
     use super::{ident, number, parse, registers};
 
+    pub(crate) fn file(str: &'static str) -> File {
+        File::new(ArcIntern::from("<static>"), ArcIntern::from(str))
+    }
+
     #[test]
     fn test_number() {
-        number::<()>().parse(File::from("123")).unwrap();
-        number::<()>().parse(File::from("12398263596868928956891896286935689869218695689689297479561963469856981968423679569173479159")).unwrap();
+        number::<()>().parse(file("123")).unwrap();
+        number::<()>().parse(file("12398263596868928956891896286935689869218695689689297479561963469856981968423679569173479159")).unwrap();
 
-        assert!(number::<()>().parse(File::from("")).has_errors());
-        assert!(number::<()>().parse(File::from("3x3")).has_errors());
-        assert!(number::<()>().parse(File::from("0.12")).has_errors());
-        assert!(number::<()>().parse(File::from("-11")).has_errors());
-        assert!(number::<()>().parse(File::from("-11")).has_errors());
+        assert!(number::<()>().parse(file("")).has_errors());
+        assert!(number::<()>().parse(file("3x3")).has_errors());
+        assert!(number::<()>().parse(file("0.12")).has_errors());
+        assert!(number::<()>().parse(file("-11")).has_errors());
+        assert!(number::<()>().parse(file("-11")).has_errors());
     }
 
     #[test]
     fn test_ident() {
-        ident::<()>().parse(File::from("a")).unwrap();
-        ident::<()>().parse(File::from("A")).unwrap();
-        ident::<()>().parse(File::from("3x3")).unwrap();
-        ident::<()>().parse(File::from("thingy")).unwrap();
-        ident::<()>().parse(File::from("prhaih")).unwrap();
-        ident::<()>().parse(File::from("->")).unwrap();
-        ident::<()>().parse(File::from("\"345\"")).unwrap();
-        ident::<()>().parse(File::from("\"rhai\"")).unwrap();
+        ident::<()>().parse(file("a")).unwrap();
+        ident::<()>().parse(file("A")).unwrap();
+        ident::<()>().parse(file("3x3")).unwrap();
+        ident::<()>().parse(file("thingy")).unwrap();
+        ident::<()>().parse(file("prhaih")).unwrap();
+        ident::<()>().parse(file("->")).unwrap();
+        ident::<()>().parse(file("\"345\"")).unwrap();
+        ident::<()>().parse(file("\"rhai\"")).unwrap();
 
-        assert!(ident::<()>().parse(File::from("345")).has_errors());
-        assert!(ident::<()>().parse(File::from("rhai")).has_errors());
-        assert!(ident::<()>().parse(File::from("thing<-thing")).has_errors());
-        assert!(ident::<()>().parse(File::from("aa.aa")).has_errors());
-        assert!(ident::<()>().parse(File::from("!aaaa")).has_errors());
-        assert!(ident::<()>().parse(File::from("aaaa)")).has_errors());
+        assert!(ident::<()>().parse(file("345")).has_errors());
+        assert!(ident::<()>().parse(file("rhai")).has_errors());
+        assert!(ident::<()>().parse(file("thing<-thing")).has_errors());
+        assert!(ident::<()>().parse(file("aa.aa")).has_errors());
+        assert!(ident::<()>().parse(file("!aaaa")).has_errors());
+        assert!(ident::<()>().parse(file("aaaa)")).has_errors());
     }
 
     #[test]
@@ -980,7 +991,7 @@ mod tests {
             }
         ";
 
-        let errs = registers().parse(File::from(code)).into_errors();
+        let errs = registers().parse(file(code)).into_errors();
 
         for err in &errs {
             println!("{err}; {:?}", err.span().line_and_col());
@@ -1032,7 +1043,7 @@ mod tests {
         ";
 
         match parse(
-            &File::from(code),
+            &file(code),
             |name| {
                 assert_eq!(name, "pog.qat");
                 Ok(ArcIntern::from("add 1 a"))

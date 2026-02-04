@@ -1,10 +1,10 @@
 use std::{collections::VecDeque, ptr, sync::Arc};
 
-use puzzle_theory::{numbers::{Int, U}, span::WithSpan};
-use qter_core::{
-    ByPuzzleType,  PuzzleIdx, StateIdx, TheoreticalIdx, 
-    architectures::Architecture,
+use puzzle_theory::{
+    numbers::{Int, U},
+    span::WithSpan,
 };
+use qter_core::{ByPuzzleType, PuzzleIdx, StateIdx, TheoreticalIdx, architectures::Architecture};
 
 use crate::{
     BlockID, Label, LabelReference, RegisterReference,

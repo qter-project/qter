@@ -4,14 +4,10 @@
 #![allow(clippy::needless_pass_by_value)]
 
 use std::{
-    error::Error,
-    fs, io,
-    net::SocketAddr,
-    path::{Path, PathBuf},
-    sync::Arc,
+    error::Error, fmt::Display, fs, io, net::SocketAddr, path::{Path, PathBuf}, sync::Arc
 };
 
-use ariadne::{Color, Label, Report, ReportKind, Source};
+use ariadne::{Cache, Color, Label, Report, ReportKind, Source};
 use chumsky::error::Rich;
 use clap::{ArgAction, Parser};
 use color_eyre::{
@@ -85,9 +81,10 @@ enum Commands {
 fn process_errors(
     errs: Vec<Rich<'static, char, Span>>,
     file: &Path,
-    source: &File,
 ) -> color_eyre::Report {
     for err in &errs {
+        let source = err.span().source();
+        
         Report::build(ReportKind::Error, err.span().clone())
             .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
             .with_message(err.to_string())
@@ -97,7 +94,8 @@ fn process_errors(
                     .with_color(Color::Red),
             )
             .finish()
-            .eprint(Source::from(source.inner()))
+            .eprint((source.name(), Source::from(&*source.inner())))
+            // .eprint(("bruh.qat", Source::from(include_str!("./main.rs"))))
             .unwrap();
     }
 
@@ -109,7 +107,9 @@ fn process_errors(
 }
 
 fn compile_qat(file: &Path) -> color_eyre::Result<(Program, File)> {
-    let qat = File::from(fs::read_to_string(file)?);
+    let path = ArcIntern::from(format!("{}", file.display()));
+    
+    let qat = File::new(path, ArcIntern::from(fs::read_to_string(file)?));
 
     match compile(&qat, |name| {
         let path = PathBuf::from(name);
@@ -125,7 +125,7 @@ fn compile_qat(file: &Path) -> color_eyre::Result<(Program, File)> {
         }
     }) {
         Ok((v, _)) => Ok((v, qat)),
-        Err(errs) => Err(process_errors(errs, file, &qat)),
+        Err(errs) => Err(process_errors(errs, file)),
     }
 }
 
@@ -142,12 +142,12 @@ async fn main() -> color_eyre::Result<()> {
                 ));
             }
 
-            let (program, qat) = compile_qat(&file)?;
+            let (program, _) = compile_qat(&file)?;
 
             let q_code = match emit_q(&program) {
                 Ok(v) => v,
                 Err(errs) => {
-                    return Err(process_errors(errs, &file, &qat));
+                    return Err(process_errors(errs, &file));
                 }
             };
 

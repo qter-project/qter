@@ -141,12 +141,10 @@ fn expand_block(
                     vec![]
                 }
                 Instruction::Code(code) => {
-                    match expand_code(block_id, expansion_info, code, &changed) {
+                    match expand_code(block_id, expansion_info, code, span, &changed) {
                         Ok(tagged_instructions) => tagged_instructions
                             .into_iter()
-                            .map(|tagged_instruction| {
-                                Ok(WithSpan::new(tagged_instruction, span.clone()))
-                            })
+                            .map(Ok)
                             .collect_vec(),
                         Err(e) => e.into_iter().map(Err).collect(),
                     }
@@ -195,13 +193,31 @@ fn expand_block(
                         Ok(v) => v,
                         Err(errs) => return errs.into_iter().map(Err).collect_vec(),
                     };
+                    let _ = changed.set(span.clone());
 
                     match value.into_inner() {
                         ResolvedValue::Int(_) => vec![Err(Rich::custom(span, "Expected the macro to return a code block; actually returned an integer"))],
                         ResolvedValue::Ident { ident: _, as_reg: _ } => vec![Err(Rich::custom(span, "Expected the macro to return a code block; actually returned an identifier"))],
-                        ResolvedValue::Block(block) => block.code.into_iter().map(Ok).collect_vec(),
+                        ResolvedValue::Block(block) => {
+                            let _ = changed.set(span);
+
+                            block.code.into_iter().map(Ok).collect_vec()
+                        },
                     }
                 }
+                Instruction::Block(block) => {
+                    let (new_id, _) = expansion_info.block_info.new_block(block_id);
+                    let _ = changed.set(span);
+
+                    block
+                        .code
+                        .into_iter()
+                        .map(|mut v| {
+                            v.1 = Some(new_id);
+                            Ok(v)
+                        })
+                        .collect_vec()
+                },
             }
         })
         .partition_map::<Vec<_>, Vec<_>, _, _, _>(|res| match res {
@@ -219,19 +235,19 @@ fn expand_code(
     block_id: BlockID,
     expansion_info: &mut ExpansionInfo,
     code: Code,
+    span: Span,
     changed: &OnceCell<Span>,
-) -> Result<Vec<TaggedInstruction>, Vec<Rich<'static, char, Span>>> {
+) -> Result<Vec<WithSpan<TaggedInstruction>>, Vec<Rich<'static, char, Span>>> {
     let macro_call = match code {
         Code::Primitive(prim) => {
-            return Ok(vec![(
-                Instruction::Code(Code::Primitive(prim)),
-                Some(block_id),
-            )]);
+            return Ok(vec![
+                span.with((Instruction::Code(Code::Primitive(prim)), Some(block_id))),
+            ]);
         }
         Code::Macro(mac) => mac,
     };
 
-    let _ = changed.set(macro_call.name.span().clone());
+    let _ = changed.set(span.clone());
 
     let Some(macro_access) = expansion_info.available_macros.get(&(
         macro_call.name.span().source().clone(),
@@ -246,7 +262,7 @@ fn expand_code(
     let macro_def = expansion_info
         .macros
         .get(&(
-            ArcIntern::clone(macro_access),
+            macro_access.clone(),
             ArcIntern::clone(&macro_call.name),
         ))
         .unwrap();
@@ -303,7 +319,7 @@ fn expand_code(
                             label.available_in_blocks = Some(vec![block_id]);
                         }
 
-                        v.into_inner()
+                        v
                     })
                     .collect());
             }
@@ -316,7 +332,7 @@ fn expand_code(
         Macro::Builtin(macro_fn) => Ok(macro_fn(expansion_info, macro_call.arguments, block_id)
             .map_err(|err| vec![err])?
             .into_iter()
-            .map(|instruction| (instruction, Some(block_id)))
+            .map(|instruction| span.clone().with((instruction, Some(block_id))))
             .collect_vec()),
     }
 }
@@ -324,8 +340,7 @@ fn expand_code(
 #[cfg(test)]
 mod tests {
 
-    use puzzle_theory::span::File;
-
+    use crate::parsing::tests::file;
     use crate::{macro_expansion::expand, parsing::parse};
 
     #[test]
@@ -349,7 +364,7 @@ mod tests {
                 halt Poggers b
         ";
 
-        let parsed = match parse(&File::from(code), |_| unreachable!(), false) {
+        let parsed = match parse(&file(code), |_| unreachable!(), false) {
             Ok(v) => v,
             Err(e) => panic!("{e:?}"),
         };

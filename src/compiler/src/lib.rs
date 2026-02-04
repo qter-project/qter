@@ -223,7 +223,7 @@ impl RhaiCall {
 
         let rhai = info.rhai_macros.get(&span.source()).unwrap();
 
-        let result = rhai.do_rhai_call(&self.function_name, args, span.clone(), block_id, info)?;
+        let result = rhai.do_rhai_call(&self.function_name, args, span.clone(), info)?;
 
         Ok(span.with(result))
     }
@@ -236,6 +236,7 @@ enum Instruction {
     Constant(ArcIntern<str>),
     RhaiCall(RhaiCall),
     Define(DefineUnresolved),
+    Block(Block),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -589,11 +590,11 @@ struct ExpansionInfo {
     // The global scope is block zero and if the block/label hasn't been expanded its ID is None
     block_info: BlockInfoTracker,
     /// Map (file contents containing macro definition, macro name) to a macro
-    macros: HashMap<(ArcIntern<str>, ArcIntern<str>), WithSpan<Macro>>,
+    macros: HashMap<(File, ArcIntern<str>), WithSpan<Macro>>,
     /// Map each (file contents containing macro call, macro name) to the file contents that the macro definition is in
-    available_macros: HashMap<(ArcIntern<str>, ArcIntern<str>), ArcIntern<str>>,
+    available_macros: HashMap<(File, ArcIntern<str>), File>,
     /// Each file has its own `LuaMacros`; use the file contents as the key
-    rhai_macros: HashMap<ArcIntern<str>, RhaiMacros>,
+    rhai_macros: HashMap<File, RhaiMacros>,
 }
 
 impl ExpansionInfo {
@@ -648,6 +649,7 @@ struct ExpandedCode {
 
 #[cfg(test)]
 mod tests {
+    use internment::ArcIntern;
     use puzzle_theory::span::File;
 
     use crate::{compile, q_emitter::emit_q};
@@ -673,7 +675,10 @@ mod tests {
             $Z
         ";
 
-        let (program, _) = match compile(&File::from(code), |_| unreachable!()) {
+        let (program, _) = match compile(
+            &File::new(ArcIntern::from("code.qat"), ArcIntern::from(code)),
+            |_| unreachable!(),
+        ) {
             Ok(v) => v,
             Err(e) => panic!("{e:?}"),
         };
@@ -704,7 +709,7 @@ A: 3x3
             $X
         ";
 
-        match compile(&File::from(code), |_| unreachable!()) {
+        match compile(&File::new(ArcIntern::from("code.qat"), ArcIntern::from(code)), |_| unreachable!()) {
             Ok(v) => panic!("{v:?}"),
             Err(e) => {
                 assert_eq!(e.len(), 1);

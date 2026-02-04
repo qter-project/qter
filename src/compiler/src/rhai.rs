@@ -7,18 +7,20 @@ use puzzle_theory::{
     numbers::{I, Int, U},
     span::{Span, WithSpan},
 };
-use rhai::{AST, CustomType, Dynamic, Engine, ImmutableString, ParseError, Scope};
+use rhai::{AST, Array, CustomType, Dynamic, Engine, ImmutableString, ParseError, Scope};
 
-use crate::{BlockID, ExpansionInfo, RegisterInfo, ResolvedValue};
+use crate::{
+    Block, Code, ExpansionInfo, Instruction, MacroCall, RegisterInfo, ResolvedValue, Value,
+};
 
 thread_local! {
     static ENGINE: Engine = {
         let mut engine = Engine::new();
 
         register_int(&mut engine);
-        engine.build_type::<W<RegisterInfo>>();
+        engine.build_type::<WRegisterInfo>();
 
-        engine.register_fn("big", |v: i64| W(Int::<I>::from(v)));
+        engine.register_fn("big", |v: i64| WInt(Int::<I>::from(v)));
         engine.set_max_expr_depths(256, 256);
 
         engine
@@ -26,9 +28,9 @@ thread_local! {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct W<T>(T);
+struct WInt(Int<I>);
 
-impl CustomType for W<Int<I>> {
+impl CustomType for WInt {
     fn build(mut builder: rhai::TypeBuilder<Self>) {
         builder.with_name("BigInt").on_print(|v| v.0.to_string());
     }
@@ -36,14 +38,14 @@ impl CustomType for W<Int<I>> {
 
 fn register_int(engine: &mut Engine) {
     engine
-        .build_type::<W<Int<I>>>()
-        .register_fn("-", |a: W<Int<I>>| W(-a.0));
+        .build_type::<WInt>()
+        .register_fn("-", |a: WInt| WInt(-a.0));
 
-    register_op(engine, "+", |a, b| W(a + b));
-    register_op(engine, "-", |a, b| W(a - b));
-    register_op(engine, "*", |a, b| W(a * b));
-    register_op(engine, "/", |a, b| W(a / b));
-    register_op(engine, "%", |a, b| W(Int::<I>::from(a % b)));
+    register_op(engine, "+", |a, b| WInt(a + b));
+    register_op(engine, "-", |a, b| WInt(a - b));
+    register_op(engine, "*", |a, b| WInt(a * b));
+    register_op(engine, "/", |a, b| WInt(a / b));
+    register_op(engine, "%", |a, b| WInt(Int::<I>::from(a % b)));
     register_op(engine, "==", |a, b| a == b);
     register_op(engine, "!=", |a, b| a != b);
     register_op(engine, ">=", |a, b| a >= b);
@@ -58,32 +60,31 @@ fn register_op<T: rhai::Variant + Clone>(
     f: fn(Int<I>, Int<I>) -> T,
 ) {
     engine
-        .register_fn(op, move |a: W<Int<I>>, b: W<Int<I>>| f(a.0, b.0))
-        .register_fn(op, move |a: i64, b: W<Int<I>>| f(Int::<I>::from(a), b.0))
-        .register_fn(op, move |a: W<Int<I>>, b: i64| f(a.0, Int::<I>::from(b)));
+        .register_fn(op, move |a: WInt, b: WInt| f(a.0, b.0))
+        .register_fn(op, move |a: i64, b: WInt| f(Int::<I>::from(a), b.0))
+        .register_fn(op, move |a: WInt, b: i64| f(a.0, Int::<I>::from(b)));
 }
 
-impl CustomType for W<RegisterInfo> {
+#[derive(Clone, Debug)]
+struct WRegisterInfo(RegisterInfo);
+
+impl CustomType for WRegisterInfo {
     fn build(mut builder: rhai::TypeBuilder<Self>) {
         builder
             .with_name("Register")
             .on_print(|v| v.0.0.to_string())
-            .with_get("order", |v: &mut W<RegisterInfo>| W(Int::<I>::from(v.0.1.order)))
-            .with_get("name", |v: &mut W<RegisterInfo>| {
+            .with_get("order", |v: &mut WRegisterInfo| {
+                WInt(Int::<I>::from(v.0.1.order))
+            })
+            .with_get("name", |v: &mut WRegisterInfo| {
                 ImmutableString::from(&**v.0.0.reg_name)
             });
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RhaiMacros {
     rhai_ast: AST,
-}
-
-impl Debug for RhaiMacros {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("LuaMacros").field("lua_vm", &"VM").finish()
-    }
 }
 
 impl RhaiMacros {
@@ -106,10 +107,12 @@ impl RhaiMacros {
         name: &str,
         args: Vec<WithSpan<ResolvedValue>>,
         span: Span,
-        block_id: BlockID,
         info: &ExpansionInfo,
     ) -> Result<ResolvedValue, Vec<Rich<'static, char, Span>>> {
-        let args = args.into_iter().map(|v| into_rhai(v.into_inner(), info)).collect_vec();
+        let args = args
+            .into_iter()
+            .map(|v| into_rhai(v.into_inner(), info))
+            .collect_vec();
 
         let result = ENGINE.with(|engine| {
             let mut scope = Scope::new();
@@ -127,12 +130,12 @@ impl RhaiMacros {
 
 fn into_rhai(arg: ResolvedValue, info: &ExpansionInfo) -> Dynamic {
     match arg {
-        ResolvedValue::Int(int) => Dynamic::from(W(int)),
+        ResolvedValue::Int(int) => Dynamic::from(WInt(int.into())),
         ResolvedValue::Ident {
             ref ident,
             as_reg: _,
         } => match arg.as_reg(info) {
-            Some(Ok(reg)) => Dynamic::from(W(reg.to_owned())),
+            Some(Ok(reg)) => Dynamic::from(WRegisterInfo(reg.to_owned())),
             Some(Err(_)) | None => {
                 let str = ImmutableString::from(&***ident);
                 Dynamic::from(str)
@@ -153,8 +156,8 @@ fn from_rhai(value: Dynamic, span: Span) -> Result<ResolvedValue, String> {
         return Ok(ResolvedValue::Int(Int::<U>::from(v)));
     }
 
-    let value = match value.try_cast_result::<W<Int<I>>>() {
-        Ok(W(int)) => {
+    let value = match value.try_cast_result::<WInt>() {
+        Ok(WInt(int)) => {
             if int < Int::<I>::zero() {
                 return Err(format!("Integer values must be positive. Found {int}"));
             }
@@ -174,8 +177,8 @@ fn from_rhai(value: Dynamic, span: Span) -> Result<ResolvedValue, String> {
         Err(v) => v,
     };
 
-    let value = match value.try_cast_result::<W<RegisterInfo>>() {
-        Ok(W(str)) => {
+    let value = match value.try_cast_result::<WRegisterInfo>() {
+        Ok(WRegisterInfo(str)) => {
             let span = str.0.reg_name.span().clone();
 
             return Ok(ResolvedValue::Ident {
@@ -186,9 +189,55 @@ fn from_rhai(value: Dynamic, span: Span) -> Result<ResolvedValue, String> {
         Err(v) => v,
     };
 
-    Err(format!(
-        "Unable to interpret `{value}` as a positive integer, identifier, register, or code block."
-    ))
+    try_decode_block(value, &span).map(|v| {
+        ResolvedValue::Block(Block {
+            code: v.into_iter().map(|v| v.map(|v| (v, None))).collect_vec(),
+        })
+    })
+}
+
+/// Returns `None` if there are no instructions in the block (an empty array)
+fn try_decode_block(value: Dynamic, span: &Span) -> Result<Option<WithSpan<Instruction>>, String> {
+    let value = match value.try_cast_result::<Array>() {
+        Ok(v) => v,
+        Err(value) => {
+            return Err(format!(
+                "Unable to interpret `{value}` as a positive integer, identifier, register, or code block."
+            ));
+        }
+    };
+
+    if value.is_empty() {
+        return Ok(None);
+    }
+
+    if value[0].is_string() {
+        // This is an instruction
+        let mut values = value.into_iter();
+        let name = values.next().unwrap().into_string().unwrap();
+
+        let args = values
+            .map(|v| from_rhai(v, span.clone()).map(|v| span.clone().with(Value::Resolved(v))))
+            .try_collect::<_, Vec<_>, _>()?;
+
+        Ok(Some(span.clone().with(Instruction::Code(Code::Macro(
+            MacroCall {
+                name: span.clone().with(ArcIntern::from(name)),
+                arguments: span.clone().with(args),
+            },
+        )))))
+    } else {
+        // This is a code block
+        Ok(Some(
+            span.clone().with(Instruction::Block(Block {
+                code: value
+                    .into_iter()
+                    .filter_map(|v| try_decode_block(v, span).transpose())
+                    .map(|v| v.map(|v| v.map(|v| (v, None))))
+                    .try_collect::<_, Vec<_>, _>()?,
+            })),
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -196,7 +245,7 @@ mod tests {
     use puzzle_theory::numbers::{I, Int};
     use rhai::{Dynamic, Scope};
 
-    use crate::rhai::{ENGINE, W};
+    use crate::rhai::{ENGINE, WInt};
 
     use super::RhaiMacros;
 
@@ -242,9 +291,9 @@ mod tests {
         });
 
         let too_big0 = Int::<I>::from(u64::MAX - 5);
-        let too_big = W(too_big0 * too_big0);
-        let zero = W(Int::<I>::zero());
-        let tenth_too_big = W(too_big0 * too_big0 / Int::<I>::from(10));
+        let too_big = WInt(too_big0 * too_big0);
+        let zero = WInt(Int::<I>::zero());
+        let tenth_too_big = WInt(too_big0 * too_big0 / Int::<I>::from(10));
 
         ENGINE.with(|v| {
             let mut scope = Scope::new();

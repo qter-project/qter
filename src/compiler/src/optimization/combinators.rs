@@ -542,7 +542,8 @@ mod tests {
                 Global::<IntoCounts>::default(),
                 [0, 1, 2, 1, 0, 4, 100, 3, 4, 1].into_iter(),
                 Arc::new(()),
-            ).collect_vec(),
+            )
+            .collect_vec(),
             vec![0, 2, 1, 3, 2, 1, 3, 1, 4, 2, 100, 1]
         );
     }
