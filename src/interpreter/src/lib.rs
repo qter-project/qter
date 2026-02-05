@@ -334,7 +334,7 @@ mod tests {
 
     #[tokio::test]
     async fn facelets_solved() {
-        let perm_group = with_presets(&puzzle("3x3"));
+        let perm_group = with_presets(puzzle("3x3").permutation_group());
 
         let mut cube: SimulatedPuzzle =
             SimulatedPuzzle::initialize(Arc::clone(&perm_group.perm_group), ())
@@ -356,7 +356,7 @@ mod tests {
 
     #[tokio::test]
     async fn complicated_solved_decode_test() {
-        let perm_group = with_presets(&puzzle("3x3"));
+        let perm_group = with_presets(puzzle("3x3").permutation_group());
 
         let arch = perm_group
             .get_preset(&[Int::from(210_u64), Int::from(24_u64)])

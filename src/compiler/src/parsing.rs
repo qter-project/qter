@@ -500,7 +500,7 @@ fn register_architecture() -> impl Parser<'static, File, MaybeErr<PuzzleUnnamed>
         ))
         .map(|(_, (), order)| order.map(|order| PuzzleUnnamed::Theoretical { order })),
         group((
-            puzzle_definition().map(|v| with_presets(&v)),
+            puzzle_definition().map(|v| v.span().clone().with(with_presets(v.into_inner().permutation_group()))),
             whitespace(),
             just("builtin"),
             whitespace(),
@@ -534,7 +534,7 @@ fn register_architecture() -> impl Parser<'static, File, MaybeErr<PuzzleUnnamed>
                 .flatten()
         }),
         group((
-            puzzle_definition().map(|v| with_presets(&v)),
+            puzzle_definition().map(|v| v.span().clone().with(with_presets(v.into_inner().permutation_group()))),
             whitespace(),
             choice((
                 algorithm().map(|v| vec![v]),

@@ -10,8 +10,7 @@ use itertools::Itertools;
 use puzzle_theory::{
     numbers::{I, Int, U, chinese_remainder_theorem, lcm, lcm_iter},
     permutations::{Algorithm, Permutation, PermutationGroup},
-    puzzle_geometry::PuzzleGeometry,
-    span::WithSpan,
+    puzzle_geometry::parsing::puzzle,
 };
 
 use crate::{Facelets, shared_facelet_detection::algorithms_to_cycle_generators, table_encoding};
@@ -529,64 +528,59 @@ impl Architecture {
 /// # Panics
 ///
 /// The span attached to `geometry` must be the true puzzle definition. This is trivially satisfiable by acquiring the `PuzzleGeometry` from either either the `puzzle_geometry` or `puzzle` functions.
-pub fn with_presets(geometry: &WithSpan<Arc<PuzzleGeometry>>) -> WithSpan<PuzzleDefinition> {
-    let group = geometry.permutation_group();
+pub fn with_presets(group: Arc<PermutationGroup>) -> PuzzleDefinition {
+    if group == puzzle("3x3").permutation_group() {
+        let presets: [Arc<Architecture>; 6] = [
+            (&["R U2 D' B D'"] as &[&str], None),
+            (&["U", "D"], Some(4)),
+            (
+                &["R' F' L U' L U L F U' R", "U F R' D' R2 F R' U' D"],
+                Some(3),
+            ),
+            (&["U R U' D2 B", "B U2 B' L' U2 B U L' B L B2 L"], Some(0)),
+            (
+                &[
+                    "U L2 B' L U' B' U2 R B' R' B L",
+                    "R2 L U' R' L2 F' D R' D L B2 D2",
+                    "L2 F2 U L' F D' F' U' L' F U D L' U'",
+                ],
+                Some(1),
+            ),
+            (
+                &[
+                    "U L B' L B' U R' D U2 L2 F2",
+                    "D L' F L2 B L' F' L B' D' L'",
+                    "R' U' L' F2 L F U F R L U'",
+                    "B2 U2 L F' R B L2 D2 B R' F L",
+                ],
+                Some(2),
+            ),
+        ]
+        .map(|(algs, maybe_index): (&[&str], Option<usize>)| {
+            let mut arch = Architecture::new(
+                Arc::clone(&group),
+                algs.iter()
+                    .map(|alg| Algorithm::parse_from_string(Arc::clone(&group), alg).unwrap())
+                    .collect(),
+            );
 
-    geometry
-        .span()
-        .clone()
-        .with(if geometry.span().slice() == "3x3" {
-            let presets: [Arc<Architecture>; 6] = [
-                (&["R U2 D' B D'"] as &[&str], None),
-                (&["U", "D"], Some(4)),
-                (
-                    &["R' F' L U' L U L F U' R", "U F R' D' R2 F R' U' D"],
-                    Some(3),
-                ),
-                (&["U R U' D2 B", "B U2 B' L' U2 B U L' B L B2 L"], Some(0)),
-                (
-                    &[
-                        "U L2 B' L U' B' U2 R B' R' B L",
-                        "R2 L U' R' L2 F' D R' D L B2 D2",
-                        "L2 F2 U L' F D' F' U' L' F U D L' U'",
-                    ],
-                    Some(1),
-                ),
-                (
-                    &[
-                        "U L B' L B' U R' D U2 L2 F2",
-                        "D L' F L2 B L' F' L B' D' L'",
-                        "R' U' L' F2 L F U F R L U'",
-                        "B2 U2 L F' R B L2 D2 B R' F L",
-                    ],
-                    Some(2),
-                ),
-            ]
-            .map(|(algs, maybe_index): (&[&str], Option<usize>)| {
-                let mut arch = Architecture::new(
-                    Arc::clone(&group),
-                    algs.iter()
-                        .map(|alg| Algorithm::parse_from_string(Arc::clone(&group), alg).unwrap())
-                        .collect(),
-                );
-
-                if let Some(index) = maybe_index {
-                    arch.set_optimized_table(Cow::Borrowed(OPTIMIZED_TABLES[index]));
-                }
-
-                Arc::new(arch)
-            });
-
-            PuzzleDefinition {
-                perm_group: group,
-                presets: presets.into(),
+            if let Some(index) = maybe_index {
+                arch.set_optimized_table(Cow::Borrowed(OPTIMIZED_TABLES[index]));
             }
-        } else {
-            PuzzleDefinition {
-                perm_group: group,
-                presets: Vec::new(),
-            }
-        })
+
+            Arc::new(arch)
+        });
+
+        PuzzleDefinition {
+            perm_group: group,
+            presets: presets.into(),
+        }
+    } else {
+        PuzzleDefinition {
+            perm_group: group,
+            presets: Vec::new(),
+        }
+    }
 }
 
 /// This function does what it says on the tin.
@@ -662,7 +656,7 @@ mod tests {
     use std::sync::Arc;
 
     use internment::ArcIntern;
-    
+
     use puzzle_theory::{
         numbers::{Int, U},
         permutations::{Algorithm, Permutation},
@@ -677,7 +671,7 @@ mod tests {
 
     #[test]
     fn three_by_three() {
-        let cube_def = with_presets(&puzzle("3x3"));
+        let cube_def = with_presets(puzzle("3x3").permutation_group());
 
         for (arch, expected) in &[
             (&["U", "D"][..], &[4, 4][..]),
