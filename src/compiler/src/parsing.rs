@@ -20,6 +20,7 @@ use internment::ArcIntern;
 use itertools::Itertools;
 use puzzle_theory::{
     numbers::{Int, U},
+    permutations::Algorithm,
     puzzle_geometry::parsing::puzzle_definition,
     span::{Extra, File, MaybeErr, Span, WithSpan},
 };
@@ -221,17 +222,20 @@ fn parser() -> impl Parser<'static, File, MaybeErr<ParsedSyntax>, ExtraAndSyntax
                         }
                     };
 
-                    let importee =
-                        match parse(&File::new(ArcIntern::from(filename.slice()), import), move |v| (find_import)(v), is_prelude) {
-                            Ok(v) => v,
-                            Err(errs) => {
-                                for err in errs {
-                                    emitter.emit(err);
-                                }
-
-                                continue;
+                    let importee = match parse(
+                        &File::new(ArcIntern::from(filename.slice()), import),
+                        move |v| (find_import)(v),
+                        is_prelude,
+                    ) {
+                        Ok(v) => v,
+                        Err(errs) => {
+                            for err in errs {
+                                emitter.emit(err);
                             }
-                        };
+
+                            continue;
+                        }
+                    };
 
                     merge_files(&mut parsed_syntax, &qat, importee, data.span(), emitter);
                 }
@@ -496,7 +500,7 @@ fn register_architecture() -> impl Parser<'static, File, MaybeErr<PuzzleUnnamed>
         ))
         .map(|(_, (), order)| order.map(|order| PuzzleUnnamed::Theoretical { order })),
         group((
-            puzzle_definition().map(with_presets),
+            puzzle_definition().map(|v| with_presets(&v)),
             whitespace(),
             just("builtin"),
             whitespace(),
@@ -511,20 +515,26 @@ fn register_architecture() -> impl Parser<'static, File, MaybeErr<PuzzleUnnamed>
             ))
             .map_with(|v, data| v.map(|v| data.span().with(v))),
         ))
-        .validate(
-            |(def, (), _, (), orders), data, emitter| orders.map(|orders| if let Some(arch) = def.get_preset(&orders) { MaybeErr::Some(PuzzleUnnamed::Real {
-                architecture: data.span().with(arch),
-                def_span: def.span().clone(),
-            }) } else {
-                emitter.emit(Rich::custom(
-                                orders.span().clone(),
-                                "There does not exist a preset architecture with the given orders.",
-                            ));
-                            MaybeErr::None
-            },
-        ).flatten()),
+        .validate(|(def, (), _, (), orders), data, emitter| {
+            orders
+                .map(|orders| {
+                    if let Some(arch) = def.get_preset(&orders) {
+                        MaybeErr::Some(PuzzleUnnamed::Real {
+                            architecture: data.span().with(arch),
+                            def_span: def.span().clone(),
+                        })
+                    } else {
+                        emitter.emit(Rich::custom(
+                            orders.span().clone(),
+                            "There does not exist a preset architecture with the given orders.",
+                        ));
+                        MaybeErr::None
+                    }
+                })
+                .flatten()
+        }),
         group((
-            puzzle_definition().map(with_presets),
+            puzzle_definition().map(|v| with_presets(&v)),
             whitespace(),
             choice((
                 algorithm().map(|v| vec![v]),
@@ -539,17 +549,43 @@ fn register_architecture() -> impl Parser<'static, File, MaybeErr<PuzzleUnnamed>
             whitespace(),
         ))
         .validate(|(def, (), algs, ()), data, emitter| {
-            match Architecture::new(Arc::clone(&def.perm_group), &algs) {
-                Ok(arch) => MaybeErr::Some(PuzzleUnnamed::Real {
-                    architecture: data.span().with(Arc::new(arch)),
-                    def_span: def.span().clone(),
-                }),
-                Err(bad_generator) => {
-                    emitter.emit(Rich::custom(bad_generator.clone(), format!("This generator does not exist in the given permutation group. The options are: {}", def.perm_group.generators().map(|(name, _)| name).join(&ArcIntern::from(", ")))));
+            let mut algs_strings = Vec::new();
+            let mut failure = false;
+            for alg in &*algs {
+                for item in alg {
+                    if def.perm_group.get_generator(item.slice()).is_none() {
+                        failure = true;
+                        emitter.emit(Rich::custom(
+                            item.clone(),
+                            format!(
+                                "Not a generator of the given puzzle. The options are: {}",
+                                def.perm_group
+                                    .generators()
+                                    .map(|(name, _)| name)
+                                    .join(&ArcIntern::from(", "))
+                            ),
+                        ));
+                    }
+                }
 
-                    MaybeErr::None
-                },
+                algs_strings.push(alg.iter().map(Span::slice).join(" "));
             }
+
+            if failure {
+                return MaybeErr::None;
+            }
+
+            let algs = algs_strings
+                .into_iter()
+                .map(|v| Algorithm::parse_from_string(Arc::clone(&def.perm_group), &v).unwrap())
+                .collect();
+
+            MaybeErr::Some(PuzzleUnnamed::Real {
+                def_span: def.span().clone(),
+                architecture: data
+                    .span()
+                    .with(Arc::new(Architecture::new(def.into_inner().perm_group, algs))),
+            })
         }),
     ))
 }

@@ -334,7 +334,7 @@ mod tests {
 
     #[tokio::test]
     async fn facelets_solved() {
-        let perm_group = with_presets(puzzle("3x3"));
+        let perm_group = with_presets(&puzzle("3x3"));
 
         let mut cube: SimulatedPuzzle =
             SimulatedPuzzle::initialize(Arc::clone(&perm_group.perm_group), ())
@@ -356,7 +356,7 @@ mod tests {
 
     #[tokio::test]
     async fn complicated_solved_decode_test() {
-        let perm_group = with_presets(puzzle("3x3"));
+        let perm_group = with_presets(&puzzle("3x3"));
 
         let arch = perm_group
             .get_preset(&[Int::from(210_u64), Int::from(24_u64)])
@@ -420,6 +420,10 @@ mod tests {
         }
     }
 
+    pub(crate) fn file(str: &'static str) -> File {
+        File::new(ArcIntern::from("<static>"), ArcIntern::from(str))
+    }
+
     #[tokio::test]
     async fn modulus() {
         let code = "
@@ -451,7 +455,7 @@ mod tests {
                 halt \"The modulus is\" A
         ";
 
-        let (program, _) = match compile(&File::from(code), |_| unreachable!()) {
+        let (program, _) = match compile(&file(code), |_| unreachable!()) {
             Ok(v) => v,
             Err(e) => panic!("{e:?}"),
         };
@@ -533,7 +537,7 @@ mod tests {
                 halt \"The modulus is\" B
         ";
 
-        let (program, _) = match compile(&File::from(code), |_| unreachable!()) {
+        let (program, _) = match compile(&file(code), |_| unreachable!()) {
             Ok(v) => v,
             Err(e) => panic!("{e:?}"),
         };
@@ -654,7 +658,7 @@ mod tests {
                 goto continue_1
         ";
 
-        let (program, _) = match compile(&File::from(code), |_| unreachable!()) {
+        let (program, _) = match compile(&file(code), |_| unreachable!()) {
             Ok(v) => v,
             Err(e) => panic!("{e:?}"),
         };
@@ -762,7 +766,7 @@ A: 3x3
                 F    <- theoretical 90
             }
 
-            -- These should be coalesced into just four instructions
+            // These should be coalesced into just four instructions
             add A 1
             add E 1
             add C 1
@@ -786,7 +790,7 @@ A: 3x3
             halt \"Done\"
         ";
 
-        let (program, _) = match compile(&File::from(code), |_| unreachable!()) {
+        let (program, _) = match compile(&file(code), |_| unreachable!()) {
             Ok(v) => v,
             Err(e) => panic!("{e:?}"),
         };
@@ -831,7 +835,7 @@ A: 3x3
 
             add A 1
 
-            -- Two repeat untils
+            // Two repeat untils
             spot1:
                 solved-goto A spot2
                 add A 3
@@ -844,7 +848,7 @@ A: 3x3
                 goto spot2
             spot3:
 
-            -- Two repeat untils
+            // Two repeat untils
                 goto spot5
             spot4:
                 add A 3
@@ -862,7 +866,7 @@ A: 3x3
                 goto spot7
             spot9:
 
-            -- One repeat until
+            // One repeat until
 
             goto spot11
 
@@ -875,7 +879,7 @@ A: 3x3
                 goto spot10
             spot12:
 
-            -- One algorithm + one repeat until
+            // One algorithm + one repeat until
 
             spot13:
                 add B 3
@@ -887,7 +891,7 @@ A: 3x3
                 halt \"A=\" A
         ";
 
-        let (program, _) = match compile(&File::from(code), |_| unreachable!()) {
+        let (program, _) = match compile(&file(code), |_| unreachable!()) {
             Ok(v) => v,
             Err(e) => panic!("{e:?}"),
         };
@@ -956,15 +960,15 @@ A: 3x3
                 B <- 3x3 builtin (1260)
             }
 
-            -- Should not be converted to a repeat until
-            -- 3 instructions
+            // Should not be converted to a repeat until
+            // 3 instructions
             spot1:
                 solved-goto B spot2
                 add A 89
                 goto spot1
             spot2:
 
-            -- 4 instructions
+            // 4 instructions
                 goto spot5
             spot4:
                 add A 89
@@ -973,7 +977,7 @@ A: 3x3
                 goto spot4
             spot6:
 
-            -- 4 instructions
+            // 4 instructions
             spot10:
                 add A 89
             spot11:
@@ -985,7 +989,7 @@ A: 3x3
                 halt \"A=\" A
         ";
 
-        let (program, _) = match compile(&File::from(code), |_| unreachable!()) {
+        let (program, _) = match compile(&file(code), |_| unreachable!()) {
             Ok(v) => v,
             Err(e) => panic!("{e:?}"),
         };
@@ -1031,7 +1035,7 @@ A: 3x3
 
                 add A 1
 
-                -- Dead code
+                // Dead code
                 goto spot1
             never_jumped_to:
                 add A 80
@@ -1043,11 +1047,11 @@ A: 3x3
 
                 halt \"A=\" A
 
-                -- More dead code
+                // More dead code
                 add A 20
         ";
 
-        let (program, _) = match compile(&File::from(code), |_| unreachable!()) {
+        let (program, _) = match compile(&file(code), |_| unreachable!()) {
             Ok(v) => v,
             Err(e) => panic!("{e:?}"),
         };
@@ -1102,16 +1106,16 @@ A: 3x3
                 A, B, C <- 3x3 builtin (30, 30, 30)
             }
 
-            -- One algorithm
+            // One algorithm
                 add A 20
                 add B 10
                 add C 15
 
-            -- Reduced to one solve instruction
+            // Reduced to one solve instruction
             spot1:
                 solved-goto A spot2
                 add A 1
-            -- Adding to B will be irrelevant because it will be zeroed out later
+            // Adding to B will be irrelevant because it will be zeroed out later
                 add B 1
                 goto spot1
             spot2:
@@ -1129,7 +1133,7 @@ A: 3x3
                 halt \"C=\" C
         ";
 
-        let (program, _) = match compile(&File::from(code), |_| unreachable!()) {
+        let (program, _) = match compile(&file(code), |_| unreachable!()) {
             Ok(v) => v,
             Err(e) => panic!("{e:?}"),
         };

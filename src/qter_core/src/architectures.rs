@@ -316,6 +316,8 @@ impl DecodingTable {
         &'s self,
         target: &'t [Int<U>],
     ) -> (&'s [Int<U>], &'s [ArcIntern<str>]) {
+        // println!("{:?}", target);
+
         let mut closest: Option<(Int<U>, &'s [Int<U>], &'s [ArcIntern<str>])> = None;
 
         let mut update_closest = |achieves: &'s [Int<U>], alg: &'s [ArcIntern<str>]| {
@@ -418,19 +420,16 @@ impl Architecture {
     /// # Errors
     ///
     /// If the algorithms are invalid, it will return an error
-    pub fn new<T: AsRef<str>>(
-        perm_group: Arc<PermutationGroup>,
-        algorithms: &[Vec<T>],
-    ) -> Result<Architecture, &T> {
-        let (registers, shared_facelets) = algorithms_to_cycle_generators(&perm_group, algorithms)?;
+    pub fn new(perm_group: Arc<PermutationGroup>, algorithms: Box<[Algorithm]>) -> Architecture {
+        let (registers, shared_facelets) = algorithms_to_cycle_generators(&perm_group, algorithms);
 
-        Ok(Architecture {
+        Architecture {
             perm_group,
             registers,
             shared_facelets,
             optimized_table: None,
             decoded_table: OnceLock::new(),
-        })
+        }
     }
 
     /// Insert a table of optimized algorithms into the architecture. The algorithms are expected to be compressed using `table_encoding::encode`. Inverses and the values that registers that define the architecture need not be optimized, they will be included automatically. You may optimize them anyways and values encoded later in the table will be prioritized.
@@ -530,7 +529,7 @@ impl Architecture {
 /// # Panics
 ///
 /// The span attached to `geometry` must be the true puzzle definition. This is trivially satisfiable by acquiring the `PuzzleGeometry` from either either the `puzzle_geometry` or `puzzle` functions.
-pub fn with_presets(geometry: WithSpan<Arc<PuzzleGeometry>>) -> WithSpan<PuzzleDefinition> {
+pub fn with_presets(geometry: &WithSpan<Arc<PuzzleGeometry>>) -> WithSpan<PuzzleDefinition> {
     let group = geometry.permutation_group();
 
     geometry
@@ -566,12 +565,10 @@ pub fn with_presets(geometry: WithSpan<Arc<PuzzleGeometry>>) -> WithSpan<PuzzleD
             .map(|(algs, maybe_index): (&[&str], Option<usize>)| {
                 let mut arch = Architecture::new(
                     Arc::clone(&group),
-                    &algs
-                        .iter()
-                        .map(|alg| alg.split(' ').map(ArcIntern::from).collect_vec())
-                        .collect_vec(),
-                )
-                .unwrap();
+                    algs.iter()
+                        .map(|alg| Algorithm::parse_from_string(Arc::clone(&group), alg).unwrap())
+                        .collect(),
+                );
 
                 if let Some(index) = maybe_index {
                     arch.set_optimized_table(Cow::Borrowed(OPTIMIZED_TABLES[index]));
@@ -665,7 +662,7 @@ mod tests {
     use std::sync::Arc;
 
     use internment::ArcIntern;
-    use itertools::Itertools;
+    
     use puzzle_theory::{
         numbers::{Int, U},
         permutations::{Algorithm, Permutation},
@@ -680,7 +677,7 @@ mod tests {
 
     #[test]
     fn three_by_three() {
-        let cube_def = with_presets(puzzle("3x3"));
+        let cube_def = with_presets(&puzzle("3x3"));
 
         for (arch, expected) in &[
             (&["U", "D"][..], &[4, 4][..]),
@@ -703,12 +700,12 @@ mod tests {
         ] {
             let arch = Architecture::new(
                 Arc::clone(&cube_def.perm_group),
-                &arch
-                    .iter()
-                    .map(|alg| alg.split(' ').map(ArcIntern::from).collect_vec())
-                    .collect_vec(),
-            )
-            .unwrap();
+                arch.iter()
+                    .map(|alg| {
+                        Algorithm::parse_from_string(Arc::clone(&cube_def.perm_group), alg).unwrap()
+                    })
+                    .collect(),
+            );
 
             for (register, expected) in arch.registers.iter().zip(expected.iter()) {
                 assert_eq!(register.order(), Int::<U>::from(*expected));
