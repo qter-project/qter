@@ -6,11 +6,15 @@ use crate::{
     rob_twophase::solve_rob_twophase,
 };
 use interpreter::puzzle_states::RobotLike;
+use log::error;
 use puzzle_theory::{
     permutations::{Algorithm, Permutation, PermutationGroup},
     puzzle_geometry::parsing::puzzle,
 };
-use std::sync::{Arc, LazyLock};
+use std::{
+    error::Error,
+    sync::{Arc, LazyLock},
+};
 
 pub mod hardware;
 pub mod qvis_app;
@@ -28,62 +32,112 @@ pub struct QterRobot {
     cached_picture_state: Option<Permutation>,
 }
 
+#[derive(Debug)]
+pub enum QterRobotError {
+    ComposeIntoError(reqwest::Error),
+    CalibrateError(reqwest::Error),
+    MotorError(MotorError),
+}
+
+impl std::fmt::Display for QterRobotError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            QterRobotError::ComposeIntoError(e) => {
+                write!(f, "Error performing compose_into: {}", e)
+            }
+            QterRobotError::CalibrateError(error) => {
+                write!(f, "Error performing calibration: {}", error)
+            }
+            QterRobotError::MotorError(e) => write!(f, "Motor error: {}", e),
+        }
+    }
+}
+
+impl Error for QterRobotError {}
+
 impl RobotLike for QterRobot {
     type InitializationArg = (RobotHandle, QvisAppHandle);
     // TODO: Overtemperature warning, comms issue with the phone camera
-    type Error = MotorError;
+    type Error = QterRobotError;
 
     async fn initialize(
         cube3_permutation_group: Arc<PermutationGroup>,
         robot_and_qvis_app_handles: (RobotHandle, QvisAppHandle),
     ) -> Result<Self, Self::Error> {
         let (robot_handle, qvis_app_handle) = robot_and_qvis_app_handles;
+        let mut qter_robot = QterRobot {
+            robot_handle,
+            qvis_app_handle,
+            simulated_state: Permutation::identity(),
+            cached_picture_state: Some(Permutation::identity()),
+        };
 
         let mut acc = Permutation::identity();
-        qvis_app_handle.take_picture(Some(acc.clone()));
-        for move_ in Algorithm::parse_from_string(
+        qter_robot
+            .qvis_app_handle
+            .calibrate_permutation(acc.clone())
+            .await
+            .map_err(QterRobotError::ComposeIntoError)?;
+        for move_str in Algorithm::parse_from_string(
             Arc::clone(&cube3_permutation_group),
             CALIBRATION_ALGORITHM,
         )
         .unwrap()
         .move_seq_iter()
         {
-            let move_ = cube3_permutation_group.get_generator(move_).unwrap();
+            let move_ = cube3_permutation_group.get_generator(move_str).unwrap();
             acc.compose_into(move_);
-            qvis_app_handle.take_picture(Some(acc.clone()));
+            qter_robot
+                .compose_into(
+                    &Algorithm::new_from_move_seq(
+                        Arc::clone(&cube3_permutation_group),
+                        vec![move_str.clone()],
+                    )
+                    .unwrap(),
+                )
+                .await
+                .unwrap();
+            qter_robot
+                .qvis_app_handle
+                .calibrate_permutation(acc.clone())
+                .await
+                .map_err(QterRobotError::CalibrateError)?;
         }
 
-        Ok(QterRobot {
-            robot_handle,
-            qvis_app_handle,
-            simulated_state: Permutation::identity(),
-            cached_picture_state: Some(Permutation::identity()),
-        })
+        Ok(qter_robot)
     }
 
     async fn compose_into(&mut self, alg: &Algorithm) -> Result<(), Self::Error> {
         self.simulated_state.compose_into(alg.permutation());
 
-        self.robot_handle.queue_move_seq(alg)?;
+        self.robot_handle
+            .queue_move_seq(alg)
+            .map_err(QterRobotError::MotorError)?;
         self.cached_picture_state.take();
 
         Ok(())
     }
 
     async fn take_picture(&mut self) -> Result<&Permutation, Self::Error> {
-        // Refactor once polonius exists
         if self.cached_picture_state.is_none() {
-            self.robot_handle.await_moves()?.await?;
-
-            let ret = self.qvis_app_handle.take_picture(None);
-            assert_eq!(
-                ret, self.simulated_state,
-                "Simulated state does not match actual state."
-            );
-
+            self.robot_handle
+                .await_moves()
+                .map_err(QterRobotError::MotorError)?
+                .await
+                .map_err(QterRobotError::MotorError)?;
+            let ret = self
+                .qvis_app_handle
+                .take_picture()
+                .await
+                .map_err(QterRobotError::ComposeIntoError)?;
+            if ret != self.simulated_state {
+                error!(
+                    "Simulated state does not match actual state.\nSimulated: {}\nActual:    {}",
+                    self.simulated_state, ret
+                );
+            }
             self.cached_picture_state = Some(ret);
         }
-
         Ok(self.cached_picture_state.as_ref().unwrap())
     }
 

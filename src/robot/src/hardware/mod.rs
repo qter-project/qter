@@ -148,7 +148,9 @@ impl RobotHandle {
     }
 
     /// Wait for all moves in the queue to be performed
-    pub fn await_moves(&self) -> Result<impl Future<Output = Result<(), MotorError>> + 'static, MotorError> {
+    pub fn await_moves(
+        &self,
+    ) -> Result<impl Future<Output = Result<(), MotorError>> + 'static, MotorError> {
         let (tx, rx) = oneshot::channel();
 
         self.motor_thread_handle
