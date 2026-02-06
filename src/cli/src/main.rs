@@ -144,16 +144,16 @@ async fn main() -> color_eyre::Result<()> {
 
             let (program, _) = compile_qat(&file)?;
 
-            let q_code = match emit_q(&program) {
-                Ok(v) => v,
+            let path = file.with_extension("q");
+
+            let q_code = match emit_q(&program, path.display().to_string().into()) {
+                Ok(v) => v.0,
                 Err(errs) => {
                     return Err(process_errors(errs, &file));
                 }
             };
 
-            let path = file.with_extension("q");
-
-            fs::write(path, q_code)?;
+            fs::write(path, &*q_code.inner())?;
         }
         Commands::Interpret { file, trace_level } => {
             let program = match file.extension().and_then(|v| v.to_str()) {

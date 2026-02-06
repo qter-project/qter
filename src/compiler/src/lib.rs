@@ -580,9 +580,6 @@ impl BlockInfoTracker {
     }
 }
 
-type RegsResolved = WithSpan<RegistersDecl>;
-type RegsUnresolved = Option<WithSpan<RegistersDecl>>;
-
 #[derive(Clone, Debug)]
 struct ExpansionInfo {
     registers: Option<WithSpan<RegistersDecl>>,
@@ -683,10 +680,10 @@ mod tests {
             Err(e) => panic!("{e:?}"),
         };
 
-        let q_code = emit_q(&program).unwrap();
+        let q_code = emit_q(&program, "code.q".into()).unwrap().0;
 
         assert_eq!(
-            q_code,
+            q_code.inner(),
             r"Puzzles
 A: 3x3
 

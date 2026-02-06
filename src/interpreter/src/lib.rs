@@ -665,7 +665,7 @@ mod tests {
             Err(e) => panic!("{e:?}"),
         };
 
-        let q = emit_q(&program).unwrap();
+        let q = emit_q(&program, "code.q".into()).unwrap().0.inner();
 
         assert_str_eq!(
             q,
@@ -898,7 +898,7 @@ A: 3x3
             Err(e) => panic!("{e:?}"),
         };
 
-        let q = emit_q(&program).unwrap();
+        let q = emit_q(&program, "code.q".into()).unwrap().0.inner();
 
         assert_str_eq!(
             q,
@@ -1058,7 +1058,7 @@ A: 3x3
             Err(e) => panic!("{e:?}"),
         };
 
-        let q_code = emit_q(&program).unwrap();
+        let q_code = emit_q(&program, "code.q".into()).unwrap().0.inner();
 
         assert_eq!(
             q_code,
@@ -1140,7 +1140,7 @@ A: 3x3
             Err(e) => panic!("{e:?}"),
         };
 
-        let q_code = emit_q(&program).unwrap();
+        let q_code = emit_q(&program, "code.q".into()).unwrap().0.inner();
 
         assert_eq!(
             q_code,

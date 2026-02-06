@@ -4,7 +4,7 @@ use itertools::Itertools;
 use puzzle_theory::{
     numbers::{Int, U},
     permutations::Algorithm,
-    span::{Span, WithSpan},
+    span::{File, Span, WithSpan},
 };
 use qter_core::{
     Facelets, Halt, Input, Instruction, PerformAlgorithm, Print, Program, RepeatUntil,
@@ -25,12 +25,12 @@ enum QInstruction {
     RepeatUntil(<RepeatUntil as SeparatesByPuzzleType>::Puzzle<'static>),
 }
 
-/// Convert a `Program` into Q code
+/// Convert a `Program` into Q code. The file name will be inserted into all of the spans. Also returns a list of spans for each instruction in the program.
 ///
 /// # Errors
 ///
 /// Returns compile errors if `theoretical` registers are present.
-pub fn emit_q(program: &Program) -> Result<String, Vec<Rich<'static, char, Span>>> {
+pub fn emit_q(program: &Program, file_name: ArcIntern<str>) -> Result<(File, Box<[Span]>), Vec<Rich<'static, char, Span>>> {
     let mut errors = Vec::new();
     for theoretical in &program.theoretical {
         errors.push(Rich::custom(
@@ -63,6 +63,8 @@ pub fn emit_q(program: &Program) -> Result<String, Vec<Rich<'static, char, Span>
     let digits = (instrs.len().max(2) - 1).ilog10() as usize + 1;
 
     let padding = " ".repeat(digits + 3);
+
+    let mut spans = Vec::new();
 
     for (i, instr) in instrs.iter().enumerate() {
         let mut num = i.to_string();
@@ -129,11 +131,18 @@ pub fn emit_q(program: &Program) -> Result<String, Vec<Rich<'static, char, Span>
             }
         };
 
+        let start = out.len();
         writeln!(&mut out, "{num} | {instr}").unwrap();
+        let end = out.len();
+
+        spans.push((start, end));
     }
 
+    let file = File::new(file_name, ArcIntern::from(out));
+
     if errors.is_empty() {
-        Ok(out)
+        let spans = spans.into_iter().map(|(start, end)| Span::new(file.clone(), start, end)).collect();
+        Ok((file, spans))
     } else {
         Err(errors)
     }

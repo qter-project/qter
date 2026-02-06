@@ -78,6 +78,7 @@
   - ⭐Actual expansion
   - ⭐Lua stuff
 - 😎Translate QAT comments into Q
+- 😎Refactor spans to form a tree structure
 - ⭐Memory tapes
   - ⭐Implement in QAT
 - Dynamically shuffle sub-cycles with syntax X ← A\*B\*C\*D, Y ← E\*F\*G\*H
