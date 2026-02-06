@@ -4,10 +4,10 @@
 #![allow(clippy::needless_pass_by_value)]
 
 use std::{
-    error::Error, fmt::Display, fs, io, net::SocketAddr, path::{Path, PathBuf}, sync::Arc
+    error::Error, fs, io, net::SocketAddr, path::{Path, PathBuf}, sync::Arc
 };
 
-use ariadne::{Cache, Color, Label, Report, ReportKind, Source};
+use ariadne::{Color, Label, Report, ReportKind, Source};
 use chumsky::error::Rich;
 use clap::{ArgAction, Parser};
 use color_eyre::{

@@ -3,9 +3,9 @@
 
 use clap::{Parser, Subcommand};
 use env_logger::TimestampPrecision;
-use interpreter::puzzle_states::{RobotLike, run_robot_server};
+use interpreter::puzzle_states::run_robot_server;
 use log::{LevelFilter, warn};
-use puzzle_theory::{permutations::Algorithm, puzzle_geometry::parsing::puzzle};
+use puzzle_theory::permutations::Algorithm;
 use robot::{
     CUBE3, QterRobot,
     hardware::{
@@ -88,7 +88,7 @@ async fn main() -> color_eyre::Result<()> {
 
     match cli.command {
         Commands::MoveSeq { sequence } => {
-            let mut robot_handle = RobotHandle::init(robot_config);
+            let robot_handle = RobotHandle::init(robot_config);
             robot_handle.queue_move_seq(
                 &Algorithm::parse_from_string(Arc::clone(&CUBE3), &sequence)
                     .expect("The algorithm is invalid"),
@@ -96,7 +96,7 @@ async fn main() -> color_eyre::Result<()> {
             robot_handle.await_moves()?.await?;
         }
         Commands::Motor { face } => {
-            let mut robot_handle = RobotHandle::init(robot_config);
+            let robot_handle = RobotHandle::init(robot_config);
             robot_handle.loop_face_turn(face).await?;
         }
         Commands::Float => {
@@ -134,22 +134,15 @@ async fn main() -> color_eyre::Result<()> {
         Commands::Server { server_port } => {
             let listener = TcpListener::bind(format!("0.0.0.0:{server_port}")).await?;
 
-            let robot_handle = RobotHandle::init(robot_config);
-            let qvis_app_handle = QvisAppHandle::init();
-            let cube3_permutation_group = puzzle("3x3").permutation_group();
-            let mut robot = QterRobot::initialize(
-                Arc::clone(&cube3_permutation_group),
-                (robot_handle, qvis_app_handle),
-            )
-            .await?;
+            let mut robot_handle = RobotHandle::init(robot_config);
+            let mut qvis_app_handle = QvisAppHandle::init();
 
             loop {
                 let (socket, _) = listener.accept().await?;
 
                 run_robot_server::<_, QterRobot>(
                     BufReader::new(socket),
-                    &mut robot,
-                    &cube3_permutation_group,
+                    (&mut robot_handle, &mut qvis_app_handle),
                 )
                 .await?;
             }
@@ -159,7 +152,7 @@ async fn main() -> color_eyre::Result<()> {
         } => {
             let alg = solve_rob_twophase_string(&rob_twophase_string).unwrap();
 
-            let mut robot_handle = RobotHandle::init(robot_config);
+            let robot_handle = RobotHandle::init(robot_config);
             robot_handle.queue_move_seq(&alg)?;
             robot_handle.await_moves()?.await?;
         }

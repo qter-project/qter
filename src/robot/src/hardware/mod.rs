@@ -116,7 +116,7 @@ impl RobotHandle {
         &self.config
     }
 
-    pub async fn loop_face_turn(&mut self, face: Face) -> Result<(), MotorError> {
+    pub async fn loop_face_turn(&self, face: Face) -> Result<(), MotorError> {
         loop {
             self.motor_thread_handle
                 .send(MotorMessage::QueueMove((face, Dir::Normal)))?;
@@ -125,7 +125,7 @@ impl RobotHandle {
     }
 
     /// Queue a sequence of moves to be performed by the robot
-    pub fn queue_move_seq(&mut self, alg: &Algorithm) -> Result<(), MotorError> {
+    pub fn queue_move_seq(&self, alg: &Algorithm) -> Result<(), MotorError> {
         for move_ in alg.move_seq_iter() {
             let mut move_ = &**move_;
             let dir = if let Some(rest) = move_.strip_suffix('\'') {

@@ -1088,6 +1088,7 @@ dependencies = [
  "pretty_assertions",
  "puzzle_theory",
  "qter_core",
+ "serde_json",
  "tokio",
  "tokio-stream",
  "tokio-util",
@@ -1612,7 +1613,7 @@ dependencies = [
 [[package]]
 name = "puzzle_theory"
 version = "0.1.0"
-source = "git+https://github.com/qter-project/puzzle-theory#cc0faecb7c77102ed408656c8e6e1c7425474653"
+source = "git+https://github.com/qter-project/puzzle-theory#566b4fc43d2fcfe92020cabecd18607632345d79"
 dependencies = [
  "algebraics",
  "ariadne",
@@ -1691,7 +1692,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -2010,7 +2011,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3280,18 +3281,18 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
-version = "0.8.38"
+version = "0.8.39"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57cf3aa6855b23711ee9852dfc97dfaa51c45feaba5b645d0c777414d494a961"
+checksum = "db6d35d663eadb6c932438e763b262fe1a70987f9ae936e60158176d710cae4a"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.38"
+version = "0.8.39"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a616990af1a287837c4fe6596ad77ef57948f787e46ce28e166facc0cc1cb75"
+checksum = "4122cd3169e94605190e77839c9a40d40ed048d305bfdc146e7df40ab0f3e517"
 dependencies = [
  "proc-macro2",
  "quote",

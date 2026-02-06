@@ -25,10 +25,10 @@ pub static CUBE3: LazyLock<Arc<PermutationGroup>> =
 
 const CALIBRATION_ALGORITHM: &str = "L2 U2 B D2 L R D D2 B F' U D D U' D R' U L D' U' D2 F2 U2 R2 U2 D' U U F' L2 F' F' L D2 F' D' B B D D U' L' R R' D' B2 L2 F D' B' L2 F2 B' D2 B2 R' L2 F' B2 U L B' R' R2 F' D' R2 R B R' D' B' R' U2 B L2 R' B2 R2 D B' L2 F2 D2 L D R U' B R2 R2 R B' F' D2 D' D L2 F' F R' D R' U2 L2 R' D U' R' F' U2 F' D' R2 U L R2";
 
-pub struct QterRobot {
+pub struct QterRobot<'a> {
     simulated_state: Permutation,
-    robot_handle: RobotHandle,
-    qvis_app_handle: QvisAppHandle,
+    robot_handle: &'a mut RobotHandle,
+    qvis_app_handle: &'a mut QvisAppHandle,
     cached_picture_state: Option<Permutation>,
 }
 
@@ -37,6 +37,7 @@ pub enum QterRobotError {
     ComposeIntoError(reqwest::Error),
     CalibrateError(reqwest::Error),
     MotorError(MotorError),
+    IncorrectPermGroup(String),
 }
 
 impl std::fmt::Display for QterRobotError {
@@ -49,22 +50,29 @@ impl std::fmt::Display for QterRobotError {
                 write!(f, "Error performing calibration: {}", error)
             }
             QterRobotError::MotorError(e) => write!(f, "Motor error: {}", e),
+            QterRobotError::IncorrectPermGroup(str) => write!(f, "Incorrect permutation group. Expected 3x3, found {str}"),
         }
     }
 }
 
 impl Error for QterRobotError {}
 
-impl RobotLike for QterRobot {
-    type InitializationArg = (RobotHandle, QvisAppHandle);
+impl<'a> RobotLike for QterRobot<'a> {
+    type InitializationArg = (&'a mut RobotHandle, &'a mut QvisAppHandle);
     // TODO: Overtemperature warning, comms issue with the phone camera
     type Error = QterRobotError;
 
     async fn initialize(
         cube3_permutation_group: Arc<PermutationGroup>,
-        robot_and_qvis_app_handles: (RobotHandle, QvisAppHandle),
+        (robot_handle, qvis_app_handle): Self::InitializationArg,
     ) -> Result<Self, Self::Error> {
-        let (robot_handle, qvis_app_handle) = robot_and_qvis_app_handles;
+        if cube3_permutation_group != puzzle("3x3").permutation_group() {
+            return Err(QterRobotError::IncorrectPermGroup(match cube3_permutation_group.maybe_def() {
+                Some(v) => v.to_string(),
+                None => format!("{cube3_permutation_group:?}"),
+            }))
+        }
+        
         let mut qter_robot = QterRobot {
             robot_handle,
             qvis_app_handle,
