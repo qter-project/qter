@@ -60,6 +60,7 @@ enum Commands {
     /// Host a server to allow the robot to be remote-controlled
     Server {
         server_port: u16,
+        qvis_app_path: PathBuf,
     },
     Solve {
         rob_twophase_string: String,
@@ -131,11 +132,11 @@ async fn main() -> color_eyre::Result<()> {
                 println!("Top 5 = {:?}", &latencies[SAMPLES - 5..SAMPLES]);
             }
         }
-        Commands::Server { server_port } => {
+        Commands::Server { server_port, qvis_app_path } => {
             let listener = TcpListener::bind(format!("0.0.0.0:{server_port}")).await?;
 
             let mut robot_handle = RobotHandle::init(robot_config);
-            let mut qvis_app_handle = QvisAppHandle::init();
+            let mut qvis_app_handle = QvisAppHandle::init(qvis_app_path);
 
             loop {
                 let (socket, _) = listener.accept().await?;

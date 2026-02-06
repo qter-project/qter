@@ -21,7 +21,7 @@ paste = "1.0.15"
 serde_repr = "0.1.20"
 puzzle_theory = { git = "https://github.com/qter-project/puzzle-theory", features = ["serde"] }
 # TODO: Enable io_uring once it's stable in tokio?
-tokio = { version = "1.49.0", default-features = false, features = ["net", "rt-multi-thread", "tracing", "macros"] }
+tokio = { version = "1.49.0", default-features = false, features = ["net", "rt-multi-thread", "tracing", "macros", "process"] }
 color-eyre = "0.6.5"
 
 [lints]
