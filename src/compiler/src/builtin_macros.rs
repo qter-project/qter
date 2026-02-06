@@ -59,7 +59,7 @@ fn print_like(
     mut args: WithSpan<Vec<WithSpan<Value>>>,
     block_id: BlockID,
 ) -> Result<(Option<RegisterReference>, WithSpan<String>), Rich<'static, char, Span>> {
-    if args.len() > 2 {
+    if args.len() > 2 || args.is_empty() {
         return Err(Rich::custom(
             args.span().clone(),
             format!("Expected one or two arguments, found {}", args.len()),
