@@ -34,8 +34,8 @@ pub struct QterRobot<'a> {
 
 #[derive(Debug)]
 pub enum QterRobotError {
-    ComposeIntoError(reqwest::Error),
-    CalibrateError(reqwest::Error),
+    ComposeIntoError(String),
+    CalibrationError(String),
     MotorError(MotorError),
     IncorrectPermGroup(String),
 }
@@ -46,7 +46,7 @@ impl std::fmt::Display for QterRobotError {
             QterRobotError::ComposeIntoError(e) => {
                 write!(f, "Error performing compose_into: {}", e)
             }
-            QterRobotError::CalibrateError(error) => {
+            QterRobotError::CalibrationError(error) => {
                 write!(f, "Error performing calibration: {}", error)
             }
             QterRobotError::MotorError(e) => write!(f, "Motor error: {}", e),
@@ -109,7 +109,7 @@ impl<'a> RobotLike for QterRobot<'a> {
                 .qvis_app_handle
                 .calibrate_permutation(acc.clone())
                 .await
-                .map_err(QterRobotError::CalibrateError)?;
+                .map_err(QterRobotError::CalibrationError)?;
         }
 
         Ok(qter_robot)

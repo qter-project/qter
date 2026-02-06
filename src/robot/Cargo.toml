@@ -23,7 +23,6 @@ puzzle_theory = { git = "https://github.com/qter-project/puzzle-theory", feature
 # TODO: Enable io_uring once it's stable in tokio?
 tokio = { version = "1.49.0", default-features = false, features = ["net", "rt-multi-thread", "tracing", "macros"] }
 color-eyre = "0.6.5"
-reqwest = { version = "0.13.1", features = ["json"] }
 
 [lints]
 workspace = true
