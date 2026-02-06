@@ -13,7 +13,7 @@ use crate::{
         global::DeadLabelRemover,
         local::{
             CoalesceAdds, RemoveUnreachableCode, RemoveUselessJumps, RepeatUntil1, RepeatUntil2,
-            RepeatUntil3, TransformSolve,
+            RepeatUntil3, VectorizeRepeatUntil, TransformSolve,
         },
     },
     strip_expanded::GlobalRegs,
@@ -50,8 +50,8 @@ pub enum OptimizingPrimitive {
     AddPuzzle {
         puzzle: PuzzleIdx,
         arch: Arc<Architecture>,
-        // register idx, modulus, amt to add
-        amts: Vec<(usize, Option<Int<U>>, WithSpan<Int<U>>)>,
+        // register idx, amt to add
+        amts: Vec<(usize, WithSpan<Int<U>>)>,
     },
     AddTheoretical {
         theoretical: TheoreticalIdx,
@@ -67,7 +67,7 @@ pub enum OptimizingPrimitive {
     RepeatUntil {
         puzzle: PuzzleIdx,
         arch: Arc<Architecture>,
-        amts: Vec<(usize, Option<Int<U>>, WithSpan<Int<U>>)>,
+        amts: Vec<(usize, WithSpan<Int<U>>)>,
         register: RegisterReference,
     },
     Solve {
@@ -206,7 +206,12 @@ type OneFullPass = (
                     Peephole<RepeatUntil2>,
                     (
                         Peephole<RepeatUntil3>,
-                        (TransformSolve, Global<DeadLabelRemover>),
+                        (
+                            Peephole<VectorizeRepeatUntil>,
+                            (TransformSolve, Global<DeadLabelRemover>),
+                            // TransformSolve,
+                            // Global<DeadLabelRemover>,
+                        ),
                     ),
                 ),
             ),

@@ -78,7 +78,6 @@
   - ⭐Actual expansion
   - ⭐Lua stuff
 - 😎Translate QAT comments into Q
-- 😎Refactor spans to form a tree structure
 - ⭐Memory tapes
   - ⭐Implement in QAT
 - Dynamically shuffle sub-cycles with syntax X ← A\*B\*C\*D, Y ← E\*F\*G\*H
@@ -94,8 +93,7 @@
 - 😎Write a tree-sitter grammer for QAT
 - Evaluate repeat instruction for examinx
 - 😎Optimizations
-  - Optimize the `move` macro to use register modulus
-    - Or make this an optimization pass in the optimizer?
+  - Make the repeat-until vectorization optimization work with multiple puzzles
   - Asher's repeated move post process optimization: R U R repeated = R then U R2 repeated then R'
   - Unreachable removal with real control flow analysis
   - Dead code removal?

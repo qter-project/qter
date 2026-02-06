@@ -5,10 +5,13 @@ use std::{
 
 use itertools::Itertools;
 use puzzle_theory::{
-    numbers::{Int, U, lcm},
+    numbers::{Int, U, lcm, lcm_iter},
     span::WithSpan,
 };
-use qter_core::{ByPuzzleType, PuzzleIdx, TheoreticalIdx, architectures::Architecture};
+use qter_core::{
+    ByPuzzleType, PuzzleIdx, TheoreticalIdx,
+    architectures::{Architecture, CycleGeneratorSubcycle},
+};
 
 use crate::{
     BlockID,
@@ -98,13 +101,7 @@ impl PeepholeRewriter for RemoveUselessJumps {
 pub struct CoalesceAdds {
     block_id: Option<BlockID>,
     theoreticals: Vec<WithSpan<(TheoreticalIdx, WithSpan<Int<U>>)>>,
-    puzzles: Vec<
-        WithSpan<(
-            PuzzleIdx,
-            Arc<Architecture>,
-            Vec<(usize, Option<Int<U>>, WithSpan<Int<U>>)>,
-        )>,
-    >,
+    puzzles: Vec<WithSpan<(PuzzleIdx, Arc<Architecture>, Vec<(usize, WithSpan<Int<U>>)>)>>,
 }
 
 impl CoalesceAdds {
@@ -131,13 +128,13 @@ impl CoalesceAdds {
     }
 
     fn merge_effects(
-        effect1: &mut Vec<(usize, Option<Int<U>>, WithSpan<Int<U>>)>,
-        effect2: &[(usize, Option<Int<U>>, WithSpan<Int<U>>)],
+        effect1: &mut Vec<(usize, WithSpan<Int<U>>)>,
+        effect2: &[(usize, WithSpan<Int<U>>)],
     ) {
         'next_effect: for new_effect in effect2 {
             for effect in &mut *effect1 {
                 if effect.0 == new_effect.0 {
-                    *effect.2 += *new_effect.2;
+                    *effect.1 += *new_effect.1;
                     continue 'next_effect;
                 }
             }
@@ -529,6 +526,119 @@ impl PeepholeRewriter for RepeatUntil3 {
     }
 }
 
+/// Splits up a repeat until into one for each piece being checked. Effectively transforms
+///
+/// ```
+/// .registers {
+///     // Note that `B` is a composition of an 8 cycle and a 6 cycle
+///     A, B ← 3x3 builtin (210, 24)
+/// }
+///
+/// while not-solved B {
+///     dec A
+///     dec B
+/// }
+/// ```
+///
+/// into
+///
+/// ```
+/// while not-solved B%6 {
+///     dec A
+///     dec B
+/// }
+///
+/// while not-solved B {
+///     sub A 6
+///     sub B 6
+/// }
+/// ```
+pub struct VectorizeRepeatUntil;
+
+impl PeepholeRewriter for VectorizeRepeatUntil {
+    type Component = WithSpan<OptimizingCodeComponent>;
+    type GlobalData = GlobalRegs;
+
+    const MAX_WINDOW_SIZE: usize = 1;
+
+    fn try_match(window: &mut VecDeque<Self::Component>, global_regs: &Self::GlobalData) {
+        let Some(OptimizingCodeComponent::Instruction(instr, _)) =
+            window.front_mut().map(|v| &mut **v)
+        else {
+            return;
+        };
+
+        let OptimizingPrimitive::RepeatUntil {
+            puzzle: _,
+            arch: _,
+            amts,
+            register,
+        } = &mut **instr
+        else {
+            return;
+        };
+
+        let ByPuzzleType::Puzzle((_, (reg_idx, arch, modulus))) = global_regs.get_reg(register)
+        else {
+            return;
+        };
+
+        let Some(amt) = amts
+            .iter()
+            .find_map(|(idx, amt)| (*idx == reg_idx).then_some(**amt))
+        else {
+            return;
+        };
+
+        let reg_order = arch.registers()[reg_idx].order();
+        let modulus = modulus.unwrap_or(reg_order);
+
+        let cycles = arch.registers()[reg_idx].unshared_cycles();
+
+        if let Some((cycle_order, new_amt)) = cycles
+            .iter()
+            .map(CycleGeneratorSubcycle::chromatic_order)
+            .filter(|v| modulus != *v && (modulus % *v).is_zero() && !(amt % *v).is_zero())
+            .map(|v| (v, lcm(v, amt)))
+            .min_by_key(|v| v.1)
+        {
+            register.modulus = Some(cycle_order);
+
+            let mut next = window.front().unwrap().clone();
+
+            let OptimizingCodeComponent::Instruction(instr, _) = &mut *next else {
+                unreachable!();
+            };
+
+            let OptimizingPrimitive::RepeatUntil {
+                puzzle: _,
+                arch: _,
+                amts,
+                register,
+            } = &mut **instr
+            else {
+                unreachable!();
+            };
+
+            let scale_amt = new_amt / amt;
+
+            register.modulus = Some(lcm_iter(
+                cycles
+                    .iter()
+                    .map(CycleGeneratorSubcycle::chromatic_order)
+                    .filter(|v| (modulus % *v).is_zero() && !(cycle_order % *v).is_zero()),
+            ));
+
+            for amt in amts {
+                *amt.1 *= scale_amt;
+                *amt.1 %= arch.registers()[amt.0].order();
+            }
+
+            window.push_back(next);
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct TransformSolve {
     instrs: VecDeque<(WithSpan<OptimizingCodeComponent>, usize, Int<U>)>,
@@ -539,7 +649,10 @@ pub struct TransformSolve {
 impl TransformSolve {
     fn dump(&mut self) -> Vec<WithSpan<OptimizingCodeComponent>> {
         self.guaranteed_zeroed = HashMap::new();
-        self.instrs.drain(..).map(|(instr, _, _)| instr).collect_vec()
+        self.instrs
+            .drain(..)
+            .map(|(instr, _, _)| instr)
+            .collect_vec()
     }
 
     fn dump_with(
@@ -595,7 +708,9 @@ impl Rewriter for TransformSolve {
         let mut broken = HashSet::new();
 
         for amt in amts {
-            broken.insert(amt.0);
+            if amt.0 != reg_idx {
+                broken.insert(amt.0);
+            }
         }
 
         if let Some((i, _)) = self
@@ -639,8 +754,7 @@ impl Rewriter for TransformSolve {
                 *block_id,
             )));
         } else {
-            self.instrs
-                .push_back((component, reg_idx, modulus));
+            self.instrs.push_back((component, reg_idx, modulus));
         }
 
         dumped

@@ -188,11 +188,11 @@ pub fn strip_expanded(expanded: ExpandedCode) -> Result<Program, Vec<Rich<'stati
                                     ByPuzzleType::Theoretical((theoretical, ())) => {
                                         OptimizingPrimitive::AddTheoretical { theoretical, amt }
                                     }
-                                    ByPuzzleType::Puzzle((puzzle, (reg_idx, arch, modulus))) => {
+                                    ByPuzzleType::Puzzle((puzzle, (reg_idx, arch, _))) => {
                                         OptimizingPrimitive::AddPuzzle {
                                             puzzle,
                                             arch,
-                                            amts: vec![(reg_idx, modulus, amt)],
+                                            amts: vec![(reg_idx, amt)],
                                         }
                                     }
                                 }
@@ -294,7 +294,7 @@ pub fn strip_expanded(expanded: ExpandedCode) -> Result<Program, Vec<Rich<'stati
                         new_from_effect(
                             &arch,
                             amts.into_iter()
-                                .map(|(idx, _, amt)| (idx, amt.into_inner()))
+                                .map(|(idx, amt)| (idx, amt.into_inner()))
                                 .collect(),
                         ),
                     )))
@@ -338,7 +338,7 @@ pub fn strip_expanded(expanded: ExpandedCode) -> Result<Program, Vec<Rich<'stati
                     alg: new_from_effect(
                         &arch,
                         amts.into_iter()
-                            .map(|(idx, _, amt)| (idx, amt.into_inner()))
+                            .map(|(idx, amt)| (idx, amt.into_inner()))
                             .collect(),
                     ),
                 })),
