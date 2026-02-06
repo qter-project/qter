@@ -30,6 +30,7 @@ enum QInstruction {
 /// # Errors
 ///
 /// Returns compile errors if `theoretical` registers are present.
+#[allow(clippy::missing_panics_doc)]
 pub fn emit_q(program: &Program, file_name: ArcIntern<str>) -> Result<(File, Box<[Span]>), Vec<Rich<'static, char, Span>>> {
     let mut errors = Vec::new();
     for theoretical in &program.theoretical {
@@ -137,6 +138,8 @@ pub fn emit_q(program: &Program, file_name: ArcIntern<str>) -> Result<(File, Box
 
         spans.push((start, end));
     }
+
+    assert_eq!(spans.len(), program.instructions.len());
 
     let file = File::new(file_name, ArcIntern::from(out));
 

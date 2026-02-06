@@ -1,11 +1,11 @@
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     sync::Arc,
 };
 
 use itertools::Itertools;
 use puzzle_theory::{
-    numbers::{Int, U},
+    numbers::{Int, U, lcm},
     span::WithSpan,
 };
 use qter_core::{ByPuzzleType, PuzzleIdx, TheoreticalIdx, architectures::Architecture};
@@ -531,15 +531,15 @@ impl PeepholeRewriter for RepeatUntil3 {
 
 #[derive(Default)]
 pub struct TransformSolve {
-    instrs: VecDeque<(WithSpan<OptimizingCodeComponent>, Option<usize>)>,
+    instrs: VecDeque<(WithSpan<OptimizingCodeComponent>, usize, Int<U>)>,
     puzzle_idx: Option<PuzzleIdx>,
-    guaranteed_zeroed: HashSet<usize>,
+    guaranteed_zeroed: HashMap<usize, Int<U>>,
 }
 
 impl TransformSolve {
     fn dump(&mut self) -> Vec<WithSpan<OptimizingCodeComponent>> {
-        self.guaranteed_zeroed = HashSet::new();
-        self.instrs.drain(..).map(|(instr, _)| instr).collect_vec()
+        self.guaranteed_zeroed = HashMap::new();
+        self.instrs.drain(..).map(|(instr, _, _)| instr).collect_vec()
     }
 
     fn dump_with(
@@ -603,7 +603,7 @@ impl Rewriter for TransformSolve {
             .iter()
             .enumerate()
             .rev()
-            .find(|v| v.1.1.is_some_and(|v| broken.contains(&v)))
+            .find(|v| broken.contains(&v.1.1))
         {
             dumped.extend(self.instrs.drain(0..i).map(|v| v.0));
         }
@@ -613,13 +613,17 @@ impl Rewriter for TransformSolve {
         }
 
         // If we have a modulus, then it is possible for the whole register not to be zeroed in the end
-        let zeroes_out = modulus.is_none_or(|modulus| modulus == arch.registers()[reg_idx].order());
+        let modulus = modulus.unwrap_or_else(|| arch.registers()[reg_idx].order());
 
-        if zeroes_out {
-            self.guaranteed_zeroed.insert(reg_idx);
-        }
+        let zeroed_mod = self.guaranteed_zeroed.entry(reg_idx).or_insert(modulus);
+        *zeroed_mod = lcm(*zeroed_mod, modulus);
 
-        if self.guaranteed_zeroed.len() == arch.registers().len() {
+        if self.guaranteed_zeroed.len() == arch.registers().len()
+            && self
+                .guaranteed_zeroed
+                .iter()
+                .all(|(idx, modulus)| arch.registers()[*idx].order() == *modulus)
+        {
             let span = self
                 .instrs
                 .drain(..)
@@ -627,7 +631,7 @@ impl Rewriter for TransformSolve {
                 .reduce(|a, v| a.merge(&v))
                 .unwrap();
 
-            self.guaranteed_zeroed = HashSet::new();
+            self.guaranteed_zeroed = HashMap::new();
             dumped.push(span.with(OptimizingCodeComponent::Instruction(
                 Box::new(OptimizingPrimitive::Solve {
                     puzzle: ByPuzzleType::Puzzle(self.puzzle_idx.unwrap()),
@@ -636,7 +640,7 @@ impl Rewriter for TransformSolve {
             )));
         } else {
             self.instrs
-                .push_back((component, zeroes_out.then_some(reg_idx)));
+                .push_back((component, reg_idx, modulus));
         }
 
         dumped
