@@ -1,10 +1,6 @@
 #![feature(gen_blocks)]
 
-use crate::{
-    hardware::{MotorError, RobotHandle},
-    qvis_app::QvisAppHandle,
-    rob_twophase::solve_rob_twophase,
-};
+use crate::{hardware::RobotHandle, qvis_app::QvisAppHandle, rob_twophase::solve_rob_twophase};
 use interpreter::puzzle_states::RobotLike;
 use log::error;
 use puzzle_theory::{
@@ -13,6 +9,7 @@ use puzzle_theory::{
 };
 use std::{
     error::Error,
+    fmt::Display,
     sync::{Arc, LazyLock},
 };
 
@@ -32,26 +29,45 @@ pub struct QterRobot<'a> {
     cached_picture_state: Option<Permutation>,
 }
 
-#[derive(Debug)]
-pub enum QterRobotError {
-    ComposeIntoError(String),
-    CalibrationError(String),
-    MotorError(MotorError),
-    IncorrectPermGroup(String),
+#[derive(Debug, Clone, Copy)]
+pub enum ErrorKind {
+    MotorThreadDied,
+    ComposeInto,
+    Calibration,
+    IncorrectPermGroup,
+    // TODO: IMPLEMENT!!!!!
+    OverTemperature,
 }
 
-impl std::fmt::Display for QterRobotError {
+impl Display for ErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            QterRobotError::ComposeIntoError(e) => {
-                write!(f, "Error performing compose_into: {}", e)
+        write!(
+            f,
+            "{}",
+            match self {
+                ErrorKind::MotorThreadDied => "Motor thread died",
+                ErrorKind::OverTemperature => "Over-temperature",
+                ErrorKind::ComposeInto => "Compose-into",
+                ErrorKind::Calibration => "Calibration",
+                ErrorKind::IncorrectPermGroup => "Incorrect permutation group",
             }
-            QterRobotError::CalibrationError(error) => {
-                write!(f, "Error performing calibration: {}", error)
-            }
-            QterRobotError::MotorError(e) => write!(f, "Motor error: {}", e),
-            QterRobotError::IncorrectPermGroup(str) => write!(f, "Incorrect permutation group. Expected 3x3, found {str}"),
-        }
+        )
+    }
+}
+
+#[derive(Debug)]
+pub struct QterRobotError {
+    kind: ErrorKind,
+    message: String,
+}
+
+impl Display for QterRobotError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{{ kind: \"{}\", message:\"{}\" }}",
+            self.kind, self.message
+        )
     }
 }
 
@@ -67,12 +83,15 @@ impl<'a> RobotLike for QterRobot<'a> {
         (robot_handle, qvis_app_handle): Self::InitializationArg,
     ) -> Result<Self, Self::Error> {
         if cube3_permutation_group != puzzle("3x3").permutation_group() {
-            return Err(QterRobotError::IncorrectPermGroup(match cube3_permutation_group.maybe_def() {
-                Some(v) => v.to_string(),
-                None => format!("{cube3_permutation_group:?}"),
-            }))
+            return Err(QterRobotError {
+                kind: ErrorKind::IncorrectPermGroup,
+                message: match cube3_permutation_group.maybe_def() {
+                    Some(v) => v.to_string(),
+                    None => format!("{cube3_permutation_group:?}"),
+                },
+            });
         }
-        
+
         let mut qter_robot = QterRobot {
             robot_handle,
             qvis_app_handle,
@@ -85,7 +104,10 @@ impl<'a> RobotLike for QterRobot<'a> {
             .qvis_app_handle
             .calibrate_permutation(acc.clone())
             .await
-            .map_err(QterRobotError::ComposeIntoError)?;
+            .map_err(|message| QterRobotError {
+                kind: ErrorKind::ComposeInto,
+                message,
+            })?;
         for move_str in Algorithm::parse_from_string(
             Arc::clone(&cube3_permutation_group),
             CALIBRATION_ALGORITHM,
@@ -109,7 +131,10 @@ impl<'a> RobotLike for QterRobot<'a> {
                 .qvis_app_handle
                 .calibrate_permutation(acc.clone())
                 .await
-                .map_err(QterRobotError::CalibrationError)?;
+                .map_err(|message| QterRobotError {
+                    kind: ErrorKind::Calibration,
+                    message,
+                })?;
         }
 
         Ok(qter_robot)
@@ -118,9 +143,7 @@ impl<'a> RobotLike for QterRobot<'a> {
     async fn compose_into(&mut self, alg: &Algorithm) -> Result<(), Self::Error> {
         self.simulated_state.compose_into(alg.permutation());
 
-        self.robot_handle
-            .queue_move_seq(alg)
-            .map_err(QterRobotError::MotorError)?;
+        self.robot_handle.queue_move_seq(alg)?;
         self.cached_picture_state.take();
 
         Ok(())
@@ -128,16 +151,15 @@ impl<'a> RobotLike for QterRobot<'a> {
 
     async fn take_picture(&mut self) -> Result<&Permutation, Self::Error> {
         if self.cached_picture_state.is_none() {
-            self.robot_handle
-                .await_moves()
-                .map_err(QterRobotError::MotorError)?
-                .await
-                .map_err(QterRobotError::MotorError)?;
+            self.robot_handle.await_moves()?.await?;
             let ret = self
                 .qvis_app_handle
                 .take_picture()
                 .await
-                .map_err(QterRobotError::ComposeIntoError)?;
+                .map_err(|message| QterRobotError {
+                    kind: ErrorKind::ComposeInto,
+                    message,
+                })?;
             if ret != self.simulated_state {
                 error!(
                     "Simulated state does not match actual state.\nSimulated: {}\nActual:    {}",
