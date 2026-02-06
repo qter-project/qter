@@ -2,7 +2,7 @@ use std::{
     borrow::Cow,
     collections::BTreeMap,
     fmt::Debug,
-    sync::{Arc, OnceLock},
+    sync::{Arc, LazyLock, OnceLock},
 };
 
 use internment::ArcIntern;
@@ -511,7 +511,22 @@ impl Architecture {
 /// The span attached to `geometry` must be the true puzzle definition. This is trivially satisfiable by acquiring the `PuzzleGeometry` from either either the `puzzle_geometry` or `puzzle` functions.
 pub fn with_presets(group: Arc<PermutationGroup>) -> PuzzleDefinition {
     if group == puzzle("3x3").permutation_group() {
-        let presets: [Arc<Architecture>; 6] = [
+        PuzzleDefinition {
+            perm_group: group,
+            presets: (&*THREE_BY_THREE_PRESETS).into(),
+        }
+    } else {
+        PuzzleDefinition {
+            perm_group: group,
+            presets: Vec::new(),
+        }
+    }
+}
+
+static THREE_BY_THREE_PRESETS: LazyLock<[Arc<Architecture>; 6]> = LazyLock::new(|| {
+    let group = puzzle("3x3").permutation_group();
+    
+    [
             (&["R U2 D' B D'"] as &[&str], None),
             (&["U", "D"], Some(4)),
             (
@@ -550,19 +565,8 @@ pub fn with_presets(group: Arc<PermutationGroup>) -> PuzzleDefinition {
             }
 
             Arc::new(arch)
-        });
-
-        PuzzleDefinition {
-            perm_group: group,
-            presets: presets.into(),
-        }
-    } else {
-        PuzzleDefinition {
-            perm_group: group,
-            presets: Vec::new(),
-        }
-    }
-}
+        })
+});
 
 /// This function does what it says on the tin.
 ///
