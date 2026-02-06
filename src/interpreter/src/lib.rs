@@ -328,7 +328,7 @@ mod tests {
     use compiler::{compile, q_emitter::emit_q};
     use internment::ArcIntern;
     use pretty_assertions::{assert_eq, assert_str_eq};
-    use puzzle_theory::{puzzle_geometry::parsing::puzzle, span::File};
+    use puzzle_theory::{permutations::Permutation, puzzle_geometry::parsing::puzzle, span::File};
     use qter_core::architectures::{new_from_effect, with_presets};
     use std::sync::Arc;
 
@@ -358,9 +358,11 @@ mod tests {
     async fn complicated_solved_decode_test() {
         let perm_group = with_presets(puzzle("3x3").permutation_group());
 
-        let arch = perm_group
+        let (arch, swizzle) = perm_group
             .get_preset(&[Int::from(210_u64), Int::from(24_u64)])
             .unwrap();
+
+        assert_eq!(swizzle, Permutation::identity());
 
         let a_facelets = arch.registers()[0].signature_facelets();
         let b_facelets = arch.registers()[1].signature_facelets();

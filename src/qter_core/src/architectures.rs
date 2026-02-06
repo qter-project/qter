@@ -33,11 +33,11 @@ pub struct PuzzleDefinition {
 }
 
 impl PuzzleDefinition {
-    // If they want the cycles in a different order, create a new architecture with the cycles shuffled
+    // If they want the cycles in a different order, return a `Permutation` that represents a reshuffling of registers to achieve the requested ordering.
     fn adapt_architecture(
         architecture: &Arc<Architecture>,
         orders: &[Int<U>],
-    ) -> Option<Arc<Architecture>> {
+    ) -> Option<Permutation> {
         let mut used = vec![false; orders.len()];
         let mut swizzle = vec![0; orders.len()];
 
@@ -58,38 +58,19 @@ impl PuzzleDefinition {
             }
         }
 
-        if swizzle.iter().enumerate().all(|(v, i)| v == *i) {
-            return Some(Arc::clone(architecture));
-        }
-
-        let mut new_arch = Architecture::clone(architecture);
-
-        new_arch.decoded_table = OnceLock::new();
-
-        for i in 0..swizzle.len() {
-            new_arch.registers.swap(i, swizzle[i]);
-
-            for j in i..swizzle.len() {
-                if i == swizzle[j] {
-                    swizzle[j] = swizzle[i];
-                    break;
-                }
-            }
-        }
-
-        Some(Arc::new(new_arch))
+        Some(Permutation::from_state(swizzle))
     }
 
-    /// Find a preset with the specified cycle orders
+    /// Find a preset with the specified cycle orders. Returns a permutation from the orders to the architecture's registers.
     #[must_use]
-    pub fn get_preset(&self, orders: &[Int<U>]) -> Option<Arc<Architecture>> {
+    pub fn get_preset(&self, orders: &[Int<U>]) -> Option<(Arc<Architecture>, Permutation)> {
         for preset in &self.presets {
             if preset.registers.len() != orders.len() {
                 continue;
             }
 
-            if let Some(arch) = Self::adapt_architecture(preset, orders) {
-                return Some(arch);
+            if let Some(swizzle) = Self::adapt_architecture(preset, orders) {
+                return Some((Arc::clone(preset), swizzle));
             }
         }
 

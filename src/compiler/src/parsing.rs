@@ -20,7 +20,7 @@ use internment::ArcIntern;
 use itertools::Itertools;
 use puzzle_theory::{
     numbers::{Int, U},
-    permutations::Algorithm,
+    permutations::{Algorithm, Permutation},
     puzzle_geometry::parsing::puzzle_definition,
     span::{Extra, File, MaybeErr, Span, WithSpan},
 };
@@ -450,16 +450,21 @@ fn register_decl_unswitchable() -> impl Parser<'static, File, MaybeErr<Puzzle>, 
                     architecture,
                     def_span,
                 } => {
-                    if architecture.registers().len() == names.len() {
+                    let span = architecture.span().clone();
+                    let (arch, swizzle) = architecture.into_inner();
+                    
+                    if arch.registers().len() == names.len() {
+                        swizzle.apply(&mut names);
+                        
                         MaybeErr::Some(Puzzle::Real {
-                            architectures: vec![(names, architecture, def_span)],
+                            architectures: vec![(names, span.with(arch), def_span)],
                         })
                     } else {
                         emitter.emit(Rich::custom(
                             data.span(),
                             format!(
                                 "Expected {} names whereas {} were provided.",
-                                architecture.registers().len(),
+                                arch.registers().len(),
                                 names.len()
                             ),
                         ));
@@ -478,7 +483,7 @@ enum PuzzleUnnamed {
         order: WithSpan<Int<U>>,
     },
     Real {
-        architecture: WithSpan<Arc<Architecture>>,
+        architecture: WithSpan<(Arc<Architecture>, Permutation)>,
         def_span: Span,
     },
 }
@@ -500,7 +505,11 @@ fn register_architecture() -> impl Parser<'static, File, MaybeErr<PuzzleUnnamed>
         ))
         .map(|(_, (), order)| order.map(|order| PuzzleUnnamed::Theoretical { order })),
         group((
-            puzzle_definition().map(|v| v.span().clone().with(with_presets(v.into_inner().permutation_group()))),
+            puzzle_definition().map(|v| {
+                v.span()
+                    .clone()
+                    .with(with_presets(v.into_inner().permutation_group()))
+            }),
             whitespace(),
             just("builtin"),
             whitespace(),
@@ -534,7 +543,11 @@ fn register_architecture() -> impl Parser<'static, File, MaybeErr<PuzzleUnnamed>
                 .flatten()
         }),
         group((
-            puzzle_definition().map(|v| v.span().clone().with(with_presets(v.into_inner().permutation_group()))),
+            puzzle_definition().map(|v| {
+                v.span()
+                    .clone()
+                    .with(with_presets(v.into_inner().permutation_group()))
+            }),
             whitespace(),
             choice((
                 algorithm().map(|v| vec![v]),
@@ -582,9 +595,10 @@ fn register_architecture() -> impl Parser<'static, File, MaybeErr<PuzzleUnnamed>
 
             MaybeErr::Some(PuzzleUnnamed::Real {
                 def_span: def.span().clone(),
-                architecture: data
-                    .span()
-                    .with(Arc::new(Architecture::new(def.into_inner().perm_group, algs))),
+                architecture: data.span().with((
+                    Arc::new(Architecture::new(def.into_inner().perm_group, algs)),
+                    Permutation::identity(),
+                )),
             })
         }),
     ))
