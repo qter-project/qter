@@ -603,6 +603,82 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn two_inputs() {
+        let code = r#"
+            .registers {
+                A, B ← 3x3 builtin (210, 24)
+            }
+
+                input "A:" A
+                input "B:" B
+
+                print "A:" A
+                print "B:" B
+
+                halt "Done"
+        "#;
+
+        let (program, _) = match compile(&file(code), |_| unreachable!()) {
+            Ok(v) => v,
+            Err(e) => panic!("{e:?}"),
+        };
+
+        let mut interpreter: Interpreter<SimulatedPuzzle> =
+            Interpreter::new(Arc::new(program), ()).await.unwrap();
+
+        interpreter.step().await.unwrap();
+
+        assert!(
+            interpreter
+                .give_input(Int::from(77_u64))
+                .await
+                .unwrap()
+                .is_ok()
+        );
+
+        interpreter.step().await.unwrap();
+
+        assert!(
+            interpreter
+                .give_input(Int::from(13_u64))
+                .await
+                .unwrap()
+                .is_ok()
+        );
+
+        assert!(matches!(
+            interpreter.step_until_halt().await.unwrap(),
+            PausedState::Halt {
+                maybe_puzzle_idx_and_register: None,
+            }
+        ));
+
+        let expected_output = [
+            "A: (max input 209)",
+            "B: (max input 23)",
+            "A: 77",
+            "B: 13",
+            "Done",
+        ];
+
+        assert_eq!(
+            expected_output.len(),
+            interpreter.state_mut().messages().len(),
+            "{:?}",
+            interpreter.state_mut().messages()
+        );
+
+        for (message, expected) in interpreter
+            .state()
+            .messages
+            .iter()
+            .zip(expected_output.iter())
+        {
+            assert_eq!(message, expected);
+        }
+    }
+
+    #[tokio::test]
     async fn fib() {
         // TODO: a test directory of qat files?
         let code = "
