@@ -1,19 +1,28 @@
 [workspace]
 resolver = "3"
-members = [
-  "qter_core",
-  "interpreter",
-  "compiler",
-  "cli",
-  "cycle_combination_solver",
-  "movecount_coefficient_calculator",
-  "cycle_combination_finder",
-  "robot",
-]
+members = ["*"]
+exclude = [".zed", ".config", "target"]
 
 [workspace.lints.clippy]
 type_complexity = "allow"
 disallowed_types = "deny"
+
+[workspace.dependencies]
+qter_core.path = "qter_core"
+interpreter.path = "interpreter"
+compiler.path = "compiler"
+cli.path = "cli"
+cycle_combination_solver.path = "cycle_combination_solver"
+movecount_coefficient_calculator.path = "movecount_coefficient_calculator"
+cycle_combination_finder.path = "cycle_combination_finder"
+robot.path = "robot"
+puzzle_theory.git = "https://github.com/qter-project/puzzle-theory"
+
+internment = { version = "0.8", features = [ "arc" ] }
+itertools = "0.14.0"
+chumsky = "0.12.0"
+ariadne = "0.6.0"
+log = "0.4.28"
 
 [profile.bench]
 debug = true

@@ -7,19 +7,19 @@ edition = "2024"
 bitflags = "2.10.0"
 clap = { version = "4.5.51", features = ["derive"] }
 env_logger = "0.11.8"
-log = "0.4.28"
+log.workspace = true
 rppal = "0.22.1"
 serde = { version = "1.0.228", features = ["derive"] }
 toml = "0.9.8"
-interpreter = { path = "../interpreter", features = [ "remote_robot" ] }
-qter_core = { path = "../qter_core" }
-internment = { version = "0.8", features = [ "arc" ] }
+interpreter = { workspace = true, features = [ "remote_robot" ] }
+qter_core.workspace = true
+internment.workspace = true
 dirs = "6.0.0"
-itertools = "0.13"
+itertools.workspace = true
 thread-priority = "3.0.0"
 paste = "1.0.15"
 serde_repr = "0.1.20"
-puzzle_theory = { git = "https://github.com/qter-project/puzzle-theory", features = ["serde"] }
+puzzle_theory = { workspace = true, features = ["serde"] }
 # TODO: Enable io_uring once it's stable in tokio?
 tokio = { version = "1.49.0", default-features = false, features = ["net", "rt-multi-thread", "tracing", "macros", "process"] }
 color-eyre = "0.6.5"

@@ -4,10 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-itertools = "0.14"
-internment = { version = "0.8", features = [ "arc" ] }
+itertools.workspace = true
+internment.workspace = true
 pog_ans = { git = "https://github.com/qter-project/pog-ans" }
-puzzle_theory = { git = "https://github.com/qter-project/puzzle-theory" }
+puzzle_theory.workspace = true
 
 [lints]
 workspace = true

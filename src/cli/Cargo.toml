@@ -6,16 +6,16 @@ edition = "2024"
 [dependencies]
 clap = { version = "4.5", features = [ "derive" ] }
 color-eyre = "0.6"
-itertools = "0.13"
+itertools.workspace = true
 owo-colors = "4.2.0"
-qter_core = { path = "../qter_core" }
-compiler = { path = "../compiler" }
-interpreter = { path = "../interpreter" }
-ariadne = "0.6.0"
-log = "0.4.28"
-internment = { version = "0.8", features = [ "arc" ] }
-puzzle_theory = { git = "https://github.com/qter-project/puzzle-theory" }
-chumsky = "0.12.0"
+qter_core.workspace = true
+compiler.workspace = true
+interpreter.workspace = true
+ariadne.workspace = true
+log.workspace = true
+internment.workspace = true
+puzzle_theory.workspace = true
+chumsky.workspace = true
 tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread"] }
 
 [lints]

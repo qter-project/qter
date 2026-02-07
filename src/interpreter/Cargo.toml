@@ -4,11 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-qter_core = { path = "../qter_core" }
-internment = { version = "0.8", features = [ "arc" ] }
-compiler = { path = "../compiler" }
-log = "0.4.28"
-puzzle_theory = { git = "https://github.com/qter-project/puzzle-theory" }
+qter_core.workspace = true
+internment.workspace = true
+compiler.workspace = true
+log.workspace = true
+puzzle_theory.workspace = true
 pretty_assertions = "1.4.1"
 tokio = { version = "1.49.0", features = ["macros"] }
 tokio-stream = "0.1.18"
