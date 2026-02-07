@@ -1,6 +1,6 @@
 import * as TreeSitter from "web-tree-sitter";
 import { CompileError, CubeState, Interpreter, Program, type Register, type RegisterState } from "./visualiser.js"
-import { CubeElement, CubePairElement } from "./cube_view.js";
+import { CubePairElement } from "./cube_view.js";
 import { getRange, SyntaxHighlighter } from "./syntax_highlight.js";
 
 function cycleColor(regIdx: number, cycleIdx: number): string {
@@ -116,6 +116,7 @@ class RegisterElement extends HTMLElement {
     clearValue() {
         this.#value = null;
         this.#cycleValues = Array.from(this.#cycleValues, () => null);
+        this.#updateValue();
     }
 
     setValue(value: number, cycleValues: number[]) {
@@ -580,6 +581,296 @@ class Infoview {
     }
 }
 
+class Messages extends EventTarget {
+    #messagesContainer: HTMLPreElement;
+
+    #messages: string[] = [];
+    #wantsInput: boolean = false;
+
+    constructor(messagesContainer: HTMLPreElement) {
+        super();
+        this.#messagesContainer = messagesContainer;
+    }
+
+    declare addEventListener: EventTarget["addEventListener"]
+        & ((type: "input", callback: (ev: CustomEvent<bigint>) => void) => void);
+
+    #dispatchInputEvent(val: bigint) {
+        this.dispatchEvent(new CustomEvent<bigint>("input", { detail: val }));
+    }
+
+    clear() {
+        this.setMessages([]);
+    }
+
+    set messages(value: string[]) {
+        this.setMessages(value, this.#wantsInput);
+    }
+
+    set wantsInput(value: boolean) {
+        this.setMessages(this.#messages, value);
+    }
+
+    setMessages(messages: string[], wantsInput: boolean = false) {
+        if (wantsInput && messages.length == 0) throw new Error();
+
+        this.#messages = messages;
+        this.#wantsInput = wantsInput;
+
+        if (wantsInput) {
+            this.#messagesContainer.replaceChildren(messages.slice(0, -1).map(v => v + "\n").join());
+            let form = document.createElement("form");
+            form.style.display = "contents";
+            let label = document.createElement("label");
+            label.append(messages.at(-1)!, " ");
+            let input = document.createElement("input");
+            input.type = "number";
+            input.inputMode = "numeric";
+            input.min = "0";
+            // input.max = ...; // TODO:
+            label.appendChild(input);
+            form.appendChild(label);
+            form.addEventListener("submit", this.#onFormSubmit.bind(this, input));
+            this.#messagesContainer.appendChild(form);
+        } else {
+            this.#messagesContainer.replaceChildren(messages.join("\n"));
+        }
+    }
+
+    #onFormSubmit(input: HTMLInputElement, ev: SubmitEvent) {
+        ev.preventDefault();
+        if (!this.#wantsInput) return;
+        let val = BigInt(input.value);
+        this.#dispatchInputEvent(val);
+    }
+}
+
+enum State {
+    Editing,
+    Solving,
+    Ready,
+    InStep,
+    Running,
+    Stopping,
+}
+
+class Runner {
+    #editor: EditorWithCompilation;
+    #infoview: Infoview;
+    #messages: Messages;
+    #executeButton: HTMLButtonElement;
+    #stepButton: HTMLButtonElement;
+    #runButton: HTMLButtonElement;
+
+    #program: Program | null = null;
+    #state: State;
+    #interpreter: Interpreter | null = null;
+    #runTask: Promise<void> | null = null;
+
+    constructor(
+        editor: EditorWithCompilation,
+        infoview: Infoview,
+        messages: Messages,
+        executeButton: HTMLButtonElement,
+        stepButton: HTMLButtonElement,
+        runButton: HTMLButtonElement,
+    ) {
+        this.#editor = editor;
+        this.#infoview = infoview;
+        this.#messages = messages;
+        this.#executeButton = executeButton;
+        this.#stepButton = stepButton;
+        this.#runButton = runButton;
+
+        this.#editor.addEventListener("change", this.#onEditorChange.bind(this));
+        this.#messages.addEventListener("input", this.#onMessagesInput.bind(this));
+        this.#executeButton.addEventListener("click", this.#onExecuteButton.bind(this));
+        this.#stepButton.addEventListener("click", this.#onStepButton.bind(this));
+        this.#runButton.addEventListener("click", this.#onRunButton.bind(this));
+
+        this.#state = State.Editing;
+        this.#executeButton.disabled = (this.#program == null);
+        this.#stepButton.disabled = true;
+        this.#runButton.disabled = true;
+
+        CSS.highlights.set("current-instr", this.#lineHighlight = new Highlight());
+    }
+
+    #onEditorChange(ev: CustomEvent<Program | null>) {
+        if (this.#state != State.Editing) return;
+        this.#program = ev.detail;
+        this.#infoview.program = this.#program;
+        this.#executeButton.disabled = (this.#program == null);
+    }
+
+    async #onMessagesInput(ev: CustomEvent<bigint>) {
+        if (this.#state != State.Ready) return;
+
+        let value = ev.detail;
+        this.#messages.wantsInput = false;
+
+        this.#state = State.InStep;
+        this.#stepButton.disabled = true;
+        this.#startRunTask(value);
+    }
+
+    async #onExecuteButton(ev: PointerEvent) {
+        switch (this.#state) {
+            case State.Editing:
+                if (this.#program != null) {
+                    this.#state = State.Solving;
+                    this.#editor.disabled = true;
+                    this.#executeButton.disabled = true;
+                    this.#executeButton.textContent = "Solving...";
+                    this.#interpreter = await Interpreter.init(
+                        this.#program,
+                        null as any,
+                        null as any,
+                        (cube) => { this.#infoview.state = cube; },
+                    );
+                    this.#highlightCurrentLine();
+                    this.#executeButton.textContent = "Stop";
+                    this.#executeButton.disabled = false;
+                    this.#stepButton.disabled = false;
+                    this.#runButton.disabled = false;
+                    this.#state = State.Ready;
+                } else {
+                    // nothing
+                }
+                break;
+            case State.Solving: return; // we treat this state as a lock
+            case State.Ready:
+                this.#stepButton.disabled = true;
+                this.#runButton.disabled = true;
+                this.#executeButton.textContent = "Start";
+                this.#interpreter = null;
+                this.#highlightCurrentLine();
+                this.#messages.clear();
+                this.#infoview.state = null;
+                this.#editor.disabled = false;
+                this.#state = State.Editing;
+                break;
+            case State.Running:
+                this.#runButton.textContent = "Run";
+            // fall-through
+            case State.InStep:
+                this.#state = State.Stopping;
+                this.#stepButton.disabled = true;
+                this.#runButton.disabled = true;
+                this.#executeButton.textContent = "Stopping...";
+                this.#messages.wantsInput = false;
+                await this.#runTask;
+                this.#executeButton.textContent = "Start";
+                this.#interpreter = null;
+                this.#highlightCurrentLine();
+                this.#messages.clear();
+                this.#infoview.state = null;
+                this.#editor.disabled = false;
+                this.#state = State.Editing;
+            case State.Stopping:
+                return;
+        }
+    }
+
+    #lineHighlight: Highlight;
+    #highlightCurrentLine() {
+        this.#lineHighlight.clear();
+        if (this.#interpreter != null) {
+            let { start, end } = this.#program!.instr_span(this.#interpreter.program_counter());
+            this.#lineHighlight.add(this.#editor.getOutputRange(start, end));
+        }
+    }
+
+    #startRunTask(userInput: bigint | null = null) {
+        if (this.#state != State.InStep && this.#state != State.Running) throw new Error();
+
+        this.#runTask = (async () => {
+            loop: while (true) {
+                let timeout = new Promise(resolve => setTimeout(resolve, 100));
+                let res = await this.#interpreter!.step();
+                if (res.kind == "NeedsInput" && userInput != null) {
+                    let res2 = await this.#interpreter!.give_input(userInput);
+                    if (res2 == undefined) {
+                        res = { kind: "Running" };
+                    } else {
+                        // TODO:
+                    }
+                }
+                let done = res.kind != "Running";
+
+                if (this.#state == State.Stopping) break;
+
+                this.#highlightCurrentLine();
+                this.#messages.setMessages(this.#interpreter!.messages(), res.kind == "NeedsInput");
+
+                switch (this.#state) {
+                    case State.Editing:
+                    case State.Solving:
+                    case State.Ready:
+                        // all impossible
+                        break loop;
+                    case State.InStep:
+                        this.#stepButton.disabled = false;
+                        this.#state = State.Ready;
+                        break loop;
+                    case State.Running:
+                        if (!done) await timeout;
+                        if (done) {
+                            this.#stepButton.disabled = false;
+                            this.#runButton.textContent = "Run";
+                            this.#state = State.Ready;
+                        }
+                        continue loop;
+                }
+            }
+
+            this.#runTask = null;
+        })();
+    }
+
+    #onStepButton(ev: PointerEvent) {
+        switch (this.#state) {
+            case State.Editing:
+            case State.Solving:
+                return;
+            case State.Ready:
+                this.#state = State.InStep;
+                this.#stepButton.disabled = true;
+                this.#startRunTask();
+                break;
+            case State.InStep:
+            case State.Running:
+                return;
+            case State.Stopping:
+                return;
+        }
+    }
+
+    #onRunButton(ev: PointerEvent) {
+        switch (this.#state) {
+            case State.Editing:
+            case State.Solving:
+                return;
+            case State.Ready:
+                this.#state = State.Running;
+                this.#stepButton.disabled = true;
+                this.#runButton.textContent = "Pause";
+                this.#startRunTask();
+                break;
+            case State.InStep:
+                this.#state = State.Running;
+                this.#runButton.textContent = "Pause";
+                break;
+            case State.Running:
+                this.#state = State.InStep;
+                this.#runButton.textContent = "Run";
+                break;
+            case State.Stopping:
+                return;
+        }
+    }
+}
+
 let presets: Preset[] = [];
 export async function compilePresets() {
     const { default: presetPaths } = await import("./presets/presets.json", { with: { type: "json" } });
@@ -590,7 +881,7 @@ export async function compilePresets() {
         res.push({
             name,
             code,
-            precompiled: new Program(code)
+            precompiled: new Program(code),
         });
     }
     presets = res;
@@ -613,6 +904,10 @@ export function main() {
     const registersCube = document.getElementById("registers-cube") as CubePairElement;
     const stateCube = document.getElementById("state-cube") as CubePairElement;
     const registersContainer = document.getElementById("registers") as HTMLDivElement;
+    const messagesContainer = document.getElementById("messages-container") as HTMLPreElement;
+    const executeButton = document.getElementById("execute-button") as HTMLButtonElement;
+    const runButton = document.getElementById("run-button") as HTMLButtonElement;
+    const stepButton = document.getElementById("step-button") as HTMLButtonElement;
 
     let editor = (window as any).editor = new EditorWithCompilation(
         new EditorWithPresets(
@@ -630,48 +925,14 @@ export function main() {
         registersContainer,
     );
 
-    let abort: AbortController | null = null;
-    editor.addEventListener("change", ev => {
-        let program = ev.detail;
+    let messages = (window as any).messages = new Messages(messagesContainer);
 
-        if (abort != null) {
-            abort.abort();
-            abort = null;
-        }
-
-        infoview.program = program;
-        abort = new AbortController();
-        let signal = abort.signal;
-
-        (async () => {
-            if (program != null) {
-                let interpreter = await Interpreter.init(program, null as any, null as any, cube => {
-                    infoview.state = cube;
-                });
-
-                if (signal.aborted) return;
-
-                while (true) {
-                    let res = await interpreter.step();
-                    if (signal.aborted) return;
-                    if (res.kind == "Running") { }
-                    else if (res.kind == "NeedsInput") {
-                        // let input = Math.floor(Number(res.max_input) / 2);
-                        let input = Math.floor(Math.random() * 90);
-                        console.log("max: ", res.max_input, " @ ", interpreter.program_counter());
-                        await interpreter.give_input(BigInt(input));
-                        if (signal.aborted) return;
-                    }
-                    console.log(interpreter.program_counter(), interpreter.messages());
-                    let { start, end } = program.instr_span(interpreter.program_counter());
-                    if (CSS.highlights.get("current-instr") == null) CSS.highlights.set("current-instr", new Highlight());
-                    CSS.highlights.get("current-instr")!.clear();
-                    if (res.kind == "Halted") break;
-                    CSS.highlights.get("current-instr")!.add(editor.getOutputRange(start, end));
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                    if (signal.aborted) return;
-                }
-            }
-        })();
-    })
+    (window as any).runner = new Runner(
+        editor,
+        infoview,
+        messages,
+        executeButton,
+        stepButton,
+        runButton,
+    );
 }
