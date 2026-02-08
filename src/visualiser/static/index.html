@@ -20,54 +20,49 @@
         <script>document.getElementById("loading-dialog").showModal();</script>
     </dialog>
     <main inert>
-        <section id="code-view">
-            <nav id="code-nav">
-                <select id="preset-selector"></select>
-                <button command="show-modal" commandfor="save-code-dialog">Save</button>
-                <dialog id="save-code-dialog">
-                    <p>Save your code to let other visitors see your creation!</p>
-                    <form method="dialog">
-                        <div>
-                            <label>Description<br>
-                                <input type="text" name="desc" required maxlength="20" placeholder="A descriptive name for your code" autofocus></label>
-                        </div>
-                        <div>
-                            <label>Your name<br>
-                                <input type="text" name="name" required maxlength="20" placeholder="Initials work too!"></label>
-                        </div>
-                        <div>
-                            <button formnovalidate value="cancel">Cancel</button>
-                            <button value="save">Save</button>
-                        </div>
-                    </form>
-                </dialog>
-                <button id="execute-button">Start</button>
-                <button id="run-button">Run</button>
-                <button id="step-button">Step</button>
-            </nav>
-            <div id="code-text">
-                <div id="editor-pane">
-                    <code>
-                        <pre id="editor-code-container"></pre>
-                    </code>
-                </div>
-                <div id="compiled-pane">
-                    <output>
-                        <code>
-                            <pre id="compiled-code-output"></pre>
-                        </code>
-                    </output>
-                </div>
-            </div>
-            <div id="code-program-output">
-                <pre id="program-output-container"></pre>
-                <!-- <input type="number" id="user-input"> -->
-            </div>
-        </section>
-        <section id="cube-view">
-            <div id="registers">
-
-            </div>
+        <nav id="nav">
+            <select id="preset-selector"></select>
+            <button command="show-modal" commandfor="save-code-dialog">Save</button>
+            <dialog id="save-code-dialog">
+                <p>Save your code to let other visitors see your creation!</p>
+                <form method="dialog">
+                    <div>
+                        <label>Description<br>
+                            <input type="text" name="desc" required maxlength="20" placeholder="A descriptive name for your code" autofocus></label>
+                    </div>
+                    <div>
+                        <label>Your name<br>
+                            <input type="text" name="name" required maxlength="20" placeholder="Initials work too!"></label>
+                    </div>
+                    <div>
+                        <button formnovalidate value="cancel">Cancel</button>
+                        <button value="save">Save</button>
+                    </div>
+                </form>
+            </dialog>
+            <button id="execute-button">Start</button>
+            <button id="run-button">Run</button>
+            <button id="step-button">Step</button>
+        </nav>
+        <div id="editor">
+            <code>
+                <pre id="editor-container"></pre>
+            </code>
+        </div>
+        <div id="output">
+            <output>
+                <code>
+                    <pre id="output-container"></pre>
+                </code>
+            </output>
+        </div>
+        <div id="messages">
+            <output>
+                <pre id="messages-container"></pre>
+            </output>
+        </div>
+        <section id="info">
+            <div id="registers"></div>
             <div>
                 <cube-pair-view id="registers-cube"></cube-pair-view>
                 <cube-pair-view id="state-cube"></cube-pair-view>

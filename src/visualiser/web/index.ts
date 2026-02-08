@@ -606,22 +606,22 @@ export async function loadHighlighting() {
 }
 
 export function main() {
-    const editorCodeContainer = document.getElementById("editor-code-container") as HTMLPreElement;
+    const editorContainer = document.getElementById("editor-container") as HTMLPreElement;
     const presetSelector = document.getElementById("preset-selector") as HTMLSelectElement;
     const saveCodeDialog = document.getElementById("save-code-dialog") as HTMLDialogElement;
-    const compiledCodeOutput = document.getElementById("compiled-code-output") as HTMLPreElement;
+    const outputContainer = document.getElementById("output-container") as HTMLPreElement;
     const registersCube = document.getElementById("registers-cube") as CubePairElement;
     const stateCube = document.getElementById("state-cube") as CubePairElement;
     const registersContainer = document.getElementById("registers") as HTMLDivElement;
 
     let editor = (window as any).editor = new EditorWithCompilation(
         new EditorWithPresets(
-            new Editor(editorCodeContainer, qatSyntax),
+            new Editor(editorContainer, qatSyntax),
             presetSelector,
             saveCodeDialog,
             presets,
         ),
-        new Output(compiledCodeOutput, qSyntax)
+        new Output(outputContainer, qSyntax)
     );
 
     let infoview = (window as any).infoview = new Infoview(

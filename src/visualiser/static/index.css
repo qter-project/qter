@@ -22,29 +22,36 @@ main {
 }
 
 main {
-    display: flex;
-    flex-flow: row nowrap;
-    align-items: stretch;
-
-    #code-view {
-        flex: 5;
+    display: grid;
+    /* beautify ignore:start */
+    grid:
+        "nav      nav      info" min-content
+        "editor   output   info" minmax(0, 1fr)
+        "messages messages info" min-content
+        / 5fr 5fr 4fr;
+    
+    #nav {
+        grid-area: nav;
     }
 
-    #cube-view {
-        flex: 2;
+    #editor {
+        grid-area: editor;
+    }
+
+    #output {
+        grid-area: output;
+    }
+
+    #messages {
+        grid-area: messages;
+    }
+
+    #info {
+        grid-area: info;
     }
 }
 
-#code-view {
-    display: flex;
-    flex-flow: column nowrap;
-
-    #code-text {
-        flex: 1;
-    }
-}
-
-#code-nav {
+#nav {
     display: flex;
     flex-wrap: row nowrap;
     padding: 0.5em;
@@ -52,40 +59,32 @@ main {
     border-bottom: 1px solid white;
 }
 
-#code-text {
-    display: flex;
-    flex-direction: row nowrap;
-
-    >* {
-        flex: 1;
-    }
-}
-
-#editor-pane,
-#compiled-pane {
+#editor,
+#output {
     overflow: auto;
 
     pre {
         height: 100%;
         width: 100%;
         padding: 0.5em;
+        text-wrap: stable;
     }
 }
 
-#editor-pane {
+#editor {
     border-right: 1px solid white;
 }
 
-#code-program-output {
+#messages {
     padding: 0.5em;
     border-top: 1px solid white;
 
-    #program-output-container {
+    #messages-container {
         height: 15lh;
     }
 }
 
-#cube-view {
+#info {
     border-left: 1px solid white;
 
     display: flex;
