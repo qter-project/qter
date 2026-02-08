@@ -22,7 +22,8 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use tokio::{io::BufReader, net::TcpListener};
+use tokio::io::BufReader;
+use wtransport::{Endpoint, Identity, ServerConfig};
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -60,6 +61,8 @@ enum Commands {
     /// Host a server to allow the robot to be remote-controlled
     Server {
         server_port: u16,
+        #[arg(long)]
+        cert_out_path: Option<PathBuf>,
     },
     Calibrate,
     Solve {
@@ -132,20 +135,57 @@ async fn main() -> color_eyre::Result<()> {
                 println!("Top 5 = {:?}", &latencies[SAMPLES - 5..SAMPLES]);
             }
         }
-        Commands::Server { server_port } => {
-            let listener = TcpListener::bind(format!("0.0.0.0:{server_port}")).await?;
+        Commands::Server {
+            server_port,
+            cert_out_path,
+        } => {
+            let identity = Identity::self_signed(&["10.42.0.1"]).unwrap();
+            let cert_digest = identity.certificate_chain().as_slice()[0].hash();
+            let server_config = ServerConfig::builder()
+                .with_bind_default(server_port)
+                .with_identity(identity)
+                .build();
+            let endpoint = Endpoint::server(server_config)?;
+
+            println!(
+                "Certificate hash: {}",
+                cert_digest.fmt(wtransport::tls::Sha256DigestFmt::DottedHex)
+            );
+            if let Some(cert_out_path) = cert_out_path {
+                tokio::fs::write(
+                    cert_out_path,
+                    cert_digest.fmt(wtransport::tls::Sha256DigestFmt::BytesArray),
+                )
+                .await?;
+            }
 
             let mut qvis_app_handle = QvisAppHandle::init(robot_config.qvis_app_path.clone());
             let mut robot_handle = RobotHandle::init(robot_config);
 
             loop {
-                let (socket, _) = listener.accept().await?;
+                let res: color_eyre::Result<()> = async {
+                    let session = endpoint.accept().await;
+                    let request = session.await?;
+                    let conn = request.accept().await?;
+                    let (send, recv) = conn.accept_bi().await?;
+                    let conn = (BufReader::new(recv), send);
 
-                run_robot_server::<_, QterRobot>(
-                    BufReader::new(socket),
-                    (&mut robot_handle, &mut qvis_app_handle),
-                )
-                .await?;
+                    run_robot_server::<_, QterRobot>(
+                        conn,
+                        (&mut robot_handle, &mut qvis_app_handle),
+                    )
+                    .await?;
+
+                    Ok(())
+                }
+                .await;
+
+                match res {
+                    Ok(()) => {}
+                    Err(e) => {
+                        eprintln!("{e}");
+                    }
+                }
             }
         }
         Commands::Calibrate => {

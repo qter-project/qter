@@ -2,6 +2,7 @@ import * as TreeSitter from "web-tree-sitter";
 import { CompileError, CubeState, Interpreter, Program, type Register, type RegisterState } from "./visualiser.js"
 import { CubePairElement } from "./cube_view.js";
 import { getRange, SyntaxHighlighter } from "./syntax_highlight.js";
+import { connect } from "./connect.js";
 
 function cycleColor(regIdx: number, cycleIdx: number): string {
     return `oklch(${0.76 - cycleIdx * 0.15} 0.12 ${regIdx / 4 * 360 + 240})`;
@@ -721,13 +722,23 @@ class Runner {
                     this.#state = State.Solving;
                     this.#editor.disabled = true;
                     this.#executeButton.disabled = true;
-                    this.#executeButton.textContent = "Solving...";
-                    this.#interpreter = await Interpreter.init(
-                        this.#program,
-                        null as any,
-                        null as any,
-                        (cube) => { this.#infoview.state = cube; },
-                    );
+                    try {
+                        this.#executeButton.textContent = "Connecting...";
+                        let conn = await connect();
+                        this.#executeButton.textContent = "Solving...";
+                        this.#interpreter = await Interpreter.init(
+                            this.#program,
+                            conn.readable,
+                            conn.writable,
+                            (cube) => { this.#infoview.state = cube; },
+                        );
+                    } catch (e) {
+                        this.#executeButton.textContent = "Start";
+                        this.#executeButton.disabled = false;
+                        this.#editor.disabled = false;
+                        this.#state = State.Editing;
+                        throw e;
+                    }
                     this.#highlightCurrentLine();
                     this.#executeButton.textContent = "Stop";
                     this.#executeButton.disabled = false;

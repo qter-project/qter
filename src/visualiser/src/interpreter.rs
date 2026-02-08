@@ -58,15 +58,15 @@ impl<T: RobotLike, F: FnMut(&Permutation)> RobotLike for CaptureCubeState<T, F> 
     }
 }
 
-type WsConn = (
+type Conn = (
     BufReader<tokio_util::compat::Compat<IntoAsyncRead<'static>>>,
     tokio_util::compat::Compat<IntoAsyncWrite<'static>>,
 );
 
 type CubeStateCb = impl FnMut(&Permutation);
 
-// type Robot = RemoteRobot<WsConn>;
-type Robot = interpreter::puzzle_states::SimulatedPuzzle;
+type Robot = RemoteRobot<Conn>;
+// type Robot = interpreter::puzzle_states::SimulatedPuzzle;
 
 #[wasm_bindgen]
 pub struct Interpreter {
@@ -99,17 +99,16 @@ impl Interpreter {
         write: WritableStream,
         #[wasm_bindgen(unchecked_param_type = "(cube: CubeState) => void")] cube_state_cb: Function,
     ) -> Result<Self, JsError> {
-        // let conn: WsConn = (
-        //     BufReader::new(
-        //         wasm_streams::ReadableStream::from_raw(read)
-        //             .into_async_read()
-        //             .compat(),
-        //     ),
-        //     wasm_streams::WritableStream::from_raw(write)
-        //         .into_async_write()
-        //         .compat_write(),
-        // );
-        let conn = ();
+        let conn: Conn = (
+            BufReader::new(
+                wasm_streams::ReadableStream::from_raw(read)
+                    .into_async_read()
+                    .compat(),
+            ),
+            wasm_streams::WritableStream::from_raw(write)
+                .into_async_write()
+                .compat_write(),
+        );
         let interpreter = interpreter::Interpreter::new_only_one_puzzle(
             program.inner.clone(),
             (

@@ -21,6 +21,7 @@ paste = "1.0.15"
 serde_repr = "0.1.20"
 puzzle_theory = { workspace = true, features = ["serde"] }
 color-eyre = "0.6.5"
+wtransport = "0.7.0"
 
 # TODO: Enable io_uring once it's stable in tokio?
 [dependencies.tokio]
