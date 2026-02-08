@@ -21,7 +21,6 @@ use crate::{BigInt, cube::CubeState, program::Program};
 
 #[derive(Tsify, Serialize)]
 #[serde(tag = "kind")]
-#[tsify(into_wasm_abi)]
 pub enum StepResult {
     Running,
     NeedsInput { max_input: BigInt },
@@ -122,18 +121,22 @@ impl Interpreter {
         Ok(Self { inner: interpreter })
     }
 
-    pub async fn step(&mut self) -> Result<StepResult, JsError> {
+    #[wasm_bindgen(unchecked_return_type = "StepResult")]
+    pub async fn step(&mut self) -> Result<JsValue, JsError> {
         self.inner.step().await?;
-        Ok(match self.inner.state().execution_state() {
-            ExecutionState::Running => StepResult::Running,
-            ExecutionState::Paused(PausedState::Input { max_input, .. }) => {
-                StepResult::NeedsInput {
-                    max_input: BigInt::from(max_input),
+        Ok(
+            serde_wasm_bindgen::to_value(&match self.inner.state().execution_state() {
+                ExecutionState::Running => StepResult::Running,
+                ExecutionState::Paused(PausedState::Input { max_input, .. }) => {
+                    StepResult::NeedsInput {
+                        max_input: BigInt::from(max_input),
+                    }
                 }
-            }
-            ExecutionState::Paused(PausedState::Halt { .. }) => StepResult::Halted,
-            ExecutionState::Paused(PausedState::Panicked) => StepResult::Halted,
-        })
+                ExecutionState::Paused(PausedState::Halt { .. }) => StepResult::Halted,
+                ExecutionState::Paused(PausedState::Panicked) => StepResult::Halted,
+            })
+            .unwrap(),
+        )
     }
 
     pub fn messages(&mut self) -> Vec<String> {

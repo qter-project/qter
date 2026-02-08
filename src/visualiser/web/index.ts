@@ -585,7 +585,7 @@ class Messages extends EventTarget {
     #messagesContainer: HTMLPreElement;
 
     #messages: string[] = [];
-    #wantsInput: boolean = false;
+    #maxInput: bigint | null = null;
 
     constructor(messagesContainer: HTMLPreElement) {
         super();
@@ -604,20 +604,20 @@ class Messages extends EventTarget {
     }
 
     set messages(value: string[]) {
-        this.setMessages(value, this.#wantsInput);
+        this.setMessages(value, this.#maxInput);
     }
 
-    set wantsInput(value: boolean) {
+    set maxInput(value: bigint | null) {
         this.setMessages(this.#messages, value);
     }
 
-    setMessages(messages: string[], wantsInput: boolean = false) {
-        if (wantsInput && messages.length == 0) throw new Error();
+    setMessages(messages: string[], maxInput: bigint | null = null) {
+        if (maxInput != null && messages.length == 0) throw new Error();
 
         this.#messages = messages;
-        this.#wantsInput = wantsInput;
+        this.#maxInput = maxInput;
 
-        if (wantsInput) {
+        if (maxInput != null) {
             this.#messagesContainer.replaceChildren(messages.slice(0, -1).map(v => v + "\n").join());
             let form = document.createElement("form");
             form.style.display = "contents";
@@ -627,7 +627,7 @@ class Messages extends EventTarget {
             input.type = "number";
             input.inputMode = "numeric";
             input.min = "0";
-            // input.max = ...; // TODO:
+            input.max = `${maxInput}`;
             label.appendChild(input);
             form.appendChild(label);
             form.addEventListener("submit", this.#onFormSubmit.bind(this, input));
@@ -639,7 +639,7 @@ class Messages extends EventTarget {
 
     #onFormSubmit(input: HTMLInputElement, ev: SubmitEvent) {
         ev.preventDefault();
-        if (!this.#wantsInput) return;
+        if (this.#maxInput == null) return;
         let val = BigInt(input.value);
         this.#dispatchInputEvent(val);
     }
@@ -707,7 +707,7 @@ class Runner {
         if (this.#state != State.Ready) return;
 
         let value = ev.detail;
-        this.#messages.wantsInput = false;
+        this.#messages.maxInput = null;
 
         this.#state = State.InStep;
         this.#stepButton.disabled = true;
@@ -758,7 +758,7 @@ class Runner {
                 this.#stepButton.disabled = true;
                 this.#runButton.disabled = true;
                 this.#executeButton.textContent = "Stopping...";
-                this.#messages.wantsInput = false;
+                this.#messages.maxInput = null;
                 await this.#runTask;
                 this.#executeButton.textContent = "Start";
                 this.#interpreter = null;
@@ -801,7 +801,7 @@ class Runner {
                 if (this.#state == State.Stopping) break;
 
                 this.#highlightCurrentLine();
-                this.#messages.setMessages(this.#interpreter!.messages(), res.kind == "NeedsInput");
+                this.#messages.setMessages(this.#interpreter!.messages(), res.kind == "NeedsInput" ? res.max_input : null);
 
                 switch (this.#state) {
                     case State.Editing:
