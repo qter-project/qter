@@ -678,60 +678,7 @@ mod tests {
     #[tokio::test]
     async fn fib() {
         // TODO: a test directory of qat files?
-        let code = "
-            .registers {
-                D, C, B, A ← 3x3 builtin (9, 10, 18, 30)
-            }
-
-                input \"Which Fibonacci number to calculate:\" D
-                solved-goto D do_if_1
-                goto after_if_1
-            do_if_1:
-                halt \"The number is: 0\"
-            after_if_1:
-                add B 1
-            continue_1:
-                add D 8
-                solved-goto D do_if_2
-                goto after_if_2
-            do_if_2:
-                halt \"The number is\" B
-            after_if_2:
-            continue_2:
-                solved-goto B break_2
-                add B 17
-                add A 1
-                add C 1
-                goto continue_2
-            break_2:
-                add D 8
-                solved-goto D do_if_3
-                goto after_if_3
-            do_if_3:
-                halt \"The number is\" A
-            after_if_3:
-            continue_3:
-                solved-goto A break_3
-                add A 29
-                add C 1
-                add B 1
-                goto continue_3
-            break_3:
-                add D 8
-                solved-goto D do_if_4
-                goto after_if_4
-            do_if_4:
-                halt \"The number is\" C
-            after_if_4:
-            continue_4:
-                solved-goto C break_4
-                add C 9
-                add B 1
-                add A 1
-                goto continue_4
-            break_4:
-                goto continue_1
-        ";
+        let code = include_str!("../../compiler/tests/fib/fib.qat");
 
         let (program, _) = match compile(&file(code), |_| unreachable!()) {
             Ok(v) => v,
@@ -786,51 +733,65 @@ A: 3x3
         );
         */
 
-        let mut interpreter: Interpreter<SimulatedPuzzle> =
-            Interpreter::new(Arc::new(program), ()).await.unwrap();
+        let program = Arc::new(program);
 
-        assert!(match interpreter.step_until_halt().await.unwrap() {
-            PausedState::Input {
-                max_input,
-                data: ByPuzzleType::Puzzle(_),
-            } => *max_input == Int::from(8),
-            _ => false,
-        });
+        for (amt, expected) in [
+            (0, 0),
+            (1, 1),
+            (2, 1),
+            (3, 2),
+            (4, 3),
+            (5, 5),
+            (6, 8),
+            (7, 13),
+            (8, 21),
+        ] {
+            let mut interpreter: Interpreter<SimulatedPuzzle> =
+                Interpreter::new(Arc::clone(&program), ()).await.unwrap();
 
-        assert!(
-            interpreter
-                .give_input(Int::from(8_u64))
-                .await
-                .unwrap()
-                .is_ok()
-        );
+            assert!(match interpreter.step_until_halt().await.unwrap() {
+                PausedState::Input {
+                    max_input,
+                    data: ByPuzzleType::Puzzle(_),
+                } => *max_input == Int::from(8),
+                _ => false,
+            });
 
-        assert!(matches!(
-            interpreter.step_until_halt().await.unwrap(),
-            PausedState::Halt {
-                maybe_puzzle_idx_and_register: Some(ByPuzzleType::Puzzle((PuzzleIdx(0), _, _))),
+            assert!(
+                interpreter
+                    .give_input(Int::from(amt))
+                    .await
+                    .unwrap()
+                    .is_ok()
+            );
+
+            assert!(matches!(
+                interpreter.step_until_halt().await.unwrap(),
+                PausedState::Halt {
+                    maybe_puzzle_idx_and_register: _,
+                }
+            ));
+
+            let expected_output = [
+                "Which Fibonacci number to calculate: (max input 8)",
+                &format!("The number is {expected}"),
+            ];
+
+            assert_eq!(
+                expected_output.len(),
+                interpreter.state_mut().messages().len(),
+                "{:?}",
+                interpreter.state_mut().messages()
+            );
+
+            for (message, expected) in interpreter
+                .state()
+                .messages
+                .iter()
+                .zip(expected_output.iter())
+            {
+                assert_eq!(message, expected);
             }
-        ));
-
-        let expected_output = [
-            "Which Fibonacci number to calculate: (max input 8)",
-            "The number is 21",
-        ];
-
-        assert_eq!(
-            expected_output.len(),
-            interpreter.state_mut().messages().len(),
-            "{:?}",
-            interpreter.state_mut().messages()
-        );
-
-        for (message, expected) in interpreter
-            .state()
-            .messages
-            .iter()
-            .zip(expected_output.iter())
-        {
-            assert_eq!(message, expected);
         }
     }
 
