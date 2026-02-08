@@ -6,6 +6,7 @@ if [ "$1" = "tsc-watch" ]; then
     tsc --watch;
 elif [ "$1" = "wasm-pack" ]; then
     wasm-pack build --target web --out-dir dist --dev;
+    rm dist/.gitignore;
 elif [ "$1" = "cp-static" ]; then
     cp -R static/* dist;
 elif [ "$1" = "caddy-serve" ]; then
