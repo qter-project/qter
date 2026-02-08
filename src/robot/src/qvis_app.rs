@@ -14,7 +14,8 @@ pub struct QvisAppHandle {
 
 impl QvisAppHandle {
     pub fn init(qvis_app_path: PathBuf) -> Self {
-        let mut child = tokio::process::Command::new("cargo make prod")
+        let mut child = tokio::process::Command::new("cargo")
+            .args(["make", "prod"])
             .current_dir(qvis_app_path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -62,9 +63,7 @@ impl QvisAppHandle {
         while let Some(line) = self.stdout.next_line().await.map_err(|e| e.to_string())? {
             if line.starts_with("DONE") {
                 let perm_str = line.trim_start_matches("DONE").trim();
-                return perm_str
-                    .parse::<Permutation>()
-                    .map_err(|e| e.to_string());
+                return perm_str.parse::<Permutation>().map_err(|e| e.to_string());
             } else {
                 warn!("Received unexpected line from qvis app during picture taking: {line}");
             }

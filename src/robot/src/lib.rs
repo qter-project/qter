@@ -105,7 +105,7 @@ impl<'a> RobotLike for QterRobot<'a> {
             .calibrate_permutation(acc.clone())
             .await
             .map_err(|message| QterRobotError {
-                kind: ErrorKind::ComposeInto,
+                kind: ErrorKind::Calibration,
                 message,
             })?;
         for move_str in Algorithm::parse_from_string(

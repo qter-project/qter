@@ -17,14 +17,15 @@ use thread_priority::{
 use tokio::sync::oneshot;
 
 use crate::{
-    ErrorKind, QterRobotError, hardware::{
+    ErrorKind, QterRobotError,
+    hardware::{
         config::{Face, Priority, RobotConfig},
         motor::Motor,
         uart::{
             UartBus, UartId,
             regs::{GConf, IholdIrun, NodeConf},
         },
-    }
+    },
 };
 
 pub mod config;
@@ -83,7 +84,8 @@ impl RobotHandle {
     pub async fn loop_face_turn(&self, face: Face) -> Result<(), QterRobotError> {
         loop {
             self.motor_thread_handle
-                .send(MotorMessage::QueueMove((face, Dir::Normal))).map_err(mpsc_err)?;
+                .send(MotorMessage::QueueMove((face, Dir::Normal)))
+                .map_err(mpsc_err)?;
             self.await_moves()?.await?;
         }
     }
@@ -105,7 +107,8 @@ impl RobotHandle {
             let face: Face = move_.parse().expect("invalid move: {move_}");
 
             self.motor_thread_handle
-                .send(MotorMessage::QueueMove((face, dir))).map_err(mpsc_err)?;
+                .send(MotorMessage::QueueMove((face, dir)))
+                .map_err(mpsc_err)?;
         }
 
         Ok(())
@@ -118,7 +121,8 @@ impl RobotHandle {
         let (tx, rx) = oneshot::channel();
 
         self.motor_thread_handle
-            .send(MotorMessage::PrevMovesDone(tx)).map_err(mpsc_err)?;
+            .send(MotorMessage::PrevMovesDone(tx))
+            .map_err(mpsc_err)?;
 
         Ok(async { rx.await.map_err(oneshot_err)? })
     }
