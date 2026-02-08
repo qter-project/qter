@@ -1,16 +1,33 @@
-use std::{cell::OnceCell, mem};
+use std::{cell::OnceCell, collections::HashMap, mem};
 
 use chumsky::error::Rich;
 use internment::ArcIntern;
-use itertools::{Either, Itertools};
+use itertools::Itertools;
 use puzzle_theory::span::{Span, WithSpan};
 
 use crate::{
     BlockID, Code, Define, ExpandedCode, ExpandedCodeComponent, ExpansionInfo, Instruction, Macro,
-    ParsedSyntax, RegistersDecl, ResolvedValue, TaggedInstruction,
+    MacroBranchKey, ParsedSyntax, RegistersDecl, ResolvedValue, TaggedInstruction, collect_err,
+    collect_flat_err, resolve_just_these_defines, tag_with_key,
 };
 
 pub fn expand(mut parsed: ParsedSyntax) -> Result<ExpandedCode, Vec<Rich<'static, char, Span>>> {
+    let branch_key_fn = parsed.expansion_info.fresh_branch_key();
+
+    for macro_ in &mut parsed.expansion_info.macros {
+        let Macro::UserDefined { branches } = &mut macro_.1.value else {
+            continue;
+        };
+
+        for branch in branches {
+            let key = branch_key_fn();
+
+            for instr in &mut branch.code {
+                tag_with_key(instr, Some(key));
+            }
+        }
+    }
+
     let mut errs = Vec::new();
 
     let mut limit = 100;
@@ -26,7 +43,7 @@ pub fn expand(mut parsed: ParsedSyntax) -> Result<ExpandedCode, Vec<Rich<'static
         if limit == 0 {
             errs.push(Rich::custom(
                 span,
-                "Recursion limit reached during macro expansion",
+                "Depth limit reached during macro expansion",
             ));
             return Err(errs);
         }
@@ -49,7 +66,8 @@ pub fn expand(mut parsed: ParsedSyntax) -> Result<ExpandedCode, Vec<Rich<'static
             .into_iter()
             .map(|tagged_instruction| {
                 let span = tagged_instruction.span().to_owned();
-                let (instruction, maybe_block_id) = tagged_instruction.into_inner();
+                // We can ignore branch keys since expansion should have inserted them into label references
+                let (instruction, maybe_block_id, _) = tagged_instruction.into_inner();
 
                 let expanded = match instruction {
                     Instruction::Label(label) => ExpandedCodeComponent::Label(label),
@@ -78,7 +96,7 @@ fn expand_block(
     // Will be set if anything is ever changed
     let mut changed = OnceCell::<Span>::new();
 
-    let (new_code, new_errs) = mem::take(code)
+    let new_code = collect_flat_err::<Vec<_>, _, _>(mem::take(code)
         .into_iter()
         .map(|mut tagged_instruction| {
             let maybe_block_id = &mut tagged_instruction.1;
@@ -89,10 +107,10 @@ fn expand_block(
 
             tagged_instruction
         })
-        .flat_map(|tagged_instruction| {
+        .map(|tagged_instruction| {
             let span = tagged_instruction.span().to_owned();
 
-            let (instruction, maybe_block_id) = tagged_instruction.into_inner();
+            let (instruction, maybe_block_id, maybe_branch_key) = tagged_instruction.into_inner();
             let block_id = maybe_block_id.unwrap();
 
             let block_info = expansion_info.block_info.blocks.get_mut(&block_id).unwrap();
@@ -106,22 +124,22 @@ fn expand_block(
 
                     block_info.labels.push(label.clone());
 
-                    vec![Ok(WithSpan::new(
-                        (Instruction::Label(label), maybe_block_id),
+                    Ok(vec![WithSpan::new(
+                        (Instruction::Label(label), maybe_block_id, maybe_branch_key),
                         span,
-                    ))]
+                    )])
                 }
                 Instruction::Define(define) => {
                     if block_info.defines.contains_key(&define.name) {
-                        return vec![Err(Rich::custom(
+                        return Err(vec![Rich::custom(
                             define.name.span().clone(),
                             "Cannot shadow a `.define` in the same scope!",
-                        ))];
+                        )]);
                     }
 
                     let resolved = match expansion_info.resolve(define.value, block_id) {
                         Ok(v) => v,
-                        Err(errs) => return errs.into_iter().map(Err).collect_vec(),
+                        Err(errs) => return Err(errs),
                     };
 
                     let new_define = Define {
@@ -138,31 +156,25 @@ fn expand_block(
                         .insert(ArcIntern::clone(&new_define.name), new_define);
                     let _ = changed.set(span);
 
-                    vec![]
+                    Ok(vec![])
                 }
                 Instruction::Code(code) => {
-                    match expand_code(block_id, expansion_info, code, span, &changed) {
-                        Ok(tagged_instructions) => tagged_instructions
-                            .into_iter()
-                            .map(Ok)
-                            .collect_vec(),
-                        Err(e) => e.into_iter().map(Err).collect(),
-                    }
+                    expand_code(block_id, expansion_info, code, span, &changed, maybe_branch_key)
                 }
                 Instruction::Constant(name) => {
                     match expansion_info.block_info.get_define(block_id, &name) {
                         Some(define) => match &*define.value {
-                            ResolvedValue::Int(_) => vec![Err(Rich::custom(
+                            ResolvedValue::Int(_) => Err(vec![Rich::custom(
                                 span,
                                 "Expected a code block, found an integer",
-                            ))],
+                            )]),
                             ResolvedValue::Ident {
                                 ident: _,
                                 as_reg: _,
-                            } => vec![Err(Rich::custom(
+                            } => Err(vec![Rich::custom(
                                 span,
                                 "Expected a code block, found an identifier",
-                            ))],
+                            )]),
                             ResolvedValue::Block(block) => {
                                 let _ = changed.set(span);
 
@@ -170,38 +182,38 @@ fn expand_block(
 
                                 let (new_id, _) = expansion_info.block_info.new_block(block_id);
 
-                                block
+                                Ok(block
                                     .code
                                     .into_iter()
                                     .map(|mut v| {
                                         v.1 = Some(new_id);
-                                        Ok(v)
+                                        v
                                     })
-                                    .collect_vec()
+                                    .collect_vec())
                             }
                         },
                         None => {
-                            vec![Err(Rich::custom(
+                            Err(vec![Rich::custom(
                                 span,
                                 format!("`{name}` was not found in this scope"),
-                            ))]
+                            )])
                         }
                     }
                 }
                 Instruction::RhaiCall(call) => {
                     let value = match call.perform(span.clone(), expansion_info, block_id) {
                         Ok(v) => v,
-                        Err(errs) => return errs.into_iter().map(Err).collect_vec(),
+                        Err(errs) => return Err(errs),
                     };
                     let _ = changed.set(span.clone());
 
                     match value.into_inner() {
-                        ResolvedValue::Int(_) => vec![Err(Rich::custom(span, "Expected the macro to return a code block; actually returned an integer"))],
-                        ResolvedValue::Ident { ident: _, as_reg: _ } => vec![Err(Rich::custom(span, "Expected the macro to return a code block; actually returned an identifier"))],
+                        ResolvedValue::Int(_) => Err(vec![Rich::custom(span, "Expected the macro to return a code block; actually returned an integer")]),
+                        ResolvedValue::Ident { ident: _, as_reg: _ } => Err(vec![Rich::custom(span, "Expected the macro to return a code block; actually returned an identifier")]),
                         ResolvedValue::Block(block) => {
                             let _ = changed.set(span);
 
-                            block.code.into_iter().map(Ok).collect_vec()
+                            Ok(block.code.clone())
                         },
                     }
                 }
@@ -209,24 +221,28 @@ fn expand_block(
                     let (new_id, _) = expansion_info.block_info.new_block(block_id);
                     let _ = changed.set(span);
 
-                    block
+                    Ok(block
                         .code
                         .into_iter()
                         .map(|mut v| {
                             v.1 = Some(new_id);
-                            Ok(v)
+                            v
                         })
-                        .collect_vec()
+                        .collect_vec())
                 },
             }
         })
-        .partition_map::<Vec<_>, Vec<_>, _, _, _>(|res| match res {
-            Ok(v) => Either::Left(v),
-            Err(e) => Either::Right(e),
-        });
+    )
+        ;
 
-    errs.extend_from_slice(&new_errs);
-    *code = new_code;
+    match new_code {
+        Ok(new_code) => {
+            *code = new_code;
+        }
+        Err(new_errs) => {
+            errs.extend(new_errs);
+        }
+    }
 
     changed.take()
 }
@@ -237,12 +253,15 @@ fn expand_code(
     code: Code,
     span: Span,
     changed: &OnceCell<Span>,
+    maybe_branch_key: Option<MacroBranchKey>,
 ) -> Result<Vec<WithSpan<TaggedInstruction>>, Vec<Rich<'static, char, Span>>> {
     let macro_call = match code {
         Code::Primitive(prim) => {
-            return Ok(vec![
-                span.with((Instruction::Code(Code::Primitive(prim)), Some(block_id))),
-            ]);
+            return Ok(vec![span.with((
+                Instruction::Code(Code::Primitive(prim)),
+                Some(block_id),
+                maybe_branch_key,
+            ))]);
         }
         Code::Macro(mac) => mac,
     };
@@ -261,67 +280,39 @@ fn expand_code(
 
     let macro_def = expansion_info
         .macros
-        .get(&(
-            macro_access.clone(),
-            ArcIntern::clone(&macro_call.name),
-        ))
+        .get(&(macro_access.clone(), ArcIntern::clone(&macro_call.name)))
         .unwrap();
 
     match &**macro_def {
         Macro::UserDefined { branches } => {
             let args_span = macro_call.arguments.span().clone();
-            let (mut args, errs) = macro_call
-                .arguments
-                .into_inner()
-                .into_iter()
-                .map(|v| {
-                    let span = v.span().clone();
-                    match expansion_info.block_info.resolve(block_id, v.into_inner()) {
-                        Some(v) => Ok(span.with(v)),
-                        None => Err(Rich::<char, Span>::custom(
-                            span,
-                            "Constant was not found in this scope",
-                        )),
-                    }
-                })
-                .partition_map::<Vec<_>, Vec<_>, _, _, _>(|res| match res {
-                    Ok(v) => Either::Left(v),
-                    Err(e) => Either::Right(e),
-                });
-
-            if !errs.is_empty() {
-                return Err(errs);
-            }
+            let mut args = collect_err(macro_call.arguments.into_inner().into_iter().map(|v| {
+                let span = v.span().clone();
+                match expansion_info.block_info.resolve(block_id, v.into_inner()) {
+                    Some(v) => Ok(span.with(v)),
+                    None => Err([Rich::<char, Span>::custom(
+                        span,
+                        "Constant was not found in this scope",
+                    )]),
+                }
+            }))?;
 
             for branch in branches {
                 let defines = match branch.pattern.matches(args, expansion_info) {
-                    Ok(v) => v,
+                    Ok(v) => v.into_iter().collect::<HashMap<_, _>>(),
                     Err(returned_args) => {
                         args = returned_args;
                         continue;
                     }
                 };
 
-                let (block_id, block_info) = expansion_info.block_info.new_block(block_id);
+                let (block_id, _) = expansion_info.block_info.new_block(block_id);
 
-                block_info.defines.extend(defines);
-
-                return Ok(branch
-                    .code
-                    .iter()
-                    .cloned()
-                    .map(|mut v| {
-                        v.1 = Some(block_id);
-
-                        if let Instruction::Label(label) = &mut v.0
-                            && !label.public
-                        {
-                            label.available_in_blocks = Some(vec![block_id]);
-                        }
-
-                        v
-                    })
-                    .collect());
+                return collect_err::<Vec<_>, _, Vec<_>>(branch.code.iter().cloned().map(|mut v| {
+                    v.1 = Some(block_id);
+                    resolve_just_these_defines(&mut v, &defines)?;
+                    Ok(v)
+                }));
             }
 
             Err(vec![Rich::custom(
@@ -329,11 +320,17 @@ fn expand_code(
                 "These arguments did not match any of the patterns of this macro",
             )])
         }
-        Macro::Builtin(macro_fn) => Ok(macro_fn(expansion_info, macro_call.arguments, block_id)
-            .map_err(|err| vec![err])?
-            .into_iter()
-            .map(|instruction| span.clone().with((instruction, Some(block_id))))
-            .collect_vec()),
+        Macro::Builtin(macro_fn) => Ok(vec![
+            span.with((
+                Instruction::Code(Code::Primitive(
+                    macro_fn(expansion_info, macro_call.arguments, block_id)
+                        .map_err(|err| vec![err])?
+                        .insert_branch_key(maybe_branch_key),
+                )),
+                Some(block_id),
+                maybe_branch_key,
+            )),
+        ]),
     }
 }
 

@@ -7,12 +7,14 @@
 
 use std::{
     collections::HashMap,
-    sync::{Arc, OnceLock},
+    sync::{
+        Arc, OnceLock,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 
 use chumsky::error::Rich;
 use internment::ArcIntern;
-use itertools::{Either, Itertools};
 use parsing::parse;
 use puzzle_theory::{
     numbers::{Int, ParseIntError, U},
@@ -50,21 +52,150 @@ pub fn compile(
     strip_expanded(expanded).map(|v| (v, arch))
 }
 
+#[expect(clippy::manual_try_fold)] // We are not reimplementing it
+pub fn collect_flat_err<C, I, IE>(iter: impl Iterator<Item = Result<I, IE>>) -> Result<C, Vec<IE::Item>>
+where
+    C: Default + Extend<I::Item>,
+    I: IntoIterator,
+    IE: IntoIterator,
+{
+    iter.fold(Ok(C::default()), |acc, v| match (acc, v) {
+        (Ok(mut collection), Ok(v)) => {
+            collection.extend(v);
+            Ok(collection)
+        }
+        (Ok(_), Err(errs)) => Err(errs.into_iter().collect()),
+        (Err(errs), Ok(_)) => Err(errs),
+        (Err(mut errs), Err(new_errs)) => {
+            errs.extend(new_errs);
+            Err(errs)
+        }
+    })
+}
+
+pub fn collect_err<C, V, IE>(iter: impl Iterator<Item = Result<V, IE>>) -> Result<C, Vec<IE::Item>>
+where
+    C: Default + Extend<V>,
+    IE: IntoIterator,
+{
+    collect_flat_err(iter.map(|v| match v {
+        Ok(v) => Ok([v]),
+        Err(e) => Err(e),
+    }))
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Label {
     name: ArcIntern<str>,
-    public: bool,
     maybe_block_id: Option<BlockID>,
-    available_in_blocks: Option<Vec<BlockID>>,
+    /// This is only used during parsing. We can't set branch keys during parsing because of chumsky limitations :(
+    public: bool,
+    branch_key: Option<MacroBranchKey>,
 }
 
 #[derive(Hash, PartialEq, Eq, Clone, Debug)]
 struct LabelReference {
     name: ArcIntern<str>,
     block_id: BlockID,
+    branch_key: Option<MacroBranchKey>,
 }
 
-type TaggedInstruction = (Instruction, Option<BlockID>);
+impl LabelReference {
+    fn with_branch_key(mut self, branch_key: Option<MacroBranchKey>) -> Self {
+        self.branch_key = branch_key;
+        self
+    }
+}
+
+/// This is the mechanism by which we enable private labels in macros. Each macro branch gets its own key and instructions defined in the macro get access to the key and nothing else. Label references are required to have the key to reference labels that require the key.
+/// It is the responsibility of the parser to insert branch keys in each branch definition and the responsibility of rhai macro callers to insert a fresh branch key at every call site and into every instruction given by the rhai macro.
+#[derive(Hash, PartialEq, Eq, Clone, Copy, Debug)]
+struct MacroBranchKey(usize);
+
+type TaggedInstruction = (Instruction, Option<BlockID>, Option<MacroBranchKey>);
+
+fn tag_with_key(instr: &mut TaggedInstruction, key: Option<MacroBranchKey>) {
+    instr.2 = key;
+
+    match &mut instr.0 {
+        Instruction::Label(label) => {
+            if !label.public {
+                label.branch_key = key;
+            }
+        }
+        Instruction::Code(Code::Primitive(_))
+        | Instruction::Constant(_)
+        | Instruction::RhaiCall(_)
+        | Instruction::Define(_) => {}
+        Instruction::Code(Code::Macro(macro_call)) => {
+            for arg in &mut **macro_call.arguments {
+                match &mut **arg {
+                    Value::Resolved(resolved_value) => match resolved_value {
+                        ResolvedValue::Int(_)
+                        | ResolvedValue::Ident {
+                            ident: _,
+                            as_reg: _,
+                        } => {}
+                        ResolvedValue::Block(block) => {
+                            for instr in &mut block.code {
+                                tag_with_key(instr, key);
+                            }
+                        }
+                    },
+                    Value::Constant(_) => {}
+                }
+            }
+        }
+        Instruction::Block(block) => {
+            for instr in &mut block.code {
+                tag_with_key(instr, key);
+            }
+        }
+    }
+}
+
+/// Resolve all defines in this block of code that are found in the table. This is used to resolve macro arguments. Note that macro arguments can't be sugared to define statements because those don't support scoping to a particular macro branch and it would be the case that a constant in a block intended to refer to a macro argument would actually refer to a define statement inside the other macro that the block is an argument of.
+fn resolve_just_these_defines(
+    this: &mut WithSpan<TaggedInstruction>,
+    defines: &HashMap<ArcIntern<str>, Define<WithSpan<ResolvedValue>>>,
+) -> Result<(), Vec<Rich<'static, char, Span>>> {
+    match &mut this.0 {
+        Instruction::Label(_) | Instruction::Define(_) | Instruction::Code(Code::Primitive(_)) => {
+            Ok(())
+        }
+        Instruction::Code(Code::Macro(call)) => collect_err(
+            call.arguments
+                .iter_mut()
+                .map(|arg| arg.resolve_just_these_defines(defines)),
+        ),
+        Instruction::Constant(arc_intern) => match defines.get(arc_intern) {
+            None => Ok(()),
+            Some(value) => match &*value.value {
+                ResolvedValue::Int(_) => todo!(),
+                ResolvedValue::Ident {
+                    ident: _,
+                    as_reg: _,
+                } => todo!(),
+                ResolvedValue::Block(block) => {
+                    this.0 = Instruction::Block(block.clone());
+                    Ok(())
+                }
+            },
+        },
+        Instruction::RhaiCall(rhai_call) => collect_err(
+            rhai_call
+                .args
+                .iter_mut()
+                .map(|arg| arg.resolve_just_these_defines(defines)),
+        ),
+        Instruction::Block(block) => collect_err(
+            block
+                .code
+                .iter_mut()
+                .map(|instr| resolve_just_these_defines(instr, defines)),
+        ),
+    }
+}
 
 #[derive(Clone, Debug)]
 struct Block {
@@ -138,10 +269,55 @@ enum Primitive {
     },
 }
 
+impl Primitive {
+    fn insert_branch_key(self, key: Option<MacroBranchKey>) -> Self {
+        match self {
+            Primitive::Goto { label } => Primitive::Goto {
+                label: label.map(|label| label.with_branch_key(key)),
+            },
+            Primitive::SolvedGoto { label, register } => Primitive::SolvedGoto {
+                label: label.map(|v| v.with_branch_key(key)),
+                register,
+            },
+            _ => self,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 enum Value {
     Resolved(ResolvedValue),
     Constant(ArcIntern<str>),
+}
+
+impl Value {
+    fn resolve_just_these_defines(
+        &mut self,
+        defines: &HashMap<ArcIntern<str>, Define<WithSpan<ResolvedValue>>>,
+    ) -> Result<(), Vec<Rich<'static, char, Span>>> {
+        match self {
+            Value::Resolved(value) => match value {
+                ResolvedValue::Int(_)
+                | ResolvedValue::Ident {
+                    ident: _,
+                    as_reg: _,
+                } => Ok(()),
+                ResolvedValue::Block(block) => collect_err(
+                    block
+                        .code
+                        .iter_mut()
+                        .map(|instr| resolve_just_these_defines(instr, defines)),
+                ),
+            },
+            Value::Constant(arc_intern) => match defines.get(arc_intern) {
+                None => Ok(()),
+                Some(value) => {
+                    *self = Value::Resolved(value.value.value.clone());
+                    Ok(())
+                }
+            },
+        }
+    }
 }
 
 type RegisterInfo = (RegisterReference, RhaiRegInfo);
@@ -204,22 +380,11 @@ impl RhaiCall {
         info: &ExpansionInfo,
         block_id: BlockID,
     ) -> Result<WithSpan<ResolvedValue>, Vec<Rich<'static, char, Span>>> {
-        let (args, errs) = self
-            .args
-            .into_iter()
-            .map(|value| info.resolve(DefineValue::Value(value), block_id))
-            .flat_map(|v| match v {
-                Ok(v) => vec![Ok(v)],
-                Err(errs) => errs.into_iter().map(Err).collect_vec(),
-            })
-            .partition_map::<Vec<_>, Vec<_>, _, _, _>(|res| match res {
-                Ok(v) => Either::Left(v),
-                Err(e) => Either::Right(e),
-            });
-
-        if !errs.is_empty() {
-            return Err(errs);
-        }
+        let args = collect_err(
+            self.args
+                .into_iter()
+                .map(|value| info.resolve(DefineValue::Value(value), block_id)),
+        )?;
 
         let rhai = info.rhai_macros.get(&span.source()).unwrap();
 
@@ -392,7 +557,7 @@ enum Macro {
             &ExpansionInfo,
             WithSpan<Vec<WithSpan<Value>>>,
             BlockID,
-        ) -> Result<Vec<Instruction>, Rich<'static, char, Span>>,
+        ) -> Result<Primitive, Rich<'static, char, Span>>,
     ),
 }
 
@@ -449,7 +614,8 @@ impl RegistersDecl {
                 } => {
                     if *reg_name == **found_name {
                         return Some(RhaiRegInfo {
-                            order: modulus.unwrap_or(**order),
+                            modulus: modulus.unwrap_or(**order),
+                            order: **order,
                         });
                     }
                 }
@@ -460,7 +626,8 @@ impl RegistersDecl {
                                 let reg = &arch.value.registers()[i];
 
                                 return Some(RhaiRegInfo {
-                                    order: modulus.unwrap_or(reg.order()),
+                                    modulus: modulus.unwrap_or(reg.order()),
+                                    order: reg.order(),
                                 });
                             }
                         }
@@ -480,6 +647,7 @@ impl RegistersDecl {
 
 #[derive(Clone, Debug)]
 struct RhaiRegInfo {
+    modulus: Int<U>,
     order: Int<U>,
 }
 
@@ -498,7 +666,7 @@ struct BlockInfoTracker {
 }
 
 impl BlockInfoTracker {
-    /// Resolves a reference to a label. The `block_id` of `reference` is the scope where the label is referenced, and the `block_id` of the return value is the block ID where the label exists.
+    /// Resolves a reference to a label. The `block_id` of `reference` is the scope where the label is referenced, and the `block_id` of the return value is the block ID where the label exists. If the label does not require a `MacroBranchKey` to be accessed, that parameter will be set to `None`.
     fn label_scope(&self, reference: &LabelReference) -> Option<LabelReference> {
         let mut current = reference.block_id;
 
@@ -510,17 +678,19 @@ impl BlockInfoTracker {
                 .iter()
                 .filter(|label| label.name == reference.name)
             {
-                if let Some(available_in) = &label.available_in_blocks {
-                    if available_in.contains(&reference.block_id) {
+                if let Some(branch_key) = &label.branch_key {
+                    if Some(*branch_key) == reference.branch_key {
                         return Some(LabelReference {
                             name: ArcIntern::clone(&reference.name),
                             block_id: current,
+                            branch_key: reference.branch_key,
                         });
                     }
                 } else {
                     return Some(LabelReference {
                         name: ArcIntern::clone(&reference.name),
                         block_id: current,
+                        branch_key: None,
                     });
                 }
             }
@@ -592,6 +762,8 @@ struct ExpansionInfo {
     available_macros: HashMap<(File, ArcIntern<str>), File>,
     /// Each file has its own `LuaMacros`; use the file contents as the key
     rhai_macros: HashMap<File, RhaiMacros>,
+    /// Counter to give fresh instances of `MacroBranchKey`
+    branch_count: Arc<AtomicUsize>,
 }
 
 impl ExpansionInfo {
@@ -621,6 +793,15 @@ impl ExpansionInfo {
                 let span = call.span().clone();
                 call.into_inner().perform(span, self, block_id)
             }
+        }
+    }
+
+    fn fresh_branch_key(&self) -> impl Fn() -> MacroBranchKey + 'static {
+        let branch_count = Arc::clone(&self.branch_count);
+
+        move || {
+            let num = branch_count.fetch_add(1, Ordering::Relaxed);
+            MacroBranchKey(num)
         }
     }
 }
@@ -706,7 +887,10 @@ A: 3x3
             $X
         ";
 
-        match compile(&File::new(ArcIntern::from("code.qat"), ArcIntern::from(code)), |_| unreachable!()) {
+        match compile(
+            &File::new(ArcIntern::from("code.qat"), ArcIntern::from(code)),
+            |_| unreachable!(),
+        ) {
             Ok(v) => panic!("{v:?}"),
             Err(e) => {
                 assert_eq!(e.len(), 1);

@@ -327,6 +327,7 @@ mod tests {
     use crate::{Interpreter, PausedState, puzzle_states::SimulatedPuzzle};
     use compiler::{compile, q_emitter::emit_q};
     use internment::ArcIntern;
+    use itertools::Itertools;
     use pretty_assertions::{assert_eq, assert_str_eq};
     use puzzle_theory::{permutations::Permutation, puzzle_geometry::parsing::puzzle, span::File};
     use qter_core::architectures::{new_from_effect, with_presets};
@@ -793,6 +794,120 @@ A: 3x3
                 assert_eq!(message, expected);
             }
         }
+    }
+
+    async fn test_all_inputs<const N: usize>(
+        code: &'static str,
+        maxima: [usize; N],
+        cases: impl Iterator<Item = ([usize; N], String)>,
+    ) {
+        let (program, _) = match compile(&file(code), |_| unreachable!()) {
+            Ok(v) => v,
+            Err(e) => panic!("{e:?}"),
+        };
+
+        let program = Arc::new(program);
+
+        let expected_count = maxima.iter().map(|v| v + 1).product::<usize>();
+        let mut real_count = 0;
+
+        for (inputs, output) in cases {
+            real_count += 1;
+
+            let mut interpreter: Interpreter<SimulatedPuzzle> =
+                Interpreter::new(Arc::clone(&program), ()).await.unwrap();
+
+            for (input, maximum) in inputs.into_iter().zip(maxima) {
+                assert!(match interpreter.step_until_halt().await.unwrap() {
+                    PausedState::Input {
+                        max_input,
+                        data: ByPuzzleType::Puzzle(_),
+                    } => *max_input == Int::<U>::from(maximum),
+                    _ => false,
+                });
+
+                assert!(
+                    interpreter
+                        .give_input(Int::from(input))
+                        .await
+                        .unwrap()
+                        .is_ok()
+                );
+            }
+
+            assert!(matches!(
+                interpreter.step_until_halt().await.unwrap(),
+                PausedState::Halt {
+                    maybe_puzzle_idx_and_register: _,
+                }
+            ));
+
+            assert_str_eq!(
+                interpreter.state.messages.back().unwrap(),
+                &output,
+                "Failed for {inputs:?}"
+            );
+        }
+
+        assert_eq!(expected_count, real_count, "Not all options were tested!");
+    }
+
+    #[tokio::test]
+    async fn fib_all_inputs() {
+        test_all_inputs(
+            include_str!("../../compiler/tests/fib/fib.qat"),
+            [8],
+            [
+                (0, 0),
+                (1, 1),
+                (2, 1),
+                (3, 2),
+                (4, 3),
+                (5, 5),
+                (6, 8),
+                (7, 13),
+                (8, 21),
+            ]
+            .map(|(a, v)| ([a], format!("The number is {v}")))
+            .into_iter(),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn simple_all_inputs() {
+        test_all_inputs(
+            include_str!("../../compiler/tests/simple/simple.qat"),
+            [3, 3],
+            (0..4)
+                .cartesian_product(0..4)
+                .map(|(a, b)| ([a, b], format!("(A + B) % 4 = {}", (a + b) % 4))),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn average_all_inputs() {
+        test_all_inputs(
+            include_str!("../../compiler/tests/average/average.qat"),
+            [89, 89],
+            (0..90)
+                .cartesian_product(0..90)
+                .map(|(a, b)| ([a, b], format!("The average is {}", usize::midpoint(a, b)))),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn multiply_all_inputs() {
+        test_all_inputs(
+            include_str!("../../compiler/tests/multiply/multiply.qat"),
+            [29, 29],
+            (0..30)
+                .cartesian_product(0..30)
+                .map(|(a, b)| ([a, b], format!("X×Y mod 30 = {}", (a * b) % 30))),
+        )
+        .await;
     }
 
     #[tokio::test]

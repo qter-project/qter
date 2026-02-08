@@ -272,6 +272,7 @@ pub fn strip_expanded(expanded: ExpandedCode) -> Result<Program, Vec<Rich<'stati
                         LabelReference {
                             name: label.name,
                             block_id: label.maybe_block_id.unwrap(),
+                            branch_key: label.branch_key,
                         },
                         program_counter,
                     );

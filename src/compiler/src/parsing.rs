@@ -1,12 +1,10 @@
 use crate::{
-    Block, BlockInfo, BlockInfoTracker, Code, Define, DefineValue, ExpansionInfo, Label,
-    MacroArgTy, MacroBranch, MacroPattern, MacroPatternComponent, ResolvedValue, RhaiCall, Value,
-    builtin_macros::builtin_macros, rhai::RhaiMacros,
+    Block, BlockInfo, BlockInfoTracker, Code, Define, DefineValue, ExpansionInfo, Label, MacroArgTy, MacroBranch, MacroPattern, MacroPatternComponent, ResolvedValue, RhaiCall, Value, builtin_macros::builtin_macros, rhai::RhaiMacros
 };
 use std::{
     collections::HashMap,
     rc::Rc,
-    sync::{Arc, OnceLock},
+    sync::{Arc, OnceLock, atomic::AtomicUsize},
 };
 
 use chumsky::{
@@ -150,6 +148,7 @@ fn parser() -> impl Parser<'static, File, MaybeErr<ParsedSyntax>, ExtraAndSyntax
             macros: HashMap::new(),
             available_macros: HashMap::new(),
             rhai_macros: HashMap::new(),
+            branch_count: Arc::new(AtomicUsize::new(0)),
         };
 
         let code = Vec::new();
@@ -197,7 +196,7 @@ fn parser() -> impl Parser<'static, File, MaybeErr<ParsedSyntax>, ExtraAndSyntax
                 Statement::Instruction(instr) => {
                     parsed_syntax
                         .code
-                        .push(instr.map(|instr| (instr, Some(BlockID(0)))));
+                        .push(instr.map(|instr| (instr, Some(BlockID(0)), None)));
                 }
                 Statement::RhaiBlock(rhai) => {
                     if let Err(e) = rhai_macros.add_code(rhai.slice()) {
@@ -736,7 +735,7 @@ fn macro_branch(
         choice((
             instruction(block_rec.clone()).map_with(|instr, data| {
                 instr.map(|instr| Block {
-                    code: vec![data.span().with((instr.value, None))],
+                    code: vec![data.span().with((instr.value, None, None))],
                 })
             }),
             block_rec,
@@ -794,12 +793,12 @@ fn instruction(
 }
 
 fn label() -> impl Parser<'static, File, WithSpan<Instruction>, Extra> {
-    group((tag_ident(), whitespace(), just(':'))).map_with(|((public, name), (), _), data| {
+    group((tag_ident().with_state(()), whitespace(), just(':'))).map_with(|((public, name), (), _), data| {
         data.span().with(Instruction::Label(Label {
             name: name.value,
             public,
             maybe_block_id: None,
-            available_in_blocks: None,
+            branch_key: None,
         }))
     })
 }
@@ -907,7 +906,7 @@ fn import() -> impl Parser<'static, File, MaybeErr<Span>, Extra> {
 fn block(block_rec: BlockParser) -> impl Parser<'static, File, MaybeErr<Block>, Extra> + Clone {
     Rc::new(
         instruction(block_rec)
-            .map(|v| v.map(|v| v.span().clone().with((v.value, None))))
+            .map(|v| v.map(|v| v.span().clone().with((v.value, None, None))))
             .separated_by(nl())
             .allow_leading()
             .allow_trailing()

@@ -31,6 +31,7 @@ impl GlobalRewriter for DeadLabelRemover {
                         LabelReference {
                             name: ArcIntern::clone(&label.name),
                             block_id: label.maybe_block_id.unwrap(),
+                            branch_key: label.branch_key,
                         },
                         false,
                     );
@@ -46,6 +47,7 @@ impl GlobalRewriter for DeadLabelRemover {
             let Some(is_seen) = label_locations.get_mut(&LabelReference {
                 name: ArcIntern::clone(&label.name),
                 block_id: label.block_id,
+                branch_key: label.branch_key,
             }) else {
                 continue;
             };
@@ -64,6 +66,7 @@ impl GlobalRewriter for DeadLabelRemover {
                     .get(&LabelReference {
                         name: ArcIntern::clone(&label.name),
                         block_id: label.maybe_block_id.unwrap(),
+                        branch_key: label.branch_key,
                     })
                     .unwrap()
             })

@@ -528,7 +528,7 @@ impl PeepholeRewriter for RepeatUntil3 {
 
 /// Splits up a repeat until into one for each piece being checked. Effectively transforms
 ///
-/// ```
+/// ```qat
 /// .registers {
 ///     // Note that `B` is a composition of an 8 cycle and a 6 cycle
 ///     A, B ← 3x3 builtin (210, 24)
@@ -542,7 +542,7 @@ impl PeepholeRewriter for RepeatUntil3 {
 ///
 /// into
 ///
-/// ```
+/// ```qat
 /// while not-solved B%6 {
 ///     dec A
 ///     dec B

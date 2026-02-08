@@ -3,8 +3,8 @@ use internment::ArcIntern;
 use puzzle_theory::span::{File, Span, WithSpan};
 
 use crate::{
-    BlockID, Code, ExpansionInfo, Instruction, LabelReference, Macro, Primitive, RegisterReference,
-    ResolvedValue, Value,
+    BlockID, ExpansionInfo, LabelReference, Macro, Primitive, RegisterReference, ResolvedValue,
+    Value,
 };
 
 use std::collections::HashMap;
@@ -43,6 +43,7 @@ fn expect_label(
             LabelReference {
                 name: ArcIntern::clone(ident),
                 block_id,
+                branch_key: None,
             },
             label_value.span().to_owned(),
         )),
@@ -89,12 +90,14 @@ fn print_like(
     Ok((maybe_reg, message))
 }
 
-pub fn builtin_macros(
-    prelude: &File,
-) -> HashMap<(File, ArcIntern<str>), WithSpan<Macro>> {
+pub fn builtin_macros(prelude: &File) -> HashMap<(File, ArcIntern<str>), WithSpan<Macro>> {
     let mut macros = HashMap::new();
 
-    let dummy_span = Span::new(File::new(ArcIntern::from("BUILTIN"), ArcIntern::from(" ")), 0, 0);
+    let dummy_span = Span::new(
+        File::new(ArcIntern::from("BUILTIN"), ArcIntern::from(" ")),
+        0,
+        0,
+    );
 
     macros.insert(
         (prelude.clone(), ArcIntern::from("add")),
@@ -121,10 +124,7 @@ pub fn builtin_macros(
 
                 let register = expect_reg(args.pop().as_ref().unwrap(), block_id, syntax)?;
 
-                Ok(vec![Instruction::Code(Code::Primitive(Primitive::Add {
-                    amt,
-                    register,
-                }))])
+                Ok(Primitive::Add { amt, register })
             }),
             dummy_span.clone(),
         ),
@@ -143,9 +143,7 @@ pub fn builtin_macros(
 
                 let label = expect_label(args.pop().as_ref().unwrap(), block_id, syntax)?;
 
-                Ok(vec![Instruction::Code(Code::Primitive(Primitive::Goto {
-                    label,
-                }))])
+                Ok(Primitive::Goto { label })
             }),
             dummy_span.clone(),
         ),
@@ -165,9 +163,7 @@ pub fn builtin_macros(
                 let label = expect_label(args.pop().as_ref().unwrap(), block_id, syntax)?;
                 let register = expect_reg(args.pop().as_ref().unwrap(), block_id, syntax)?;
 
-                Ok(vec![Instruction::Code(Code::Primitive(
-                    Primitive::SolvedGoto { register, label },
-                ))])
+                Ok(Primitive::SolvedGoto { register, label })
             }),
             dummy_span.clone(),
         ),
@@ -200,10 +196,7 @@ pub fn builtin_macros(
                     }
                 };
 
-                Ok(vec![Instruction::Code(Code::Primitive(Primitive::Input {
-                    register,
-                    message,
-                }))])
+                Ok(Primitive::Input { register, message })
             }),
             dummy_span.clone(),
         ),
@@ -215,10 +208,7 @@ pub fn builtin_macros(
             Macro::Builtin(|syntax, args, block_id| {
                 let (register, message) = print_like(syntax, args, block_id)?;
 
-                Ok(vec![Instruction::Code(Code::Primitive(Primitive::Halt {
-                    register,
-                    message,
-                }))])
+                Ok(Primitive::Halt { register, message })
             }),
             dummy_span.clone(),
         ),
@@ -230,10 +220,7 @@ pub fn builtin_macros(
             Macro::Builtin(|syntax, args, block_id| {
                 let (register, message) = print_like(syntax, args, block_id)?;
 
-                Ok(vec![Instruction::Code(Code::Primitive(Primitive::Print {
-                    register,
-                    message,
-                }))])
+                Ok(Primitive::Print { register, message })
             }),
             dummy_span.clone(),
         ),

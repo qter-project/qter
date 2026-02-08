@@ -74,9 +74,8 @@
 
 - ⭐Replace repeat-untils that can never terminate with a `halt` instruction
 - ⭐Precompute tables for builtin architectures
-- ⭐QAT Macros
-  - ⭐Actual expansion
-  - ⭐Lua stuff
+- ⭐Rhai macros for QAT
+  - Allow encoding/decoding all possible types of instructions
 - 😎Translate QAT comments into Q
 - ⭐Memory tapes
   - ⭐Implement in QAT

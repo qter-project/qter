@@ -772,6 +772,7 @@ version = "0.1.0"
 dependencies = [
  "compiler",
  "internment",
+ "itertools",
  "log",
  "pretty_assertions",
  "puzzle_theory",

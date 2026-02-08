@@ -68,11 +68,7 @@ end-rhai
         after_if:
     }
     (solved $R:reg $code1:block else $code2:block) => {
-        if not-solved $R {
-            $code2
-        } else {
-            $code1
-        }
+        if not-solved $R $code2 else $code1
     }
     (not-solved $R:reg $code1:block else $code2:block) => {
             if not-solved $R {
@@ -82,34 +78,26 @@ end-rhai
             $code2
         over_else:
     }
-    (equals $R:reg $N:int $code:block) => {
-        if equals $R $N {
-            $code
-        } else {}
+    ($R:reg equals $N:int $code:block) => {
+        if $R equals $N $code else {}
     }
-    (not-equals $R:reg $N:int $code:block) => {
-        if not-equals $R $N {
-            $code
-        } else {}
+    ($R:reg not-equals $N:int $code:block) => {
+        if $R not-equals $N $code else {}
     }
-    (equals $R:reg $N:int $code1:block else $code2:block) => {
-        if not-equals $R $N {
-            $code2
-        } else {
-            $code1
-        }
+    ($R:reg equals $N:int $code1:block else $code2:block) => {
+        if $R not-equals $N $code2 else $code1
     }
-    (not-equals $R:reg $N:int $code1:block else $code2:block) => {
+    ($R:reg not-equals $N:int $code1:block else $code2:block) => {
         sub $R $N
         if not-solved $R {
             add $R $N
-            $code2
+            $code1
         } else {
             add $R $N
-            $code1
+            $code2
         }
     }
-    (equals $R1:reg $R2:reg using $R3:reg $code:block) => {
+    ($R1:reg equals $R2:reg using $R3:reg $code:block) => {
             rhai validate_equals_order($R1, $R2, $R3)
             set $R3 to 0
         equals_loop:
@@ -137,7 +125,7 @@ end-rhai
             $code
         fail:
     }
-    (not-equals $R1:reg $R2:reg using $R3:reg $code:block) => {
+    ($R1:reg not-equals $R2:reg using $R3:reg $code:block) => {
             rhai validate_equals_order($R1, $R2, $R3)
             set $R3 to 0
         equals_loop:
@@ -166,20 +154,16 @@ end-rhai
             $code
         success:
     }
-    (equals $R1:reg $R2:reg using $R3:reg $code1:block else $code2:block) => {
-            if equals $R1 $R2 using $R3 {
+    ($R1:reg equals $R2:reg using $R3:reg $code1:block else $code2:block) => {
+            if $R1 equals $R2 using $R3 {
                 $code1
                 goto over_else
             }
             $code2
         over_else:
     }
-    (not-equals $R1:reg $R2:reg using $R3:reg $code1:block else $code2:block) => {
-        if equals $R1 $R2 using $R3 {
-            $code2
-        } else {
-            $code1
-        }
+    ($R1:reg not-equals $R2:reg using $R3:reg $code1:block else $code2:block) => {
+        if $R1 equals $R2 using $R3 $code2 else $code1
     }
 }
 
@@ -208,33 +192,33 @@ end-rhai
             goto continue
         !break:
     }
-    (equals $R:reg $N:int $code:block) => {
+    ($R:reg equals $N:int $code:block) => {
         loop {
-            if not-equals $R $N {
+            if $R not-equals $N {
                 goto break
             }
             $code
         }
     }
-    (not-equals $R:reg $N:int $code:block) => {
+    ($R:reg not-equals $N:int $code:block) => {
         loop {
-            if equals $R $N {
+            if $R equals $N {
                 goto break
             }
             $code
         }
     }
-    (equals $R1:reg $R2:reg using $R3:reg $code:block) => {
+    ($R1:reg equals $R2:reg using $R3:reg $code:block) => {
         loop {
-            if not-equals $R1 $R2 using $R3 {
+            if $R1 not-equals $R2 using $R3 {
                 goto break
             }
             $code
         }
     }
-    (not-equals $R1:reg $R2:reg using $R3:reg $code:block) => {
+    ($R1:reg not-equals $R2:reg using $R3:reg $code:block) => {
         loop {
-            if equals $R1 $R2 using $R3 {
+            if $R1 equals $R2 using $R3 {
                 goto break
             }
             $code
@@ -289,7 +273,7 @@ end-rhai
     ($R1:reg $N:int at $R2:reg) => {
         multiply_loop:
             solved-goto $R1 multiply_done
-            add $R2 N
+            add $R2 $N
             dec $R1
             goto multiply_loop
         multiply_done:
