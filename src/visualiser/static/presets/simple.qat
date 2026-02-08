@@ -1,0 +1,15 @@
+.registers {
+    A, B <- 3x3 (U, D')
+}
+
+input "First number:" A
+input "Second number:" B
+
+start:
+    solved-goto B end
+    add A 1
+    add B 3
+    goto start
+end:
+
+halt "(A + B) % 4 =" A

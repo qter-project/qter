@@ -1,6 +1,14 @@
 [
     {
+        "name": "Simple",
+        "file": "simple.qat"
+    },
+    {
         "name": "Average",
         "file": "average.qat"
+    },
+    {
+        "name": "Fibonacci",
+        "file": "fib.qat"
     }
 ]

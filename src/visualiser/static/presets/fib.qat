@@ -1,0 +1,40 @@
+.registers {
+    A, B, C, D <- 3x3 builtin (30, 18, 10, 9)
+}
+
+.macro fib-shuffle {
+    ($R1:reg $R2:reg $R3:reg $counter:reg) => {
+        dec $counter
+        if solved $counter {
+            halt "The number is" $R1
+        }
+        while not-solved $R1 {
+            dec $R1
+            inc $R2
+            inc $R3
+        }
+    }
+}
+
+input "Which Fibonacci number to calculate:" D
+if solved D {
+    halt "The number is: 0"
+}
+inc B
+loop {
+    fib-shuffle B A C D
+    fib-shuffle A C B D
+    fib-shuffle C B A D
+}
+
+/*
+A  B  C  D
+0  1  0  8
+1  0  1  7
+0  1  2  6
+2  3  0  5
+5  0  3  4
+0  5  8  3
+8  13 0  2
+21 0  3  1
+*/
