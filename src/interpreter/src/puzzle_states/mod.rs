@@ -137,6 +137,34 @@ pub struct RobotState<R: RobotLike> {
     perm_group: Arc<PermutationGroup>,
 }
 
+impl<R: RobotLike> RobotState<R> {
+    async fn repeat_until(
+        &mut self,
+        facelets: &[usize],
+        generator: &Algorithm,
+    ) -> Result<Option<Int<U>>, R::Error> {
+        let mut sum = Int::<U>::zero();
+
+        let chromatic_orders = chromatic_orders_by_facelets(generator);
+        let order = lcm_iter(facelets.iter().map(|&i| chromatic_orders[i]));
+
+        while !self.facelets_solved(facelets).await? {
+            sum += Int::<U>::one();
+
+            if sum >= order {
+                eprintln!(
+                    "Decoding failure! Performed as many cycles as the size of the register."
+                );
+                return Ok(None);
+            }
+
+            self.compose_into(generator).await?;
+        }
+
+        Ok(Some(sum))
+    }
+}
+
 impl<R: RobotLike> PuzzleState for RobotState<R> {
     type InitializationArg = R::InitializationArg;
     type Error = R::Error;
@@ -201,25 +229,8 @@ impl<R: RobotLike> PuzzleState for RobotState<R> {
         let mut generator = generator.to_owned();
         generator.exponentiate(-Int::<U>::one());
 
-        let mut sum = Int::<U>::zero();
-
-        let chromatic_orders = chromatic_orders_by_facelets(&generator);
-        let order = lcm_iter(facelets.iter().map(|&i| chromatic_orders[i]));
-
-        while !self.facelets_solved(facelets).await? {
-            sum += Int::<U>::one();
-
-            if sum >= order {
-                eprintln!(
-                    "Decoding failure! Performed as many cycles as the size of the register."
-                );
-                return Ok(None);
-            }
-
-            self.compose_into(&generator).await?;
-        }
-
-        Ok(Some(sum))
+        // `repeat until` has the same behavior as `halt`
+        self.repeat_until(facelets, &generator).await
     }
 
     async fn repeat_until(
@@ -227,8 +238,7 @@ impl<R: RobotLike> PuzzleState for RobotState<R> {
         facelets: &[usize],
         generator: &Algorithm,
     ) -> Result<Option<()>, Self::Error> {
-        // Halting has the same behavior as repeat_until
-        Ok(self.halt(facelets, generator).await?.map(|_| ()))
+        Ok(self.repeat_until(facelets, generator).await?.map(|_| ()))
     }
 
     async fn solve(&mut self) -> Result<(), Self::Error> {
@@ -404,4 +414,3 @@ impl<P: PuzzleState> PuzzleStates<P> {
         &mut self.puzzle_states[idx.0]
     }
 }
-
