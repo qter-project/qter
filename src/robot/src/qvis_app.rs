@@ -1,4 +1,4 @@
-use log::warn;
+use log::{info, warn};
 use puzzle_theory::permutations::Permutation;
 use std::{path::PathBuf, process::Stdio};
 use tokio::{
@@ -36,14 +36,17 @@ impl QvisAppHandle {
         &mut self,
         calibration_permutation: Permutation,
     ) -> Result<(), String> {
+        let calibration_command = format!("CALIBRATE {calibration_permutation}\n");
+        info!("Sending calibration command: {}", calibration_command);
         self.stdin
-            .write_all(format!("CALIBRATE {calibration_permutation}\n").as_bytes())
+            .write_all(calibration_command.as_bytes())
             .await
             .map_err(|e| e.to_string())?;
         self.stdin.flush().await.map_err(|e| e.to_string())?;
 
         while let Some(line) = self.stdout.next_line().await.map_err(|e| e.to_string())? {
             if line.trim() == "DONE" {
+                info!("Calibrated permutation");
                 return Ok(());
             } else {
                 warn!("Received unexpected line from qvis app during calibration: {line}");

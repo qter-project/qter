@@ -3,7 +3,7 @@
 
 use clap::{Parser, Subcommand};
 use env_logger::TimestampPrecision;
-use interpreter::puzzle_states::run_robot_server;
+use interpreter::puzzle_states::{RobotLike, run_robot_server};
 use log::{LevelFilter, warn};
 use puzzle_theory::permutations::Algorithm;
 use robot::{
@@ -133,20 +133,30 @@ async fn main() -> color_eyre::Result<()> {
             }
         }
         Commands::Server { server_port, qvis_app_path } => {
-            let listener = TcpListener::bind(format!("0.0.0.0:{server_port}")).await?;
+            // let listener = TcpListener::bind(format!("0.0.0.0:{server_port}")).await?;
 
             let mut robot_handle = RobotHandle::init(robot_config);
             let mut qvis_app_handle = QvisAppHandle::init(qvis_app_path);
-
-            loop {
-                let (socket, _) = listener.accept().await?;
-
-                run_robot_server::<_, QterRobot>(
-                    BufReader::new(socket),
-                    (&mut robot_handle, &mut qvis_app_handle),
-                )
-                .await?;
+            let cube3 = &*CUBE3;
+                
+            let lines = std::io::stdin().lines();
+            for line in lines {
+                if line.unwrap().trim() == "READY" {
+                    break;
+                }
             }
+            
+            QterRobot::initialize(Arc::clone(cube3), (&mut robot_handle, &mut qvis_app_handle)).await.unwrap();
+            
+            // loop {
+            //     let (socket, _) = listener.accept().await?;
+
+            //     run_robot_server::<_, QterRobot>(
+            //         BufReader::new(socket),
+            //         (&mut robot_handle, &mut qvis_app_handle),
+            //     )
+            //     .await?;
+            // }
         }
         Commands::Solve {
             rob_twophase_string,
