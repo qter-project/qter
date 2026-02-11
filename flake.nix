@@ -47,6 +47,14 @@
           libxkbcommon
           wayland # To use the wayland feature
         ];
+
+        # Used in typst documents
+        fontsConf = pkgs.makeFontsConf {
+          fontDirectories = with pkgs; [
+            martian-mono
+            monaspace
+          ];
+        };
       in
       rec {
         toolchain = ./rust-toolchain.toml;
@@ -85,6 +93,7 @@
           RUSTC_WRAPPER = "sccache";
           SCCACHE_SERVER_PORT = "54226";
           RUSTFLAGS = "-C target-cpu=native";
+          FONTCONFIG_FILE="${fontsConf}";
 
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath buildInputs;
 
