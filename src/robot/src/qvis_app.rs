@@ -1,10 +1,16 @@
 use log::{info, warn};
-use puzzle_theory::permutations::Permutation;
-use std::{path::PathBuf, process::Stdio};
+use puzzle_theory::permutations::{Algorithm, Permutation};
+use std::{
+    path::PathBuf,
+    process::Stdio,
+    sync::{Arc, LazyLock},
+};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines},
     process::{Child, ChildStdin, ChildStdout},
 };
+
+use crate::{CUBE3, ErrorKind, QterRobotError, hardware::RobotHandle};
 
 pub struct QvisAppHandle {
     _child: Child,
@@ -32,7 +38,7 @@ impl QvisAppHandle {
         }
     }
 
-    pub async fn calibrate_permutation(
+    async fn calibrate_permutation(
         &mut self,
         calibration_permutation: Permutation,
     ) -> Result<(), String> {
@@ -74,4 +80,43 @@ impl QvisAppHandle {
 
         Err("Process exited before sending DONE".into())
     }
+}
+
+pub async fn calibrate(
+    handle: &mut QvisAppHandle,
+    robot: &mut RobotHandle,
+) -> Result<(), QterRobotError> {
+    const CALIBRATION_ALGORITHM: LazyLock<Algorithm> = LazyLock::new(|| {
+        Algorithm::parse_from_string(
+            Arc::clone(&CUBE3),
+            "L2 U2 B D2 L R D D2 B F' U D D U' D R' U L D' U' D2 F2 U2 R2 U2 D' U U F' L2 F' F' L D2 F' D' B B D D U' L' R R' D' B2 L2 F D' B' L2 F2 B' D2 B2 R' L2 F' B2 U L B' R' R2 F' D' R2 R B R' D' B' R' U2 B L2 R' B2 R2 D B' L2 F2 D2 L D R U' B R2 R2 R B' F' D2 D' D L2 F' F R' D R' U2 L2 R' D U' R' F' U2 F' D' R2 U L R2",
+        ).unwrap()
+    });
+
+    let mut acc = Permutation::identity();
+    handle
+        .calibrate_permutation(acc.clone())
+        .await
+        .map_err(|message| QterRobotError {
+            kind: ErrorKind::Calibration,
+            message,
+        })?;
+
+    for move_str in CALIBRATION_ALGORITHM.move_seq_iter() {
+        let move_perm = CUBE3.get_generator(move_str).unwrap();
+        let move_alg =
+            Algorithm::new_from_move_seq(Arc::clone(&CUBE3), vec![move_str.clone()]).unwrap();
+        acc.compose_into(move_perm);
+        robot.queue_move_seq(&move_alg)?;
+        robot.await_moves()?.await?;
+        handle
+            .calibrate_permutation(acc.clone())
+            .await
+            .map_err(|message| QterRobotError {
+                kind: ErrorKind::Calibration,
+                message,
+            })?;
+    }
+
+    Ok(())
 }

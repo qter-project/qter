@@ -3,7 +3,7 @@
 
 use clap::{Parser, Subcommand};
 use env_logger::TimestampPrecision;
-use interpreter::puzzle_states::{RobotLike, run_robot_server};
+use interpreter::puzzle_states::run_robot_server;
 use log::{LevelFilter, warn};
 use puzzle_theory::permutations::Algorithm;
 use robot::{
@@ -13,7 +13,7 @@ use robot::{
         config::{Face, Priority, RobotConfig},
         set_prio,
     },
-    qvis_app::QvisAppHandle,
+    qvis_app::{self, QvisAppHandle},
     rob_twophase::solve_rob_twophase_string,
 };
 use std::{
@@ -60,8 +60,8 @@ enum Commands {
     /// Host a server to allow the robot to be remote-controlled
     Server {
         server_port: u16,
-        qvis_app_path: PathBuf,
     },
+    Calibrate,
     Solve {
         rob_twophase_string: String,
     },
@@ -132,31 +132,26 @@ async fn main() -> color_eyre::Result<()> {
                 println!("Top 5 = {:?}", &latencies[SAMPLES - 5..SAMPLES]);
             }
         }
-        Commands::Server { server_port, qvis_app_path } => {
-            // let listener = TcpListener::bind(format!("0.0.0.0:{server_port}")).await?;
+        Commands::Server { server_port } => {
+            let listener = TcpListener::bind(format!("0.0.0.0:{server_port}")).await?;
 
+            let mut qvis_app_handle = QvisAppHandle::init(robot_config.qvis_app_path.clone());
             let mut robot_handle = RobotHandle::init(robot_config);
-            let mut qvis_app_handle = QvisAppHandle::init(qvis_app_path);
-            let cube3 = &*CUBE3;
-                
-            let lines = std::io::stdin().lines();
-            for line in lines {
-                if line.unwrap().trim() == "READY" {
-                    break;
-                }
-            }
-            
-            QterRobot::initialize(Arc::clone(cube3), (&mut robot_handle, &mut qvis_app_handle)).await.unwrap();
-            
-            // loop {
-            //     let (socket, _) = listener.accept().await?;
 
-            //     run_robot_server::<_, QterRobot>(
-            //         BufReader::new(socket),
-            //         (&mut robot_handle, &mut qvis_app_handle),
-            //     )
-            //     .await?;
-            // }
+            loop {
+                let (socket, _) = listener.accept().await?;
+
+                run_robot_server::<_, QterRobot>(
+                    BufReader::new(socket),
+                    (&mut robot_handle, &mut qvis_app_handle),
+                )
+                .await?;
+            }
+        }
+        Commands::Calibrate => {
+            let mut qvis_app_handle = QvisAppHandle::init(robot_config.qvis_app_path.clone());
+            let mut robot_handle = RobotHandle::init(robot_config);
+            qvis_app::calibrate(&mut qvis_app_handle, &mut robot_handle).await?;
         }
         Commands::Solve {
             rob_twophase_string,

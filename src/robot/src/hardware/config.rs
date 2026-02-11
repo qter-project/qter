@@ -1,4 +1,4 @@
-use std::{fmt::Debug, ops::Index, str::FromStr};
+use std::{fmt::Debug, ops::Index, path::PathBuf, str::FromStr};
 
 use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
@@ -18,6 +18,7 @@ pub struct RobotConfig {
     pub compensation: u32,
     pub float: bool,
     pub stealthchop: bool,
+    pub qvis_app_path: PathBuf,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -20,8 +20,6 @@ pub mod rob_twophase;
 pub static CUBE3: LazyLock<Arc<PermutationGroup>> =
     LazyLock::new(|| puzzle("3x3").permutation_group());
 
-const CALIBRATION_ALGORITHM: &str = "L2 U2 B D2 L R D D2 B F' U D D U' D R' U L D' U' D2 F2 U2 R2 U2 D' U U F' L2 F' F' L D2 F' D' B B D D U' L' R R' D' B2 L2 F D' B' L2 F2 B' D2 B2 R' L2 F' B2 U L B' R' R2 F' D' R2 R B R' D' B' R' U2 B L2 R' B2 R2 D B' L2 F2 D2 L D R U' B R2 R2 R B' F' D2 D' D L2 F' F R' D R' U2 L2 R' D U' R' F' U2 F' D' R2 U L R2";
-
 pub struct QterRobot<'a> {
     simulated_state: Permutation,
     robot_handle: &'a mut RobotHandle,
@@ -79,65 +77,25 @@ impl<'a> RobotLike for QterRobot<'a> {
     type Error = QterRobotError;
 
     async fn initialize(
-        cube3_permutation_group: Arc<PermutationGroup>,
+        permutation_group: Arc<PermutationGroup>,
         (robot_handle, qvis_app_handle): Self::InitializationArg,
     ) -> Result<Self, Self::Error> {
-        if cube3_permutation_group != puzzle("3x3").permutation_group() {
+        if permutation_group != *CUBE3 {
             return Err(QterRobotError {
                 kind: ErrorKind::IncorrectPermGroup,
-                message: match cube3_permutation_group.maybe_def() {
+                message: match permutation_group.maybe_def() {
                     Some(v) => v.to_string(),
-                    None => format!("{cube3_permutation_group:?}"),
+                    None => format!("{permutation_group:?}"),
                 },
             });
         }
 
-        let mut qter_robot = QterRobot {
+        Ok(Self {
             robot_handle,
             qvis_app_handle,
             simulated_state: Permutation::identity(),
             cached_picture_state: Some(Permutation::identity()),
-        };
-
-        let mut acc = Permutation::identity();
-        qter_robot
-            .qvis_app_handle
-            .calibrate_permutation(acc.clone())
-            .await
-            .map_err(|message| QterRobotError {
-                kind: ErrorKind::Calibration,
-                message,
-            })?;
-        for move_str in Algorithm::parse_from_string(
-            Arc::clone(&cube3_permutation_group),
-            CALIBRATION_ALGORITHM,
-        )
-        .unwrap()
-        .move_seq_iter()
-        {
-            let move_ = cube3_permutation_group.get_generator(move_str).unwrap();
-            acc.compose_into(move_);
-            qter_robot
-                .compose_into(
-                    &Algorithm::new_from_move_seq(
-                        Arc::clone(&cube3_permutation_group),
-                        vec![move_str.clone()],
-                    )
-                    .unwrap(),
-                )
-                .await
-                .unwrap();
-            qter_robot
-                .qvis_app_handle
-                .calibrate_permutation(acc.clone())
-                .await
-                .map_err(|message| QterRobotError {
-                    kind: ErrorKind::Calibration,
-                    message,
-                })?;
-        }
-
-        Ok(qter_robot)
+        })
     }
 
     async fn compose_into(&mut self, alg: &Algorithm) -> Result<(), Self::Error> {
