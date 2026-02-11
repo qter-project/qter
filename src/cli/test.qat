@@ -1,6 +1,6 @@
 #!/usr/bin/env -S cargo run -- interpret
 .registers {
-    B, A ← 3x3 builtin (24, 210)
+    1B, A ← 3x3 builtin (24, 210)
 }
 
 .define MOD 13
@@ -10,17 +10,17 @@ input "Number to modulus:" A
 loop:
 
 print "A is now" A
-add B $MOD
+add 1B $MOD
 
 while not-solved A {
-    solved-goto B loop
+    solved-goto 1B loop
     dec A
-    dec B
+    dec 1B
 }
 
-while not-solved B%8 {
+while not-solved 1B%8 {
     dec A
-    dec B
+    dec 1B
 }
 
 add A $MOD

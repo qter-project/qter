@@ -767,7 +767,6 @@ fn macro_arg_ty() -> impl Parser<'static, File, WithSpan<MacroArgTy>, Extra> {
 
 fn value(block_rec: BlockParser) -> impl Parser<'static, File, MaybeErr<WithSpan<Value>>, Extra> {
     choice((
-        intu().map(|v| v.map(|v| Value::Resolved(ResolvedValue::Int(v)))),
         constant().map(|v| MaybeErr::Some(Value::Constant(v.value))),
         ident().map(|v| {
             MaybeErr::Some(Value::Resolved(ResolvedValue::Ident {
@@ -775,6 +774,7 @@ fn value(block_rec: BlockParser) -> impl Parser<'static, File, MaybeErr<WithSpan
                 as_reg: OnceLock::new(),
             }))
         }),
+        intu().map(|v| v.map(|v| Value::Resolved(ResolvedValue::Int(v)))),
         block_rec.map(|v| v.map(|v| Value::Resolved(ResolvedValue::Block(v)))),
     ))
     .map_with(|v, data| v.map(|v| data.span().with(v)))
