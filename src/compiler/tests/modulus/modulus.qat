@@ -1,0 +1,27 @@
+.registers {
+    B, A ← 3x3 builtin (24, 210)
+}
+
+.define MOD 13
+
+input "Number to modulus:" A
+
+while not-solved A {
+    if solved B {
+        add B $MOD
+    }
+
+    dec A
+    dec B
+}
+
+if not-solved B {
+    while not-solved B {
+        dec A
+        dec B
+    }
+
+    add A $MOD
+}
+
+halt "The modulus is" A

@@ -676,131 +676,9 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn fib() {
-        // TODO: a test directory of qat files?
-        let code = include_str!("../../compiler/tests/fib/fib.qat");
-
-        let (program, _) = match compile(&file(code), |_| unreachable!()) {
-            Ok(v) => v,
-            Err(e) => panic!("{e:?}"),
-        };
-
-        let q = emit_q(&program, "code.q".into()).unwrap().0.inner();
-
-        assert_str_eq!(
-            q,
-            r#"Puzzles
-A: 3x3
-
-0  | input "Which Fibonacci number to calculate:"
-           B2 U2 L F' R B L2 D2 B R' F L
-           max-input 8
-1  | solved-goto UBL 3
-2  | goto 4
-3  | halt "The number is 0"
-4  | D L' F L2 B L' F' L B' D' L'
-5  | L' F' R B' D2 L2 B' R' F L' U2 B2
-6  | solved-goto UBL 8
-7  | goto 9
-8  | halt "The number is"
-          L D B L' F L B' L2 F' L D'
-          counting-until UFL DL
-9  | repeat until DL solved
-            L U' B R' L B' L' U'
-            L U R2 B R2 D2 R2 D'
-10 | repeat until UFL solved
-            U2 R U2 D2 L2 F U F' D
-            R F L2 F2 L' F2 R' D B2
-11 | L' F' R B' D2 L2 B' R' F L' U2 B2
-12 | solved-goto UBL 14
-13 | goto 15
-14 | halt "The number is"
-          U' F2 L2 D' U2 R U' B L' B L'
-          counting-until FR DFR
-15 | repeat until DFR solved
-            D' B' U2 B D' F' D L' D2
-            F' R' D2 F2 R F2 R2 U' R'
-16 | repeat until FR solved
-            D' L2 F U' F' U B2 L' B'
-            L D' R U F' D F D F2 B
-17 | L' F' R B' D2 L2 B' R' F L' U2 B2
-18 | solved-goto UBL 20
-19 | goto 21
-20 | halt "The number is"
-          U L' R' F' U' F' L' F2 L U R
-          counting-until UB
-21 | repeat until UB solved
-            B R2 D' R B D F2 U2 D'
-            F' L2 F D2 F B2 D' L' U'
-22 | goto 5
-"#
-        );
-
-        let program = Arc::new(program);
-
-        for (amt, expected) in [
-            (0, 0),
-            (1, 1),
-            (2, 1),
-            (3, 2),
-            (4, 3),
-            (5, 5),
-            (6, 8),
-            (7, 13),
-            (8, 21),
-        ] {
-            let mut interpreter: Interpreter<SimulatedPuzzle> =
-                Interpreter::new(Arc::clone(&program), ()).await.unwrap();
-
-            assert!(match interpreter.step_until_halt().await.unwrap() {
-                PausedState::Input {
-                    max_input,
-                    data: ByPuzzleType::Puzzle(_),
-                } => *max_input == Int::from(8),
-                _ => false,
-            });
-
-            assert!(
-                interpreter
-                    .give_input(Int::from(amt))
-                    .await
-                    .unwrap()
-                    .is_ok()
-            );
-
-            assert!(matches!(
-                interpreter.step_until_halt().await.unwrap(),
-                PausedState::Halt {
-                    maybe_puzzle_idx_and_register: _,
-                }
-            ));
-
-            let expected_output = [
-                "Which Fibonacci number to calculate: (max input 8)",
-                &format!("The number is {expected}"),
-            ];
-
-            assert_eq!(
-                expected_output.len(),
-                interpreter.state_mut().messages().len(),
-                "{:?}",
-                interpreter.state_mut().messages()
-            );
-
-            for (message, expected) in interpreter
-                .state()
-                .messages
-                .iter()
-                .zip(expected_output.iter())
-            {
-                assert_eq!(message, expected);
-            }
-        }
-    }
-
     async fn test_all_inputs<const N: usize>(
         code: &'static str,
+        q_code: &'static str,
         maxima: [usize; N],
         cases: impl Iterator<Item = ([usize; N], String)>,
     ) {
@@ -810,6 +688,8 @@ A: 3x3
         };
 
         let program = Arc::new(program);
+
+        let q = emit_q(&program, "program.q".into()).unwrap();
 
         let expected_count = maxima.iter().map(|v| v + 1).product::<usize>();
         let mut real_count = 0;
@@ -852,6 +732,8 @@ A: 3x3
             );
         }
 
+        assert_str_eq!(q_code, q.0.inner());
+
         assert_eq!(expected_count, real_count, "Not all options were tested!");
     }
 
@@ -859,6 +741,7 @@ A: 3x3
     async fn fib_all_inputs() {
         test_all_inputs(
             include_str!("../../compiler/tests/fib/fib.qat"),
+            include_str!("../../compiler/tests/fib/fib.q"),
             [8],
             [
                 (0, 0),
@@ -881,6 +764,7 @@ A: 3x3
     async fn simple_all_inputs() {
         test_all_inputs(
             include_str!("../../compiler/tests/simple/simple.qat"),
+            include_str!("../../compiler/tests/simple/simple.q"),
             [3, 3],
             (0..4)
                 .cartesian_product(0..4)
@@ -893,6 +777,7 @@ A: 3x3
     async fn average_all_inputs() {
         test_all_inputs(
             include_str!("../../compiler/tests/average/average.qat"),
+            include_str!("../../compiler/tests/average/average.q"),
             [89, 89],
             (0..90)
                 .cartesian_product(0..90)
@@ -905,10 +790,23 @@ A: 3x3
     async fn multiply_all_inputs() {
         test_all_inputs(
             include_str!("../../compiler/tests/multiply/multiply.qat"),
+            include_str!("../../compiler/tests/multiply/multiply.q"),
             [29, 29],
             (0..30)
                 .cartesian_product(0..30)
                 .map(|(a, b)| ([a, b], format!("X×Y mod 30 = {}", (a * b) % 30))),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn modulus_all_inputs() {
+        test_all_inputs(
+            include_str!("../../compiler/tests/modulus/modulus.qat"),
+            include_str!("../../compiler/tests/modulus/modulus.q"),
+            [209],
+            (0..210)
+                .map(|a| ([a], format!("The modulus is {}", a % 13))),
         )
         .await;
     }
