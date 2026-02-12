@@ -734,6 +734,8 @@ mod tests {
 
         assert_str_eq!(q_code, q.0.inner());
 
+        assert!(!code.contains('\t'), "Program contains tabs!");
+
         assert_eq!(expected_count, real_count, "Not all options were tested!");
     }
 

@@ -3,24 +3,24 @@
 }
 
 .macro floor-div-2 {
-	($IN:reg $OUT:reg) => {
-		loop {
-			solved-goto $IN break
-			dec $IN
-			solved-goto $IN break
-			dec $IN
-			inc $OUT
-		}
-	}
+   ($IN:reg $OUT:reg) => {
+        loop {
+            solved-goto $IN break
+            dec $IN
+            solved-goto $IN break
+            dec $IN
+            inc $OUT
+        }
+    }
 }
 
 input "First number:" A
 input "Second number:" B
 
 while not-solved B {
-	inc A
-	dec B
-	solved-goto A overflow
+    inc A
+    dec B
+    solved-goto A overflow
 }
 
 floor-div-2 A B
@@ -29,8 +29,8 @@ halt "The average is" B
 overflow:
 
 while not-solved B {
-	inc A
-	dec B
+    inc A
+    dec B
 }
 
 floor-div-2 A B
