@@ -11,13 +11,7 @@ disallowed_types = "deny"
 qter_core.path = "qter_core"
 interpreter.path = "interpreter"
 compiler.path = "compiler"
-cli.path = "cli"
-cycle_combination_solver.path = "cycle_combination_solver"
-movecount_coefficient_calculator.path = "movecount_coefficient_calculator"
-cycle_combination_finder.path = "cycle_combination_finder"
-robot.path = "robot"
 puzzle_theory.git = "https://github.com/qter-project/puzzle-theory"
-
 internment = { version = "0.8", features = [ "arc" ] }
 itertools = "0.14.0"
 chumsky = "0.12.0"
