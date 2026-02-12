@@ -89,6 +89,7 @@ impl<C: Connection> RobotLike for RemoteRobot<C> {
 
         conn.writer().write_all(&len).await?;
         conn.writer().write_all(&encoded).await?;
+        conn.writer().flush().await?;
 
         ack_or_err(&mut conn).await?;
 
@@ -152,6 +153,7 @@ async fn send_ack<V, C: Connection>(
     match maybe_err {
         Ok(v) => {
             writer.write_all(b"!ACK\n").await?;
+            writer.flush().await?;
             Ok(Some(v))
         }
         Err(e) => {
@@ -160,6 +162,7 @@ async fn send_ack<V, C: Connection>(
             writer.write_all(b"!ERR\n").await?;
             writer.write_all(&len.to_be_bytes()).await?;
             writer.write_all(&bytes[0..len as usize]).await?;
+            writer.flush().await?;
             Ok(None)
         }
     }
@@ -234,6 +237,7 @@ where
             let writer = conn.writer();
             writer.write_all(state.to_string().as_bytes()).await?;
             writer.write_all("\n".as_bytes()).await?;
+            writer.flush().await?;
         } else {
             send_ack(
                 &mut conn,
