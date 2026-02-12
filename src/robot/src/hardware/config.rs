@@ -12,6 +12,7 @@ pub struct RobotConfig {
     pub motors: Motors,
     pub revolutions_per_second: f64,
     pub max_acceleration: f64,
+    pub await_moves_delay: f64,
     pub microstep_resolution: Microsteps,
     pub priority: Priority,
     pub wait_between_moves: f64,

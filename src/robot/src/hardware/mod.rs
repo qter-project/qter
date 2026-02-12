@@ -124,7 +124,13 @@ impl RobotHandle {
             .send(MotorMessage::PrevMovesDone(tx))
             .map_err(mpsc_err)?;
 
-        Ok(async { rx.await.map_err(oneshot_err)? })
+        let delay = self.config.await_moves_delay;
+
+        Ok(async move {
+            rx.await.map_err(oneshot_err)??;
+            tokio::time::sleep(Duration::from_millis(delay.ceil() as u64)).await;
+            Ok(())
+        })
     }
 }
 

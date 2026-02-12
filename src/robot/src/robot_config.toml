@@ -2,6 +2,7 @@ revolutions_per_second = 0.5
 max_acceleration = 50
 microstep_resolution = 1
 priority = "Default"
+await_moves_delay = 100
 
 [motors.U]
 step_pin = 21
