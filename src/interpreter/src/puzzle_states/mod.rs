@@ -128,8 +128,15 @@ pub trait RobotLike {
     /// Return the puzzle state as a permutation
     async fn take_picture(&mut self) -> Result<&Permutation, Self::Error>;
 
-    /// Solve the puzzle
-    async fn solve(&mut self) -> Result<(), Self::Error>;
+    /// Solve the current cube state
+    async fn solve(&mut self) -> Result<(), Self::Error> {
+        let mut state = self.take_picture().await?.clone();
+        state.invert();
+        self.compose_perm(&state).await
+    }
+
+    /// Compose a permutation to the robot; used for solving an unknown permutation
+    async fn compose_perm(&mut self, perm: &Permutation) -> Result<(), Self::Error>;
 }
 
 pub struct RobotState<R: RobotLike> {
@@ -333,8 +340,14 @@ impl RobotLike for SimulatedPuzzle {
         Ok(self.puzzle_state())
     }
 
-    async fn solve(&mut self) -> Result<(), Infallible> {
-        <Self as PuzzleState>::solve(self).await
+    async fn solve(&mut self) -> Result<(), Self::Error> {
+        self.state = Permutation::identity();
+        Ok(())
+    }
+
+    async fn compose_perm(&mut self, perm: &Permutation) -> Result<(), Infallible> {
+        self.state.compose_into(perm);
+        Ok(())
     }
 }
 

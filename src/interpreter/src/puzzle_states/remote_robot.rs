@@ -142,6 +142,14 @@ impl<C: Connection> RobotLike for RemoteRobot<C> {
         writer.flush().await?;
         ack_or_err(&mut self.conn).await
     }
+
+    async fn compose_perm(&mut self, perm: &Permutation) -> Result<(), Self::Error> {
+        let writer = self.conn.writer();
+        writer.write_all(perm.to_string().as_bytes()).await?;
+        writer.write_all(b"\n").await?;
+        writer.flush().await?;
+        ack_or_err(&mut self.conn).await
+    }
 }
 
 async fn send_ack<V, C: Connection>(
@@ -238,6 +246,13 @@ where
             writer.write_all(state.to_string().as_bytes()).await?;
             writer.write_all("\n".as_bytes()).await?;
             writer.flush().await?;
+        } else if command.starts_with('(') {
+            send_ack(&mut conn, async {
+                let perm = command.parse::<Permutation>()?;
+
+                robot.compose_perm(&perm).await.map_err(|e| e.to_string())
+            }.await)
+            .await?;
         } else {
             send_ack(
                 &mut conn,
@@ -277,7 +292,7 @@ mod tests {
 
         let task = tokio::spawn(async move {
             tx.write_all(
-                b"!ACK\n!ACK\n!ACK\n(1, 0)\n!ACK\n!ERR\n\0\x03ABC!ERR\n\0\x04ABCD!ERR\n\0\x05ABCDE",
+                b"!ACK\n!ACK\n!ACK\n(0, 1)\n!ACK\n!ACK\n!ERR\n\0\x03ABC!ERR\n\0\x04ABCD!ERR\n\0\x04XYZW!ERR\n\0\x05ABCDE",
             )
             .await
             .unwrap();
@@ -288,7 +303,7 @@ mod tests {
             rx.read_to_string(&mut data).await.unwrap();
             assert_eq!(
                 data,
-                "\0\x06\"3x3\"\nU D U2 D2 U' D'\n!PICTURE\n!SOLVE\nU\n!PICTURE\n!SOLVE\n"
+                "\0\x06\"3x3\"\nU D U2 D2 U' D'\n!PICTURE\n(1, 2, 3)\n!SOLVE\nU\n!PICTURE\n()\n!SOLVE\n"
             );
         });
 
@@ -312,6 +327,7 @@ mod tests {
             remote_robot.take_picture().await.unwrap(),
             &Permutation::from_cycles(vec![vec![0, 1]])
         );
+        remote_robot.compose_perm(&Permutation::from_cycles(vec![vec![1, 2, 3]])).await.unwrap();
         remote_robot.solve().await.unwrap();
         assert_eq!(
             remote_robot.take_picture().await.unwrap(),
@@ -324,6 +340,7 @@ mod tests {
                 .is_err()
         );
         assert!(remote_robot.take_picture().await.is_err());
+        assert!(remote_robot.compose_perm(&Permutation::identity()).await.is_err());
         assert!(remote_robot.solve().await.is_err());
 
         drop(remote_robot);
@@ -341,6 +358,10 @@ mod tests {
             response: Result<Permutation, String>,
         },
         Solve {
+            response: Result<(), String>,
+        },
+        ComposePerm {
+            expected: Permutation,
             response: Result<(), String>,
         },
     }
@@ -387,6 +408,17 @@ mod tests {
 
             response
         }
+
+        async fn compose_perm(&mut self, perm: &Permutation) -> Result<(), Self::Error> {
+            let expected = self.0.pop_front().unwrap();
+            let Command::ComposePerm { expected, response } = expected else {
+                panic!()
+            };
+
+            assert_eq!(perm, &expected);
+
+            response
+        }
     }
 
     #[tokio::test]
@@ -396,7 +428,7 @@ mod tests {
 
         let task = tokio::spawn(async move {
             tx.write_all(
-                b"\0\x06\"3x3\"\nU D U2 D2 U' D'\n!PICTURE\n!SOLVE\nU\n!PICTURE\n!SOLVE\n",
+                b"\0\x06\"3x3\"\nU D U2 D2 U' D'\n!PICTURE\n(1,2,3)\n!SOLVE\nU\n!PICTURE\n()\n!SOLVE\n",
             )
             .await
             .unwrap();
@@ -407,7 +439,7 @@ mod tests {
 
             assert_eq!(
                 out,
-                "!ACK\n!ACK\n!ACK\n(0, 1)\n!ACK\n!ERR\n\0\x03ABC!ERR\n\0\x04ABCD!ERR\n\0\x05ABCDE"
+                "!ACK\n!ACK\n!ACK\n(0, 1)\n!ACK\n!ACK\n!ERR\n\0\x03ABC!ERR\n\0\x04ABCD!ERR\n\0\x04XYZW!ERR\n\0\x05ABCDE"
             );
         });
 
@@ -424,6 +456,10 @@ mod tests {
             Command::TakePicture {
                 response: Ok(Permutation::from_cycles(vec![vec![0, 1]])),
             },
+            Command::ComposePerm {
+                expected: Permutation::from_cycles(vec![vec![1, 2, 3]]),
+                response: Ok(()),
+            },
             Command::Solve { response: Ok(()) },
             Command::ComposeInto {
                 expected: Algorithm::parse_from_string(Arc::clone(&group), "U").unwrap(),
@@ -431,6 +467,10 @@ mod tests {
             },
             Command::TakePicture {
                 response: Err("ABCD".to_owned()),
+            },
+            Command::ComposePerm {
+                expected: Permutation::identity(),
+                response: Err("XYZW".to_owned()),
             },
             Command::Solve {
                 response: Err("ABCDE".to_owned()),

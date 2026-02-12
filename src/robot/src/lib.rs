@@ -33,6 +33,7 @@ pub enum ErrorKind {
     ComposeInto,
     Calibration,
     IncorrectPermGroup,
+    RobTwophase,
     // TODO: IMPLEMENT!!!!!
     OverTemperature,
 }
@@ -48,6 +49,7 @@ impl Display for ErrorKind {
                 ErrorKind::ComposeInto => "Compose-into",
                 ErrorKind::Calibration => "Calibration",
                 ErrorKind::IncorrectPermGroup => "Incorrect permutation group",
+                ErrorKind::RobTwophase => "rob-twophase",
             }
         )
     }
@@ -129,11 +131,13 @@ impl<'a> RobotLike for QterRobot<'a> {
         Ok(self.cached_picture_state.as_ref().unwrap())
     }
 
-    async fn solve(&mut self) -> Result<(), Self::Error> {
-        let alg = solve_rob_twophase(self.take_picture().await?).unwrap();
-
-        self.compose_into(&alg).await?;
-
-        Ok(())
+    async fn compose_perm(&mut self, perm: &Permutation) -> Result<(), Self::Error> {
+        let mut perm = perm.to_owned();
+        perm.invert();
+        self.compose_into(&solve_rob_twophase(&perm).map_err(|e| QterRobotError {
+            kind: ErrorKind::RobTwophase,
+            message: e.to_string(),
+        })?)
+        .await
     }
 }

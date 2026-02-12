@@ -56,6 +56,10 @@ impl<T: RobotLike, F: FnMut(&Permutation)> RobotLike for CaptureCubeState<T, F> 
     async fn solve(&mut self) -> Result<(), Self::Error> {
         self.0.solve().await
     }
+
+    async fn compose_perm(&mut self, perm: &Permutation) -> Result<(), Self::Error> {
+        self.0.compose_perm(perm).await
+    }
 }
 
 type Conn = (
