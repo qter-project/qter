@@ -9,14 +9,13 @@
 )
 
 #show raw: it => {
-    set text(size: 0.35in)
+    set text(size: 0.35in, fill: color.mix((colors.white, 70%), (colors.blue, 30%)))
 
     show regex("\/\/.*\n"): it => {
         set text(fill: colors.blue)
         it
     }
 
-    // set text(fill: color.yellow)
     text(it.text)
 }
 
@@ -44,6 +43,19 @@
         _Write Your Own Qter Program_
     ]
 ])
+
+#box(
+    width: 100%,
+    fill: black,
+    inset: 0.3in,
+)[
+    #set text(size: 0.8in, weight: "semibold", font: "Monaspace Xenon")
+    Step Zero: Try the Example Programs
+]
+
+#box(inset: (left: 0.5in, right: 0.5in))[
+    The example programs and programs written by others contain lots of tricks that can help you solve problems.
+]
 
 // #box(width: 100%, fill: black, stroke: (
 //     top: white,
@@ -85,6 +97,10 @@
         A, B, C, D <- 3x3 builtin (30, 18, 10, 9)
         ```
     ]
+
+    #h(0em)
+
+    You can also access particular moduli of registers for free with the syntax `A%10`. The compiler will tell you which moduli are available if you use a modulus that doesn't exist.
 ]
 
 #box(width: 100%, fill: colors.orange, inset: 0.3in)[
@@ -95,6 +111,10 @@
 ]
 
 #box(inset: (left: 0.3in, right: 0.3in))[
+    #show heading: it => {
+        set text(fill: colors.orange)
+        it
+    }
 
     #grid(
         columns: (1fr, 1fr, 1fr),
@@ -224,19 +244,6 @@
         }
         ```
     ]
-]
-
-#box(
-    width: 100%,
-    fill: black,
-    inset: 0.3in,
-)[
-    #set text(size: 0.8in, weight: "semibold", font: "Monaspace Xenon")
-    Step Four: Try the Example Programs
-]
-
-#box(inset: (left: 0.5in, right: 0.5in))[
-    The example programs and programs written by others contain lots of tricks that can help you solve problems.
 ]
 
 #place(bottom, box(width: 100%, fill: colors.yellow, inset: 0.3in)[
