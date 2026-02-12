@@ -21,7 +21,11 @@ else
     npx tree-sitter build --wasm tree-sitter-q -o dist/tree-sitter-qter_q.wasm;
     cp tree-sitter-q/queries/highlights.scm dist/highlights.scm;
     cp node_modules/web-tree-sitter/web-tree-sitter.{js,js.map,d.ts,d.ts.map,wasm,wasm.map} dist;
-    wasm-pack build --target web --out-dir dist --dev;
+    if [ "$1" = "--release" ]; then
+        wasm-pack build --target web --out-dir dist --no-opt;
+    else
+        wasm-pack build --target web --out-dir dist --dev;
+    fi
     rm dist/.gitignore;
     cp -R static/* dist;
     tsc;
