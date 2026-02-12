@@ -10,5 +10,9 @@
     {
         "name": "Fibonacci",
         "file": "fib.qat"
+    },
+    {
+        "name": "Multiplication",
+        "file": "multiply.qat"
     }
 ]
