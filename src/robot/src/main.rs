@@ -4,7 +4,7 @@
 use clap::{Parser, Subcommand};
 use env_logger::TimestampPrecision;
 use interpreter::puzzle_states::run_robot_server;
-use log::{LevelFilter, warn};
+use log::{LevelFilter, info, warn};
 use puzzle_theory::permutations::Algorithm;
 use robot::{
     CUBE3, QterRobot,
@@ -151,6 +151,13 @@ async fn main() -> color_eyre::Result<()> {
         Commands::Calibrate => {
             let mut qvis_app_handle = QvisAppHandle::init(robot_config.qvis_app_path.clone());
             let mut robot_handle = RobotHandle::init(robot_config);
+            info!("Waiting for READY");
+            let lines = std::io::stdin().lines();
+            for line in lines {
+                if line.unwrap().trim() == "READY" {
+                    break;
+                }
+            }
             qvis_app::calibrate(&mut qvis_app_handle, &mut robot_handle).await?;
         }
         Commands::Solve {
