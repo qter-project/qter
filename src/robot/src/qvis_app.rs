@@ -86,7 +86,7 @@ pub async fn calibrate(
     handle: &mut QvisAppHandle,
     robot: &mut RobotHandle,
 ) -> Result<(), QterRobotError> {
-    const CALIBRATION_ALGORITHM: LazyLock<Algorithm> = LazyLock::new(|| {
+    static CALIBRATION_ALGORITHM: LazyLock<Algorithm> = LazyLock::new(|| {
         Algorithm::parse_from_string(
             Arc::clone(&CUBE3),
             "L2 U2 B D2 L R D D2 B F' U D D U' D R' U L D' U' D2 F2 U2 R2 U2 D' U U F' L2 F' F' L D2 F' D' B B D D U' L' R R' D' B2 L2 F D' B' L2 F2 B' D2 B2 R' L2 F' B2 U L B' R' R2 F' D' R2 R B R' D' B' R' U2 B L2 R' B2 R2 D B' L2 F2 D2 L D R U' B R2 R2 R B' F' D2 D' D L2 F' F R' D R' U2 L2 R' D U' R' F' U2 F' D' R2 U L R2",
@@ -101,6 +101,14 @@ pub async fn calibrate(
             kind: ErrorKind::Calibration,
             message,
         })?;
+    
+    info!("Waiting for READY");
+    let lines = std::io::stdin().lines();
+    for line in lines {
+        if line.unwrap().trim() == "READY" {
+            break;
+        }
+    }
 
     for move_str in CALIBRATION_ALGORITHM.move_seq_iter() {
         let move_perm = CUBE3.get_generator(move_str).unwrap();
