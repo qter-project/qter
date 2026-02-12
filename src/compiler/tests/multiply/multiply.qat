@@ -33,11 +33,10 @@ if solved Y {
 
 print "Factorizing out two"
 
-divide_again:
 loop {
     if solved Y%10 {
         divide 2
-        goto divide_again
+        goto continue
     }
     dec Y
     if solved Y%10 {
