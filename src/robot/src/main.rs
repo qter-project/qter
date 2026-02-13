@@ -14,13 +14,10 @@ use robot::{
         set_prio,
     },
     qvis_app::{self, QvisAppHandle},
-    rob_twophase::solve_rob_twophase_string,
+    rob_twophase::{mk_rob_twophase_input, solve_rob_twophase_string},
 };
 use std::{
-    path::PathBuf,
-    sync::Arc,
-    thread,
-    time::{Duration, Instant},
+    fs::symlink_metadata, path::PathBuf, sync::Arc, thread, time::{Duration, Instant}
 };
 use tokio::io::BufReader;
 use wtransport::{Endpoint, Identity, ServerConfig};
@@ -65,9 +62,7 @@ enum Commands {
         cert_out_path: Option<PathBuf>,
     },
     Calibrate,
-    Solve {
-        rob_twophase_string: String,
-    },
+    Solve,
 }
 
 #[tokio::main]
@@ -200,10 +195,18 @@ async fn main() -> color_eyre::Result<()> {
             }
             qvis_app::calibrate(&mut qvis_app_handle, &mut robot_handle).await?;
         }
-        Commands::Solve {
-            rob_twophase_string,
-        } => {
-            let alg = solve_rob_twophase_string(&rob_twophase_string).unwrap();
+        Commands::Solve => {
+            let mut qvis_app_handle = QvisAppHandle::init(robot_config.qvis_app_path.clone());
+            info!("Waiting for READY");
+            let lines = std::io::stdin().lines();
+            for line in lines {
+                if line.unwrap().trim() == "READY" {
+                    break;
+                }
+            }
+            let taken = qvis_app_handle.take_picture().await.unwrap();
+            let alg = mk_rob_twophase_input(&taken);
+            let alg = solve_rob_twophase_string(&alg).unwrap();
 
             let robot_handle = RobotHandle::init(robot_config);
             robot_handle.queue_move_seq(&alg)?;
