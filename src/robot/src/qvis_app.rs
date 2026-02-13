@@ -25,6 +25,7 @@ impl QvisAppHandle {
             .current_dir(qvis_app_path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
             .kill_on_drop(true)
             .spawn()
             .unwrap();
@@ -102,7 +103,7 @@ pub async fn calibrate(
             kind: ErrorKind::Calibration,
             message,
         })?;
-    
+
     info!("Waiting for READY");
     let lines = std::io::stdin().lines();
     for line in lines {

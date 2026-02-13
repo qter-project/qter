@@ -14,10 +14,13 @@ use robot::{
         set_prio,
     },
     qvis_app::{self, QvisAppHandle},
-    rob_twophase::{mk_rob_twophase_input, solve_rob_twophase_string},
+    rob_twophase::solve_rob_twophase,
 };
 use std::{
-    fs::symlink_metadata, path::PathBuf, sync::Arc, thread, time::{Duration, Instant}
+    path::PathBuf,
+    sync::Arc,
+    thread,
+    time::{Duration, Instant},
 };
 use tokio::io::BufReader;
 use wtransport::{Endpoint, Identity, ServerConfig};
@@ -134,7 +137,7 @@ async fn main() -> color_eyre::Result<()> {
             server_port,
             cert_out_path,
         } => {
-            let identity = Identity::self_signed(&["10.42.0.1"]).unwrap();
+            let identity = Identity::self_signed(["10.42.0.1"]).unwrap();
             let cert_digest = identity.certificate_chain().as_slice()[0].hash();
             let server_config = ServerConfig::builder()
                 .with_bind_default(server_port)
@@ -197,6 +200,7 @@ async fn main() -> color_eyre::Result<()> {
         }
         Commands::Solve => {
             let mut qvis_app_handle = QvisAppHandle::init(robot_config.qvis_app_path.clone());
+            let robot_handle = RobotHandle::init(robot_config);
             info!("Waiting for READY");
             let lines = std::io::stdin().lines();
             for line in lines {
@@ -205,10 +209,8 @@ async fn main() -> color_eyre::Result<()> {
                 }
             }
             let taken = qvis_app_handle.take_picture().await.unwrap();
-            let alg = mk_rob_twophase_input(&taken);
-            let alg = solve_rob_twophase_string(&alg).unwrap();
+            let alg = solve_rob_twophase(&taken)?;
 
-            let robot_handle = RobotHandle::init(robot_config);
             robot_handle.queue_move_seq(&alg)?;
             robot_handle.await_moves()?.await?;
         }

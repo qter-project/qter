@@ -27,7 +27,7 @@ static COLOR_MAPPING: LazyLock<HashMap<ArcIntern<str>, char>> = LazyLock::new(||
     v
 });
 
-pub fn mk_rob_twophase_input(perm: &Permutation) -> String {
+fn mk_rob_twophase_input(perm: &Permutation) -> String {
     let cube3 = &*CUBE3;
     let color_mapping = &*COLOR_MAPPING;
 
