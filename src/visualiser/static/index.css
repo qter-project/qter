@@ -65,6 +65,7 @@ main {
 
     pre {
         height: 100%;
+        min-height: min-content;
         width: 100%;
         padding: 0.5em;
         text-wrap: stable;
