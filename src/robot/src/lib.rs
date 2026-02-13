@@ -2,7 +2,6 @@
 
 use crate::{hardware::RobotHandle, qvis_app::QvisAppHandle, rob_twophase::solve_rob_twophase};
 use interpreter::puzzle_states::RobotLike;
-use log::error;
 use puzzle_theory::{
     permutations::{Algorithm, Permutation, PermutationGroup},
     puzzle_geometry::parsing::puzzle,
@@ -21,7 +20,6 @@ pub static CUBE3: LazyLock<Arc<PermutationGroup>> =
     LazyLock::new(|| puzzle("3x3").permutation_group());
 
 pub struct QterRobot<'a> {
-    simulated_state: Permutation,
     robot_handle: &'a mut RobotHandle,
     qvis_app_handle: &'a mut QvisAppHandle,
     cached_picture_state: Option<Permutation>,
@@ -95,14 +93,11 @@ impl<'a> RobotLike for QterRobot<'a> {
         Ok(Self {
             robot_handle,
             qvis_app_handle,
-            simulated_state: Permutation::identity(),
             cached_picture_state: Some(Permutation::identity()),
         })
     }
 
     async fn compose_into(&mut self, alg: &Algorithm) -> Result<(), Self::Error> {
-        self.simulated_state.compose_into(alg.permutation());
-
         self.robot_handle.queue_move_seq(alg)?;
         self.cached_picture_state.take();
 
@@ -120,12 +115,6 @@ impl<'a> RobotLike for QterRobot<'a> {
                     kind: ErrorKind::ComposeInto,
                     message,
                 })?;
-            if ret != self.simulated_state {
-                error!(
-                    "Simulated state does not match actual state.\nSimulated: {}\nActual:    {}",
-                    self.simulated_state, ret
-                );
-            }
             self.cached_picture_state = Some(ret);
         }
         Ok(self.cached_picture_state.as_ref().unwrap())

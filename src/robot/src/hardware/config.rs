@@ -16,7 +16,6 @@ pub struct RobotConfig {
     pub microstep_resolution: Microsteps,
     pub priority: Priority,
     pub wait_between_moves: f64,
-    pub compensation: u32,
     pub float: bool,
     pub stealthchop: bool,
     pub qvis_app_path: PathBuf,
@@ -28,9 +27,6 @@ pub struct MotorConfig {
     pub dir_pin: u8,
     pub uart_bus: UartId,
     pub uart_address: NodeAddress,
-
-    pub pos_compensation: Option<u32>,
-    pub neg_compensation: Option<u32>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]

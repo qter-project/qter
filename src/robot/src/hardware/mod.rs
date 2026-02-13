@@ -160,20 +160,6 @@ impl Face {
     }
 }
 
-impl RobotConfig {
-    fn compensation(&self, face: Face, dir: Dir) -> i32 {
-        let sign = dir.qturns().signum();
-        let motor_config = &self.motors[face];
-        let for_motor = match sign {
-            1 => motor_config.pos_compensation,
-            -1 => motor_config.neg_compensation,
-            _ => unreachable!(),
-        };
-        let unsigned = for_motor.unwrap_or(self.compensation);
-        unsigned.cast_signed() * sign
-    }
-}
-
 impl Ticker {
     pub fn new() -> Self {
         Self {
@@ -343,10 +329,8 @@ fn motor_thread(rx: mpsc::Receiver<MotorMessage>, robot_config: RobotConfig) {
                 let motor = &mut motors[face as usize];
 
                 let steps = dir.qturns() * FULLSTEPS_PER_QUARTER.cast_signed();
-                let comp = robot_config.compensation(face, dir);
 
-                motor.turn(steps + comp);
-                motor.turn(-comp);
+                motor.turn(steps);
             }
             MoveInstruction::Double([(face1, dir1), (face2, dir2)]) => {
                 let [motor1, motor2] = motors
@@ -355,11 +339,8 @@ fn motor_thread(rx: mpsc::Receiver<MotorMessage>, robot_config: RobotConfig) {
 
                 let steps1 = dir1.qturns() * FULLSTEPS_PER_QUARTER.cast_signed();
                 let steps2 = dir2.qturns() * FULLSTEPS_PER_QUARTER.cast_signed();
-                let comp1 = robot_config.compensation(face1, dir1);
-                let comp2 = robot_config.compensation(face2, dir2);
 
-                Motor::turn_many([motor1, motor2], [steps1 + comp1, steps2 + comp2]);
-                Motor::turn_many([motor1, motor2], [-comp1, -comp2]);
+                Motor::turn_many([motor1, motor2], [steps1, steps2]);
             }
         }
 
@@ -495,7 +476,7 @@ pub fn uart_init(robot_config: &RobotConfig) {
         // Configure IHOLD_IRUN. Note that IHOLD_IRUN is write-only.
         //
         let ihold_irun = IholdIrun::empty()
-            .with_ihold(if robot_config.float { 0 } else { 31 })
+            .with_ihold(if robot_config.float { 0 } else { 16 })
             // Set IRUN to 31
             .with_irun(31)
             // Set IHOLDDELAY to 1
