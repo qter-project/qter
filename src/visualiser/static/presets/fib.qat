@@ -3,6 +3,9 @@
 }
 
 .macro fib-shuffle {
+    // Let `fib(n)` be the nth fibonacci number
+    // Expects $R1 = fib(n), $R2 = fib(n-1), $R3 = 0
+    // Sets the registers to $R1 = 0, $R2 = fib(n+1), $R3 = fib(n) by adding $R1 to $R2 and $R3
     ($R1:reg $R2:reg $R3:reg $counter:reg) => {
         dec $counter
         if solved $counter {
@@ -18,7 +21,7 @@
 
 input "Which Fibonacci number to calculate:" D
 if solved D {
-    halt "The number is: 0"
+    halt "The number is 0"
 }
 inc B
 loop {

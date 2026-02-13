@@ -1,22 +1,22 @@
 // Multiplication by repeatedly dividing the second input by its factors and multiplying the first input by the same factors.
 
 .registers {
-	// Registers are (10, 3), (10, 3), (15, 2)
+    // Registers are (10, 3), (10, 3), (15, 2)
     SCRATCH, Y, X <- 3x3 builtin (30, 30, 30)
 }
 
 .macro divide {
-	($N:int) => {
-		while not-solved Y {
-			sub Y $N
-			inc SCRATCH
-		}
+    ($N:int) => {
+        while not-solved Y {
+            sub Y $N
+            inc SCRATCH
+        }
 
-		move SCRATCH to Y
+        move SCRATCH to Y
 
-		move X to SCRATCH
-		multiply SCRATCH $N at X
-	}
+        move X to SCRATCH
+        multiply SCRATCH $N at X
+    }
 }
 
 input "Enter number X" X
@@ -24,7 +24,7 @@ input "Enter number Y" Y
 
 // We need Y to be non-zero
 if solved Y {
-	halt "X×Y mod 30 = 0"
+    halt "X×Y mod 30 = 0"
 }
 
 // First, we need to divide by all factors of 30 which are 2, 3, and 5.
@@ -33,27 +33,26 @@ if solved Y {
 
 print "Factorizing out two"
 
-divide_again:
 loop {
-	if solved Y%10 {
-		divide 2
-		goto divide_again
-	}
-	dec Y
-	if solved Y%10 {
-		inc Y
-		multiply SCRATCH 2 at Y
-		goto break
-	}
-	dec Y
-	inc SCRATCH
+    if solved Y%10 {
+        divide 2
+        goto continue
+    }
+    dec Y
+    if solved Y%10 {
+        inc Y
+        multiply SCRATCH 2 at Y
+        goto break
+    }
+    dec Y
+    inc SCRATCH
 }
 
 print "Factorizing out three"
 
 // We can directly test divisibility by 3
 while solved Y%3 {
-	divide 3
+    divide 3
 }
 
 print "Factorizing out five"
@@ -61,7 +60,7 @@ print "Factorizing out five"
 // We know that since Y is no longer divisible by 2, it cannot also be divisible by 10. Therefore if it is divisible by 5, it must be 5 above a divisor of 10.
 
 while Y%10 equals 5 {
-	divide 5
+    divide 5
 }
 
 print "Factorizing out seven"
@@ -72,7 +71,7 @@ print "Factorizing out seven"
 // Since 11 = 1 mod 10, 11^b = 1 mod 10. 7^a mod 10 must be one of { 1, 7, 9, 3 } and is only one when a = 0. Therefore, Y%10 is not one if and only if it is divisible by 7.
 
 while Y%10 not-equals 1 {
-	divide 7
+    divide 7
 }
 
 print "Factorizing out eleven"
@@ -80,7 +79,7 @@ print "Factorizing out eleven"
 // Finally, factorize out 11 if necessary.
 
 if Y not-equals 1 {
-	divide 11
+    divide 11
 }
 
 halt "X×Y mod 30 =" X

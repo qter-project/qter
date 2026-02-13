@@ -1,15 +1,13 @@
 .registers {
-    A, B <- 3x3 (U, D')
+    A, B <- 3x3 builtin (4, 4)
 }
 
 input "First number:" A
 input "Second number:" B
 
-start:
-    solved-goto B end
-    add A 1
-    add B 3
-    goto start
-end:
+while not-solved B {
+    inc A
+    dec B
+}
 
 halt "(A + B) % 4 =" A

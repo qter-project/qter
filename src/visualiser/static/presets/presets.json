@@ -8,6 +8,10 @@
         "file": "average.qat"
     },
     {
+        "name": "Modulus",
+        "file": "modulus.qat"
+    },
+    {
         "name": "Fibonacci",
         "file": "fib.qat"
     },
