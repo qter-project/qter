@@ -461,6 +461,10 @@ impl<R: RobotLike> RobotLike for WrapSimulatedPuzzle<R> {
                         .await
                         .map_err(WrapSimulationErr::Robot)?;
 
+                    if found_state == &self.puzzle {
+                        break
+                    }
+
                     // Let the true state be T, let the observed state be O.
                     // We need some permutation X to compose into O to get T.
                     // O X = T
@@ -483,7 +487,35 @@ impl<R: RobotLike> RobotLike for WrapSimulatedPuzzle<R> {
 
     async fn solve(&mut self) -> Result<(), Self::Error> {
         self.puzzle = Permutation::identity();
-        self.robot.solve().await.map_err(WrapSimulationErr::Robot)
+        self.robot.solve().await.map_err(WrapSimulationErr::Robot)?;
+
+        if let MismatchBehavior::Fix { retry_count } = self.behavior {
+            let mut retries_left = retry_count;
+
+            while retries_left > 0 {
+                retries_left -= 1;
+
+                let found_state = self
+                    .robot
+                    .take_picture()
+                    .await
+                    .map_err(WrapSimulationErr::Robot)?;
+
+                if found_state == &Permutation::identity() {
+                    break
+                }
+
+                let mut fix = found_state.clone();
+                fix.invert();
+
+                self.robot
+                    .compose_perm(&fix)
+                    .await
+                    .map_err(WrapSimulationErr::Robot)?;
+            }
+        }
+
+        Ok(())
     }
 
     async fn compose_perm(&mut self, perm: &Permutation) -> Result<(), Self::Error> {
