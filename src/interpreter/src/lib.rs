@@ -123,7 +123,7 @@ impl<P: PuzzleState> InterpreterState<P> {
         &self.execution_state
     }
 
-    /// Get the message queue of the interpreter
+    /// Get the message queue of the interpreter. Messages are only ever pushed to the end and you may pop them from the front.
     pub fn messages(&mut self) -> &mut VecDeque<String> {
         &mut self.messages
     }

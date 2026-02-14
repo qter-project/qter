@@ -92,15 +92,15 @@
 - 😎Write a tree-sitter grammer for QAT
 - Evaluate repeat instruction for examinx
 - 😎Optimizations
-  - Make the repeat-until vectorization optimization work with multiple puzzles
+  - Convert QAT to SSA
+    - Make the repeat-until vectorization optimization work with multiple puzzles
+    - Unreachable removal with real control flow analysis
+    - Dead code removal?
+    - Coalesce adjacent labels
+    - Strength reduction of `solved-goto` after a `repeat until` or `solve` that guarantees whether or not it succeeds
+    - If there's a goto immediately after a label, move the label to where the goto goes to
+    - Be able to actually shuffle code around to minimize branching
   - Asher's repeated move post process optimization: R U R repeated = R then U R2 repeated then R'
-  - Unreachable removal with real control flow analysis
-  - Dead code removal?
-  - Coalesce solved-gotos to the same label
-  - Coalesce adjacent labels
-  - Strength reduction of `solved-goto` after a `repeat until` or `solve` that guarantees whether or not it succeeds
-  - If there's a goto immediately after a label, move the label to where the goto goes to
-  - Be able to actually shuffle code around to minimize branching
 
 ## Interpreter/CLI
 
