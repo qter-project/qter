@@ -2,6 +2,7 @@
 
 use crate::{hardware::RobotHandle, qvis_app::QvisAppHandle, rob_twophase::solve_rob_twophase};
 use interpreter::puzzle_states::RobotLike;
+use log::trace;
 use puzzle_theory::{
     permutations::{Algorithm, Permutation, PermutationGroup},
     puzzle_geometry::parsing::puzzle,
@@ -90,10 +91,19 @@ impl<'a> RobotLike for QterRobot<'a> {
             });
         }
 
+        let taken = qvis_app_handle.take_picture().await.unwrap();
+        let alg = solve_rob_twophase(&taken).map_err(|e| QterRobotError {
+            kind: ErrorKind::RobTwophase,
+            message: e.to_string(),
+        })?;
+
+        robot_handle.queue_move_seq(&alg)?;
+        robot_handle.await_moves()?.await?;
+
         Ok(Self {
             robot_handle,
             qvis_app_handle,
-            cached_picture_state: Some(Permutation::identity()),
+            cached_picture_state: None,
         })
     }
 
@@ -105,7 +115,9 @@ impl<'a> RobotLike for QterRobot<'a> {
     }
 
     async fn take_picture(&mut self) -> Result<&Permutation, Self::Error> {
+        trace!("QterRobot: taking picture");
         if self.cached_picture_state.is_none() {
+            trace!("QterRobot: no cache, taking picture");
             self.robot_handle.await_moves()?.await?;
             let ret = self
                 .qvis_app_handle
@@ -116,6 +128,8 @@ impl<'a> RobotLike for QterRobot<'a> {
                     message,
                 })?;
             self.cached_picture_state = Some(ret);
+        } else {
+            trace!("QterRobot: using cache");
         }
         Ok(self.cached_picture_state.as_ref().unwrap())
     }

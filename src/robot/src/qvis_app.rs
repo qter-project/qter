@@ -1,9 +1,7 @@
-use log::{info, warn};
+use log::{info, trace};
 use puzzle_theory::permutations::{Algorithm, Permutation};
 use std::{
-    path::PathBuf,
-    process::Stdio,
-    sync::{Arc, LazyLock},
+    io, path::PathBuf, process::Stdio, sync::{Arc, LazyLock}
 };
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines},
@@ -19,7 +17,7 @@ pub struct QvisAppHandle {
 }
 
 impl QvisAppHandle {
-    pub fn init(qvis_app_path: PathBuf) -> Self {
+    pub async fn init(qvis_app_path: PathBuf) -> Result<Self, io::Error> {
         let mut child = tokio::process::Command::new("cargo")
             .args(["make", "prod"])
             .current_dir(qvis_app_path)
@@ -30,45 +28,58 @@ impl QvisAppHandle {
             .unwrap();
 
         let stdin = child.stdin.take().unwrap();
-        let stdout = BufReader::new(child.stdout.take().unwrap()).lines();
+        let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
 
-        QvisAppHandle {
+        while let Some(line) = stdout.next_line().await? {
+            if line.trim() == "Received READY from qvis_app" {
+                info!("Received READY from qvis_app; initialization complete");
+                break;
+            } else {
+                eprintln!("qvis_app: {line}");
+            }
+        }
+
+        Ok(QvisAppHandle {
             _child: child,
             stdin,
             stdout,
-        }
+        })
     }
 
     async fn calibrate_permutation(
         &mut self,
         calibration_permutation: Permutation,
-    ) -> Result<(), String> {
+    ) -> Result<(), io::Error> {
         let calibration_command = format!("CALIBRATE {calibration_permutation}\n");
         info!("Sending calibration command: {}", calibration_command);
         self.stdin
             .write_all(calibration_command.as_bytes())
-            .await
-            .map_err(|e| e.to_string())?;
-        self.stdin.flush().await.map_err(|e| e.to_string())?;
+            .await?;
+        self.stdin.flush().await?;
 
-        while let Some(line) = self.stdout.next_line().await.map_err(|e| e.to_string())? {
+        while let Some(line) = self.stdout.next_line().await? {
             if line.trim() == "DONE" {
-                info!("Calibrated permutation");
+                info!("Received DONE from qvis_app; calibration complete");
                 return Ok(());
             } else {
-                warn!("Received unexpected line from qvis app during calibration: {line}");
+                eprintln!("qvis_app: {line}");
             }
         }
 
-        Err("Process exited before sending DONE".into())
+        Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "Process exited before sending DONE",
+        ))
     }
 
     pub async fn take_picture(&mut self) -> Result<Permutation, String> {
+        trace!("QvisAppHandle: taking picture");
         self.stdin
             .write_all(b"TAKE_PICTURE\n")
             .await
             .map_err(|e| e.to_string())?;
         self.stdin.flush().await.map_err(|e| e.to_string())?;
+        trace!("QvisAppHandle: sent take picture command");
 
         while let Some(line) = self.stdout.next_line().await.map_err(|e| e.to_string())? {
             if line.starts_with("DONE") {
@@ -87,7 +98,7 @@ impl QvisAppHandle {
                 info!("Taken picture of {perm:?} with confidence {confidence}");
                 return perm;
             } else {
-                warn!("Received unexpected line from qvis app during picture taking: {line}");
+                eprintln!("qvis_app: {line}");
             }
         }
 
@@ -110,9 +121,9 @@ pub async fn calibrate(
     handle
         .calibrate_permutation(acc.clone())
         .await
-        .map_err(|message| QterRobotError {
+        .map_err(|error| QterRobotError {
             kind: ErrorKind::Calibration,
-            message,
+            message: error.to_string(),
         })?;
 
     info!("Waiting for READY");
@@ -135,9 +146,9 @@ pub async fn calibrate(
         handle
             .calibrate_permutation(acc.clone())
             .await
-            .map_err(|message| QterRobotError {
+            .map_err(|error| QterRobotError {
                 kind: ErrorKind::Calibration,
-                message,
+                message: error.to_string(),
             })?;
     }
 

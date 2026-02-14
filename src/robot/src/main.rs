@@ -3,8 +3,8 @@
 
 use clap::{Parser, Subcommand};
 use env_logger::TimestampPrecision;
-use interpreter::puzzle_states::{SimulatedPuzzle, run_robot_server};
-use log::{LevelFilter, debug, info, warn};
+use interpreter::puzzle_states::{RobotLike, SimulatedPuzzle, run_robot_server};
+use log::{LevelFilter, debug, warn};
 use puzzle_theory::permutations::Algorithm;
 use robot::{
     CUBE3, QterRobot,
@@ -174,7 +174,7 @@ async fn main() -> color_eyre::Result<()> {
             let mut maybe_handles = if simulated {
                 None
             } else {
-                let qvis_app_handle = QvisAppHandle::init(robot_config.qvis_app_path.clone());
+                let qvis_app_handle = QvisAppHandle::init(robot_config.qvis_app_path.clone()).await.unwrap();
                 let robot_handle = RobotHandle::init(robot_config);
                 Some((qvis_app_handle, robot_handle))
             };
@@ -204,41 +204,22 @@ async fn main() -> color_eyre::Result<()> {
                 }
                 .await;
 
-                match res {
-                    Ok(()) => {}
-                    Err(e) => {
-                        eprintln!("{e}");
-                    }
+                if let Err(e) = res {
+                    warn!("Error handling connection: {e:?}");
+                } else {
+                    debug!("Connection handled successfully");
                 }
             }
         }
         Commands::Calibrate => {
-            let mut qvis_app_handle = QvisAppHandle::init(robot_config.qvis_app_path.clone());
+            let mut qvis_app_handle = QvisAppHandle::init(robot_config.qvis_app_path.clone()).await.unwrap();
             let mut robot_handle = RobotHandle::init(robot_config);
-            info!("Waiting for READY");
-            let lines = std::io::stdin().lines();
-            for line in lines {
-                if line.unwrap().trim() == "READY" {
-                    break;
-                }
-            }
             qvis_app::calibrate(&mut qvis_app_handle, &mut robot_handle).await?;
         }
         Commands::Solve => {
-            let mut qvis_app_handle = QvisAppHandle::init(robot_config.qvis_app_path.clone());
-            let robot_handle = RobotHandle::init(robot_config);
-            info!("Waiting for READY");
-            let lines = std::io::stdin().lines();
-            for line in lines {
-                if line.unwrap().trim() == "READY" {
-                    break;
-                }
-            }
-            let taken = qvis_app_handle.take_picture().await.unwrap();
-            let alg = solve_rob_twophase(&taken)?;
-
-            robot_handle.queue_move_seq(&alg)?;
-            robot_handle.await_moves()?.await?;
+            let mut qvis_app_handle = QvisAppHandle::init(robot_config.qvis_app_path.clone()).await.unwrap();
+            let mut robot_handle = RobotHandle::init(robot_config);
+            QterRobot::initialize(Arc::clone(&CUBE3), (&mut robot_handle, &mut qvis_app_handle)).await?;
         }
     }
 
