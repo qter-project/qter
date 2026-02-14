@@ -11,7 +11,7 @@ log.workspace = true
 rppal = "0.22.1"
 serde = { version = "1.0.228", features = ["derive"] }
 toml = "0.9.8"
-interpreter = { workspace = true, features = [ "remote_robot" ] }
+interpreter = { workspace = true, features = ["remote_robot"] }
 qter_core.workspace = true
 internment.workspace = true
 dirs = "6.0.0"
@@ -22,6 +22,7 @@ serde_repr = "0.1.20"
 puzzle_theory = { workspace = true, features = ["serde"] }
 color-eyre = "0.6.5"
 wtransport = "0.7.0"
+tiny_http = "0.12.0"
 
 # TODO: Enable io_uring once it's stable in tokio?
 [dependencies.tokio]

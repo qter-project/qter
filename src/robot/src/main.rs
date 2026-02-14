@@ -22,6 +22,7 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+use tiny_http::{Header, Response};
 use tokio::io::BufReader;
 use wtransport::{Endpoint, Identity, ServerConfig};
 
@@ -61,8 +62,6 @@ enum Commands {
     /// Host a server to allow the robot to be remote-controlled
     Server {
         server_port: u16,
-        #[arg(long)]
-        cert_out_path: Option<PathBuf>,
     },
     Calibrate,
     Solve,
@@ -133,11 +132,8 @@ async fn main() -> color_eyre::Result<()> {
                 println!("Top 5 = {:?}", &latencies[SAMPLES - 5..SAMPLES]);
             }
         }
-        Commands::Server {
-            server_port,
-            cert_out_path,
-        } => {
-            let identity = Identity::self_signed(["10.42.0.1"]).unwrap();
+        Commands::Server { server_port } => {
+            let identity = Identity::self_signed(["10.42.0.1", "192.168.191.3"]).unwrap();
             let cert_digest = identity.certificate_chain().as_slice()[0].hash();
             let server_config = ServerConfig::builder()
                 .with_bind_default(server_port)
@@ -149,13 +145,26 @@ async fn main() -> color_eyre::Result<()> {
                 "Certificate hash: {}",
                 cert_digest.fmt(wtransport::tls::Sha256DigestFmt::DottedHex)
             );
-            if let Some(cert_out_path) = cert_out_path {
-                tokio::fs::write(
-                    cert_out_path,
-                    cert_digest.fmt(wtransport::tls::Sha256DigestFmt::BytesArray),
-                )
-                .await?;
-            }
+            let server = tiny_http::Server::http(("0.0.0.0", server_port)).unwrap();
+            std::thread::spawn(move || {
+                for req in server.incoming_requests() {
+                    if req.url() == "/cert.json" {
+                        let _ = req.respond(
+                            Response::from_string(
+                                cert_digest.fmt(wtransport::tls::Sha256DigestFmt::BytesArray),
+                            )
+                            .with_header(
+                                Header::from_bytes("Content-Type", "application/json").unwrap(),
+                            )
+                            .with_header(
+                                Header::from_bytes("Access-Control-Allow-Origin", "*").unwrap(),
+                            ),
+                        );
+                    } else {
+                        let _ = req.respond(Response::empty(404));
+                    }
+                }
+            });
 
             let mut qvis_app_handle = QvisAppHandle::init(robot_config.qvis_app_path.clone());
             let mut robot_handle = RobotHandle::init(robot_config);

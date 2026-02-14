@@ -1,4 +1,4 @@
 {
     "robotUrl": "https://10.42.0.1:6700",
-    "certHashUrl": "/cert.json"
+    "certHashUrl": "http://10.42.0.1:6700/cert.json"
 }
