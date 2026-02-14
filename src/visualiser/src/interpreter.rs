@@ -10,14 +10,11 @@ use puzzle_theory::{
 };
 use qter_core::architectures::Architecture;
 use serde::Serialize;
-use tokio::io::BufReader;
-use tokio_util::compat::{FuturesAsyncReadCompatExt, FuturesAsyncWriteCompatExt};
 use tsify::Tsify;
 use wasm_bindgen::prelude::*;
-use wasm_streams::{readable::IntoAsyncRead, writable::IntoAsyncWrite};
-use web_sys::{ReadableStream, WritableStream, js_sys::Function};
+use web_sys::js_sys::Function;
 
-use crate::{BigInt, cube::CubeState, program::Program};
+use crate::{BigInt, connection::Connection, cube::CubeState, program::Program};
 
 #[derive(Tsify, Serialize)]
 #[serde(tag = "kind")]
@@ -62,14 +59,9 @@ impl<T: RobotLike, F: FnMut(&Permutation)> RobotLike for CaptureCubeState<T, F> 
     }
 }
 
-type Conn = (
-    BufReader<tokio_util::compat::Compat<IntoAsyncRead<'static>>>,
-    tokio_util::compat::Compat<IntoAsyncWrite<'static>>,
-);
-
 type CubeStateCb = impl FnMut(&Permutation);
 
-type Robot = RemoteRobot<Conn>;
+type Robot = RemoteRobot<Connection>;
 // type Robot = interpreter::puzzle_states::SimulatedPuzzle;
 
 #[wasm_bindgen]
@@ -99,24 +91,13 @@ impl Interpreter {
     // #[wasm_bindgen(constructor)]
     pub async fn init(
         program: &Program,
-        read: ReadableStream,
-        write: WritableStream,
+        connection: Connection,
         #[wasm_bindgen(unchecked_param_type = "(cube: CubeState) => void")] cube_state_cb: Function,
     ) -> Result<Self, JsError> {
-        let conn: Conn = (
-            BufReader::new(
-                wasm_streams::ReadableStream::from_raw(read)
-                    .into_async_read()
-                    .compat(),
-            ),
-            wasm_streams::WritableStream::from_raw(write)
-                .into_async_write()
-                .compat_write(),
-        );
         let interpreter = interpreter::Interpreter::new_only_one_puzzle(
             program.inner.clone(),
             (
-                conn,
+                connection,
                 mk_cube_state_cb(cube_state_cb, program.puzzle.clone(), program.arch.clone()),
             ),
         )

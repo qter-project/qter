@@ -697,6 +697,11 @@ class Runner {
         CSS.highlights.set("current-instr", this.#lineHighlight = new Highlight());
     }
 
+    #clearInterpreter() {
+        this.#interpreter?.free();
+        this.#interpreter = null;
+    }
+
     #onEditorChange(ev: CustomEvent<Program | null>) {
         if (this.#state != State.Editing) return;
         this.#program = ev.detail;
@@ -728,8 +733,7 @@ class Runner {
                         this.#executeButton.textContent = "Solving...";
                         this.#interpreter = await Interpreter.init(
                             this.#program,
-                            conn.readable,
-                            conn.writable,
+                            conn,
                             (cube) => { this.#infoview.state = cube; },
                         );
                     } catch (e) {
@@ -754,7 +758,7 @@ class Runner {
                 this.#stepButton.disabled = true;
                 this.#runButton.disabled = true;
                 this.#executeButton.textContent = "Start";
-                this.#interpreter = null;
+                this.#clearInterpreter();
                 this.#highlightCurrentLine();
                 this.#messages.clear();
                 this.#infoview.state = null;
@@ -772,7 +776,7 @@ class Runner {
                 this.#messages.maxInput = null;
                 await this.#runTask;
                 this.#executeButton.textContent = "Start";
-                this.#interpreter = null;
+                this.#clearInterpreter();
                 this.#highlightCurrentLine();
                 this.#messages.clear();
                 this.#infoview.state = null;

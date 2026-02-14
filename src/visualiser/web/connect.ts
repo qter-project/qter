@@ -1,8 +1,7 @@
 import config from "./config.json" with { type: "json" }
+import { Connection } from "./visualiser.js";
 
-type Conn = { readable: ReadableStream, writable: WritableStream };
-
-async function connectWebTransport(): Promise<Conn> {
+async function connectWebTransport(): Promise<Connection> {
     let certHash = (await import(config.certHashUrl, { with: { type: "json" } })).default as number[];
 
     let wt = new WebTransport(config.robotUrl, {
@@ -12,7 +11,12 @@ async function connectWebTransport(): Promise<Conn> {
         }],
     });
     await wt.ready;
-    return await wt.createBidirectionalStream();
+    let bidistream = await wt.createBidirectionalStream();
+    return new Connection(
+        bidistream.readable,
+        bidistream.writable,
+        wt.close.bind(wt),
+    )
 }
 
 export async function connect() { return await connectWebTransport(); }
