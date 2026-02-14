@@ -35,7 +35,6 @@ impl<T: RobotLike, F: FnMut(&Permutation)> RobotLike for CaptureCubeState<T, F> 
         (args, cb): Self::InitializationArg,
     ) -> Result<Self, Self::Error> {
         let mut this = Self(T::initialize(perm_group, args).await?, cb);
-        this.0.solve().await?;
         this.1(&Permutation::identity());
         Ok(this)
     }
