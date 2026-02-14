@@ -3,7 +3,7 @@
 
 use clap::{Parser, Subcommand};
 use env_logger::TimestampPrecision;
-use interpreter::puzzle_states::run_robot_server;
+use interpreter::puzzle_states::{SimulatedPuzzle, run_robot_server};
 use log::{LevelFilter, debug, info, warn};
 use puzzle_theory::permutations::Algorithm;
 use robot::{
@@ -62,6 +62,8 @@ enum Commands {
     /// Host a server to allow the robot to be remote-controlled
     Server {
         server_port: u16,
+        #[arg(long)]
+        simulated: bool,
     },
     Calibrate,
     Solve,
@@ -132,7 +134,10 @@ async fn main() -> color_eyre::Result<()> {
                 println!("Top 5 = {:?}", &latencies[SAMPLES - 5..SAMPLES]);
             }
         }
-        Commands::Server { server_port } => {
+        Commands::Server {
+            server_port,
+            simulated,
+        } => {
             let identity = Identity::self_signed(["10.42.0.1", "192.168.191.3"]).unwrap();
             let cert_digest = identity.certificate_chain().as_slice()[0].hash();
             let server_config = ServerConfig::builder()
@@ -166,8 +171,13 @@ async fn main() -> color_eyre::Result<()> {
                 }
             });
 
-            let mut qvis_app_handle = QvisAppHandle::init(robot_config.qvis_app_path.clone());
-            let mut robot_handle = RobotHandle::init(robot_config);
+            let mut maybe_handles = if simulated {
+                None
+            } else {
+                let qvis_app_handle = QvisAppHandle::init(robot_config.qvis_app_path.clone());
+                let robot_handle = RobotHandle::init(robot_config);
+                Some((qvis_app_handle, robot_handle))
+            };
 
             loop {
                 debug!("Waiting for connection...");
@@ -182,11 +192,13 @@ async fn main() -> color_eyre::Result<()> {
                     debug!("Bi-directional stream accepted, running robot server...");
                     let conn = (BufReader::new(recv), send);
 
-                    run_robot_server::<_, QterRobot>(
-                        conn,
-                        (&mut robot_handle, &mut qvis_app_handle),
-                    )
-                    .await?;
+                    if simulated {
+                        run_robot_server::<_, SimulatedPuzzle>(conn, ()).await?;
+                    } else {
+                        let (qvis_app_handle, robot_handle) = maybe_handles.as_mut().unwrap();
+                        run_robot_server::<_, QterRobot>(conn, (robot_handle, qvis_app_handle))
+                            .await?;
+                    }
 
                     Ok(())
                 }
