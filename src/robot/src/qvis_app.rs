@@ -25,7 +25,7 @@ impl QvisAppHandle {
             .current_dir(qvis_app_path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
+            // .stderr(Stdio::inherit())
             .kill_on_drop(true)
             .spawn()
             .unwrap();
@@ -74,7 +74,11 @@ impl QvisAppHandle {
         while let Some(line) = self.stdout.next_line().await.map_err(|e| e.to_string())? {
             if line.starts_with("DONE") {
                 let perm_str = line.trim_start_matches("DONE").trim();
-                return perm_str.parse::<Permutation>().map_err(|e| e.to_string());
+                let mut iter = perm_str.split_whitespace();
+                let perm = iter.next().unwrap().parse::<Permutation>().map_err(|e| e.to_string());
+                let confidence = iter.next().unwrap().parse::<f64>().map_err(|e| e.to_string())?;
+                info!("Taken picture of {perm:?} with confidence {confidence}");
+                return perm;
             } else {
                 warn!("Received unexpected line from qvis app during picture taking: {line}");
             }

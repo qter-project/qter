@@ -5,7 +5,10 @@ use std::{
     fmt::Display,
     iter::from_fn,
     ops::Add,
-    sync::mpsc::{self, RecvTimeoutError},
+    sync::{
+        LazyLock, Mutex,
+        mpsc::{self, RecvTimeoutError},
+    },
     thread,
     time::{Duration, Instant},
 };
@@ -34,6 +37,9 @@ pub mod uart;
 
 pub const FULLSTEPS_PER_REVOLUTION: u32 = 200;
 pub const FULLSTEPS_PER_QUARTER: u32 = FULLSTEPS_PER_REVOLUTION / 4;
+
+static UART0: LazyLock<Mutex<UartBus>> = LazyLock::new(|| Mutex::new(UartBus::new(UartId::Uart0)));
+static UART4: LazyLock<Mutex<UartBus>> = LazyLock::new(|| Mutex::new(UartBus::new(UartId::Uart4)));
 
 fn mpsc_err<T>(err: mpsc::SendError<T>) -> QterRobotError {
     QterRobotError {
@@ -268,8 +274,22 @@ impl CommutativeMoveFsm {
     }
 }
 
+// fn motor_thread_watchdog(robot_config: RobotConfig) {
+//     loop {
+//         thread::sleep(Duration::from_secs(5));
+//         let mut uart = match config.uart_bus {
+//             UartId::Uart0 => UART0.lock().unwrap(),
+//             UartId::Uart4 => UART4.lock().unwrap(),
+//         };
+//         let mut uart = uart.node(config.uart_address);
+//     }
+// }
+
 fn motor_thread(rx: mpsc::Receiver<MotorMessage>, robot_config: RobotConfig) {
     set_prio(robot_config.priority);
+{
+    // thread::spawn(move || motor_thread_watchdog(robot_config));
+}
 
     let mut motors: [Motor; 6] = Face::ALL.map(|face| Motor::new(&robot_config, face));
 
@@ -387,16 +407,13 @@ pub fn set_prio(prio: Priority) {
 }
 
 pub fn uart_init(robot_config: &RobotConfig) {
-    let mut uart0 = UartBus::new(UartId::Uart0);
-    let mut uart4 = UartBus::new(UartId::Uart4);
-
     for face in Face::ALL {
         let config = &robot_config.motors[face];
         let mut uart = match config.uart_bus {
-            UartId::Uart0 => &mut uart0,
-            UartId::Uart4 => &mut uart4,
-        }
-        .node(config.uart_address);
+            UartId::Uart0 => UART0.lock().unwrap(),
+            UartId::Uart4 => UART4.lock().unwrap(),
+        };
+        let mut uart = uart.node(config.uart_address);
 
         debug!(target: "uart_init", "Initializing {face:?}: uart_bus={:?} node_address={:?}", config.uart_bus, config.uart_address);
 
@@ -499,16 +516,13 @@ pub fn uart_init(robot_config: &RobotConfig) {
 }
 
 pub fn float(robot_config: &RobotConfig) {
-    let mut uart0 = UartBus::new(UartId::Uart0);
-    let mut uart4 = UartBus::new(UartId::Uart4);
-
     for face in Face::ALL {
         let config = &robot_config.motors[face];
         let mut uart = match config.uart_bus {
-            UartId::Uart0 => &mut uart0,
-            UartId::Uart4 => &mut uart4,
-        }
-        .node(config.uart_address);
+            UartId::Uart0 => UART0.lock().unwrap(),
+            UartId::Uart4 => UART4.lock().unwrap(),
+        };
+        let mut uart = uart.node(config.uart_address);
 
         let pwmconf = uart.pwmconf();
         uart.set_pwmconf(pwmconf.with_freewheel(1));

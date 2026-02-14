@@ -31,3 +31,9 @@ features = ["net", "rt-multi-thread", "tracing", "macros", "process"]
 
 [lints]
 workspace = true
+
+[profile.release]
+panic = "abort"
+
+[profile.dev]
+panic = "abort"
