@@ -7,11 +7,16 @@ async function* init() {
     const { default: initWasm } = await import("./visualiser.js");
     await initWasm();
 
+    yield "Loading configuration...";
+    let { default: config } = await import("./config.json", { with: { type: "json" } });
+
     yield "Loading code...";
     let index = await import("./index.js");
 
-    yield "Compiling presets...";
-    await index.compilePresets();
+    if (!config.skipCompilingPresets) {
+        yield "Compiling presets...";
+        await index.compilePresets();
+    }
 
     yield "Loading syntax highlighting support...";
     await index.loadHighlighting();
