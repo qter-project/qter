@@ -1,4 +1,4 @@
-use log::{debug, info, warn};
+use log::{info, warn};
 use puzzle_theory::permutations::{Algorithm, Permutation};
 use std::{
     path::PathBuf,
@@ -72,11 +72,18 @@ impl QvisAppHandle {
 
         while let Some(line) = self.stdout.next_line().await.map_err(|e| e.to_string())? {
             if line.starts_with("DONE") {
-                debug!("Received DONE line: {line}");
                 let perm_str = line.trim_start_matches("DONE").trim();
                 let mut iter = perm_str.split(";");
-                let perm = iter.next().unwrap().parse::<Permutation>().map_err(|e| e.to_string());
-                let confidence = iter.next().unwrap().parse::<f64>().map_err(|e| e.to_string())?;
+                let perm = iter
+                    .next()
+                    .unwrap()
+                    .parse::<Permutation>()
+                    .map_err(|e| e.to_string());
+                let confidence = iter
+                    .next()
+                    .unwrap()
+                    .parse::<f64>()
+                    .map_err(|e| e.to_string())?;
                 info!("Taken picture of {perm:?} with confidence {confidence}");
                 return perm;
             } else {

@@ -1,4 +1,4 @@
-use std::{io::Error, sync::Arc};
+use std::{fmt::Display, io::Error, sync::Arc};
 
 use log::trace;
 use puzzle_theory::permutations::{Algorithm, Permutation, PermutationGroup};
@@ -6,7 +6,7 @@ use tokio::io::{
     AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader,
 };
 
-use crate::puzzle_states::RobotLike;
+use crate::puzzle_states::{MismatchBehavior, RobotLike, WrapSimulatedPuzzle};
 
 pub trait Connection {
     type Reader: AsyncBufRead + Unpin + ?Sized;
@@ -187,7 +187,7 @@ pub async fn run_robot_server<C: Connection, R: RobotLike>(
     args: R::InitializationArg,
 ) -> Result<(), Error>
 where
-    R::Error: ToString,
+    R::Error: Display,
 {
     let mut len = [0; 2];
     conn.reader().read_exact(&mut len).await?;
@@ -202,7 +202,7 @@ where
                 serde_json::from_slice::<PermutationGroup>(&data).map_err(|e| e.to_string())?,
             );
 
-            let robot = R::initialize(Arc::clone(&group), args)
+            let robot: WrapSimulatedPuzzle<R> = WrapSimulatedPuzzle::initialize(Arc::clone(&group), (MismatchBehavior::Error, args))
                 .await
                 .map_err(|e| e.to_string())?;
 

@@ -4,7 +4,7 @@
 use clap::{Parser, Subcommand};
 use env_logger::TimestampPrecision;
 use interpreter::puzzle_states::run_robot_server;
-use log::{LevelFilter, info, warn};
+use log::{LevelFilter, debug, info, warn};
 use puzzle_theory::permutations::Algorithm;
 use robot::{
     CUBE3, QterRobot,
@@ -161,11 +161,16 @@ async fn main() -> color_eyre::Result<()> {
             let mut robot_handle = RobotHandle::init(robot_config);
 
             loop {
+                debug!("Waiting for connection...");
                 let res: color_eyre::Result<()> = async {
                     let session = endpoint.accept().await;
+                    debug!("Connection accepted, waiting for request...");
                     let request = session.await?;
+                    debug!("Request accepted, waiting for connection...");
                     let conn = request.accept().await?;
+                    debug!("Connection accepted, initializing robot server...");
                     let (send, recv) = conn.accept_bi().await?;
+                    debug!("Bi-directional stream accepted, running robot server...");
                     let conn = (BufReader::new(recv), send);
 
                     run_robot_server::<_, QterRobot>(

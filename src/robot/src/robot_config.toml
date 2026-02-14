@@ -16,13 +16,13 @@ dir_pin = 26
 uart_bus = "Uart0"
 uart_address = 0
 
-[motors.U]
+[motors.F]
 step_pin = 19
 dir_pin = 13
 uart_bus = "Uart0"
 uart_address = 1
 
-[motors.F]
+[motors.U]
 step_pin = 6
 dir_pin = 17
 uart_bus = "Uart0"

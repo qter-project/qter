@@ -287,9 +287,9 @@ impl CommutativeMoveFsm {
 
 fn motor_thread(rx: mpsc::Receiver<MotorMessage>, robot_config: RobotConfig) {
     set_prio(robot_config.priority);
-{
-    // thread::spawn(move || motor_thread_watchdog(robot_config));
-}
+    {
+        // thread::spawn(move || motor_thread_watchdog(robot_config));
+    }
 
     let mut motors: [Motor; 6] = Face::ALL.map(|face| Motor::new(&robot_config, face));
 
