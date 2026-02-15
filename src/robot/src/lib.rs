@@ -33,6 +33,7 @@ pub enum ErrorKind {
     Calibration,
     IncorrectPermGroup,
     RobTwophase,
+    ActionDuringTalks,
     // TODO: IMPLEMENT!!!!!
     OverTemperature,
 }
@@ -48,13 +49,14 @@ impl Display for ErrorKind {
                 ErrorKind::ComposeInto => "Compose-into",
                 ErrorKind::Calibration => "Calibration",
                 ErrorKind::IncorrectPermGroup => "Incorrect permutation group",
+                ErrorKind::ActionDuringTalks => "The robot is disabled during talks",
                 ErrorKind::RobTwophase => "rob-twophase",
             }
         )
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct QterRobotError {
     kind: ErrorKind,
     message: String,
@@ -74,7 +76,6 @@ impl Error for QterRobotError {}
 
 impl<'a> RobotLike for QterRobot<'a> {
     type InitializationArg = (&'a mut RobotHandle, &'a mut QvisAppHandle);
-    // TODO: Overtemperature warning, comms issue with the phone camera
     type Error = QterRobotError;
 
     async fn initialize(
@@ -99,7 +100,7 @@ impl<'a> RobotLike for QterRobot<'a> {
     }
 
     async fn compose_into(&mut self, alg: &Algorithm) -> Result<(), Self::Error> {
-        self.robot_handle.queue_move_seq(alg)?;
+        self.robot_handle.queue_move_seq(alg).await?;
         self.cached_picture_state.take();
 
         Ok(())

@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use clap::ValueEnum;
 use log::{debug, info};
 use puzzle_theory::permutations::Algorithm;
@@ -56,7 +57,7 @@ fn oneshot_err(err: oneshot::error::RecvError) -> QterRobotError {
 }
 
 enum MotorMessage {
-    QueueMove((Face, Dir)),
+    QueueMove((Face, Dir, oneshot::Sender<Result<(), QterRobotError>>)),
     PrevMovesDone(oneshot::Sender<Result<(), QterRobotError>>),
 }
 
@@ -67,14 +68,14 @@ pub struct RobotHandle {
 
 impl RobotHandle {
     /// Initialize the robot such that it is ready for use
-    pub fn init(robot_config: RobotConfig) -> RobotHandle {
+    pub fn init(robot_config: RobotConfig, now: fn() -> DateTime<Utc>) -> RobotHandle {
         uart_init(&robot_config);
 
         let (tx, rx) = mpsc::channel();
 
         {
             let robot_config = robot_config.clone();
-            thread::spawn(move || motor_thread(rx, robot_config));
+            thread::spawn(move || motor_thread(rx, robot_config, now));
         }
 
         RobotHandle {
@@ -89,15 +90,19 @@ impl RobotHandle {
 
     pub async fn loop_face_turn(&self, face: Face) -> Result<(), QterRobotError> {
         loop {
+            let (tx, rx) = oneshot::channel();
             self.motor_thread_handle
-                .send(MotorMessage::QueueMove((face, Dir::Normal)))
+                .send(MotorMessage::QueueMove((face, Dir::Normal, tx)))
                 .map_err(mpsc_err)?;
+            rx.await.map_err(oneshot_err)?;
             self.await_moves()?.await?;
         }
     }
 
     /// Queue a sequence of moves to be performed by the robot
-    pub fn queue_move_seq(&self, alg: &Algorithm) -> Result<(), QterRobotError> {
+    pub async fn queue_move_seq(&self, alg: &Algorithm) -> Result<(), QterRobotError> {
+        let mut oneshots = Vec::new();
+
         for move_ in alg.move_seq_iter() {
             let mut move_ = &**move_;
             let dir = if let Some(rest) = move_.strip_suffix('\'') {
@@ -112,9 +117,17 @@ impl RobotHandle {
 
             let face: Face = move_.parse().expect("invalid move: {move_}");
 
+            let (tx, rx) = oneshot::channel();
+
             self.motor_thread_handle
-                .send(MotorMessage::QueueMove((face, dir)))
+                .send(MotorMessage::QueueMove((face, dir, tx)))
                 .map_err(mpsc_err)?;
+
+            oneshots.push(rx);
+        }
+
+        for oneshot in oneshots {
+            oneshot.await.map_err(oneshot_err)?;
         }
 
         Ok(())
@@ -285,15 +298,35 @@ impl CommutativeMoveFsm {
 //     }
 // }
 
-fn motor_thread(rx: mpsc::Receiver<MotorMessage>, robot_config: RobotConfig) {
+enum OvertemperatureStatus {
+    Nominal,
+    PreWarning,
+    Warning,
+}
+
+fn motor_thread(
+    rx: mpsc::Receiver<MotorMessage>,
+    robot_config: RobotConfig,
+    now: fn() -> DateTime<Utc>,
+) {
     set_prio(robot_config.priority);
-    {
-        // thread::spawn(move || motor_thread_watchdog(robot_config));
-    }
 
     let mut motors: [Motor; 6] = Face::ALL.map(|face| Motor::new(&robot_config, face));
 
     let mut fsm = CommutativeMoveFsm::new();
+
+    let err_status = || {
+        let conference_status = g4g_program::status(now());
+
+        if !conference_status.robot_enabled() {
+            return Err(QterRobotError {
+                kind: ErrorKind::ActionDuringTalks,
+                message: "Cannot use robot while talks are going on".to_owned(),
+            });
+        }
+
+        Ok(())
+    };
 
     // Unparkers from after the previously executed move
     let mut unparkers = Vec::<oneshot::Sender<Result<(), QterRobotError>>>::new();
@@ -302,19 +335,28 @@ fn motor_thread(rx: mpsc::Receiver<MotorMessage>, robot_config: RobotConfig) {
         const SHORT_TIMEOUT: Duration = Duration::from_millis(50);
         const NO_TIMEOUT: Duration = Duration::MAX;
 
+        let err_state = err_status();
         for unparker in unparkers.drain(..) {
-            let _ = unparker.send(Ok(()));
+            let _ = unparker.send(err_state.clone());
         }
 
         let mut timeout = SHORT_TIMEOUT;
 
         loop {
             match rx.recv_timeout(timeout) {
-                Ok(MotorMessage::QueueMove(move_)) => {
+                Ok(MotorMessage::QueueMove((face, dir, ack))) => {
                     // If we get a move, we're ok with waiting at most `SHORT_TIMEOUT` amount of time for one that might commute
                     timeout = SHORT_TIMEOUT;
-                    if let Some(instr) = fsm.next(move_) {
-                        return Some(instr);
+                    if let Some(instr) = fsm.next((face, dir)) {
+                        match err_status() {
+                            Ok(()) => {
+                                ack.send(Ok(()));
+                                return Some(instr);
+                            }
+                            Err(err) => ack.send(Err(err)),
+                        };
+                    } else {
+                        ack.send(Ok(()));
                     }
                 }
                 Ok(MotorMessage::PrevMovesDone(signal)) => {
@@ -327,7 +369,9 @@ fn motor_thread(rx: mpsc::Receiver<MotorMessage>, robot_config: RobotConfig) {
                 Err(RecvTimeoutError::Timeout) => {
                     // If we time out, then just send whatever's in the FSM
                     if let Some(instr) = fsm.flush() {
-                        return Some(instr);
+                        if err_status().is_ok() {
+                            return Some(instr);
+                        }
                     }
                     // If there's nothing in the FSM, then just wait however long for the next move
                     timeout = NO_TIMEOUT;

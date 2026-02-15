@@ -11,6 +11,7 @@ disallowed_types = "deny"
 qter_core.path = "qter_core"
 interpreter.path = "interpreter"
 compiler.path = "compiler"
+g4g_program.path = "g4g_program"
 puzzle_theory.git = "https://github.com/qter-project/puzzle-theory"
 internment = { version = "0.8", features = [ "arc" ] }
 itertools = "0.14.0"

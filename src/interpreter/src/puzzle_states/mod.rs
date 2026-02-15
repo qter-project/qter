@@ -109,7 +109,7 @@ pub trait RobotLike {
     type InitializationArg;
     type Error;
 
-    /// Initialize the puzzle in the solved state
+    /// Initialize the puzzle. The puzzle is expected to be initialized in the solved state, so the `initialize` call should solve it if necessary.
     async fn initialize(
         perm_group: Arc<PermutationGroup>,
         args: Self::InitializationArg,
@@ -117,7 +117,9 @@ pub trait RobotLike {
     where
         Self: Sized;
 
-    /// Perform an algorithm on the puzzle
+    /// Perform an algorithm on the puzzle.
+    ///
+    /// It is not guaranteed that all moves are physically completed by the time the future finishes, however the implementor guarantees that that wouldn't cause inconsistency. If this method returns an error, the puzzle may be in an unspecified intermediate state.
     async fn compose_into(&mut self, alg: &Algorithm) -> Result<(), Self::Error>;
 
     // Wait for all queued moves to finish. Returns a oneshot that will be triggered either when all previously queued moves are finished, or
@@ -128,14 +130,14 @@ pub trait RobotLike {
     /// Return the puzzle state as a permutation
     async fn take_picture(&mut self) -> Result<&Permutation, Self::Error>;
 
-    /// Solve the current cube state
+    /// Solve the current cube state. Same guarantees as `compose_into`.
     async fn solve(&mut self) -> Result<(), Self::Error> {
         let mut state = self.take_picture().await?.clone();
         state.invert();
         self.compose_perm(&state).await
     }
 
-    /// Compose a permutation to the robot; used for solving an unknown permutation
+    /// Compose a permutation to the robot; used for solving an unknown permutation. Same guarantees as `compose_into`.
     async fn compose_perm(&mut self, perm: &Permutation) -> Result<(), Self::Error>;
 }
 

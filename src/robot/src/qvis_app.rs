@@ -139,7 +139,7 @@ pub async fn calibrate(
         let move_alg =
             Algorithm::new_from_move_seq(Arc::clone(&CUBE3), vec![move_str.clone()]).unwrap();
         acc.compose_into(move_perm);
-        robot.queue_move_seq(&move_alg)?;
+        robot.queue_move_seq(&move_alg).await?;
         robot.await_moves()?.await?;
         info!("Waiting for enter");
         std::io::stdin().lines().next().unwrap().unwrap();
