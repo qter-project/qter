@@ -16,6 +16,7 @@ pub struct RobotConfig {
     pub microstep_resolution: Microsteps,
     pub priority: Priority,
     pub wait_between_moves: f64,
+    pub compensation: u32,
     pub float: bool,
     pub stealthchop: bool,
     pub qvis_app_path: PathBuf,

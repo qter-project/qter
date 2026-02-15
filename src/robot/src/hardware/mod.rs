@@ -184,6 +184,13 @@ impl Face {
     }
 }
 
+impl RobotConfig {
+    fn compensation(&self, dir: Dir) -> i32 {
+        let sign = dir.qturns().signum();
+        self.compensation.cast_signed() * sign
+    }
+}
+
 impl Ticker {
     pub fn new() -> Self {
         Self {
@@ -541,7 +548,10 @@ fn motor_thread(
 
                 let steps = dir.qturns() * FULLSTEPS_PER_QUARTER.cast_signed();
 
-                motor.turn(steps);
+                let comp = robot_config.compensation(dir);
+
+                motor.turn(steps + comp);
+                motor.turn(-comp);
             }
             MoveInstruction::Double([(face1, dir1), (face2, dir2)]) => {
                 let [motor1, motor2] = motors
@@ -551,7 +561,11 @@ fn motor_thread(
                 let steps1 = dir1.qturns() * FULLSTEPS_PER_QUARTER.cast_signed();
                 let steps2 = dir2.qturns() * FULLSTEPS_PER_QUARTER.cast_signed();
 
-                Motor::turn_many([motor1, motor2], [steps1, steps2]);
+                let comp1 = robot_config.compensation(dir1);
+                let comp2 = robot_config.compensation(dir2);
+
+                Motor::turn_many([motor1, motor2], [steps1 + comp1, steps2 + comp2]);
+                Motor::turn_many([motor1, motor2], [-comp1, -comp2]);
             }
         }
 
