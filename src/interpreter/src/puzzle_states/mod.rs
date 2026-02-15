@@ -379,6 +379,12 @@ pub enum WrapSimulationErr<E> {
     },
 }
 
+impl<E> From<E> for WrapSimulationErr<E> {
+    fn from(value: E) -> Self {
+        Self::Robot(value)
+    }
+}
+
 impl<E: Display> Display for WrapSimulationErr<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -406,39 +412,28 @@ impl<R: RobotLike> RobotLike for WrapSimulatedPuzzle<R> {
     where
         Self: Sized,
     {
-        let robot = R::initialize(perm_group, args)
-            .await
-            .map_err(WrapSimulationErr::Robot)?;
-
-        Ok(WrapSimulatedPuzzle {
-            robot,
+        let mut this = WrapSimulatedPuzzle {
+            robot: R::initialize(perm_group, args).await?,
             puzzle: Permutation::identity(),
             behavior,
-        })
+        };
+
+        this.solve().await?;
+
+        Ok(this)
     }
 
     async fn compose_into(&mut self, alg: &Algorithm) -> Result<(), Self::Error> {
         self.puzzle.compose_into(alg.permutation());
-        self.robot
-            .compose_into(alg)
-            .await
-            .map_err(WrapSimulationErr::Robot)
+        Ok(self.robot.compose_into(alg).await?)
     }
 
     async fn take_picture(&mut self) -> Result<&Permutation, Self::Error> {
         match self.behavior {
             MismatchBehavior::ReturnSimulation => Ok(&self.puzzle),
-            MismatchBehavior::ReturnObserved => self
-                .robot
-                .take_picture()
-                .await
-                .map_err(WrapSimulationErr::Robot),
+            MismatchBehavior::ReturnObserved => Ok(self.robot.take_picture().await?),
             MismatchBehavior::Error => {
-                let found_state = self
-                    .robot
-                    .take_picture()
-                    .await
-                    .map_err(WrapSimulationErr::Robot)?;
+                let found_state = self.robot.take_picture().await?;
 
                 if found_state == &self.puzzle {
                     Ok(found_state)
@@ -455,14 +450,10 @@ impl<R: RobotLike> RobotLike for WrapSimulatedPuzzle<R> {
                 while retries_left > 0 {
                     retries_left -= 1;
 
-                    let found_state = self
-                        .robot
-                        .take_picture()
-                        .await
-                        .map_err(WrapSimulationErr::Robot)?;
+                    let found_state = self.robot.take_picture().await?;
 
                     if found_state == &self.puzzle {
-                        break
+                        break;
                     }
 
                     // Let the true state be T, let the observed state be O.
@@ -474,10 +465,7 @@ impl<R: RobotLike> RobotLike for WrapSimulatedPuzzle<R> {
                     fix.invert();
                     fix.compose_into(&self.puzzle);
 
-                    self.robot
-                        .compose_perm(&fix)
-                        .await
-                        .map_err(WrapSimulationErr::Robot)?;
+                    self.robot.compose_perm(&fix).await?;
                 }
 
                 Ok(&self.puzzle)
@@ -487,32 +475,12 @@ impl<R: RobotLike> RobotLike for WrapSimulatedPuzzle<R> {
 
     async fn solve(&mut self) -> Result<(), Self::Error> {
         self.puzzle = Permutation::identity();
-        self.robot.solve().await.map_err(WrapSimulationErr::Robot)?;
+        self.robot.solve().await?;
 
-        if let MismatchBehavior::Fix { retry_count } = self.behavior {
-            let mut retries_left = retry_count;
-
-            while retries_left > 0 {
-                retries_left -= 1;
-
-                let found_state = self
-                    .robot
-                    .take_picture()
-                    .await
-                    .map_err(WrapSimulationErr::Robot)?;
-
-                if found_state == &Permutation::identity() {
-                    break
-                }
-
-                let mut fix = found_state.clone();
-                fix.invert();
-
-                self.robot
-                    .compose_perm(&fix)
-                    .await
-                    .map_err(WrapSimulationErr::Robot)?;
-            }
+        // if `ReturnObserved`, then we want to avoid calling `self.robot.take_picture()` needlessly
+        if !matches!(self.behavior, MismatchBehavior::ReturnObserved) {
+            // otherwise the behaviour is actually the same as in `take_picture`
+            self.take_picture().await?;
         }
 
         Ok(())
@@ -520,10 +488,7 @@ impl<R: RobotLike> RobotLike for WrapSimulatedPuzzle<R> {
 
     async fn compose_perm(&mut self, perm: &Permutation) -> Result<(), Self::Error> {
         self.puzzle.compose_into(perm);
-        self.robot
-            .compose_perm(perm)
-            .await
-            .map_err(WrapSimulationErr::Robot)
+        Ok(self.robot.compose_perm(perm).await?)
     }
 }
 

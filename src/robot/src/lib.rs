@@ -91,15 +91,6 @@ impl<'a> RobotLike for QterRobot<'a> {
             });
         }
 
-        let taken = qvis_app_handle.take_picture().await.unwrap();
-        let alg = solve_rob_twophase(&taken).map_err(|e| QterRobotError {
-            kind: ErrorKind::RobTwophase,
-            message: e.to_string(),
-        })?;
-
-        robot_handle.queue_move_seq(&alg)?;
-        robot_handle.await_moves()?.await?;
-
         Ok(Self {
             robot_handle,
             qvis_app_handle,
