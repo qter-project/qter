@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use clap::ValueEnum;
-use log::{debug, info};
+use log::{debug, error, info, warn};
 use puzzle_theory::permutations::Algorithm;
 use std::{
     fmt::Display,
@@ -18,7 +18,6 @@ use thread_priority::{
     set_thread_priority_and_policy, thread_native_id,
     unix::{ThreadSchedulePolicy, set_current_thread_priority},
 };
-use tokio::sync::oneshot;
 
 use crate::{
     ErrorKind, QterRobotError,
@@ -27,7 +26,7 @@ use crate::{
         motor::Motor,
         uart::{
             UartBus, UartId,
-            regs::{GConf, IholdIrun, NodeConf},
+            regs::{DrvStatus, GConf, IholdIrun, NodeConf},
         },
     },
 };
@@ -49,7 +48,7 @@ fn mpsc_err<T>(err: mpsc::SendError<T>) -> QterRobotError {
     }
 }
 
-fn oneshot_err(err: oneshot::error::RecvError) -> QterRobotError {
+fn oneshot_err(err: tokio::sync::oneshot::error::RecvError) -> QterRobotError {
     QterRobotError {
         kind: ErrorKind::MotorThreadDied,
         message: err.to_string(),
@@ -57,8 +56,14 @@ fn oneshot_err(err: oneshot::error::RecvError) -> QterRobotError {
 }
 
 enum MotorMessage {
-    QueueMove((Face, Dir, oneshot::Sender<Result<(), QterRobotError>>)),
-    PrevMovesDone(oneshot::Sender<Result<(), QterRobotError>>),
+    QueueMove(
+        (
+            Face,
+            Dir,
+            tokio::sync::oneshot::Sender<Result<(), QterRobotError>>,
+        ),
+    ),
+    PrevMovesDone(tokio::sync::oneshot::Sender<Result<(), QterRobotError>>),
 }
 
 pub struct RobotHandle {
@@ -90,11 +95,11 @@ impl RobotHandle {
 
     pub async fn loop_face_turn(&self, face: Face) -> Result<(), QterRobotError> {
         loop {
-            let (tx, rx) = oneshot::channel();
+            let (tx, rx) = tokio::sync::oneshot::channel();
             self.motor_thread_handle
                 .send(MotorMessage::QueueMove((face, Dir::Normal, tx)))
                 .map_err(mpsc_err)?;
-            rx.await.map_err(oneshot_err)?;
+            rx.await.map_err(oneshot_err)??;
             self.await_moves()?.await?;
         }
     }
@@ -117,7 +122,7 @@ impl RobotHandle {
 
             let face: Face = move_.parse().expect("invalid move: {move_}");
 
-            let (tx, rx) = oneshot::channel();
+            let (tx, rx) = tokio::sync::oneshot::channel();
 
             self.motor_thread_handle
                 .send(MotorMessage::QueueMove((face, dir, tx)))
@@ -127,7 +132,7 @@ impl RobotHandle {
         }
 
         for oneshot in oneshots {
-            oneshot.await.map_err(oneshot_err)?;
+            oneshot.await.map_err(oneshot_err)??;
         }
 
         Ok(())
@@ -137,7 +142,7 @@ impl RobotHandle {
     pub fn await_moves(
         &self,
     ) -> Result<impl Future<Output = Result<(), QterRobotError>> + 'static, QterRobotError> {
-        let (tx, rx) = oneshot::channel();
+        let (tx, rx) = tokio::sync::oneshot::channel();
 
         self.motor_thread_handle
             .send(MotorMessage::PrevMovesDone(tx))
@@ -287,16 +292,120 @@ impl CommutativeMoveFsm {
     }
 }
 
-// fn motor_thread_watchdog(robot_config: RobotConfig) {
-//     loop {
-//         thread::sleep(Duration::from_secs(5));
-//         let mut uart = match config.uart_bus {
-//             UartId::Uart0 => UART0.lock().unwrap(),
-//             UartId::Uart4 => UART4.lock().unwrap(),
-//         };
-//         let mut uart = uart.node(config.uart_address);
-//     }
-// }
+#[derive(Debug, Clone, Copy)]
+enum MotorDriverTemperature {
+    Normal,
+    PreWarning,
+    // we don't have a Warning state because we estop immediately when we detect
+    // a warning
+}
+
+fn motor_driver_thread_watchdog(
+    rx: mpsc::Receiver<oneshot::Sender<[MotorDriverTemperature; 6]>>,
+    robot_config: RobotConfig,
+) {
+    let mut motor_driver_temperatures = Face::ALL.map(|_| MotorDriverTemperature::Normal);
+    loop {
+        const POLL_TIMEOUT: Duration = Duration::from_secs(10);
+        let signal = match rx.recv_timeout(POLL_TIMEOUT) {
+            Ok(signal) => Some(signal),
+            Err(RecvTimeoutError::Timeout) => None,
+            Err(RecvTimeoutError::Disconnected) => {
+                return;
+            }
+        };
+        let mut uart0 = UART0.lock().unwrap();
+        let mut uart4 = UART4.lock().unwrap();
+        for (face, motor_driver_temperature) in Face::ALL
+            .into_iter()
+            .zip(motor_driver_temperatures.iter_mut())
+        {
+            let config = &robot_config.motors[face];
+            let mut uart = match config.uart_bus {
+                UartId::Uart0 => &mut uart0,
+                UartId::Uart4 => &mut uart4,
+            }
+            .node(config.uart_address);
+
+            let drvstatus = uart.drvstatus();
+            let motor_current = drvstatus.cs_actual();
+            debug!(
+                target: "watchdog",
+                "Motor {face:?} current: {}%A",
+                motor_current as f64 / 31.0 * 100.0,
+            );
+            if drvstatus.contains(DrvStatus::OT) {
+                error!(
+                    target: "watchdog",
+                    "Motor {face:?} overtemperature warning",
+                );
+                estop();
+                unreachable!();
+            }
+            if drvstatus.contains(DrvStatus::S2GA) {
+                error!(
+                    target: "watchdog",
+                    "Motor {face:?} short to ground on phase A",
+                );
+                estop();
+                unreachable!();
+            }
+            if drvstatus.contains(DrvStatus::S2GB) {
+                error!(
+                    target: "watchdog",
+                    "Motor {face:?} short to ground on phase B",
+                );
+                estop();
+                unreachable!();
+            }
+            if drvstatus.contains(DrvStatus::S2VSA) {
+                error!(
+                    target: "watchdog",
+                    "Motor {face:?} low-side short on phase A",
+                );
+                estop();
+                unreachable!();
+            }
+            if drvstatus.contains(DrvStatus::S2VSB) {
+                error!(
+                    target: "watchdog",
+                    "Motor {face:?} low-side short on phase B",
+                );
+                estop();
+                unreachable!();
+            }
+
+            if drvstatus.contains(DrvStatus::OTPW) {
+                warn!(
+                    target: "watchdog",
+                    "Motor {face:?} overtemperature pre-warning",
+                );
+                *motor_driver_temperature = MotorDriverTemperature::PreWarning;
+            } else if let MotorDriverTemperature::PreWarning = motor_driver_temperature {
+                warn!(
+                    target: "watchdog",
+                    "Motor {face:?} overtemperature pre-warning cleared",
+                );
+                *motor_driver_temperature = MotorDriverTemperature::Normal;
+            }
+            if drvstatus.contains(DrvStatus::OLA) {
+                warn!(
+                    target: "watchdog",
+                    "Motor {face:?} open load detected on phase A",
+                );
+            }
+            if drvstatus.contains(DrvStatus::OLB) {
+                warn!(
+                    target: "watchdog",
+                    "Motor {face:?} open load detected on phase B",
+                );
+            }
+        }
+        if let Some(signal) = signal {
+            signal.send(motor_driver_temperatures).unwrap();
+        }
+    }
+}
 
 enum OvertemperatureStatus {
     Nominal,
@@ -310,6 +419,11 @@ fn motor_thread(
     now: fn() -> DateTime<Utc>,
 ) {
     set_prio(robot_config.priority);
+    let (watchdox_tx, watchdog_rx) = mpsc::channel();
+    {
+        let robot_config = robot_config.clone();
+        thread::spawn(move || motor_driver_thread_watchdog(watchdog_rx, robot_config));
+    }
 
     let mut motors: [Motor; 6] = Face::ALL.map(|face| Motor::new(&robot_config, face));
 
@@ -329,7 +443,7 @@ fn motor_thread(
     };
 
     // Unparkers from after the previously executed move
-    let mut unparkers = Vec::<oneshot::Sender<Result<(), QterRobotError>>>::new();
+    let mut unparkers = Vec::<tokio::sync::oneshot::Sender<Result<(), QterRobotError>>>::new();
 
     let iter = from_fn(move || {
         const SHORT_TIMEOUT: Duration = Duration::from_millis(50);
@@ -350,13 +464,15 @@ fn motor_thread(
                     if let Some(instr) = fsm.next((face, dir)) {
                         match err_status() {
                             Ok(()) => {
-                                ack.send(Ok(()));
+                                ack.send(Ok(())).unwrap();
                                 return Some(instr);
                             }
-                            Err(err) => ack.send(Err(err)),
+                            Err(err) => {
+                                ack.send(Err(err)).unwrap();
+                            }
                         };
                     } else {
-                        ack.send(Ok(()));
+                        ack.send(Ok(())).unwrap();
                     }
                 }
                 Ok(MotorMessage::PrevMovesDone(signal)) => {
@@ -368,10 +484,10 @@ fn motor_thread(
                 }
                 Err(RecvTimeoutError::Timeout) => {
                     // If we time out, then just send whatever's in the FSM
-                    if let Some(instr) = fsm.flush() {
-                        if err_status().is_ok() {
-                            return Some(instr);
-                        }
+                    if let Some(instr) = fsm.flush()
+                        && err_status().is_ok()
+                    {
+                        return Some(instr);
                     }
                     // If there's nothing in the FSM, then just wait however long for the next move
                     timeout = NO_TIMEOUT;
@@ -382,11 +498,42 @@ fn motor_thread(
         }
     });
 
+    let mut prev_motor_driver_temperatures = Face::ALL.map(|_| MotorDriverTemperature::Normal);
     for moves in iter {
         info!(
             target: "move_seq",
             "Requested moves: {moves:?}",
         );
+
+        let (signal_tx, signal_rx) = oneshot::channel();
+
+        watchdox_tx.send(signal_tx).unwrap();
+        for ((motor_driver_temperature, prev_motor_driver_temperature), motor) in signal_rx
+            .recv()
+            .unwrap()
+            .iter()
+            .zip(prev_motor_driver_temperatures.iter_mut())
+            .zip(motors.iter_mut())
+        {
+            match (motor_driver_temperature, *prev_motor_driver_temperature) {
+                (MotorDriverTemperature::PreWarning, MotorDriverTemperature::Normal) => {
+                    warn!(
+                        target: "move_seq",
+                        "Halving the speed of the motors",
+                    );
+                    motor.half_the_speed();
+                }
+                (MotorDriverTemperature::Normal, MotorDriverTemperature::PreWarning) => {
+                    warn!(
+                        target: "move_seq",
+                        "Restoring the speed of the motors",
+                    );
+                    motor.double_the_speed();
+                }
+                _ => {}
+            }
+            *prev_motor_driver_temperature = *motor_driver_temperature;
+        }
 
         match moves {
             MoveInstruction::Single((face, dir)) => {
@@ -451,13 +598,15 @@ pub fn set_prio(prio: Priority) {
 }
 
 pub fn uart_init(robot_config: &RobotConfig) {
+    let mut uart0 = UART0.lock().unwrap();
+    let mut uart4 = UART4.lock().unwrap();
     for face in Face::ALL {
         let config = &robot_config.motors[face];
         let mut uart = match config.uart_bus {
-            UartId::Uart0 => UART0.lock().unwrap(),
-            UartId::Uart4 => UART4.lock().unwrap(),
-        };
-        let mut uart = uart.node(config.uart_address);
+            UartId::Uart0 => &mut uart0,
+            UartId::Uart4 => &mut uart4,
+        }
+        .node(config.uart_address);
 
         debug!(target: "uart_init", "Initializing {face:?}: uart_bus={:?} node_address={:?}", config.uart_bus, config.uart_address);
 
@@ -560,13 +709,15 @@ pub fn uart_init(robot_config: &RobotConfig) {
 }
 
 pub fn float(robot_config: &RobotConfig) {
+    let mut uart0 = UART0.lock().unwrap();
+    let mut uart4 = UART4.lock().unwrap();
     for face in Face::ALL {
         let config = &robot_config.motors[face];
         let mut uart = match config.uart_bus {
-            UartId::Uart0 => UART0.lock().unwrap(),
-            UartId::Uart4 => UART4.lock().unwrap(),
-        };
-        let mut uart = uart.node(config.uart_address);
+            UartId::Uart0 => &mut uart0,
+            UartId::Uart4 => &mut uart4,
+        }
+        .node(config.uart_address);
 
         let pwmconf = uart.pwmconf();
         uart.set_pwmconf(pwmconf.with_freewheel(1));
@@ -580,7 +731,10 @@ pub fn float(robot_config: &RobotConfig) {
     }
 }
 
-pub fn estop(robot_config: &RobotConfig) {}
+pub fn estop() {
+    error!("Emergency stop triggered. Immediately stopping all motors and exiting the process.");
+    std::process::exit(1);
+}
 
 #[derive(Debug, Clone, Copy)]
 enum Dir {

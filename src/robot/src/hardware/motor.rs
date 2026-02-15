@@ -100,6 +100,16 @@ impl Motor {
         }
     }
 
+    pub fn half_the_speed(&mut self) {
+        self.v_max /= 2.0;
+        self.a_max /= 2.0;
+    }
+
+    pub fn double_the_speed(&mut self) {
+        self.v_max *= 2.0;
+        self.a_max *= 2.0;
+    }
+
     pub fn turn(&mut self, steps: i32) {
         Self::turn_many([self], [steps]);
     }

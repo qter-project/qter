@@ -1,7 +1,10 @@
 use log::{info, trace};
 use puzzle_theory::permutations::{Algorithm, Permutation};
 use std::{
-    io, path::PathBuf, process::Stdio, sync::{Arc, LazyLock}
+    io,
+    path::PathBuf,
+    process::Stdio,
+    sync::{Arc, LazyLock},
 };
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines},
@@ -31,7 +34,7 @@ impl QvisAppHandle {
         let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
 
         while let Some(line) = stdout.next_line().await? {
-            if line.trim() == "Received READY from qvis_app" {
+            if line.trim() == "READY" {
                 info!("Received READY from qvis_app; initialization complete");
                 break;
             } else {
@@ -52,9 +55,7 @@ impl QvisAppHandle {
     ) -> Result<(), io::Error> {
         let calibration_command = format!("CALIBRATE {calibration_permutation}\n");
         info!("Sending calibration command: {}", calibration_command);
-        self.stdin
-            .write_all(calibration_command.as_bytes())
-            .await?;
+        self.stdin.write_all(calibration_command.as_bytes()).await?;
         self.stdin.flush().await?;
 
         while let Some(line) = self.stdout.next_line().await? {

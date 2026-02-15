@@ -229,14 +229,6 @@ bitflags! {
         const OLA = 1 << 6;
         /// Open-load detected on phase B.
         const OLB = 1 << 7;
-        /// 120°C temperature threshold exceeded.
-        const T120 = 1 << 8;
-        /// 143°C temperature threshold exceeded.
-        const T143 = 1 << 9;
-        /// 150°C temperature threshold exceeded.
-        const T150 = 1 << 10;
-        /// 157°C temperature threshold exceeded.
-        const T157 = 1 << 11;
         /// Bit 0 of the actual motor current.
         const CS_ACTUAL0 = 1 << 16;
         /// Bit 1 of the actual motor current.
@@ -249,7 +241,7 @@ bitflags! {
         const CS_ACTUAL4 = 1 << 20;
 
         // Indicate which bits are used (but aren't in our flags yet)
-        const _ = 0b_11000000_00011111_00001111_11111111;
+        const _ = 0b_11000000_00011111_00000000_11111111;
     }
 }
 

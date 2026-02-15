@@ -15,7 +15,6 @@ use robot::{
         set_prio,
     },
     qvis_app::{self, QvisAppHandle},
-    rob_twophase::solve_rob_twophase,
 };
 use std::{
     path::PathBuf,
@@ -94,10 +93,12 @@ async fn main() -> color_eyre::Result<()> {
         Commands::MoveSeq { sequence } => {
             let now = Utc::now;
             let robot_handle = RobotHandle::init(robot_config, now);
-            robot_handle.queue_move_seq(
-                &Algorithm::parse_from_string(Arc::clone(&CUBE3), &sequence)
-                    .expect("The algorithm is invalid"),
-            ).await?;
+            robot_handle
+                .queue_move_seq(
+                    &Algorithm::parse_from_string(Arc::clone(&CUBE3), &sequence)
+                        .expect("The algorithm is invalid"),
+                )
+                .await?;
             robot_handle.await_moves()?.await?;
         }
         Commands::Motor { face } => {
@@ -177,7 +178,9 @@ async fn main() -> color_eyre::Result<()> {
             let mut maybe_handles = if simulated {
                 None
             } else {
-                let qvis_app_handle = QvisAppHandle::init(robot_config.qvis_app_path.clone()).await.unwrap();
+                let qvis_app_handle = QvisAppHandle::init(robot_config.qvis_app_path.clone())
+                    .await
+                    .unwrap();
                 let now = Utc::now;
                 let robot_handle = RobotHandle::init(robot_config, now);
                 Some((qvis_app_handle, robot_handle))
@@ -216,16 +219,24 @@ async fn main() -> color_eyre::Result<()> {
             }
         }
         Commands::Calibrate => {
-            let mut qvis_app_handle = QvisAppHandle::init(robot_config.qvis_app_path.clone()).await.unwrap();
+            let mut qvis_app_handle = QvisAppHandle::init(robot_config.qvis_app_path.clone())
+                .await
+                .unwrap();
             let now = Utc::now;
             let mut robot_handle = RobotHandle::init(robot_config, now);
             qvis_app::calibrate(&mut qvis_app_handle, &mut robot_handle).await?;
         }
         Commands::Solve => {
-            let mut qvis_app_handle = QvisAppHandle::init(robot_config.qvis_app_path.clone()).await.unwrap();
+            let mut qvis_app_handle = QvisAppHandle::init(robot_config.qvis_app_path.clone())
+                .await
+                .unwrap();
             let now = Utc::now;
             let mut robot_handle = RobotHandle::init(robot_config, now);
-            QterRobot::initialize(Arc::clone(&CUBE3), (&mut robot_handle, &mut qvis_app_handle)).await?;
+            QterRobot::initialize(
+                Arc::clone(&CUBE3),
+                (&mut robot_handle, &mut qvis_app_handle),
+            )
+            .await?;
         }
     }
 

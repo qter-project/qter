@@ -25,6 +25,7 @@ wtransport = "0.7.0"
 tiny_http = "0.12.0"
 g4g_program.workspace = true
 chrono = { version = "0.4.43", default-features = false, features = ["now"] }
+oneshot = "0.1.13"
 
 # TODO: Enable io_uring once it's stable in tokio?
 [dependencies.tokio]
