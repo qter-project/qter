@@ -338,7 +338,7 @@ fn motor_driver_thread_watchdog(
             let motor_current = drvstatus.cs_actual();
             debug!(
                 target: "watchdog",
-                "Motor {face:?} current: {}%A",
+                "Motor {face:?} current: {}%",
                 motor_current as f64 / 31.0 * 100.0,
             );
             if drvstatus.contains(DrvStatus::OT) {
@@ -703,15 +703,15 @@ pub fn uart_init(robot_config: &RobotConfig) {
             .with_ihold(if robot_config.float { 0 } else { 16 })
             // Set IRUN to 31
             .with_irun(31)
-            // Set IHOLDDELAY to 1
-            .with_iholddelay(1);
+            // Set IHOLDDELAY to 0
+            .with_iholddelay(0);
         debug!(
             target: "uart_init",
             "Writing IHOLD_IRUN: value={ihold_irun:?}",
         );
         uart.set_iholdirun(ihold_irun);
 
-        let tpowerdown = 2;
+        let tpowerdown = 0;
         debug!(
             target: "uart_init",
             "Writing TPOWERODNW: value={tpowerdown:?}",
