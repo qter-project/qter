@@ -20,10 +20,3 @@ log = "0.4.28"
 
 [profile.bench]
 debug = true
-
-# overtemperature thread panicking aborts the entire process
-[profile.release]
-panic = "abort"
-
-[profile.dev]
-panic = "abort"
