@@ -414,12 +414,6 @@ fn motor_driver_thread_watchdog(
     }
 }
 
-enum OvertemperatureStatus {
-    Nominal,
-    PreWarning,
-    Warning,
-}
-
 fn motor_thread(
     rx: mpsc::Receiver<MotorMessage>,
     robot_config: RobotConfig,

@@ -119,13 +119,6 @@ pub async fn calibrate(
     });
 
     let mut acc = Permutation::identity();
-    handle
-        .calibrate_permutation(acc.clone())
-        .await
-        .map_err(|error| QterRobotError {
-            kind: ErrorKind::Calibration,
-            message: error.to_string(),
-        })?;
 
     info!("Waiting for READY");
     let lines = std::io::stdin().lines();
