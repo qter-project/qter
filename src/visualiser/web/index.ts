@@ -1,6 +1,6 @@
 import * as TreeSitter from "web-tree-sitter";
 import { CompileError, CubeState, Interpreter, Program, type Register, type RegisterState } from "./visualiser.js"
-import { CubePairElement } from "./cube_view.js";
+import { CubePairElement, RotationController } from "./cube_view.js";
 import { getRange, SyntaxHighlighter } from "./syntax_highlight.js";
 import { connect } from "./connect.js";
 
@@ -504,6 +504,12 @@ class Infoview {
         this.#stateCube = stateCube;
         this.#registersCube = registersCube;
         this.#registersContainer = registers;
+
+        let rotation = new RotationController();
+        stateCube.setRotation(rotation);
+        registersCube.setRotation(rotation);
+        rotation.registerRotateOnDrag(stateCube);
+        rotation.registerRotateOnDrag(registersCube);
 
         this.#registers = [];
 

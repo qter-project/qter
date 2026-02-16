@@ -1,11 +1,48 @@
+export class RotationController extends EventTarget {
+    #pitch: number;
+    #yaw: number;
+
+    constructor(pitch: number = 30, yaw: number = -40) {
+        super();
+        this.#pitch = pitch;
+        this.#yaw = yaw;
+    }
+
+    declare addEventListener: EventTarget["addEventListener"]
+        & ((type: "update", callback: (ev: Event) => void) => void);
+
+    setRotation(yaw: number, pitch: number) {
+        this.#yaw = yaw;
+        this.#pitch = Math.min(90, Math.max(-90, pitch));
+        this.dispatchEvent(new Event("update"));
+    }
+
+    addRotation(yaw: number, pitch: number) {
+        this.setRotation(this.#yaw + yaw, this.#pitch + pitch);
+    }
+
+    get pitch(): number { return this.#pitch; }
+    get yaw(): number { return this.#yaw; }
+
+    registerRotateOnDrag(el: HTMLElement) {
+        el.addEventListener("wheel", (event: WheelEvent) => {
+            if (event.deltaMode != WheelEvent.DOM_DELTA_PIXEL) return;
+            let x = event.deltaX;
+            let y = event.deltaY;
+            event.preventDefault();
+
+            this.addRotation(x / 5, y / 5);
+        }, { passive: false });
+    }
+}
+
 export class CubeElement extends HTMLElement {
     #shadowRoot: ShadowRoot | null = null;
     #viewport: HTMLElement | null = null;
     #cube: HTMLElement | null = null;
     #facelets: [HTMLDivElement, HTMLSpanElement][] & { length: 54 } | null = null;
 
-    #pitch: number = 30;
-    #yaw: number = -40;
+    #rotation: RotationController | null = null;
     #invert: boolean = false;
 
     static #resizeObserver = new ResizeObserver((entries) => {
@@ -141,37 +178,30 @@ export class CubeElement extends HTMLElement {
         this.#viewport!.style.setProperty("--cube-size", `${Math.min(size.inlineSize, size.blockSize) / 1.8}px`)
     }
 
+    #updateRotationEventListener = this.#updateRotation.bind(this);
     #updateRotation() {
         if (this.#cube != null) {
-            this.#cube.style.transform = `rotateX(${-this.#pitch}deg) rotateY(${this.#yaw}deg)`;
+            let pitch = this.#rotation?.pitch ?? 0;
+            let yaw = this.#rotation?.yaw ?? 0;
+            this.#cube.style.transform = `rotateX(${-pitch}deg) rotateY(${yaw}deg)`;
         }
     }
 
-    setRotation(yaw: number, pitch: number) {
-        this.#yaw = yaw;
-        this.#pitch = Math.min(90, Math.max(-90, pitch));
+    setRotation(rotation: RotationController | null) {
+        this.#rotation?.removeEventListener("update", this.#updateRotationEventListener);
+        this.#rotation = rotation;
+        rotation?.addEventListener("update", this.#updateRotationEventListener);
         this.#updateRotation();
-    }
-
-    addRotation(yaw: number, pitch: number) {
-        this.setRotation(this.#yaw + yaw, this.#pitch + pitch);
     }
 
     #updateInverted() {
         this.#cube?.classList.toggle("inverted", this.#invert);
     }
 
-    setInverted(inverted: boolean) {
+    get inverted(): boolean { return this.#invert; }
+    set inverted(inverted: boolean) {
         this.#invert = inverted;
         this.#updateInverted();
-    }
-
-    getYaw(): number {
-        return this.#yaw;
-    }
-
-    getPitch(): number {
-        return this.#pitch;
     }
 
     setFaceletData(data: readonly (readonly [string, string])[] & { length: 54 }) {
@@ -209,7 +239,7 @@ export class CubePairElement extends HTMLElement {
 
         container.appendChild(this.#view1 = new CubeElement());
         container.appendChild(this.#view2 = new CubeElement());
-        this.#view2.setInverted(true);
+        this.#view2.inverted = true;
 
         let style = document.createElement("style");
         style.textContent = `
@@ -230,37 +260,15 @@ export class CubePairElement extends HTMLElement {
 
         this.#shadowRoot.appendChild(style);
         this.#shadowRoot.appendChild(container);
-        this.#updateRotation();
-
-        this.addEventListener("wheel", (event) => {
-            if (event.deltaMode != WheelEvent.DOM_DELTA_PIXEL) return;
-            let cube = event.currentTarget! as CubePairElement;
-            let x = event.deltaX;
-            let y = event.deltaY;
-            event.preventDefault();
-
-            cube.addRotation(x / 5, y / 5);
-        }, { passive: false });
     }
 
     private disconnectedCallback() {
         this.#shadowRoot!.replaceChildren();
     }
 
-    #updateRotation() {
-        this.#view1!.setRotation(this.#yaw, this.#pitch);
-        // this.#view2!.setRotation(this.#yaw + 180, -this.#pitch);
-        this.#view2!.setRotation(this.#yaw, this.#pitch);
-    }
-
-    setRotation(yaw: number, pitch: number) {
-        this.#yaw = yaw;
-        this.#pitch = Math.min(90, Math.max(-90, pitch));
-        this.#updateRotation();
-    }
-
-    addRotation(yaw: number, pitch: number) {
-        this.setRotation(this.#yaw + yaw, this.#pitch + pitch);
+    setRotation(rotation: RotationController | null) {
+        this.#view1!.setRotation(rotation);
+        this.#view2!.setRotation(rotation);
     }
 
     setFaceletData(data: readonly (readonly [string, string])[] & { length: 54 }) {
