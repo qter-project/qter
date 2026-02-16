@@ -549,6 +549,7 @@ fn motor_thread(
         match moves {
             MoveInstruction::Single((face, dir)) => {
                 if floating {
+                    info!("Holding all of the motors");
                     for motor in &mut motors {
                         motor.hold();
                     }
@@ -567,6 +568,7 @@ fn motor_thread(
             }
             MoveInstruction::Double([(face1, dir1), (face2, dir2)]) => {
                 if floating {
+                    info!("Holding all of the motors");
                     for motor in &mut motors {
                         motor.hold();
                     }
@@ -588,6 +590,7 @@ fn motor_thread(
                 Motor::turn_many([motor1, motor2], [-comp1, -comp2]);
             }
             MoveInstruction::Float => {
+                floating = true;
                 for motor in &mut motors {
                     motor.float();
                 }
