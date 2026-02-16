@@ -3,7 +3,7 @@ pub mod regs;
 
 use std::{ops::RangeTo, path::Path, time::Duration};
 
-use log::{debug, trace};
+use log::trace;
 use rppal::uart::Parity;
 
 use regs::{ChopConf, DrvStatus, GConf, GStat, IholdIrun, NodeConf, PwmConf};
@@ -183,7 +183,7 @@ impl UartNode<'_> {
     }
 
     pub fn read(&mut self, register: u8) -> u32 {
-        debug!(
+        trace!(
             "Reading from register {register} (address={})",
             self.address as u8
         );
@@ -206,7 +206,7 @@ impl UartNode<'_> {
     }
 
     pub fn write(&mut self, register: u8, value: u32) {
-        debug!(
+        trace!(
             "Writing value 0x{value:08x} ({value}) to register {register} (address={})",
             self.address as u8
         );

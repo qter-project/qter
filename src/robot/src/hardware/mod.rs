@@ -339,8 +339,8 @@ fn motor_driver_thread_watchdog(
             let motor_current = drvstatus.cs_actual();
             debug!(
                 target: "watchdog",
-                "Motor {face:?} current: {}%",
-                motor_current as f64 / 31.0 * 100.0,
+                "Motor {face:?} current: {:.2}%",
+                motor_current as f64 / 32.0 * 100.0,
             );
             if drvstatus.contains(DrvStatus::OT) {
                 error!(
