@@ -222,6 +222,7 @@ struct CommutativeMoveFsm {
 enum MoveInstruction {
     Single((Face, Dir)),
     Double([(Face, Dir); 2]),
+    Float,
 }
 
 impl CommutativeMoveFsm {
@@ -419,12 +420,13 @@ fn motor_thread(
     robot_config: RobotConfig,
     now: fn() -> DateTime<Utc>,
 ) {
-    set_prio(robot_config.priority);
     let (watchdox_tx, watchdog_rx) = mpsc::channel();
     {
         let robot_config = robot_config.clone();
         thread::spawn(move || motor_driver_thread_watchdog(watchdog_rx, robot_config));
     }
+
+    set_prio(robot_config.priority);
 
     let mut motors: [Motor; 6] = Face::ALL.map(|face| Motor::new(&robot_config, face));
 
@@ -446,58 +448,66 @@ fn motor_thread(
     // Unparkers from after the previously executed move
     let mut unparkers = Vec::<tokio::sync::oneshot::Sender<Result<(), QterRobotError>>>::new();
 
-    let iter = from_fn(move || {
+    let iter = gen move {
         const SHORT_TIMEOUT: Duration = Duration::from_millis(50);
         const NO_TIMEOUT: Duration = Duration::MAX;
 
-        let err_state = err_status();
-        for unparker in unparkers.drain(..) {
-            let _ = unparker.send(err_state.clone());
-        }
-
-        let mut timeout = SHORT_TIMEOUT;
-
         loop {
-            match rx.recv_timeout(timeout) {
-                Ok(MotorMessage::QueueMove((face, dir, ack))) => {
-                    // If we get a move, we're ok with waiting at most `SHORT_TIMEOUT` amount of time for one that might commute
-                    timeout = SHORT_TIMEOUT;
-                    if let Some(instr) = fsm.next((face, dir)) {
-                        match err_status() {
-                            Ok(()) => {
-                                ack.send(Ok(())).unwrap();
-                                return Some(instr);
-                            }
-                            Err(err) => {
-                                ack.send(Err(err)).unwrap();
-                            }
-                        };
-                    } else {
-                        ack.send(Ok(())).unwrap();
+            let err_state = err_status();
+            for unparker in unparkers.drain(..) {
+                let _ = unparker.send(err_state.clone());
+            }
+
+            let mut timeout = SHORT_TIMEOUT;
+
+            loop {
+                match rx.recv_timeout(timeout) {
+                    Ok(MotorMessage::QueueMove((face, dir, ack))) => {
+                        // If we get a move, we're ok with waiting at most `SHORT_TIMEOUT` amount of time for one that might commute
+                        timeout = SHORT_TIMEOUT;
+                        if let Some(instr) = fsm.next((face, dir)) {
+                            match err_status() {
+                                Ok(()) => {
+                                    ack.send(Ok(())).unwrap();
+                                    yield instr;
+                                    break;
+                                }
+                                Err(err) => {
+                                    ack.send(Err(err)).unwrap();
+                                }
+                            };
+                        } else {
+                            ack.send(Ok(())).unwrap();
+                        }
                     }
-                }
-                Ok(MotorMessage::PrevMovesDone(signal)) => {
-                    if fsm.is_empty() {
-                        let _ = signal.send(Ok(()));
-                    } else {
-                        unparkers.push(signal);
+                    Ok(MotorMessage::PrevMovesDone(signal)) => {
+                        if fsm.is_empty() {
+                            let _ = signal.send(Ok(()));
+                        } else {
+                            unparkers.push(signal);
+                        }
                     }
-                }
-                Err(RecvTimeoutError::Timeout) => {
-                    // If we time out, then just send whatever's in the FSM
-                    if let Some(instr) = fsm.flush()
-                        && err_status().is_ok()
-                    {
-                        return Some(instr);
+                    Err(RecvTimeoutError::Timeout) => {
+                        // If we time out, then just send whatever's in the FSM
+                        if let Some(instr) = fsm.flush()
+                            && err_status().is_ok()
+                        {
+                            yield instr;
+                            break;
+                        } else {
+                            // If there's nothing in the FSM, then just float and wait however long for the next move
+                            yield MoveInstruction::Float;
+                            timeout = NO_TIMEOUT;
+                        }
                     }
-                    // If there's nothing in the FSM, then just wait however long for the next move
-                    timeout = NO_TIMEOUT;
+                    // Empty channel
+                    Err(RecvTimeoutError::Disconnected) => return,
                 }
-                // Empty channel
-                Err(RecvTimeoutError::Disconnected) => return None,
             }
         }
-    });
+    };
+
+    let mut floating = true;
 
     let mut prev_motor_driver_temperatures = Face::ALL.map(|_| MotorDriverTemperature::Normal);
     for moves in iter {
@@ -522,14 +532,14 @@ fn motor_thread(
                         target: "move_seq",
                         "Halving the speed of the motors",
                     );
-                    motor.half_the_speed();
+                    motor.enable_prewarning();
                 }
                 (MotorDriverTemperature::Normal, MotorDriverTemperature::PreWarning) => {
                     warn!(
                         target: "move_seq",
                         "Restoring the speed of the motors",
                     );
-                    motor.double_the_speed();
+                    motor.clear_prewarning();
                 }
                 _ => {}
             }
@@ -538,6 +548,14 @@ fn motor_thread(
 
         match moves {
             MoveInstruction::Single((face, dir)) => {
+                if floating {
+                    for motor in &mut motors {
+                        motor.hold();
+                    }
+
+                   floating = false; 
+                }
+                
                 let motor = &mut motors[face as usize];
 
                 let steps = dir.qturns() * FULLSTEPS_PER_QUARTER.cast_signed();
@@ -548,6 +566,14 @@ fn motor_thread(
                 motor.turn(-comp);
             }
             MoveInstruction::Double([(face1, dir1), (face2, dir2)]) => {
+                if floating {
+                    for motor in &mut motors {
+                        motor.hold();
+                    }
+
+                   floating = false; 
+                }
+                
                 let [motor1, motor2] = motors
                     .get_disjoint_mut([face1 as usize, face2 as usize])
                     .unwrap();
@@ -560,6 +586,11 @@ fn motor_thread(
 
                 Motor::turn_many([motor1, motor2], [steps1 + comp1, steps2 + comp2]);
                 Motor::turn_many([motor1, motor2], [-comp1, -comp2]);
+            }
+            MoveInstruction::Float => {
+                for motor in &mut motors {
+                    motor.float();
+                }
             }
         }
 
@@ -679,7 +710,7 @@ pub fn uart_init(robot_config: &RobotConfig) {
         debug!(target: "uart_init", "Read initial PWMCONF: initial_value={initial_pwmconf:?}");
         let new_pwmconf = initial_pwmconf
             // Freewheel mode
-            .with_freewheel(if robot_config.float { 1 } else { 0 });
+            .with_freewheel(1);
         if new_pwmconf == initial_pwmconf {
             debug!(target: "uart_init", "PWMCONF already configured");
         } else {
@@ -694,7 +725,7 @@ pub fn uart_init(robot_config: &RobotConfig) {
         // Configure IHOLD_IRUN. Note that IHOLD_IRUN is write-only.
         //
         let ihold_irun = IholdIrun::empty()
-            .with_ihold(if robot_config.float { 0 } else { 16 })
+            .with_ihold(0)
             // Set IRUN to 31
             .with_irun(31)
             // Set IHOLDDELAY to 0
