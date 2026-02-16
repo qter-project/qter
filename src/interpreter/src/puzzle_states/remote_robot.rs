@@ -202,7 +202,7 @@ where
                 serde_json::from_slice::<PermutationGroup>(&data).map_err(|e| e.to_string())?,
             );
 
-            let robot: WrapSimulatedPuzzle<R> = WrapSimulatedPuzzle::initialize(Arc::clone(&group), (MismatchBehavior::Error, args))
+            let robot: WrapSimulatedPuzzle<R> = WrapSimulatedPuzzle::initialize(Arc::clone(&group), (MismatchBehavior::Fix { retry_count: 3 }, args))
                 .await
                 .map_err(|e| e.to_string())?;
 

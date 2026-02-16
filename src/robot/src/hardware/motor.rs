@@ -281,8 +281,9 @@ impl Motor {
             let scale = if this.overtemp_prewarning { 0.5 } else { 1. };
 
             for i in 0..steps {
-                let t1 = trapezoid_profile_inv(i, steps, this.v_max*scale, this.a_max*scale);
-                let t2 = trapezoid_profile_inv(i + 1, steps, this.v_max*scale, this.a_max*scale);
+                let t1 = trapezoid_profile_inv(i, steps, this.v_max * scale, this.a_max * scale);
+                let t2 =
+                    trapezoid_profile_inv(i + 1, steps, this.v_max * scale, this.a_max * scale);
                 let delay = Duration::from_secs_f64(t2 - t1) / 2;
 
                 this.step.set_high();

@@ -553,9 +553,9 @@ fn motor_thread(
                         motor.hold();
                     }
 
-                   floating = false; 
+                    floating = false;
                 }
-                
+
                 let motor = &mut motors[face as usize];
 
                 let steps = dir.qturns() * FULLSTEPS_PER_QUARTER.cast_signed();
@@ -571,9 +571,9 @@ fn motor_thread(
                         motor.hold();
                     }
 
-                   floating = false; 
+                    floating = false;
                 }
-                
+
                 let [motor1, motor2] = motors
                     .get_disjoint_mut([face1 as usize, face2 as usize])
                     .unwrap();
