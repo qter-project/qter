@@ -313,6 +313,7 @@ fn motor_driver_thread_watchdog(
     robot_config: RobotConfig,
 ) {
     let mut motor_driver_temperatures = Face::ALL.map(|_| MotorDriverTemperature::Normal);
+    let mut prev_motor_currents = Face::ALL.map(|_| 0);
     loop {
         const POLL_TIMEOUT: Duration = Duration::from_secs(10);
         let signal = match rx.recv_timeout(POLL_TIMEOUT) {
@@ -324,9 +325,10 @@ fn motor_driver_thread_watchdog(
         };
         let mut uart0 = UART0.lock().unwrap();
         let mut uart4 = UART4.lock().unwrap();
-        for (face, motor_driver_temperature) in Face::ALL
+        for ((face, motor_driver_temperature), prev_motor_current) in Face::ALL
             .into_iter()
             .zip(motor_driver_temperatures.iter_mut())
+            .zip(prev_motor_currents.iter_mut())
         {
             let config = &robot_config.motors[face];
             let mut uart = match config.uart_bus {
@@ -337,11 +339,14 @@ fn motor_driver_thread_watchdog(
 
             let drvstatus = uart.drvstatus();
             let motor_current = drvstatus.cs_actual();
+            if motor_current != *prev_motor_current {
             debug!(
                 target: "watchdog",
                 "Motor {face:?} current: {:.2}%",
                 motor_current as f64 / 32.0 * 100.0,
             );
+                *prev_motor_current = motor_current;
+            }
             if drvstatus.contains(DrvStatus::OT) {
                 error!(
                     target: "watchdog",
