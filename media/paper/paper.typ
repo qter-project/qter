@@ -2019,7 +2019,7 @@ We discussed how symmetry conjugation temporarily changes a position's frame of 
     cube("yyyywyyyy bbbbgbbbb rrrrrrrrr", offset: (10, 0), name: "four")
     content("four.north", align(center + bottom)[#text(1.2em)[$S_(\R2)$]\ Valid position], anchor: "south")
 
-    cube("ooooboooo yyyyyyyyy ggggogggg", offset: (-10, -5), back: true)
+    cube("ggggbgggg wwwwwwwww ooooooooo", offset: (-10, -5), back: true)
     cube("ooooboooo yyyyyyyyy ggggogggg", offset: (-3.33, -5), back: true)
     cube("wwwwbwwww ooooyoooo ggggogggg", offset: (3.33, -5), back: true)
     cube("ggggbgggg wwwwywwww ooooooooo", offset: (10, -5), back: true)
