@@ -241,7 +241,7 @@ bitflags! {
         const CS_ACTUAL4 = 1 << 20;
 
         // Indicate which bits are used (but aren't in our flags yet)
-        const _ = 0b_11000000_00011111_00000000_11111111;
+        const _ = 0b_11000000_00011111_00001111_11111111;
     }
 }
 

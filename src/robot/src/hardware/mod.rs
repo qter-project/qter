@@ -353,7 +353,6 @@ fn motor_driver_thread_watchdog(
                     "Motor {face:?} overtemperature warning",
                 );
                 estop();
-                unreachable!();
             }
             if drvstatus.contains(DrvStatus::S2GA) {
                 error!(
@@ -361,7 +360,6 @@ fn motor_driver_thread_watchdog(
                     "Motor {face:?} short to ground on phase A",
                 );
                 estop();
-                unreachable!();
             }
             if drvstatus.contains(DrvStatus::S2GB) {
                 error!(
@@ -369,7 +367,6 @@ fn motor_driver_thread_watchdog(
                     "Motor {face:?} short to ground on phase B",
                 );
                 estop();
-                unreachable!();
             }
             if drvstatus.contains(DrvStatus::S2VSA) {
                 error!(
@@ -377,7 +374,6 @@ fn motor_driver_thread_watchdog(
                     "Motor {face:?} low-side short on phase A",
                 );
                 estop();
-                unreachable!();
             }
             if drvstatus.contains(DrvStatus::S2VSB) {
                 error!(
@@ -385,7 +381,6 @@ fn motor_driver_thread_watchdog(
                     "Motor {face:?} low-side short on phase B",
                 );
                 estop();
-                unreachable!();
             }
 
             if drvstatus.contains(DrvStatus::OTPW) {
@@ -778,7 +773,7 @@ pub fn float(robot_config: &RobotConfig) {
     }
 }
 
-pub fn estop() {
+pub fn estop() -> ! {
     error!("Emergency stop triggered. Immediately stopping all motors and exiting the process.");
     std::process::exit(1);
 }
