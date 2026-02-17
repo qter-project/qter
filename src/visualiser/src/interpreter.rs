@@ -18,6 +18,7 @@ use crate::{BigInt, connection::Connection, cube::CubeState, program::Program};
 
 #[derive(Tsify, Serialize)]
 #[serde(tag = "kind")]
+#[tsify(into_wasm_abi)]
 pub enum InterpreterState {
     Running,
     NeedsInput { max_input: BigInt },
@@ -118,12 +119,9 @@ impl Interpreter {
         Ok(Self { inner: interpreter })
     }
 
-    #[wasm_bindgen(getter, unchecked_return_type = "InterpreterState")]
-    pub fn state(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&InterpreterState::from(
-            self.inner.state().execution_state(),
-        ))
-        .unwrap()
+    #[wasm_bindgen(getter)]
+    pub fn state(&self) -> InterpreterState {
+        InterpreterState::from(self.inner.state().execution_state())
     }
 
     pub async fn step(&mut self) -> Result<(), JsError> {
