@@ -4,6 +4,7 @@ pub mod connection;
 pub mod cube;
 pub mod interpreter;
 pub mod program;
+mod robot_like;
 
 use puzzle_theory::numbers::{Int, U};
 use serde::Serialize;

@@ -2,19 +2,22 @@ use std::sync::Arc;
 
 use interpreter::{
     ExecutionState, PausedState,
-    puzzle_states::{RemoteRobot, RobotLike, RobotState},
+    puzzle_states::{RemoteRobot, RobotState, SimulatedPuzzle},
 };
-use puzzle_theory::{
-    permutations::{Algorithm, Permutation, PermutationGroup},
-    puzzle_geometry::PuzzleGeometry,
-};
+use puzzle_theory::{permutations::Permutation, puzzle_geometry::PuzzleGeometry};
 use qter_core::architectures::Architecture;
 use serde::{Deserialize, Serialize};
 use tsify::Tsify;
 use wasm_bindgen::prelude::*;
 use web_sys::js_sys::Function;
 
-use crate::{BigInt, connection::Connection, cube::CubeState, program::Program};
+use crate::{
+    BigInt,
+    connection::Connection,
+    cube::CubeState,
+    program::Program,
+    robot_like::{CaptureCubeState, Either},
+};
 
 #[derive(Tsify, Serialize)]
 #[serde(tag = "kind")]
@@ -49,44 +52,9 @@ pub struct Callbacks {
     message: Function,
 }
 
-struct CaptureCubeState<T, F>(T, F);
-
-impl<T: RobotLike, F: FnMut(&Permutation)> RobotLike for CaptureCubeState<T, F> {
-    type InitializationArg = (T::InitializationArg, F);
-    type Error = T::Error;
-
-    async fn initialize(
-        perm_group: std::sync::Arc<PermutationGroup>,
-        (args, cb): Self::InitializationArg,
-    ) -> Result<Self, Self::Error> {
-        let mut this = Self(T::initialize(perm_group, args).await?, cb);
-        this.1(&Permutation::identity());
-        Ok(this)
-    }
-
-    async fn compose_into(&mut self, alg: &Algorithm) -> Result<(), Self::Error> {
-        self.0.compose_into(alg).await
-    }
-
-    async fn take_picture(&mut self) -> Result<&Permutation, Self::Error> {
-        let perm = self.0.take_picture().await?;
-        self.1(perm);
-        Ok(perm)
-    }
-
-    async fn solve(&mut self) -> Result<(), Self::Error> {
-        self.0.solve().await
-    }
-
-    async fn compose_perm(&mut self, perm: &Permutation) -> Result<(), Self::Error> {
-        self.0.compose_perm(perm).await
-    }
-}
-
 type CubeStateCb = impl FnMut(&Permutation);
 
-type Robot = RemoteRobot<Connection>;
-// type Robot = interpreter::puzzle_states::SimulatedPuzzle;
+type Robot = Either<RemoteRobot<Connection>, SimulatedPuzzle>;
 
 #[wasm_bindgen]
 pub struct Interpreter {
@@ -116,14 +84,13 @@ impl Interpreter {
     // #[wasm_bindgen(constructor)]
     pub async fn init(
         program: &Program,
-        connection: Connection,
+        connection: Option<Connection>,
         callbacks: Callbacks,
     ) -> Result<Self, JsError> {
         let interpreter = interpreter::Interpreter::new_only_one_puzzle(
             program.inner.clone(),
             (
-                connection,
-                // (),
+                connection.map_or(Either::Right(()), Either::Left),
                 mk_cube_state_cb(
                     callbacks.cube_state,
                     program.puzzle.clone(),

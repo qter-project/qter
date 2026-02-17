@@ -1,5 +1,6 @@
+import config from "./config.json" with { type: "json" }
 import * as TreeSitter from "web-tree-sitter";
-import { CompileError, CubeState, Interpreter, Program, type Register } from "./visualiser.js"
+import { CompileError, Connection, CubeState, Interpreter, Program, type Register } from "./visualiser.js"
 import { CubePairElement, RotationController } from "./cube_view.js";
 import { getRange, SyntaxHighlighter } from "./syntax_highlight.js";
 import { connect } from "./connect.js";
@@ -802,8 +803,11 @@ class Runner {
                     this.#editor.disabled = true;
                     this.#executeButton.disabled = true;
                     try {
-                        this.#executeButton.textContent = "Connecting...";
-                        let conn = await connect();
+                        let conn: Connection | null = null;
+                        if (!config.simulated) {
+                            this.#executeButton.textContent = "Connecting...";
+                            conn = await connect();
+                        }
                         this.#executeButton.textContent = "Solving...";
                         this.#interpreter = await Interpreter.init(
                             this.#program,
