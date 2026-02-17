@@ -72,17 +72,18 @@ fn trapezoid_profile_inv(step: u32, total_steps: u32, v_max: f64, a_max: f64) ->
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 pub enum Dir {
     CW,
+    #[allow(clippy::upper_case_acronyms)]
     CCW,
 }
 
 impl Dir {
-    fn as_step(self) -> MotorCommand {
+    fn as_step(self) -> HighLevelMotorCommand {
         match self {
-            Dir::CW => MotorCommand::StepCW,
-            Dir::CCW => MotorCommand::StepCCW,
+            Dir::CW => HighLevelMotorCommand::StepCW,
+            Dir::CCW => HighLevelMotorCommand::StepCCW,
         }
     }
 
@@ -114,22 +115,21 @@ impl Dir {
 }
 
 #[derive(Clone, Copy, Debug)]
-enum MotorCommand {
+enum HighLevelMotorCommand {
     StepCW,
     StepCCW,
 }
 
 fn lower_commands(
-    commands: impl Iterator<Item = (f64, MotorCommand)>,
-) -> impl Iterator<Item = (f64, LowLevelMotorCommand)> {
-    let mut is_cw: Option<bool> = None;
+    commands: impl Iterator<Item = (f64, HighLevelMotorCommand)>,
+) -> impl Iterator<Item = (f64, MotorCommand)> {
+    let mut prev_dir: Option<Dir> = None;
 
-    let mut change_dir = move |new_dir: bool| {
-        if is_cw == Some(new_dir) {
-            is_cw = Some(new_dir);
+    let mut change_dir = move |new_dir: Dir| {
+        if prev_dir == Some(new_dir) {
             false
         } else {
-            is_cw = Some(new_dir);
+            prev_dir = Some(new_dir);
             true
         }
     };
@@ -144,21 +144,21 @@ fn lower_commands(
             };
 
             match command {
-                MotorCommand::StepCW => {
-                    if change_dir(true) {
-                        yield (t, LowLevelMotorCommand::MakeCW)
+                HighLevelMotorCommand::StepCW => {
+                    if change_dir(Dir::CW) {
+                        yield (t, MotorCommand::MakeCW)
                     }
 
-                    yield (t, LowLevelMotorCommand::StepEnable);
-                    yield (t2, LowLevelMotorCommand::StepDisable);
+                    yield (t, MotorCommand::StepEnable);
+                    yield (t2, MotorCommand::StepDisable);
                 }
-                MotorCommand::StepCCW => {
-                    if change_dir(false) {
-                        yield (t, LowLevelMotorCommand::MakeCCW)
+                HighLevelMotorCommand::StepCCW => {
+                    if change_dir(Dir::CCW) {
+                        yield (t, MotorCommand::MakeCCW)
                     }
 
-                    yield (t, LowLevelMotorCommand::StepEnable);
-                    yield (t2, LowLevelMotorCommand::StepDisable);
+                    yield (t, MotorCommand::StepEnable);
+                    yield (t2, MotorCommand::StepDisable);
                 }
             }
         }
@@ -166,14 +166,14 @@ fn lower_commands(
 }
 
 #[derive(Clone, Copy, Debug)]
-enum LowLevelMotorCommand {
+enum MotorCommand {
     MakeCW,
     MakeCCW,
     StepEnable,
     StepDisable,
 }
 
-pub struct MotorAction(Vec<(f64, MotorCommand)>);
+type MotorAction = Vec<(f64, HighLevelMotorCommand)>;
 
 pub struct Motors([Motor; 6]);
 
@@ -246,7 +246,7 @@ impl Motors {
         self.turn_many(actions);
     }
 
-    fn turn_many(&mut self, steps: [Vec<(f64, MotorCommand)>; 6]) {
+    fn turn_many(&mut self, steps: [MotorAction; 6]) {
         fn array_zip<T, U, const N: usize>(a: [T; N], b: [U; N]) -> [(T, U); N] {
             let mut iter_a = IntoIterator::into_iter(a);
             let mut iter_b = IntoIterator::into_iter(b);
@@ -382,24 +382,24 @@ impl Motor {
         f(uart)
     }
 
-    fn perform(&mut self, cmd: LowLevelMotorCommand) {
+    fn perform(&mut self, cmd: MotorCommand) {
         match cmd {
-            LowLevelMotorCommand::MakeCW => {
+            MotorCommand::MakeCW => {
                 self.dir.write(Level::Low);
             }
-            LowLevelMotorCommand::MakeCCW => {
+            MotorCommand::MakeCCW => {
                 self.dir.write(Level::High);
             }
-            LowLevelMotorCommand::StepEnable => {
+            MotorCommand::StepEnable => {
                 self.step.set_high();
             }
-            LowLevelMotorCommand::StepDisable => {
+            MotorCommand::StepDisable => {
                 self.step.set_low();
             }
         }
     }
 
-    fn mk_quarter_turn(&self, dir: Dir) -> Vec<(f64, MotorCommand)> {
+    fn mk_quarter_turn(&self, dir: Dir) -> MotorAction {
         let mut out = Vec::new();
 
         let step = dir.as_step();
@@ -414,7 +414,7 @@ impl Motor {
         out
     }
 
-    fn mk_half_turn(&self, dir: Dir) -> Vec<(f64, MotorCommand)> {
+    fn mk_half_turn(&self, dir: Dir) -> MotorAction {
         let mut out = Vec::new();
 
         let step = dir.as_step();

@@ -339,11 +339,11 @@ fn motor_driver_thread_watchdog(
             let drvstatus = uart.drvstatus();
             let motor_current = drvstatus.cs_actual();
             if motor_current != *prev_motor_current {
-            debug!(
-                target: "watchdog",
-                "Motor {face:?} current: {:.2}%",
-                motor_current as f64 / 32.0 * 100.0,
-            );
+                debug!(
+                    target: "watchdog",
+                    "Motor {face:?} current: {:.2}%",
+                    motor_current as f64 / 32.0 * 100.0,
+                );
                 *prev_motor_current = motor_current;
             }
             if drvstatus.contains(DrvStatus::OT) {
