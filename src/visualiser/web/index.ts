@@ -851,7 +851,6 @@ class Runner {
                 this.#executeButton.textContent = "Start";
                 this.#clearInterpreter();
                 this.#highlightCurrentLine();
-                this.#messages.clear();
                 this.#infoview.state = null;
                 this.#editor.disabled = false;
                 this.#state = State.Editing;
@@ -895,7 +894,15 @@ class Runner {
                 console.error(why.error);
                 this.#messages.add(why.error.message, true);
             } else if (why.reason == "halted") {
-
+                // TODO: deduplicate this
+                this.#stepButton.disabled = true;
+                this.#runButton.disabled = true;
+                this.#executeButton.textContent = "Start";
+                this.#clearInterpreter();
+                this.#highlightCurrentLine();
+                this.#infoview.state = null;
+                this.#editor.disabled = false;
+                this.#state = State.Editing;
             }
         })
     }
