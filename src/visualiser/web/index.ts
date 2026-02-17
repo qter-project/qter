@@ -591,7 +591,7 @@ class Infoview {
 class Messages extends EventTarget {
     #messagesContainer: HTMLPreElement;
 
-    #messages: string[] = [];
+    #messages: { message: string, error: boolean }[] = [];
     #maxInput: bigint | null = null;
 
     constructor(messagesContainer: HTMLPreElement) {
@@ -607,42 +607,61 @@ class Messages extends EventTarget {
     }
 
     clear() {
-        this.setMessages([]);
+        this.#messages = [];
+        this.#maxInput = null;
+        this.#updateMessages();
     }
 
-    add(message: string) {
-        this.#messages.push(message);
+    add(message: string, error: boolean = false) {
+        this.#messages.push({ message, error });
         // TODO: something not O(n) maybe
-        this.setMessages(this.#messages, this.#maxInput);
+        this.#updateMessages();
     }
 
     set maxInput(value: bigint | null) {
-        this.setMessages(this.#messages, value);
+        this.#maxInput = value;
+        this.#updateMessages();
     }
 
-    setMessages(messages: string[], maxInput: bigint | null = null) {
-        if (maxInput != null && messages.length == 0) throw new Error();
+    #makeMessageNode({ message, error }: { message: string, error: boolean }): Node {
+        if (error) {
+            let span = document.createElement("span");
+            span.classList.add("error-msg");
+            span.textContent = message;
+            return span;
+        } else {
+            return new Text(message);
+        }
+    }
 
-        this.#messages = messages;
-        this.#maxInput = maxInput;
+    #updateMessages() {
+        if (this.#maxInput != null && this.#messages.length == 0) throw new Error();
 
-        if (maxInput != null) {
-            this.#messagesContainer.replaceChildren(messages.slice(0, -1).map(v => v + "\n").join());
+        this.#messagesContainer.replaceChildren();
+        if (this.#maxInput != null) {
+            for (let message of this.#messages.values().take(this.#messages.length - 1)) {
+                this.#messagesContainer.append(this.#makeMessageNode(message));
+                this.#messagesContainer.append("\n");
+            }
+
             let form = document.createElement("form");
             form.style.display = "contents";
             let label = document.createElement("label");
-            label.append(messages.at(-1)!, " ");
+            label.append(this.#makeMessageNode(this.#messages.at(-1)!), " ");
             let input = document.createElement("input");
             input.type = "number";
             input.inputMode = "numeric";
             input.min = "0";
-            input.max = `${maxInput}`;
+            input.max = `${this.#maxInput}`;
             label.appendChild(input);
             form.appendChild(label);
             form.addEventListener("submit", this.#onFormSubmit.bind(this, input));
             this.#messagesContainer.appendChild(form);
         } else {
-            this.#messagesContainer.replaceChildren(messages.join("\n"));
+            for (let [i, message] of this.#messages.entries()) {
+                if (i > 0) this.#messagesContainer.append("\n");
+                this.#messagesContainer.append(this.#makeMessageNode(message));
+            }
         }
     }
 
@@ -799,9 +818,12 @@ class Runner {
                         this.#executeButton.disabled = false;
                         this.#editor.disabled = false;
                         this.#state = State.Editing;
-                        throw e;
+                        console.error(e);
+                        this.#messages.add((e as Error).message, true);
+                        return;
                     }
                     this.#highlightCurrentLine();
+                    this.#messages.clear();
                     this.#executeButton.textContent = "Stop";
                     this.#executeButton.disabled = false;
                     this.#stepButton.disabled = false;
@@ -867,6 +889,7 @@ class Runner {
             this.#runButton.textContent = "Run";
             if (why.reason == "error") {
                 console.error(why.error);
+                this.#messages.add(why.error.message, true);
             } else if (why.reason == "halted") {
 
             }
