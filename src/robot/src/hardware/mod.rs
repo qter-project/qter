@@ -21,17 +21,15 @@ use thread_priority::{
 use crate::{
     ErrorKind, QterRobotError,
     hardware::{
-        config::{Face, Priority, RobotConfig},
-        motor::Motors,
-        uart::{
+        config::{Face, Priority, RobotConfig}, motors::Motors, uart::{
             UartBus, UartId,
             regs::{DrvStatus, GConf, IholdIrun, NodeConf},
-        },
+        }
     },
 };
 
 pub mod config;
-mod motor;
+mod motors;
 pub mod uart;
 
 pub const FULLSTEPS_PER_REVOLUTION: u32 = 200;
