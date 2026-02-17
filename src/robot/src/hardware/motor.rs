@@ -140,7 +140,7 @@ fn lower_commands(
         while let Some((t, command)) = commands.next() {
             let t2 = match commands.peek() {
                 Some((next_t, _)) => t.midpoint(*next_t),
-                None => t + 1.,
+                None => t + 0.001,
             };
 
             match command {
