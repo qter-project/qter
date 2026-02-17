@@ -1,5 +1,5 @@
 import * as TreeSitter from "web-tree-sitter";
-import { CompileError, CubeState, Interpreter, Program, type Register, type RegisterState, type StepResult } from "./visualiser.js"
+import { CompileError, CubeState, Interpreter, Program, type Register } from "./visualiser.js"
 import { CubePairElement, RotationController } from "./cube_view.js";
 import { getRange, SyntaxHighlighter } from "./syntax_highlight.js";
 import { connect } from "./connect.js";
@@ -666,39 +666,34 @@ class RunTask {
     #keepGoing: boolean;
     #promise: Promise<RunTaskResult>;
 
-    constructor(keepGoing: boolean, interpreter: Interpreter, update: (res: StepResult) => Promise<bigint | undefined>) {
+    constructor(keepGoing: boolean, interpreter: Interpreter, update: () => void, input: (res: bigint) => Promise<bigint>) {
         this.#abort = new AbortController();
         this.#keepGoing = keepGoing;
-        this.#promise = this.#main(interpreter, this!.#abort.signal, update);
+        this.#promise = this.#main(interpreter, this!.#abort.signal, update, input);
     }
 
-    async #main(interpreter: Interpreter, signal: AbortSignal, update: (max: StepResult) => Promise<bigint | undefined>): Promise<RunTaskResult> {
+    async #main(interpreter: Interpreter, signal: AbortSignal, update: () => void, input: (max: bigint) => Promise<bigint>): Promise<RunTaskResult> {
+        let abort = new Promise<null>(resolve => signal.addEventListener("abort", () => resolve(null)));
         do {
-            let abort = new Promise<null>(resolve => signal.addEventListener("abort", () => resolve(null)));
-
-            let res;
             try {
-                res = await Promise.race([interpreter.step(), abort]);
+                // drive the interpreter to update `.state`...
+                await Promise.race([interpreter.step(), abort]);
+                if (signal.aborted) return { reason: "aborted" };
+
+                update();
+
+                let state = interpreter.state;
+                if (state.kind == "Halted") return { reason: "halted" };
+                else if (state.kind == "NeedsInput") {
+                    await Promise.race([input(state.max_input).then(v => interpreter.give_input(v)), abort]);
+                    if (signal.aborted) return { reason: "aborted" };
+
+                    update();
+                } else {
+                    // already did the step
+                }
             } catch (e: unknown) {
                 return { reason: "error", error: e as Error };
-            }
-
-            if (res == null) return { reason: "aborted" };
-
-            let input = await Promise.race([update(res), abort]);
-            if (input === null) return { reason: "aborted" };
-
-            if (res.kind == "Halted") return { reason: "halted" };
-            else if (res.kind == "NeedsInput") {
-                let maybe_error_msg = await Promise.race([interpreter.give_input(input!), abort]);
-                if (maybe_error_msg === null) return { reason: "aborted" };
-
-                if (maybe_error_msg != undefined) {
-                    return { reason: "error", error: new Error(maybe_error_msg) };
-                }
-
-                let res2 = await Promise.race([update({ kind: "Running" }), abort]);
-                if (res2 === null) return { reason: "aborted" };
             }
         } while (this.#keepGoing);
 
@@ -845,20 +840,22 @@ class Runner {
     }
 
     #startRunTask(keepGoing: boolean) {
-        this.#runTask = new RunTask(keepGoing, this.#interpreter!, async (res) => {
-            this.#highlightCurrentLine();
-
-            this.#messages.setMessages(this.#interpreter!.messages(), res.kind == "NeedsInput" ? res.max_input : null);
-            if (res.kind == "NeedsInput") {
+        this.#runTask = new RunTask(
+            keepGoing,
+            this.#interpreter!,
+            () => {
+                this.#highlightCurrentLine();
+                this.#messages.messages = this.#interpreter!.messages();
+            },
+            async (maxInput) => {
+                this.#messages.maxInput = maxInput;
                 let input = await new Promise<bigint>(resolve => {
                     this.#messages.addEventListener("input", (val) => resolve(val.detail), { once: true });
                 });
                 this.#messages.maxInput = null;
                 return input;
-            } else {
-                return;
             }
-        });
+        );
         this.#runTask.done.then(why => {
             this.#runTask = null;
             if (why.reason == "aborted") return;

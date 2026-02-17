@@ -18,10 +18,23 @@ use crate::{BigInt, connection::Connection, cube::CubeState, program::Program};
 
 #[derive(Tsify, Serialize)]
 #[serde(tag = "kind")]
-pub enum StepResult {
+pub enum InterpreterState {
     Running,
     NeedsInput { max_input: BigInt },
     Halted,
+}
+
+impl From<&ExecutionState> for InterpreterState {
+    fn from(execution_state: &ExecutionState) -> Self {
+        match execution_state {
+            ExecutionState::Running => Self::Running,
+            ExecutionState::Paused(PausedState::Input { max_input, .. }) => Self::NeedsInput {
+                max_input: BigInt::from(max_input),
+            },
+            ExecutionState::Paused(PausedState::Halt { .. }) => Self::Halted,
+            ExecutionState::Paused(PausedState::Panicked) => Self::Halted,
+        }
+    }
 }
 
 struct CaptureCubeState<T, F>(T, F);
@@ -105,22 +118,25 @@ impl Interpreter {
         Ok(Self { inner: interpreter })
     }
 
-    #[wasm_bindgen(unchecked_return_type = "StepResult")]
-    pub async fn step(&mut self) -> Result<JsValue, JsError> {
+    #[wasm_bindgen(getter, unchecked_return_type = "InterpreterState")]
+    pub fn state(&self) -> JsValue {
+        serde_wasm_bindgen::to_value(&InterpreterState::from(
+            self.inner.state().execution_state(),
+        ))
+        .unwrap()
+    }
+
+    pub async fn step(&mut self) -> Result<(), JsError> {
         self.inner.step().await?;
-        Ok(
-            serde_wasm_bindgen::to_value(&match self.inner.state().execution_state() {
-                ExecutionState::Running => StepResult::Running,
-                ExecutionState::Paused(PausedState::Input { max_input, .. }) => {
-                    StepResult::NeedsInput {
-                        max_input: BigInt::from(max_input),
-                    }
-                }
-                ExecutionState::Paused(PausedState::Halt { .. }) => StepResult::Halted,
-                ExecutionState::Paused(PausedState::Panicked) => StepResult::Halted,
-            })
-            .unwrap(),
-        )
+        Ok(())
+    }
+
+    pub async fn give_input(&mut self, input: i64) -> Result<(), JsError> {
+        self.inner
+            .give_input(input.into())
+            .await?
+            .map_err(|msg| JsError::new(&msg))?;
+        Ok(())
     }
 
     pub fn messages(&mut self) -> Vec<String> {
@@ -129,9 +145,5 @@ impl Interpreter {
 
     pub fn program_counter(&self) -> usize {
         self.inner.state().program_counter()
-    }
-
-    pub async fn give_input(&mut self, input: i64) -> Result<Option<String>, JsError> {
-        Ok(self.inner.give_input(input.into()).await?.err())
     }
 }
