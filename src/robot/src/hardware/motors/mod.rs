@@ -12,6 +12,7 @@ use std::{
 };
 
 mod motor;
+mod accel_profile;
 
 /// Runs `N` blocks with delays concurrently.
 ///
@@ -200,6 +201,12 @@ impl Motors {
 
             f(node);
         }
+    }
+}
+
+impl Drop for Motors {
+    fn drop(&mut self) {
+        self.float_all();
     }
 }
 
