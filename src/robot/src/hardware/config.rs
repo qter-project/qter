@@ -4,6 +4,8 @@ use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
+use crate::hardware::FULLSTEPS_PER_REVOLUTION;
+
 use super::uart::{NodeAddress, UartId};
 
 /// Global robot configuration.
@@ -19,6 +21,23 @@ pub struct RobotConfig {
     pub compensation: u32,
     pub stealthchop: bool,
     pub qvis_app_path: PathBuf,
+    pub corner_cut_help: u32,
+}
+
+impl RobotConfig {
+    /// Return the maximum velocity in steps per second
+    pub fn v_max(&self) -> f64 {
+        let mult = (FULLSTEPS_PER_REVOLUTION * self.microstep_resolution.value()) as f64;
+
+        self.revolutions_per_second * mult
+    }
+
+    /// Return the maximum acceleration in steps per second per second
+    pub fn a_max(&self) -> f64 {
+        let mult = (FULLSTEPS_PER_REVOLUTION * self.microstep_resolution.value()) as f64;
+
+        self.max_acceleration * mult
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,6 +87,27 @@ impl Face {
 
         v
     };
+
+    const ADJ: [(Face, [Face; 4]); 6] = {
+        use Face::*;
+        [
+            (R, [U, D, F, B]),
+            (L, [U, D, F, B]),
+            (U, [F, R, B, L]),
+            (D, [F, R, B, L]),
+            (F, [U, R, D, L]),
+            (B, [U, R, D, L]),
+        ]
+    };
+
+    pub fn is_adjacent(self, to: Face) -> bool {
+        Self::ADJ
+            .iter()
+            .find(|(f, _)| *f == self)
+            .unwrap()
+            .1
+            .contains(&to)
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]

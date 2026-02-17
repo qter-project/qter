@@ -67,18 +67,17 @@ enum MotorMessage {
 
 pub struct RobotHandle {
     motor_thread_handle: mpsc::Sender<MotorMessage>,
-    config: RobotConfig,
+    config: &'static RobotConfig,
 }
 
 impl RobotHandle {
     /// Initialize the robot such that it is ready for use
-    pub fn init(robot_config: RobotConfig, now: fn() -> DateTime<Utc>) -> RobotHandle {
-        uart_init(&robot_config);
+    pub fn init(robot_config: &'static RobotConfig, now: fn() -> DateTime<Utc>) -> RobotHandle {
+        uart_init(robot_config);
 
         let (tx, rx) = mpsc::channel();
 
         {
-            let robot_config = robot_config.clone();
             thread::spawn(move || motor_thread(rx, robot_config, now));
         }
 
@@ -88,8 +87,8 @@ impl RobotHandle {
         }
     }
 
-    pub fn config(&self) -> &RobotConfig {
-        &self.config
+    pub fn config(&self) -> &'static RobotConfig {
+        self.config
     }
 
     pub async fn loop_face_turn(&self, face: Face) -> Result<(), QterRobotError> {
@@ -416,7 +415,7 @@ fn motor_driver_thread_watchdog(
 
 fn motor_thread(
     rx: mpsc::Receiver<MotorMessage>,
-    robot_config: RobotConfig,
+    robot_config: &'static RobotConfig,
     now: fn() -> DateTime<Utc>,
 ) {
     let (watchdox_tx, watchdog_rx) = mpsc::channel();
@@ -427,7 +426,7 @@ fn motor_thread(
 
     set_prio(robot_config.priority);
 
-    let mut motors: Motors = Motors::new(&robot_config);
+    let mut motors: Motors = Motors::new(robot_config);
 
     let mut fsm = CommutativeMoveFsm::new();
 

@@ -83,11 +83,13 @@ async fn main() -> color_eyre::Result<()> {
         .format_timestamp(Some(TimestampPrecision::Millis))
         .init();
 
-    let robot_config = toml::from_str::<RobotConfig>(
-        &std::fs::read_to_string(&cli.robot_config)
-            .expect("Failed to read robot configuration file"),
-    )
-    .expect("Failed to parse robot configuration file");
+    let robot_config = Box::leak(Box::new(
+        toml::from_str::<RobotConfig>(
+            &std::fs::read_to_string(&cli.robot_config)
+                .expect("Failed to read robot configuration file"),
+        )
+        .expect("Failed to parse robot configuration file"),
+    ));
 
     match cli.command {
         Commands::MoveSeq { sequence } => {
@@ -107,7 +109,7 @@ async fn main() -> color_eyre::Result<()> {
             robot_handle.loop_face_turn(face).await?;
         }
         Commands::Float => {
-            robot::hardware::float(&robot_config);
+            robot::hardware::float(robot_config);
         }
         Commands::TestPrio { prio } => {
             const SAMPLES: usize = 2048;

@@ -7,6 +7,7 @@ wait_between_moves = 0.02
 float = true
 stealthchop = false
 await_moves_delay = 200
+corner_cut_help = 1
 
 # org order is UBRDFL
 

@@ -1,11 +1,13 @@
 use crate::hardware::{
     FULLSTEPS_PER_QUARTER, TurnDir, UART0, UART4,
-    config::{Face, Microsteps, RobotConfig},
+    config::{Face, RobotConfig},
     uart::{NodeAddress, UartId, UartNode, regs::IholdIrun},
 };
+use itertools::Itertools;
 use log::debug;
 use rppal::gpio::{Gpio, Level, OutputPin};
 use std::{
+    ops::Index,
     thread,
     time::{Duration, Instant},
 };
@@ -87,12 +89,11 @@ impl Dir {
         }
     }
 
-    /// Whenever possible, choose the directions of double turns such that they are opposite to forward turns
-    fn opposite_often(turn1: TurnDir, turn2: TurnDir) -> (Dir, Dir) {
+    /// Whenever possible, choose the directions of double turns such that they are the same direction as forward turns
+    fn same_often(turn1: TurnDir, turn2: TurnDir) -> (Dir, Dir) {
         match (Self::dir_from_turn(turn1), Self::dir_from_turn(turn2)) {
-            (None, None) => (Dir::CW, Dir::CCW),
-            (None, Some(d)) => (d.opposite(), d),
-            (Some(d), None) => (d, d.opposite()),
+            (None, None) => (Dir::CW, Dir::CW),
+            (None, Some(d)) | (Some(d), None) => (d, d),
             (Some(a), Some(b)) => (a, b),
         }
     }
@@ -175,10 +176,14 @@ enum MotorCommand {
 
 type MotorAction = Vec<(f64, HighLevelMotorCommand)>;
 
+fn time_of(action: &MotorAction) -> f64 {
+    action.last().map(|v| v.0).unwrap_or(0.)
+}
+
 pub struct Motors([Motor; 6]);
 
 impl Motors {
-    pub fn new(robot_config: &RobotConfig) -> Motors {
+    pub fn new(robot_config: &'static RobotConfig) -> Motors {
         Motors(Face::ALL.map(|face| Motor::new(robot_config, face)))
     }
 
@@ -201,13 +206,19 @@ impl Motors {
     pub fn perform_single(&mut self, face: Face, turn: TurnDir) {
         self.hold_all();
 
+        let (action, dir) = match turn {
+            TurnDir::Normal => (self[face].mk_quarter_turn(Dir::CW), Dir::CW),
+            TurnDir::Double => (self[face].mk_half_turn(Dir::CW), Dir::CW),
+            TurnDir::Prime => (self[face].mk_quarter_turn(Dir::CCW), Dir::CCW),
+        };
+
+        let time = time_of(&action);
+
         let actions = self.0.each_mut().map(|motor| {
             if motor.face == face {
-                match turn {
-                    TurnDir::Normal => motor.mk_quarter_turn(Dir::CW),
-                    TurnDir::Double => motor.mk_half_turn(Dir::CW),
-                    TurnDir::Prime => motor.mk_quarter_turn(Dir::CCW),
-                }
+                action.clone()
+            } else if motor.face.is_adjacent(face) {
+                motor.mk_corner_cut_help(dir, time)
             } else {
                 Vec::new()
             }
@@ -225,19 +236,27 @@ impl Motors {
     ) {
         self.hold_all();
 
-        let (dir1, dir2) = Dir::opposite_often(turn1, turn2);
+        let (dir1, dir2) = Dir::same_often(turn1, turn2);
+
+        let turn1 = match turn1 {
+            TurnDir::Double => self[face1].mk_half_turn(dir1),
+            TurnDir::Normal | TurnDir::Prime => self[face1].mk_quarter_turn(dir1),
+        };
+
+        let turn2 = match turn2 {
+            TurnDir::Double => self[face2].mk_half_turn(dir2),
+            TurnDir::Normal | TurnDir::Prime => self[face2].mk_quarter_turn(dir2),
+        };
+
+        let time = time_of(&turn1).max(time_of(&turn2));
 
         let actions = self.0.each_mut().map(|motor| {
             if motor.face == face1 {
-                match turn1 {
-                    TurnDir::Double => motor.mk_half_turn(dir1),
-                    TurnDir::Normal | TurnDir::Prime => motor.mk_quarter_turn(dir1),
-                }
+                turn1.clone()
             } else if motor.face == face2 {
-                match turn2 {
-                    TurnDir::Double => motor.mk_half_turn(dir2),
-                    TurnDir::Normal | TurnDir::Prime => motor.mk_quarter_turn(dir2),
-                }
+                turn2.clone()
+            } else if dir1 == dir2 {
+                motor.mk_corner_cut_help(dir1, time)
             } else {
                 Vec::new()
             }
@@ -270,23 +289,29 @@ impl Motors {
     }
 }
 
+impl Index<Face> for Motors {
+    type Output = Motor;
+
+    fn index(&self, index: Face) -> &Self::Output {
+        let (i, _) = Face::ALL.iter().find_position(|v| **v == index).unwrap();
+
+        &self.0[i]
+    }
+}
+
 pub struct Motor {
     step: OutputPin,
     dir: OutputPin,
-    microsteps: Microsteps,
-    v_max: f64,
-    a_max: f64,
     overtemp_prewarning: bool,
     holding: bool,
     uart_bus: UartId,
     uart_address: NodeAddress,
     face: Face,
+    config: &'static RobotConfig,
 }
 
 impl Motor {
-    pub const FULLSTEPS_PER_REVOLUTION: u32 = 200;
-
-    pub fn new(config: &RobotConfig, face: Face) -> Self {
+    pub fn new(config: &'static RobotConfig, face: Face) -> Self {
         fn mk_output_pin(gpio: u8) -> OutputPin {
             debug!(target: "gpio", "attempting to configure GPIO pin {gpio}");
             let mut pin = Gpio::new().unwrap().get(gpio).unwrap().into_output_low();
@@ -295,20 +320,16 @@ impl Motor {
             pin
         }
 
-        let microsteps = config.microstep_resolution;
-        let mult = (Self::FULLSTEPS_PER_REVOLUTION * microsteps.value()) as f64;
         let motor_config = &config.motors[face];
         Self {
             step: mk_output_pin(motor_config.step_pin),
             dir: mk_output_pin(motor_config.dir_pin),
-            microsteps,
-            v_max: config.revolutions_per_second * mult,
-            a_max: config.max_acceleration * mult,
             uart_bus: motor_config.uart_bus,
             uart_address: motor_config.uart_address,
             holding: false,
             overtemp_prewarning: false,
             face,
+            config,
         }
     }
 
@@ -399,15 +420,37 @@ impl Motor {
         }
     }
 
+    fn mk_corner_cut_help(&self, dir: Dir, time: f64) -> MotorAction {
+        let v_max = self.config.v_max();
+        let help_amt = self.config.corner_cut_help;
+
+        let mut out = Vec::new();
+
+        for i in 0..help_amt {
+            out.push((i as f64 * v_max, dir.as_step()));
+        }
+
+        for i in (0..help_amt).rev() {
+            out.push((i as f64 * -v_max + time, dir.opposite().as_step()));
+        }
+
+        out
+    }
+
     fn mk_quarter_turn(&self, dir: Dir) -> MotorAction {
         let mut out = Vec::new();
 
         let step = dir.as_step();
         let scale = if self.overtemp_prewarning { 0.5 } else { 1. };
-        let steps = FULLSTEPS_PER_QUARTER * self.microsteps.value();
+        let steps = FULLSTEPS_PER_QUARTER * self.config.microstep_resolution.value();
 
         for i in 0..steps {
-            let t = trapezoid_profile_inv(i, steps, self.v_max * scale, self.a_max * scale);
+            let t = trapezoid_profile_inv(
+                i,
+                steps,
+                self.config.v_max() * scale,
+                self.config.a_max() * scale,
+            );
             out.push((t, step));
         }
 
@@ -419,10 +462,15 @@ impl Motor {
 
         let step = dir.as_step();
         let scale = if self.overtemp_prewarning { 0.5 } else { 1. };
-        let steps = FULLSTEPS_PER_QUARTER * 2 * self.microsteps.value();
+        let steps = FULLSTEPS_PER_QUARTER * 2 * self.config.microstep_resolution.value();
 
         for i in 0..steps {
-            let t = trapezoid_profile_inv(i, steps, self.v_max * scale, self.a_max * scale);
+            let t = trapezoid_profile_inv(
+                i,
+                steps,
+                self.config.v_max() * scale,
+                self.config.a_max() * scale,
+            );
             out.push((t, step));
         }
 
