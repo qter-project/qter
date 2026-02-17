@@ -9,7 +9,7 @@ use puzzle_theory::{
     puzzle_geometry::PuzzleGeometry,
 };
 use qter_core::architectures::Architecture;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tsify::Tsify;
 use wasm_bindgen::prelude::*;
 use web_sys::js_sys::Function;
@@ -36,6 +36,17 @@ impl From<&ExecutionState> for InterpreterState {
             ExecutionState::Paused(PausedState::Panicked) => Self::Halted,
         }
     }
+}
+
+#[derive(Tsify, Deserialize)]
+#[tsify(from_wasm_abi)]
+pub struct Callbacks {
+    #[serde(with = "serde_wasm_bindgen::preserve")]
+    #[tsify(type = "(cube: CubeState) => void")]
+    cube_state: Function,
+    #[serde(with = "serde_wasm_bindgen::preserve")]
+    #[tsify(type = "(newMsg: string) => void")]
+    message: Function,
 }
 
 struct CaptureCubeState<T, F>(T, F);
@@ -80,6 +91,7 @@ type Robot = RemoteRobot<Connection>;
 #[wasm_bindgen]
 pub struct Interpreter {
     inner: interpreter::Interpreter<RobotState<CaptureCubeState<Robot, CubeStateCb>>>,
+    message_cb: Function,
 }
 
 #[define_opaque(CubeStateCb)]
@@ -105,18 +117,28 @@ impl Interpreter {
     pub async fn init(
         program: &Program,
         connection: Connection,
-        #[wasm_bindgen(unchecked_param_type = "(cube: CubeState) => void")] cube_state_cb: Function,
+        callbacks: Callbacks,
     ) -> Result<Self, JsError> {
         let interpreter = interpreter::Interpreter::new_only_one_puzzle(
             program.inner.clone(),
             (
                 connection,
                 // (),
-                mk_cube_state_cb(cube_state_cb, program.puzzle.clone(), program.arch.clone()),
+                mk_cube_state_cb(
+                    callbacks.cube_state,
+                    program.puzzle.clone(),
+                    program.arch.clone(),
+                ),
             ),
         )
         .await?;
-        Ok(Self { inner: interpreter })
+
+        let mut this = Self {
+            inner: interpreter,
+            message_cb: callbacks.message,
+        };
+        this.send_queued_messages();
+        Ok(this)
     }
 
     #[wasm_bindgen(getter)]
@@ -124,8 +146,18 @@ impl Interpreter {
         InterpreterState::from(self.inner.state().execution_state())
     }
 
+    fn send_queued_messages(&mut self) {
+        for msg in self.inner.state_mut().messages().drain(..) {
+            let res = self.message_cb.call1(&JsValue::null(), &msg.into());
+            if let Err(e) = res {
+                web_sys::console::error_1(&e);
+            }
+        }
+    }
+
     pub async fn step(&mut self) -> Result<(), JsError> {
         self.inner.step().await?;
+        self.send_queued_messages();
         Ok(())
     }
 
@@ -134,13 +166,11 @@ impl Interpreter {
             .give_input(input.into())
             .await?
             .map_err(|msg| JsError::new(&msg))?;
+        self.send_queued_messages();
         Ok(())
     }
 
-    pub fn messages(&mut self) -> Vec<String> {
-        self.inner.state_mut().messages().iter().cloned().collect()
-    }
-
+    #[wasm_bindgen(getter)]
     pub fn program_counter(&self) -> usize {
         self.inner.state().program_counter()
     }

@@ -610,8 +610,10 @@ class Messages extends EventTarget {
         this.setMessages([]);
     }
 
-    set messages(value: string[]) {
-        this.setMessages(value, this.#maxInput);
+    add(message: string) {
+        this.#messages.push(message);
+        // TODO: something not O(n) maybe
+        this.setMessages(this.#messages, this.#maxInput);
     }
 
     set maxInput(value: bigint | null) {
@@ -787,7 +789,10 @@ class Runner {
                         this.#interpreter = await Interpreter.init(
                             this.#program,
                             conn,
-                            (cube) => { this.#infoview.state = cube; },
+                            {
+                                cube_state: (cube) => { this.#infoview.state = cube; },
+                                message: (newMsg) => { this.#messages.add(newMsg); }
+                            },
                         );
                     } catch (e) {
                         this.#executeButton.textContent = "Start";
@@ -834,7 +839,7 @@ class Runner {
     #highlightCurrentLine() {
         this.#lineHighlight.clear();
         if (this.#interpreter != null) {
-            let { start, end } = this.#program!.instr_span(this.#interpreter.program_counter());
+            let { start, end } = this.#program!.instr_span(this.#interpreter.program_counter);
             this.#lineHighlight.add(this.#editor.getOutputRange(start, end));
         }
     }
@@ -845,7 +850,6 @@ class Runner {
             this.#interpreter!,
             () => {
                 this.#highlightCurrentLine();
-                this.#messages.messages = this.#interpreter!.messages();
             },
             async (maxInput) => {
                 this.#messages.maxInput = maxInput;
