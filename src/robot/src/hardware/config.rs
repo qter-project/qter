@@ -88,25 +88,23 @@ impl Face {
         v
     };
 
-    const ADJ: [(Face, [Face; 4]); 6] = {
-        use Face::*;
-        [
-            (R, [U, D, F, B]),
-            (L, [U, D, F, B]),
-            (U, [F, R, B, L]),
-            (D, [F, R, B, L]),
-            (F, [U, R, D, L]),
-            (B, [U, R, D, L]),
-        ]
-    };
+    pub fn opposite(self) -> Face {
+        match self {
+            Face::R => Face::L,
+            Face::L => Face::R,
+            Face::U => Face::D,
+            Face::D => Face::U,
+            Face::F => Face::B,
+            Face::B => Face::F,
+        }
+    }
+
+    pub fn is_opposite(self, rhs: Face) -> bool {
+        self == rhs.opposite()
+    }
 
     pub fn is_adjacent(self, to: Face) -> bool {
-        Self::ADJ
-            .iter()
-            .find(|(f, _)| *f == self)
-            .unwrap()
-            .1
-            .contains(&to)
+        self != to && self != to.opposite()
     }
 }
 

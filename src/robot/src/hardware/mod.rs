@@ -168,20 +168,6 @@ pub struct Ticker {
     now: Instant,
 }
 
-impl Face {
-    fn is_opposite(self, rhs: Face) -> bool {
-        matches!(
-            (self, rhs),
-            (Face::R, Face::L)
-                | (Face::L, Face::R)
-                | (Face::U, Face::D)
-                | (Face::D, Face::U)
-                | (Face::F, Face::B)
-                | (Face::B, Face::F)
-        )
-    }
-}
-
 impl RobotConfig {
     fn compensation(&self, dir: TurnDir) -> i32 {
         let sign = dir.qturns().signum();
