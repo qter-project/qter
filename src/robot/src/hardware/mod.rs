@@ -4,7 +4,6 @@ use log::{debug, error, info, warn};
 use puzzle_theory::permutations::Algorithm;
 use std::{
     fmt::Display,
-    iter::from_fn,
     ops::Add,
     sync::{
         LazyLock, Mutex,
@@ -23,7 +22,7 @@ use crate::{
     ErrorKind, QterRobotError,
     hardware::{
         config::{Face, Priority, RobotConfig},
-        motor::Motor,
+        motor::Motors,
         uart::{
             UartBus, UartId,
             regs::{DrvStatus, GConf, IholdIrun, NodeConf},
@@ -59,7 +58,7 @@ enum MotorMessage {
     QueueMove(
         (
             Face,
-            Dir,
+            TurnDir,
             tokio::sync::oneshot::Sender<Result<(), QterRobotError>>,
         ),
     ),
@@ -97,7 +96,7 @@ impl RobotHandle {
         loop {
             let (tx, rx) = tokio::sync::oneshot::channel();
             self.motor_thread_handle
-                .send(MotorMessage::QueueMove((face, Dir::Normal, tx)))
+                .send(MotorMessage::QueueMove((face, TurnDir::Normal, tx)))
                 .map_err(mpsc_err)?;
             rx.await.map_err(oneshot_err)??;
             self.await_moves()?.await?;
@@ -112,12 +111,12 @@ impl RobotHandle {
             let mut move_ = &**move_;
             let dir = if let Some(rest) = move_.strip_suffix('\'') {
                 move_ = rest;
-                Dir::Prime
+                TurnDir::Prime
             } else if let Some(rest) = move_.strip_suffix('2') {
                 move_ = rest;
-                Dir::Double
+                TurnDir::Double
             } else {
-                Dir::Normal
+                TurnDir::Normal
             };
 
             let face: Face = move_.parse().expect("invalid move: {move_}");
@@ -185,7 +184,7 @@ impl Face {
 }
 
 impl RobotConfig {
-    fn compensation(&self, dir: Dir) -> i32 {
+    fn compensation(&self, dir: TurnDir) -> i32 {
         let sign = dir.qturns().signum();
         self.compensation.cast_signed() * sign
     }
@@ -215,13 +214,13 @@ struct CommutativeMoveFsm {
     // stores the entire preceding commutative subsequence, which can always be
     // collapsed to up to two moves.
     // invariant: if only one of them is `Some`, it must be `state[0]`, not `state[1]`.
-    state: [Option<(Face, Dir)>; 2],
+    state: [Option<(Face, TurnDir)>; 2],
 }
 
 #[derive(Debug, Clone, Copy)]
 enum MoveInstruction {
-    Single((Face, Dir)),
-    Double([(Face, Dir); 2]),
+    Single((Face, TurnDir)),
+    Double([(Face, TurnDir); 2]),
     Float,
 }
 
@@ -256,9 +255,9 @@ impl CommutativeMoveFsm {
     /// Feed a new move into the FSM. Returns some moves to execute; executing
     /// the moves produced by this method will ultimately perform the same
     /// permutation as executing the moves fed into the FSM.
-    fn next(&mut self, move_: (Face, Dir)) -> Option<MoveInstruction> {
+    fn next(&mut self, move_: (Face, TurnDir)) -> Option<MoveInstruction> {
         // attempts to add this move to the slot in-place, if they are on the *same* face.
-        fn try_add(slot: &mut Option<(Face, Dir)>, move_: (Face, Dir)) -> bool {
+        fn try_add(slot: &mut Option<(Face, TurnDir)>, move_: (Face, TurnDir)) -> bool {
             let Some((face, dir)) = slot else {
                 return false;
             };
@@ -428,7 +427,7 @@ fn motor_thread(
 
     set_prio(robot_config.priority);
 
-    let mut motors: [Motor; 6] = Face::ALL.map(|face| Motor::new(&robot_config, face));
+    let mut motors: Motors = Motors::new(&robot_config);
 
     let mut fsm = CommutativeMoveFsm::new();
 
@@ -507,8 +506,6 @@ fn motor_thread(
         }
     };
 
-    let mut floating = true;
-
     let mut prev_motor_driver_temperatures = Face::ALL.map(|_| MotorDriverTemperature::Normal);
     for moves in iter {
         info!(
@@ -524,7 +521,7 @@ fn motor_thread(
             .unwrap()
             .iter()
             .zip(prev_motor_driver_temperatures.iter_mut())
-            .zip(motors.iter_mut())
+            .zip(motors.motors().iter_mut())
         {
             match (motor_driver_temperature, *prev_motor_driver_temperature) {
                 (MotorDriverTemperature::PreWarning, MotorDriverTemperature::Normal) => {
@@ -548,52 +545,21 @@ fn motor_thread(
 
         match moves {
             MoveInstruction::Single((face, dir)) => {
-                if floating {
-                    info!("Holding all of the motors");
-                    for motor in &mut motors {
-                        motor.hold();
-                    }
-
-                    floating = false;
+                if robot_config.compensation(dir) != 0 {
+                    todo!()
                 }
 
-                let motor = &mut motors[face as usize];
-
-                let steps = dir.qturns() * FULLSTEPS_PER_QUARTER.cast_signed();
-
-                let comp = robot_config.compensation(dir);
-
-                motor.turn(steps + comp);
-                motor.turn(-comp);
+                motors.perform_single(face, dir);
             }
             MoveInstruction::Double([(face1, dir1), (face2, dir2)]) => {
-                if floating {
-                    info!("Holding all of the motors");
-                    for motor in &mut motors {
-                        motor.hold();
-                    }
-
-                    floating = false;
+                if robot_config.compensation(dir1) != 0 || robot_config.compensation(dir1) != 0 {
+                    todo!()
                 }
 
-                let [motor1, motor2] = motors
-                    .get_disjoint_mut([face1 as usize, face2 as usize])
-                    .unwrap();
-
-                let steps1 = dir1.qturns() * FULLSTEPS_PER_QUARTER.cast_signed();
-                let steps2 = dir2.qturns() * FULLSTEPS_PER_QUARTER.cast_signed();
-
-                let comp1 = robot_config.compensation(dir1);
-                let comp2 = robot_config.compensation(dir2);
-
-                Motor::turn_many([motor1, motor2], [steps1 + comp1, steps2 + comp2]);
-                Motor::turn_many([motor1, motor2], [-comp1, -comp2]);
+                motors.perform_commutative(face1, dir1, face2, dir2);
             }
             MoveInstruction::Float => {
-                floating = true;
-                for motor in &mut motors {
-                    motor.float();
-                }
+                motors.float_all();
             }
         }
 
@@ -779,46 +745,46 @@ pub fn estop() -> ! {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum Dir {
+enum TurnDir {
     Normal,
     Double,
     Prime,
 }
 
-impl Dir {
+impl TurnDir {
     fn qturns(self) -> i32 {
         match self {
-            Dir::Normal => 1,
-            Dir::Double => 2,
-            Dir::Prime => -1,
+            TurnDir::Normal => 1,
+            TurnDir::Double => 2,
+            TurnDir::Prime => -1,
         }
     }
 }
 
-impl Add<Dir> for Dir {
-    type Output = Option<Dir>;
+impl Add<TurnDir> for TurnDir {
+    type Output = Option<TurnDir>;
 
-    fn add(self, rhs: Dir) -> Self::Output {
+    fn add(self, rhs: TurnDir) -> Self::Output {
         match (self, rhs) {
-            (Dir::Normal, Dir::Prime) => None,
-            (Dir::Prime, Dir::Normal) => None,
-            (Dir::Double, Dir::Double) => None,
-            (Dir::Double, Dir::Prime) => Some(Dir::Normal),
-            (Dir::Prime, Dir::Double) => Some(Dir::Normal),
-            (Dir::Normal, Dir::Normal) => Some(Dir::Double),
-            (Dir::Prime, Dir::Prime) => Some(Dir::Double),
-            (Dir::Normal, Dir::Double) => Some(Dir::Prime),
-            (Dir::Double, Dir::Normal) => Some(Dir::Prime),
+            (TurnDir::Normal, TurnDir::Prime) => None,
+            (TurnDir::Prime, TurnDir::Normal) => None,
+            (TurnDir::Double, TurnDir::Double) => None,
+            (TurnDir::Double, TurnDir::Prime) => Some(TurnDir::Normal),
+            (TurnDir::Prime, TurnDir::Double) => Some(TurnDir::Normal),
+            (TurnDir::Normal, TurnDir::Normal) => Some(TurnDir::Double),
+            (TurnDir::Prime, TurnDir::Prime) => Some(TurnDir::Double),
+            (TurnDir::Normal, TurnDir::Double) => Some(TurnDir::Prime),
+            (TurnDir::Double, TurnDir::Normal) => Some(TurnDir::Prime),
         }
     }
 }
 
-impl Display for Dir {
+impl Display for TurnDir {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Dir::Normal => f.write_str("Normal"),
-            Dir::Double => f.write_str("Double"),
-            Dir::Prime => f.write_str("Prime"),
+            TurnDir::Normal => f.write_str("Normal"),
+            TurnDir::Double => f.write_str("Double"),
+            TurnDir::Prime => f.write_str("Prime"),
         }
     }
 }

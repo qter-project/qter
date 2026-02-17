@@ -97,6 +97,7 @@ impl Interpreter {
             program.inner.clone(),
             (
                 connection,
+                // (),
                 mk_cube_state_cb(cube_state_cb, program.puzzle.clone(), program.arch.clone()),
             ),
         )

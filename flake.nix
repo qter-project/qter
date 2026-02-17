@@ -33,7 +33,10 @@
             "rust-src"
             "rust-analyzer"
           ];
-          targets = [ "aarch64-unknown-linux-gnu" ];
+          targets = [
+            "aarch64-unknown-linux-gnu"
+            "wasm32-unknown-unknown"
+          ];
         };
 
         libraries = with pkgs; [
@@ -58,7 +61,7 @@
       in
       rec {
         toolchain = ./rust-toolchain.toml;
-        
+
         devShell = pkgs.mkShell rec {
           buildInputs =
             libraries
@@ -71,6 +74,10 @@
               packages.rob-twophase
               packages.shiroa
               vcube.defaultPackage."${system}"
+              caddy
+              nodejs
+              typescript
+              wasm-pack
 
               (gap.overrideAttrs (o: {
                 version = "4.13.1";
@@ -92,8 +99,10 @@
           RUST_BACKTRACE = 1;
           RUSTC_WRAPPER = "sccache";
           SCCACHE_SERVER_PORT = "54226";
-          RUSTFLAGS = "-C target-cpu=native";
-          FONTCONFIG_FILE="${fontsConf}";
+          # RUSTFLAGS = "-C target-cpu=native";
+          FONTCONFIG_FILE = "${fontsConf}";
+
+          # CFLAGS_wasm32_unknown_unknown = "-mno-reference-types";
 
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath buildInputs;
 

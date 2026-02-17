@@ -1,5 +1,5 @@
 use crate::hardware::{
-    UART0, UART4,
+    FULLSTEPS_PER_QUARTER, TurnDir, UART0, UART4,
     config::{Face, Microsteps, RobotConfig},
     uart::{NodeAddress, UartId, UartNode, regs::IholdIrun},
 };
@@ -72,14 +72,54 @@ fn trapezoid_profile_inv(step: u32, total_steps: u32, v_max: f64, a_max: f64) ->
     }
 }
 
-/*
 #[derive(Clone, Copy, Debug)]
-pub enum MotorCommand {
+pub enum Dir {
+    CW,
+    CCW,
+}
+
+impl Dir {
+    fn as_step(self) -> MotorCommand {
+        match self {
+            Dir::CW => MotorCommand::StepCW,
+            Dir::CCW => MotorCommand::StepCCW,
+        }
+    }
+
+    /// Whenever possible, choose the directions of double turns such that they are opposite to forward turns
+    fn opposite_often(turn1: TurnDir, turn2: TurnDir) -> (Dir, Dir) {
+        match (Self::dir_from_turn(turn1), Self::dir_from_turn(turn2)) {
+            (None, None) => (Dir::CW, Dir::CCW),
+            (None, Some(d)) => (d.opposite(), d),
+            (Some(d), None) => (d, d.opposite()),
+            (Some(a), Some(b)) => (a, b),
+        }
+    }
+
+    /// Get the direction of a turn. Returns `None` if the turn is a double turn.
+    fn dir_from_turn(turn: TurnDir) -> Option<Dir> {
+        match turn {
+            TurnDir::Normal => Some(Dir::CW),
+            TurnDir::Double => None,
+            TurnDir::Prime => Some(Dir::CCW),
+        }
+    }
+
+    fn opposite(self) -> Dir {
+        match self {
+            Dir::CW => Dir::CCW,
+            Dir::CCW => Dir::CW,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum MotorCommand {
     StepCW,
     StepCCW,
 }
 
-fn reduce_commands(
+fn lower_commands(
     commands: impl Iterator<Item = (f64, MotorCommand)>,
 ) -> impl Iterator<Item = (f64, LowLevelMotorCommand)> {
     let mut is_cw: Option<bool> = None;
@@ -94,32 +134,35 @@ fn reduce_commands(
         }
     };
 
-    commands
-        .map(Some)
-        .chain(None)
-        .tuple_windows()
-        .flat_map(move |(a, b)| {
-            let (t, a) = a.unwrap();
+    let mut commands = commands.peekable();
 
-            let t2 = match b {
-                Some((next_t, _)) => t.midpoint(next_t),
+    gen move {
+        while let Some((t, command)) = commands.next() {
+            let t2 = match commands.peek() {
+                Some((next_t, _)) => t.midpoint(*next_t),
                 None => t + 1.,
             };
 
-            match a {
-                MotorCommand::StepCW => [
-                    change_dir(true).then_some((t, LowLevelMotorCommand::MakeCW)),
-                    Some((t, LowLevelMotorCommand::StepEnable)),
-                    Some((t2, LowLevelMotorCommand::StepDisable)),
-                ],
-                MotorCommand::StepCCW => [
-                    change_dir(true).then_some((t, LowLevelMotorCommand::MakeCCW)),
-                    Some((t, LowLevelMotorCommand::StepEnable)),
-                    Some((t2, LowLevelMotorCommand::StepDisable)),
-                ],
+            match command {
+                MotorCommand::StepCW => {
+                    if change_dir(true) {
+                        yield (t, LowLevelMotorCommand::MakeCW)
+                    }
+
+                    yield (t, LowLevelMotorCommand::StepEnable);
+                    yield (t2, LowLevelMotorCommand::StepDisable);
+                }
+                MotorCommand::StepCCW => {
+                    if change_dir(false) {
+                        yield (t, LowLevelMotorCommand::MakeCCW)
+                    }
+
+                    yield (t, LowLevelMotorCommand::StepEnable);
+                    yield (t2, LowLevelMotorCommand::StepDisable);
+                }
             }
-        })
-        .flatten()
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -129,7 +172,103 @@ enum LowLevelMotorCommand {
     StepEnable,
     StepDisable,
 }
-*/
+
+pub struct MotorAction(Vec<(f64, MotorCommand)>);
+
+pub struct Motors([Motor; 6]);
+
+impl Motors {
+    pub fn new(robot_config: &RobotConfig) -> Motors {
+        Motors(Face::ALL.map(|face| Motor::new(robot_config, face)))
+    }
+
+    pub fn motors(&mut self) -> &mut [Motor; 6] {
+        &mut self.0
+    }
+
+    pub fn hold_all(&mut self) {
+        for motor in &mut self.0 {
+            motor.hold();
+        }
+    }
+
+    pub fn float_all(&mut self) {
+        for motor in &mut self.0 {
+            motor.float();
+        }
+    }
+
+    pub fn perform_single(&mut self, face: Face, turn: TurnDir) {
+        self.hold_all();
+
+        let actions = self.0.each_mut().map(|motor| {
+            if motor.face == face {
+                match turn {
+                    TurnDir::Normal => motor.mk_quarter_turn(Dir::CW),
+                    TurnDir::Double => motor.mk_half_turn(Dir::CW),
+                    TurnDir::Prime => motor.mk_quarter_turn(Dir::CCW),
+                }
+            } else {
+                Vec::new()
+            }
+        });
+
+        self.turn_many(actions);
+    }
+
+    pub fn perform_commutative(
+        &mut self,
+        face1: Face,
+        turn1: TurnDir,
+        face2: Face,
+        turn2: TurnDir,
+    ) {
+        self.hold_all();
+
+        let (dir1, dir2) = Dir::opposite_often(turn1, turn2);
+
+        let actions = self.0.each_mut().map(|motor| {
+            if motor.face == face1 {
+                match turn1 {
+                    TurnDir::Double => motor.mk_half_turn(dir1),
+                    TurnDir::Normal | TurnDir::Prime => motor.mk_quarter_turn(dir1),
+                }
+            } else if motor.face == face2 {
+                match turn2 {
+                    TurnDir::Double => motor.mk_half_turn(dir2),
+                    TurnDir::Normal | TurnDir::Prime => motor.mk_quarter_turn(dir2),
+                }
+            } else {
+                Vec::new()
+            }
+        });
+
+        self.turn_many(actions);
+    }
+
+    fn turn_many(&mut self, steps: [Vec<(f64, MotorCommand)>; 6]) {
+        fn array_zip<T, U, const N: usize>(a: [T; N], b: [U; N]) -> [(T, U); N] {
+            let mut iter_a = IntoIterator::into_iter(a);
+            let mut iter_b = IntoIterator::into_iter(b);
+            std::array::from_fn(|_| (iter_a.next().unwrap(), iter_b.next().unwrap()))
+        }
+
+        let state = array_zip(self.0.each_mut(), steps);
+
+        run_many(state.map(|(motor, commands)| gen move {
+            let mut prev_time = 0.;
+
+            let commands = lower_commands(commands.into_iter());
+
+            for (time, command) in commands {
+                yield Duration::from_secs_f64(time - prev_time);
+                prev_time = time;
+
+                motor.perform(command);
+            }
+        }))
+    }
+}
 
 pub struct Motor {
     step: OutputPin,
@@ -141,6 +280,7 @@ pub struct Motor {
     holding: bool,
     uart_bus: UartId,
     uart_address: NodeAddress,
+    face: Face,
 }
 
 impl Motor {
@@ -168,6 +308,7 @@ impl Motor {
             uart_address: motor_config.uart_address,
             holding: false,
             overtemp_prewarning: false,
+            face,
         }
     }
 
@@ -241,8 +382,7 @@ impl Motor {
         f(uart)
     }
 
-    /*
-    fn execute(&mut self, cmd: LowLevelMotorCommand) {
+    fn perform(&mut self, cmd: LowLevelMotorCommand) {
         match cmd {
             LowLevelMotorCommand::MakeCW => {
                 self.dir.write(Level::Low);
@@ -258,39 +398,34 @@ impl Motor {
             }
         }
     }
-    */
 
-    pub fn turn(&mut self, steps: i32) {
-        Self::turn_many([self], [steps]);
-    }
+    fn mk_quarter_turn(&self, dir: Dir) -> Vec<(f64, MotorCommand)> {
+        let mut out = Vec::new();
 
-    pub fn turn_many<const N: usize>(selves: [&mut Motor; N], steps: [i32; N]) {
-        fn array_zip<T, U, const N: usize>(a: [T; N], b: [U; N]) -> [(T, U); N] {
-            let mut iter_a = IntoIterator::into_iter(a);
-            let mut iter_b = IntoIterator::into_iter(b);
-            std::array::from_fn(|_| (iter_a.next().unwrap(), iter_b.next().unwrap()))
+        let step = dir.as_step();
+        let scale = if self.overtemp_prewarning { 0.5 } else { 1. };
+        let steps = FULLSTEPS_PER_QUARTER * self.microsteps.value();
+
+        for i in 0..steps {
+            let t = trapezoid_profile_inv(i, steps, self.v_max * scale, self.a_max * scale);
+            out.push((t, step));
         }
 
-        let state = array_zip(selves, steps);
+        out
+    }
 
-        run_many(state.map(|(this, steps): (&mut Motor, i32)| gen move {
-            this.dir
-                .write(if steps < 0 { Level::Low } else { Level::High });
-            let steps = steps.unsigned_abs() * this.microsteps.value();
+    fn mk_half_turn(&self, dir: Dir) -> Vec<(f64, MotorCommand)> {
+        let mut out = Vec::new();
 
-            let scale = if this.overtemp_prewarning { 0.5 } else { 1. };
+        let step = dir.as_step();
+        let scale = if self.overtemp_prewarning { 0.5 } else { 1. };
+        let steps = FULLSTEPS_PER_QUARTER * 2 * self.microsteps.value();
 
-            for i in 0..steps {
-                let t1 = trapezoid_profile_inv(i, steps, this.v_max * scale, this.a_max * scale);
-                let t2 =
-                    trapezoid_profile_inv(i + 1, steps, this.v_max * scale, this.a_max * scale);
-                let delay = Duration::from_secs_f64(t2 - t1) / 2;
+        for i in 0..steps {
+            let t = trapezoid_profile_inv(i, steps, self.v_max * scale, self.a_max * scale);
+            out.push((t, step));
+        }
 
-                this.step.set_high();
-                yield delay;
-                this.step.set_low();
-                yield delay;
-            }
-        }));
+        out
     }
 }
