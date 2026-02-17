@@ -1,5 +1,5 @@
 import * as TreeSitter from "web-tree-sitter";
-import { CompileError, CubeState, Interpreter, Program, type Register, type RegisterState } from "./visualiser.js"
+import { CompileError, CubeState, Interpreter, Program, type Register, type RegisterState, type StepResult } from "./visualiser.js"
 import { CubePairElement, RotationController } from "./cube_view.js";
 import { getRange, SyntaxHighlighter } from "./syntax_highlight.js";
 import { connect } from "./connect.js";
@@ -600,7 +600,7 @@ class Messages extends EventTarget {
     }
 
     declare addEventListener: EventTarget["addEventListener"]
-        & ((type: "input", callback: (ev: CustomEvent<bigint>) => void) => void);
+        & ((type: "input", callback: (ev: CustomEvent<bigint>) => void, options?: AddEventListenerOptions) => void);
 
     #dispatchInputEvent(val: bigint) {
         this.dispatchEvent(new CustomEvent<bigint>("input", { detail: val }));
@@ -652,12 +652,76 @@ class Messages extends EventTarget {
     }
 }
 
+type RunTaskResult =
+    { reason: "none" }
+    | { reason: "halted" }
+    | { reason: "aborted" }
+    | {
+        reason: "error",
+        error: Error,
+    };
+
+class RunTask {
+    #abort: AbortController;
+    #keepGoing: boolean;
+    #promise: Promise<RunTaskResult>;
+
+    constructor(keepGoing: boolean, interpreter: Interpreter, update: (res: StepResult) => Promise<bigint | undefined>) {
+        this.#abort = new AbortController();
+        this.#keepGoing = keepGoing;
+        this.#promise = this.#main(interpreter, this!.#abort.signal, update);
+    }
+
+    async #main(interpreter: Interpreter, signal: AbortSignal, update: (max: StepResult) => Promise<bigint | undefined>): Promise<RunTaskResult> {
+        do {
+            let abort = new Promise<null>(resolve => signal.addEventListener("abort", () => resolve(null)));
+
+            let res;
+            try {
+                res = await Promise.race([interpreter.step(), abort]);
+            } catch (e: unknown) {
+                return { reason: "error", error: e as Error };
+            }
+
+            if (res == null) return { reason: "aborted" };
+
+            let input = await Promise.race([update(res), abort]);
+            if (input === null) return { reason: "aborted" };
+
+            if (res.kind == "Halted") return { reason: "halted" };
+            else if (res.kind == "NeedsInput") {
+                let maybe_error_msg = await Promise.race([interpreter.give_input(input!), abort]);
+                if (maybe_error_msg === null) return { reason: "aborted" };
+
+                if (maybe_error_msg != undefined) {
+                    return { reason: "error", error: new Error(maybe_error_msg) };
+                }
+
+                let res2 = await Promise.race([update({ kind: "Running" }), abort]);
+                if (res2 === null) return { reason: "aborted" };
+            }
+        } while (this.#keepGoing);
+
+        return { reason: "none" };
+    }
+
+    get keepGoing(): boolean { return this.#keepGoing }
+    set keepGoing(value: boolean) { this.#keepGoing = value; }
+
+    get done(): Promise<RunTaskResult> {
+        return this.#promise;
+    }
+
+    async abort() {
+        this.#abort.abort();
+        await this.#promise;
+    }
+}
+
 enum State {
     Editing,
     Solving,
-    Ready,
-    InStep,
-    Running,
+    Executing,
     Stopping,
 }
 
@@ -672,7 +736,7 @@ class Runner {
     #program: Program | null = null;
     #state: State;
     #interpreter: Interpreter | null = null;
-    #runTask: Promise<void> | null = null;
+    #runTask: RunTask | null = null;
 
     constructor(
         editor: EditorWithCompilation,
@@ -690,7 +754,6 @@ class Runner {
         this.#runButton = runButton;
 
         this.#editor.addEventListener("change", this.#onEditorChange.bind(this));
-        this.#messages.addEventListener("input", this.#onMessagesInput.bind(this));
         this.#executeButton.addEventListener("click", this.#onExecuteButton.bind(this));
         this.#stepButton.addEventListener("click", this.#onStepButton.bind(this));
         this.#runButton.addEventListener("click", this.#onRunButton.bind(this));
@@ -713,17 +776,6 @@ class Runner {
         this.#program = ev.detail;
         this.#infoview.program = this.#program;
         this.#executeButton.disabled = (this.#program == null);
-    }
-
-    async #onMessagesInput(ev: CustomEvent<bigint>) {
-        if (this.#state != State.Ready) return;
-
-        let value = ev.detail;
-        this.#messages.maxInput = null;
-
-        this.#state = State.InStep;
-        this.#stepButton.disabled = true;
-        this.#startRunTask(value);
     }
 
     async #onExecuteButton(ev: PointerEvent) {
@@ -754,15 +806,22 @@ class Runner {
                     this.#executeButton.disabled = false;
                     this.#stepButton.disabled = false;
                     this.#runButton.disabled = false;
-                    this.#state = State.Ready;
+                    this.#state = State.Executing;
                 } else {
                     // nothing
                 }
                 break;
-            case State.Solving: return; // we treat this state as a lock
-            case State.Ready:
+            case State.Solving:
+                break;
+            case State.Executing:
                 this.#stepButton.disabled = true;
                 this.#runButton.disabled = true;
+                if (this.#runTask != null) {
+                    this.#state = State.Stopping;
+                    this.#executeButton.textContent = "Stopping...";
+                    this.#messages.maxInput = null;
+                    await this.#runTask.abort();
+                }
                 this.#executeButton.textContent = "Start";
                 this.#clearInterpreter();
                 this.#highlightCurrentLine();
@@ -771,25 +830,8 @@ class Runner {
                 this.#editor.disabled = false;
                 this.#state = State.Editing;
                 break;
-            case State.Running:
-                this.#runButton.textContent = "Run";
-            // fall-through
-            case State.InStep:
-                this.#state = State.Stopping;
-                this.#stepButton.disabled = true;
-                this.#runButton.disabled = true;
-                this.#executeButton.textContent = "Stopping...";
-                this.#messages.maxInput = null;
-                await this.#runTask;
-                this.#executeButton.textContent = "Start";
-                this.#clearInterpreter();
-                this.#highlightCurrentLine();
-                this.#messages.clear();
-                this.#infoview.state = null;
-                this.#editor.disabled = false;
-                this.#state = State.Editing;
             case State.Stopping:
-                return;
+                break;
         }
     }
 
@@ -802,51 +844,32 @@ class Runner {
         }
     }
 
-    #startRunTask(userInput: bigint | null = null) {
-        if (this.#state != State.InStep && this.#state != State.Running) throw new Error();
+    #startRunTask(keepGoing: boolean) {
+        this.#runTask = new RunTask(keepGoing, this.#interpreter!, async (res) => {
+            this.#highlightCurrentLine();
 
-        this.#runTask = (async () => {
-            loop: while (true) {
-                let timeout = new Promise(resolve => setTimeout(resolve, 100));
-                let res = await this.#interpreter!.step();
-                if (res.kind == "NeedsInput" && userInput != null) {
-                    let res2 = await this.#interpreter!.give_input(userInput);
-                    if (res2 == undefined) {
-                        res = { kind: "Running" };
-                    } else {
-                        // TODO:
-                    }
-                }
-                let done = res.kind != "Running";
-
-                if (this.#state == State.Stopping) break;
-
-                this.#highlightCurrentLine();
-                this.#messages.setMessages(this.#interpreter!.messages(), res.kind == "NeedsInput" ? res.max_input : null);
-
-                switch (this.#state) {
-                    case State.Editing:
-                    case State.Solving:
-                    case State.Ready:
-                        // all impossible
-                        break loop;
-                    case State.InStep:
-                        this.#stepButton.disabled = false;
-                        this.#state = State.Ready;
-                        break loop;
-                    case State.Running:
-                        if (!done) await timeout;
-                        if (done) {
-                            this.#stepButton.disabled = false;
-                            this.#runButton.textContent = "Run";
-                            this.#state = State.Ready;
-                        }
-                        continue loop;
-                }
+            this.#messages.setMessages(this.#interpreter!.messages(), res.kind == "NeedsInput" ? res.max_input : null);
+            if (res.kind == "NeedsInput") {
+                let input = await new Promise<bigint>(resolve => {
+                    this.#messages.addEventListener("input", (val) => resolve(val.detail), { once: true });
+                });
+                this.#messages.maxInput = null;
+                return input;
+            } else {
+                return;
             }
-
+        });
+        this.#runTask.done.then(why => {
             this.#runTask = null;
-        })();
+            if (why.reason == "aborted") return;
+            this.#stepButton.disabled = false;
+            this.#runButton.textContent = "Run";
+            if (why.reason == "error") {
+                console.error(why.error);
+            } else if (why.reason == "halted") {
+
+            }
+        })
     }
 
     #onStepButton(ev: PointerEvent) {
@@ -854,14 +877,11 @@ class Runner {
             case State.Editing:
             case State.Solving:
                 return;
-            case State.Ready:
-                this.#state = State.InStep;
+            case State.Executing:
+                if (this.#runTask != null) return;
                 this.#stepButton.disabled = true;
-                this.#startRunTask();
+                this.#startRunTask(false);
                 break;
-            case State.InStep:
-            case State.Running:
-                return;
             case State.Stopping:
                 return;
         }
@@ -872,19 +892,14 @@ class Runner {
             case State.Editing:
             case State.Solving:
                 return;
-            case State.Ready:
-                this.#state = State.Running;
+            case State.Executing:
+                if (this.#runTask != null) {
+                    this.#runTask.keepGoing = !this.#runTask.keepGoing;
+                    this.#runButton.textContent = this.#runTask.keepGoing ? "Pause" : "Run";
+                }
                 this.#stepButton.disabled = true;
                 this.#runButton.textContent = "Pause";
-                this.#startRunTask();
-                break;
-            case State.InStep:
-                this.#state = State.Running;
-                this.#runButton.textContent = "Pause";
-                break;
-            case State.Running:
-                this.#state = State.InStep;
-                this.#runButton.textContent = "Run";
+                this.#startRunTask(true);
                 break;
             case State.Stopping:
                 return;
