@@ -924,6 +924,7 @@ class Runner {
                 if (this.#runTask != null) {
                     this.#runTask.keepGoing = !this.#runTask.keepGoing;
                     this.#runButton.textContent = this.#runTask.keepGoing ? "Pause" : "Run";
+                    return;
                 }
                 this.#stepButton.disabled = true;
                 this.#runButton.textContent = "Pause";
