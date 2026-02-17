@@ -511,6 +511,7 @@ class Infoview {
         registersCube.setRotation(rotation);
         rotation.registerRotateOnDrag(stateCube);
         rotation.registerRotateOnDrag(registersCube);
+        stateCube.style.cursor = registersCube.style.cursor = "grab";
 
         this.#registers = [];
 
