@@ -28,10 +28,31 @@ impl MotorCommand {
 }
 
 /// The `f64` is the time to start the _next_ move.
-pub type MotorAction = Vec<(f64, MotorCommand)>;
+pub struct MotorAction(pub Vec<(f64, MotorCommand)>);
 
-pub fn time_of(action: &MotorAction) -> f64 {
-    action.last().map(|v| v.0).unwrap_or(0.)
+impl MotorAction {
+    pub fn time_of(&self) -> f64 {
+        self.0.last().map(|v| v.0).unwrap_or(0.)
+    }
+
+    pub fn chain(&mut self, other: MotorAction) {
+        let self_time = self.time_of();
+
+        self.0.extend(other.0.into_iter().map(|v| {
+            (v.0 + self_time, v.1)
+        }));
+    }
+
+    pub fn reverse(&mut self) {
+        let self_time = self.time_of();
+
+        for item in &mut self.0 {
+            item.0 *= -1.;
+            item.0 += self_time;
+        }
+
+        self.0.reverse();
+    }
 }
 
 fn lower_commands(
@@ -204,7 +225,7 @@ impl Motor {
         gen move {
             let mut prev_time = 0.;
 
-            let commands = lower_commands(commands.into_iter());
+            let commands = lower_commands(commands.0.into_iter());
 
             for (time, command) in commands {
                 self.perform(command);
@@ -246,7 +267,7 @@ impl Motor {
             out.push((i as f64 * -v_max + time, dir.opposite().as_step()));
         }
 
-        out
+        MotorAction(out)
     }
 
     pub fn mk_quarter_turn(&self, dir: Dir) -> MotorAction {

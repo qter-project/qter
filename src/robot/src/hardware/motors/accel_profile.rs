@@ -1,16 +1,24 @@
-use crate::hardware::motors::{Dir, motor::{MotorAction, MotorCommand}};
+use std::cmp::Ordering;
+
+use crate::hardware::motors::{
+    Dir,
+    motor::{MotorAction, MotorCommand},
+};
 
 // type Profile = impl Fn(total_steps, v_max, a_max) -> MotorAction
 // (can't actually write that)
 // Profiles are expected to have `CW` as forwards and `CCW` as backwards, except for after `specify_dir`.
 
 /// Flip the directions of the motor commands to match `dir`.
-pub fn specify_dir(dir: Dir, profile: impl Fn(u32, f64, f64) -> Vec<(f64, MotorCommand)>) -> impl Fn(u32, f64, f64) -> MotorAction {
+pub fn specify_dir(
+    dir: Dir,
+    profile: impl Fn(u32, f64, f64) -> MotorAction,
+) -> impl Fn(u32, f64, f64) -> MotorAction {
     move |total_steps, v_max, a_max| {
         let mut commands = profile(total_steps, v_max, a_max);
 
         if dir == Dir::CCW {
-            for command in &mut commands {
+            for command in &mut commands.0 {
                 command.1 = command.1.flip_dir();
             }
         }
@@ -19,7 +27,9 @@ pub fn specify_dir(dir: Dir, profile: impl Fn(u32, f64, f64) -> Vec<(f64, MotorC
     }
 }
 
-pub const fn mk_steps_from_inv(inv: fn(u32, u32, f64, f64) -> f64) -> impl Fn(u32, f64, f64) -> MotorAction {
+pub const fn mk_steps_from_inv(
+    inv: fn(u32, u32, f64, f64) -> f64,
+) -> impl Fn(u32, f64, f64) -> MotorAction {
     move |total_steps, v_max, a_max| {
         let mut out = Vec::new();
 
@@ -28,7 +38,7 @@ pub const fn mk_steps_from_inv(inv: fn(u32, u32, f64, f64) -> f64) -> impl Fn(u3
             out.push((t, MotorCommand::StepCW));
         }
 
-        out
+        MotorAction(out)
     }
 }
 
@@ -61,11 +71,104 @@ pub fn trapezoid_profile_inv(step: u32, total_steps: u32, v_max: f64, a_max: f64
 
 #[derive(Clone, Copy, Debug)]
 struct InitialConditions {
-    position: u32,
+    position: i32,
     velocity: f64,
 }
 
+/// Create a section with constant velocity that stops once it is at the given `position`.
+///
+/// # Panics
+///
+/// Panics if the the initial velocity and (`target_pos` - `ics.position`) are not the same sign.
+pub fn vel_stage(ics: InitialConditions, target_pos: i32) -> (InitialConditions, MotorAction) {
+    let amt_to_move = ics.position - target_pos;
+
+    let command = match amt_to_move.cmp(&0) {
+        Ordering::Less => MotorCommand::StepCCW,
+        Ordering::Equal => {
+            return (ics, MotorAction(Vec::new()));
+        }
+        Ordering::Greater => MotorCommand::StepCW,
+    };
+
+    if amt_to_move.signum() != ics.velocity.signum() as i32 {
+        panic!("Cannot reach the target position with the given velocity");
+    }
+
+    let mut out = Vec::new();
+
+    let spacing = ics.velocity.recip().abs();
+    let mut now = 0.;
+
+    for _ in 0..amt_to_move.unsigned_abs() {
+        now += spacing;
+        out.push((now, command));
+    }
+
+    (
+        InitialConditions {
+            position: target_pos,
+            velocity: ics.velocity,
+        },
+        MotorAction(out),
+    )
+}
+
 /// Create an acceleration ramp with the given acceleration that stops once either the `position` or `velocity` in `target_ics` are satisfied. Returns the true initial conditions achieved.
-// pub fn accel_stage(ics: InitialConditions, target_ics: InitialConditions, accel: f64) -> (InitialConditions, MotorAction) {
-    
-// }
+///
+/// # Panics
+///
+/// Panics if neither the given velocity nor target position can be reached.
+pub fn accel_stage(
+    mut ics: InitialConditions,
+    target_ics: InitialConditions,
+    accel: f64,
+) -> (InitialConditions, MotorAction) {
+    if accel.signum() != (ics.velocity - target_ics.velocity).signum() {
+        // We cannot reach the target velocity with the given acceleration
+        return (ics, MotorAction(Vec::new()));
+    }
+
+    let target_vel_reachable = accel.signum() == (ics.velocity - target_ics.velocity).signum();
+
+    let mut out = Vec::new();
+    let mut now = 0.;
+
+    while ics.position != target_ics.position {
+        let target_pos_possibly_reachable = (ics.position - target_ics.position).signum() == ics.velocity.signum() as i32;
+        if !target_vel_reachable && !target_pos_possibly_reachable
+        {
+            panic!("Cannot reach either the target position or the given velocity with the given acceleration and ICs");
+        }
+
+        // Formula found by integrating velocity & using quadratic formula
+        let time_to_next_step = (-ics.velocity + (ics.velocity.powi(2) + 2. * accel)) / accel;
+
+        let vel_after = ics.velocity + accel * time_to_next_step;
+
+        if vel_after.signum() != ics.velocity.signum() {
+            // We would need to accelerate past zero velocity; lets add enough time such that the target position after exactly equals the current velocity
+
+            now += (ics.velocity / accel).abs() * 2.;
+            ics.velocity *= -1.;
+
+            continue;
+        }
+
+        out.push((
+            now,
+            match ics.velocity.total_cmp(&0.) {
+                Ordering::Less => MotorCommand::StepCCW,
+                Ordering::Equal => {
+                    continue;
+                }
+                Ordering::Greater => MotorCommand::StepCW,
+            },
+        ));
+
+        ics.velocity = vel_after;
+        now += time_to_next_step;
+    }
+
+    (ics, MotorAction(out))
+}
