@@ -27,6 +27,7 @@ impl MotorCommand {
     }
 }
 
+/// The `f64` is the time to start the _next_ move.
 pub type MotorAction = Vec<(f64, MotorCommand)>;
 
 pub fn time_of(action: &MotorAction) -> f64 {
@@ -34,7 +35,7 @@ pub fn time_of(action: &MotorAction) -> f64 {
 }
 
 fn lower_commands(
-    commands: impl Iterator<Item = (f64, MotorCommand)>,
+    mut commands: impl Iterator<Item = (f64, MotorCommand)>,
 ) -> impl Iterator<Item = (f64, LoweredMotorCommand)> {
     let mut prev_dir: Option<Dir> = None;
 
@@ -47,33 +48,30 @@ fn lower_commands(
         }
     };
 
-    let mut commands = commands.peekable();
+    let mut prev_time: f64 = 0.;
 
     gen move {
         while let Some((t, command)) = commands.next() {
-            let t2 = match commands.peek() {
-                Some((next_t, _)) => t.midpoint(*next_t),
-                None => t + 0.001,
-            };
-
             match command {
                 MotorCommand::StepCW => {
                     if change_dir(Dir::CW) {
                         yield (t, LoweredMotorCommand::MakeCW)
                     }
 
-                    yield (t, LoweredMotorCommand::StepEnable);
-                    yield (t2, LoweredMotorCommand::StepDisable);
+                    yield (prev_time.midpoint(t), LoweredMotorCommand::StepEnable);
+                    yield (t, LoweredMotorCommand::StepDisable);
                 }
                 MotorCommand::StepCCW => {
                     if change_dir(Dir::CCW) {
                         yield (t, LoweredMotorCommand::MakeCCW)
                     }
 
-                    yield (t, LoweredMotorCommand::StepEnable);
-                    yield (t2, LoweredMotorCommand::StepDisable);
+                    yield (prev_time.midpoint(t), LoweredMotorCommand::StepEnable);
+                    yield (t, LoweredMotorCommand::StepDisable);
                 }
             }
+
+            prev_time = t;
         }
     }
 }
@@ -209,10 +207,10 @@ impl Motor {
             let commands = lower_commands(commands.into_iter());
 
             for (time, command) in commands {
+                self.perform(command);
+
                 yield Duration::from_secs_f64(time - prev_time);
                 prev_time = time;
-
-                self.perform(command);
             }
         }
     }
