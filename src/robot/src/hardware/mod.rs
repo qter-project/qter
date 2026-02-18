@@ -331,6 +331,7 @@ fn motor_driver_thread_watchdog(
                 );
                 *prev_motor_current = motor_current;
             }
+
             if drvstatus.contains(DrvStatus::OT) {
                 error!(
                     target: "watchdog",
@@ -338,28 +339,40 @@ fn motor_driver_thread_watchdog(
                 );
                 estop();
             }
-            if drvstatus.contains(DrvStatus::S2GA) {
+
+            if drvstatus.contains(DrvStatus::S2GA | DrvStatus::S2GB) {
+                error!(
+                    target: "watchdog",
+                    "Motor {face:?} short to ground on phase A and B",
+                );
+                estop();
+            } else if drvstatus.contains(DrvStatus::S2GA) {
                 error!(
                     target: "watchdog",
                     "Motor {face:?} short to ground on phase A",
                 );
                 estop();
-            }
-            if drvstatus.contains(DrvStatus::S2GB) {
+            } else if drvstatus.contains(DrvStatus::S2GB) {
                 error!(
                     target: "watchdog",
                     "Motor {face:?} short to ground on phase B",
                 );
                 estop();
             }
-            if drvstatus.contains(DrvStatus::S2VSA) {
+
+            if drvstatus.contains(DrvStatus::S2VSA | DrvStatus::S2VSB) {
+                error!(
+                    target: "watchdog",
+                    "Motor {face:?} low-side short on phase A and B",
+                );
+                estop();
+            } else if drvstatus.contains(DrvStatus::S2VSA) {
                 error!(
                     target: "watchdog",
                     "Motor {face:?} low-side short on phase A",
                 );
                 estop();
-            }
-            if drvstatus.contains(DrvStatus::S2VSB) {
+            } else if drvstatus.contains(DrvStatus::S2VSB) {
                 error!(
                     target: "watchdog",
                     "Motor {face:?} low-side short on phase B",
@@ -380,13 +393,18 @@ fn motor_driver_thread_watchdog(
                 );
                 *motor_driver_temperature = MotorDriverTemperature::Normal;
             }
-            if drvstatus.contains(DrvStatus::OLA) {
+
+            if drvstatus.contains(DrvStatus::OLA | DrvStatus::OLB) {
+                warn!(
+                    target: "watchdog",
+                    "Motor {face:?} open load detected on phase A and B",
+                );
+            } else if drvstatus.contains(DrvStatus::OLA) {
                 warn!(
                     target: "watchdog",
                     "Motor {face:?} open load detected on phase A",
                 );
-            }
-            if drvstatus.contains(DrvStatus::OLB) {
+            } else if drvstatus.contains(DrvStatus::OLB) {
                 warn!(
                     target: "watchdog",
                     "Motor {face:?} open load detected on phase B",
