@@ -1,3 +1,14 @@
+use crate::{
+    ErrorKind, QterRobotError,
+    hardware::{
+        config::{Face, Priority, RobotConfig},
+        motors::Motors,
+        uart::{
+            UartBus, UartId,
+            regs::{DrvStatus, GConf, IholdIrun, NodeConf},
+        },
+    },
+};
 use chrono::{DateTime, Utc};
 use clap::ValueEnum;
 use log::{debug, error, info, warn};
@@ -16,16 +27,6 @@ use thread_priority::{
     Error, RealtimeThreadSchedulePolicy, ScheduleParams, ThreadPriority,
     set_thread_priority_and_policy, thread_native_id,
     unix::{ThreadSchedulePolicy, set_current_thread_priority},
-};
-
-use crate::{
-    ErrorKind, QterRobotError,
-    hardware::{
-        config::{Face, Priority, RobotConfig}, motors::Motors, uart::{
-            UartBus, UartId,
-            regs::{DrvStatus, GConf, IholdIrun, NodeConf},
-        }
-    },
 };
 
 pub mod config;
@@ -307,6 +308,7 @@ fn motor_driver_thread_watchdog(
         };
         let mut uart0 = UART0.lock().unwrap();
         let mut uart4 = UART4.lock().unwrap();
+
         for ((face, motor_driver_temperature), prev_motor_current) in Face::ALL
             .into_iter()
             .zip(motor_driver_temperatures.iter_mut())
@@ -588,25 +590,17 @@ pub fn set_prio(prio: Priority) {
     }
 }
 
-pub fn uart_init(robot_config: &RobotConfig) {
-    let mut uart0 = UART0.lock().unwrap();
-    let mut uart4 = UART4.lock().unwrap();
-    for face in Face::ALL {
-        let config = &robot_config.motors[face];
-        let mut uart = match config.uart_bus {
-            UartId::Uart0 => &mut uart0,
-            UartId::Uart4 => &mut uart4,
-        }
-        .node(config.uart_address);
-
-        debug!(target: "uart_init", "Initializing {face:?}: uart_bus={:?} node_address={:?}", config.uart_bus, config.uart_address);
+pub fn uart_init(robot_config: &'static RobotConfig) {
+    let motors = Motors::new(robot_config);
+    motors.with_uarts(|mut uart_node| {
+        debug!(target: "uart_init", "Initializing: uart_node={uart_node:?}");
 
         // Set SENDDELAY without performing a read. We can't perform any reads yet *because* we
         // haven't set SENDDELAY. We set NODECONF again later regardless, because this could
         // fail without us knowing.
         // TODO: there has to be a better way to integrate this into the API of `uart`
         debug!(target: "uart_init", "Setting SENDDELAY");
-        uart.write_raw(
+        uart_node.write_raw(
             NodeConf::ADDRESS,
             NodeConf::empty().with_senddelay(2).bits(),
         );
@@ -615,7 +609,7 @@ pub fn uart_init(robot_config: &RobotConfig) {
         // Configure GCONF
         //
         debug!(target: "uart_init", "Reading initial GCONF");
-        let initial_gconf = uart.gconf();
+        let initial_gconf = uart_node.gconf();
         debug!(target: "uart_init", "Read initial GCONF: initial_value={initial_gconf:?}");
         let mut new_gconf = initial_gconf
             .union(GConf::MSTEP_REG_SELECT)
@@ -633,14 +627,14 @@ pub fn uart_init(robot_config: &RobotConfig) {
                 target: "uart_init",
                 "Writing GCONF: new_value={new_gconf:?}",
             );
-            uart.set_gconf(new_gconf);
+            uart_node.set_gconf(new_gconf);
         }
 
         //
         // Configure CHOPCONF
         //
         debug!(target: "uart_init", "Reading initial CHOPCONF");
-        let initial_chopconf = uart.chopconf();
+        let initial_chopconf = uart_node.chopconf();
         debug!(target: "uart_init", "Read initial CHOPCONF: initial_value={initial_chopconf:?}");
         let new_chopconf =
             initial_chopconf.with_mres(robot_config.microstep_resolution.mres_value());
@@ -651,14 +645,14 @@ pub fn uart_init(robot_config: &RobotConfig) {
                 target: "uart_init",
                 "Writing CHOPCONF: new_value={new_chopconf:?}",
             );
-            uart.set_chopconf(new_chopconf);
+            uart_node.set_chopconf(new_chopconf);
         }
 
         //
         // Configure PWMCONF.
         //
         debug!(target: "uart_init", "Reading initial PwmConf");
-        let initial_pwmconf = uart.pwmconf();
+        let initial_pwmconf = uart_node.pwmconf();
         debug!(target: "uart_init", "Read initial PWMCONF: initial_value={initial_pwmconf:?}");
         let new_pwmconf = initial_pwmconf
             // Freewheel mode
@@ -670,7 +664,7 @@ pub fn uart_init(robot_config: &RobotConfig) {
                 target: "uart_init",
                 "Writing PWMCONF: new_value={new_pwmconf:?}",
             );
-            uart.set_pwmconf(new_pwmconf);
+            uart_node.set_pwmconf(new_pwmconf);
         }
 
         //
@@ -686,40 +680,32 @@ pub fn uart_init(robot_config: &RobotConfig) {
             target: "uart_init",
             "Writing IHOLD_IRUN: value={ihold_irun:?}",
         );
-        uart.set_iholdirun(ihold_irun);
+        uart_node.set_iholdirun(ihold_irun);
 
         let tpowerdown = 0;
         debug!(
             target: "uart_init",
             "Writing TPOWERODNW: value={tpowerdown:?}",
         );
-        uart.set_tpowerdown(tpowerdown);
+        uart_node.set_tpowerdown(tpowerdown);
 
-        debug!(target: "uart_init", "Initialized{face:?}: uart_bus={:?} node_address={:?}", config.uart_bus, config.uart_address);
-    }
+        debug!(target: "uart_init", "Initialized: uart_node={uart_node:?}");
+    });
 }
 
-pub fn float(robot_config: &RobotConfig) {
-    let mut uart0 = UART0.lock().unwrap();
-    let mut uart4 = UART4.lock().unwrap();
-    for face in Face::ALL {
-        let config = &robot_config.motors[face];
-        let mut uart = match config.uart_bus {
-            UartId::Uart0 => &mut uart0,
-            UartId::Uart4 => &mut uart4,
-        }
-        .node(config.uart_address);
+pub fn float(robot_config: &'static RobotConfig) {
+    let motors = Motors::new(robot_config);
+    motors.with_uarts(|mut uart_node| {
+        let pwmconf = uart_node.pwmconf();
+        uart_node.set_pwmconf(pwmconf.with_freewheel(1));
 
-        let pwmconf = uart.pwmconf();
-        uart.set_pwmconf(pwmconf.with_freewheel(1));
-
-        uart.set_iholdirun(
+        uart_node.set_iholdirun(
             IholdIrun::empty()
                 .with_ihold(0)
                 .with_irun(0)
                 .with_iholddelay(0),
         );
-    }
+    });
 }
 
 pub fn estop() -> ! {

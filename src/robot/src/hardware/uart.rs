@@ -160,6 +160,7 @@ impl UartBus {
     }
 }
 
+#[derive(Debug)]
 pub struct UartNode<'a> {
     bus: &'a mut UartBus,
     address: NodeAddress,
@@ -181,7 +182,7 @@ impl UartNode<'_> {
     fn send_write(&mut self, register: u8, value: u32) {
         self.bus.send_write(self.address, register, value);
     }
-
+    
     pub fn read(&mut self, register: u8) -> u32 {
         trace!(
             "Reading from register {register} (address={})",

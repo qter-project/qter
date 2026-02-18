@@ -1,8 +1,15 @@
-use std::{ops::Index, thread, time::{Duration, Instant}};
-
+use crate::hardware::{
+    TurnDir, UART0, UART4,
+    config::{Face, RobotConfig},
+    motors::motor::{Motor, MotorAction, MotorCommand, time_of},
+    uart::{UartId, UartNode},
+};
 use itertools::Itertools;
-
-use crate::hardware::{TurnDir, config::{Face, RobotConfig}, motors::motor::{Motor, MotorAction, MotorCommand, time_of}};
+use std::{
+    ops::Index,
+    thread,
+    time::{Duration, Instant},
+};
 
 mod motor;
 
@@ -177,6 +184,22 @@ impl Motors {
         let state = array_zip(self.0.each_mut(), steps);
 
         run_many(state.map(|(motor, commands)| motor.perform_action(commands)))
+    }
+
+    pub fn with_uarts(&self, mut f: impl FnMut(UartNode)) {
+        let mut uart0 = UART0.lock().unwrap();
+        let mut uart4 = UART4.lock().unwrap();
+
+        for face in Face::ALL {
+            let motor = &self[face];
+
+            let node = match motor.uart_bus() {
+                UartId::Uart0 => uart0.node(motor.uart_address()),
+                UartId::Uart4 => uart4.node(motor.uart_address()),
+            };
+
+            f(node);
+        }
     }
 }
 

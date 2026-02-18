@@ -135,6 +135,14 @@ impl Motor {
     pub fn face(&self) -> Face {
         self.face
     }
+    
+    pub fn uart_bus(&self) -> UartId {
+        self.uart_bus
+    }
+
+    pub fn uart_address(&self) -> NodeAddress {
+        self.uart_address
+    }
 
     pub fn enable_prewarning(&mut self) {
         self.overtemp_prewarning = true;
@@ -152,7 +160,7 @@ impl Motor {
 
         self.holding = true;
 
-        self.do_uart(|mut uart| {
+        self.with_uart(|mut uart| {
             let initial_pwmconf = uart.pwmconf();
 
             let new_pwmconf = initial_pwmconf.with_freewheel(0);
@@ -177,7 +185,7 @@ impl Motor {
 
         self.holding = false;
 
-        self.do_uart(|mut uart| {
+        self.with_uart(|mut uart| {
             let initial_pwmconf = uart.pwmconf();
 
             let new_pwmconf = initial_pwmconf.with_freewheel(1);
@@ -195,7 +203,7 @@ impl Motor {
         })
     }
 
-    fn do_uart(&self, f: impl FnOnce(UartNode)) {
+    fn with_uart(&self, f: impl FnOnce(UartNode)) {
         let mut bus = match self.uart_bus {
             UartId::Uart0 => UART0.lock().unwrap(),
             UartId::Uart4 => UART4.lock().unwrap(),
