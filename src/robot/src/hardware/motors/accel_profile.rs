@@ -1,5 +1,36 @@
-// (step, total_steps, v_max, a_max) -> time
-type Profile = fn(u32);
+use crate::hardware::motors::{Dir, motor::MotorCommand};
+
+// type Profile = impl Fn(total_steps, v_max, a_max) -> Vec<MotorCommand>
+// (can't actually write that)
+// Profiles are expected to have `CW` as forwards and `CCW` as backwards, except for after `specify_dir`.
+
+/// Flip the directions of the motor commands to match `dir`.
+pub fn specify_dir(dir: Dir, profile: impl Fn(u32, f64, f64) -> Vec<(f64, MotorCommand)>) -> impl Fn(u32, f64, f64) -> Vec<(f64, MotorCommand)> {
+    move |total_steps, v_max, a_max| {
+        let mut commands = profile(total_steps, v_max, a_max);
+
+        if dir == Dir::CCW {
+            for command in &mut commands {
+                command.1 = command.1.flip_dir();
+            }
+        }
+
+        commands
+    }
+}
+
+pub const fn mk_steps_from_inv(inv: fn(u32, u32, f64, f64) -> f64) -> impl Fn(u32, f64, f64) -> Vec<(f64, MotorCommand)> {
+    move |total_steps, v_max, a_max| {
+        let mut out = Vec::new();
+
+        for i in 0..total_steps {
+            let t = inv(i, total_steps, v_max, a_max);
+            out.push((t, MotorCommand::StepCW));
+        }
+
+        out
+    }
+}
 
 // computes position -> time
 pub fn trapezoid_profile_inv(step: u32, total_steps: u32, v_max: f64, a_max: f64) -> f64 {

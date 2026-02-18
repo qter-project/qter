@@ -1,7 +1,13 @@
 use std::time::Duration;
 
 use crate::hardware::{
-    FULLSTEPS_PER_QUARTER, UART0, UART4, config::{Face, RobotConfig}, motors::{Dir, accel_profile::trapezoid_profile_inv}, uart::{NodeAddress, UartId, UartNode, regs::IholdIrun}
+    FULLSTEPS_PER_QUARTER, UART0, UART4,
+    config::{Face, RobotConfig},
+    motors::{
+        Dir,
+        accel_profile::{mk_steps_from_inv, specify_dir, trapezoid_profile_inv},
+    },
+    uart::{NodeAddress, UartId, UartNode, regs::IholdIrun},
 };
 use log::debug;
 use rppal::gpio::{Gpio, Level, OutputPin};
@@ -10,6 +16,15 @@ use rppal::gpio::{Gpio, Level, OutputPin};
 pub enum MotorCommand {
     StepCW,
     StepCCW,
+}
+
+impl MotorCommand {
+    pub fn flip_dir(self) -> MotorCommand {
+        match self {
+            MotorCommand::StepCW => MotorCommand::StepCCW,
+            MotorCommand::StepCCW => MotorCommand::StepCW,
+        }
+    }
 }
 
 pub type MotorAction = Vec<(f64, MotorCommand)>;
@@ -108,7 +123,7 @@ impl Motor {
     pub fn face(&self) -> Face {
         self.face
     }
-    
+
     pub fn uart_bus(&self) -> UartId {
         self.uart_bus
     }
@@ -237,42 +252,24 @@ impl Motor {
     }
 
     pub fn mk_quarter_turn(&self, dir: Dir) -> MotorAction {
-        let mut out = Vec::new();
-
-        let step = dir.as_step();
         let scale = if self.overtemp_prewarning { 0.5 } else { 1. };
         let steps = FULLSTEPS_PER_QUARTER * self.config.microstep_resolution.value();
 
-        for i in 0..steps {
-            let t = trapezoid_profile_inv(
-                i,
-                steps,
-                self.config.v_max() * scale,
-                self.config.a_max() * scale,
-            );
-            out.push((t, step));
-        }
-
-        out
+        specify_dir(dir, mk_steps_from_inv(trapezoid_profile_inv))(
+            steps,
+            self.config.v_max() * scale,
+            self.config.a_max() * scale,
+        )
     }
 
     pub fn mk_half_turn(&self, dir: Dir) -> MotorAction {
-        let mut out = Vec::new();
-
-        let step = dir.as_step();
         let scale = if self.overtemp_prewarning { 0.5 } else { 1. };
         let steps = FULLSTEPS_PER_QUARTER * 2 * self.config.microstep_resolution.value();
 
-        for i in 0..steps {
-            let t = trapezoid_profile_inv(
-                i,
-                steps,
-                self.config.v_max() * scale,
-                self.config.a_max() * scale,
-            );
-            out.push((t, step));
-        }
-
-        out
+        specify_dir(dir, mk_steps_from_inv(trapezoid_profile_inv))(
+            steps,
+            self.config.v_max() * scale,
+            self.config.a_max() * scale,
+        )
     }
 }
