@@ -34,20 +34,24 @@ export class RotationController extends EventTarget {
             this.addRotation(x / 5, y / 5);
         }, { passive: false });
 
+        let abort: AbortController | null = null;
         const mouseMoveListener = (ev: MouseEvent) => {
             this.addRotation(ev.movementX / 3, ev.movementY / 3);
         };
-        const pointerLockChangeListener = () => {
+        document.addEventListener("pointerlockchange", () => {
             if (document.pointerLockElement === el) {
-                el.addEventListener("mousemove", mouseMoveListener);
+                if (abort != null) return;
+                abort = new AbortController();
+                el.addEventListener("mousemove", mouseMoveListener, { signal: abort.signal });
                 el.addEventListener("mouseup", () => {
-                    el.removeEventListener("mousemove", mouseMoveListener);
                     document.exitPointerLock();
-                }, { once: true });
+                }, { signal: abort.signal });
+            } else {
+                abort?.abort();
+                abort = null;
             }
-        };
+        });
         el.addEventListener("mousedown", () => {
-            document.addEventListener("pointerlockchange", pointerLockChangeListener, { once: true });
             el.requestPointerLock();
         })
     }
