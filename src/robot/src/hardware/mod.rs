@@ -498,7 +498,7 @@ fn motor_thread(
                             break;
                         } else {
                             // If there's nothing in the FSM, then just float and wait however long for the next move
-                            yield MoveInstruction::Float;
+                            // yield MoveInstruction::Float;
                             timeout = NO_TIMEOUT;
                         }
                     }
