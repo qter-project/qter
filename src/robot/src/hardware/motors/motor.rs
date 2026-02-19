@@ -240,10 +240,10 @@ impl Motor {
     fn perform(&mut self, cmd: LoweredMotorCommand) {
         match cmd {
             LoweredMotorCommand::MakeCW => {
-                self.dir.write(Level::Low);
+                self.dir.write(Level::High);
             }
             LoweredMotorCommand::MakeCCW => {
-                self.dir.write(Level::High);
+                self.dir.write(Level::Low);
             }
             LoweredMotorCommand::StepEnable => {
                 self.step.set_high();
