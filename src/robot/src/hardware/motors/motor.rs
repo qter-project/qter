@@ -85,11 +85,11 @@ fn lower_commands(
                 }
                 MotorCommand::StepCCW => {
                     if change_dir(Dir::CCW) {
-                        yield (t, LoweredMotorCommand::MakeCCW)
+                        yield (prev_time, LoweredMotorCommand::MakeCCW)
                     }
 
-                    yield (prev_time.midpoint(t), LoweredMotorCommand::StepEnable);
-                    yield (t, LoweredMotorCommand::StepDisable);
+                    yield (prev_time, LoweredMotorCommand::StepEnable);
+                    yield (prev_time.midpoint(t), LoweredMotorCommand::StepDisable);
                 }
             }
 
