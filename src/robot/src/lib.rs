@@ -63,11 +63,20 @@ pub struct QterRobotError {
 
 impl Display for QterRobotError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{{ kind: \"{}\", message:\"{}\" }}",
-            self.kind, self.message
-        )
+        match self.kind {
+            ErrorKind::ComposeInto => write!(f, "Error taking picture: {}", self.message),
+            ErrorKind::Calibration => write!(
+                f,
+                "Error while calibrating computer vision: {}",
+                self.message
+            ),
+            ErrorKind::IncorrectPermGroup => write!(
+                f,
+                "Wrong permutation group: expected 3x3, found {}",
+                self.message
+            ),
+            _ => self.message.fmt(f),
+        }
     }
 }
 
