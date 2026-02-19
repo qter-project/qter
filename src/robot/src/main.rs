@@ -10,13 +10,11 @@ use interpreter::puzzle_states::{
 use log::{LevelFilter, debug, warn};
 use puzzle_theory::permutations::Algorithm;
 use robot::{
-    CUBE3, QterRobot,
-    hardware::{
+    self, CUBE3, QterRobot, hardware::{
         RobotHandle,
         config::{Face, Priority, RobotConfig},
         set_prio,
-    },
-    qvis_app::{self, QvisAppHandle},
+    }, qvis_app::{self, QvisAppHandle}
 };
 use std::{
     path::PathBuf,
@@ -242,11 +240,12 @@ async fn main() -> color_eyre::Result<()> {
                 .unwrap();
             let now = Utc::now;
             let mut robot_handle = RobotHandle::init(robot_config, now);
-            QterRobot::initialize(
+            let mut robot = QterRobot::initialize(
                 Arc::clone(&CUBE3),
                 (&mut robot_handle, &mut qvis_app_handle),
             )
             .await?;
+            robot.solve().await?;
         }
     }
 
