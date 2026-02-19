@@ -4,7 +4,7 @@
 #![allow(clippy::needless_pass_by_value)]
 
 use std::{
-    error::Error, fs, io, net::SocketAddr, path::{Path, PathBuf}, sync::Arc
+    error::Error, fs, io, path::{Path, PathBuf}, sync::Arc
 };
 
 use ariadne::{Color, Label, Report, ReportKind, Source};
@@ -47,20 +47,17 @@ enum Commands {
         #[arg(short, action = ArgAction::Count)]
         trace_level: u8,
     },
+    #[cfg(debug_assertions)]
     /// Step through a QAT or a Q program
     Debug {
         /// Which file to interpret; must be a .qat or .q file
         file: PathBuf,
     },
+    #[cfg(debug_assertions)]
     /// Evaluate unit tests in a QAT program
     Test {
         /// Which file to test; must be a .qat file
         file: PathBuf,
-    },
-    /// Execute the opensauce demo
-    Demo {
-        #[arg(long)]
-        remote: Option<SocketAddr>,
     },
     #[cfg(debug_assertions)]
     /// Compress an algorithm table into the special format (This subcommand will not be visible in release mode)
@@ -170,7 +167,9 @@ async fn main() -> color_eyre::Result<()> {
             let interpreter = Interpreter::<SimulatedPuzzle>::new(Arc::new(program), ()).await?;
             interpret(interpreter, trace_level).await?;
         }
+        #[cfg(debug_assertions)]
         Commands::Debug { file: _ } => todo!(),
+        #[cfg(debug_assertions)]
         Commands::Test { file: _ } => todo!(),
         #[cfg(debug_assertions)]
         Commands::Compress { input, output } => {
@@ -207,10 +206,6 @@ async fn main() -> color_eyre::Result<()> {
             for moves in decoded {
                 println!("{}", moves.iter().join(" "));
             }
-        }
-        Commands::Demo { remote: _ } => {
-            // visualizer::visualizer(remote);
-            panic!("Visualizer has been removed from the CLI");
         }
     }
 
