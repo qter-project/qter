@@ -306,8 +306,6 @@ fn motor_driver_thread_watchdog(
                 return;
             }
         };
-        let mut uart0 = UART0.lock().unwrap();
-        let mut uart4 = UART4.lock().unwrap();
 
         for ((face, motor_driver_temperature), prev_motor_current) in Face::ALL
             .into_iter()
@@ -315,13 +313,16 @@ fn motor_driver_thread_watchdog(
             .zip(prev_motor_currents.iter_mut())
         {
             let config = &robot_config.motors[face];
-            let mut uart = match config.uart_bus {
-                UartId::Uart0 => &mut uart0,
-                UartId::Uart4 => &mut uart4,
-            }
-            .node(config.uart_address);
+            let drvstatus = {
+                let mut bus = match config.uart_bus {
+                    UartId::Uart0 => UART0.lock().unwrap(),
+                    UartId::Uart4 => UART4.lock().unwrap(),
+                };
 
-            let drvstatus = uart.drvstatus();
+                let mut uart = bus.node(config.uart_address);
+
+                uart.drvstatus()
+            };
             let motor_current = drvstatus.cs_actual();
             if motor_current != *prev_motor_current {
                 debug!(
