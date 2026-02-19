@@ -34,7 +34,6 @@ pub enum ErrorKind {
     IncorrectPermGroup,
     RobTwophase,
     ActionDuringTalks,
-    // TODO: IMPLEMENT!!!!!
     OverTemperature,
 }
 
@@ -133,6 +132,8 @@ impl<'a> RobotLike for QterRobot<'a> {
             kind: ErrorKind::RobTwophase,
             message: e.to_string(),
         })?)
-        .await
+        .await?;
+        self.robot_handle.await_moves()?.await?;
+        Ok(())
     }
 }
