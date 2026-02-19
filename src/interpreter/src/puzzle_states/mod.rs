@@ -7,6 +7,7 @@ mod remote_robot;
 
 #[cfg(feature = "remote_robot")]
 pub use remote_robot::*;
+use serde::{Deserialize, Serialize};
 
 use std::{convert::Infallible, error::Error, fmt::Display, sync::Arc};
 
@@ -361,6 +362,9 @@ pub struct WrapSimulatedPuzzle<R: RobotLike> {
 }
 
 /// What to do if the simulated puzzle and result of `take_picture` mismatch
+#[derive(Clone, Copy, Debug)]
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "behavior")]
 pub enum MismatchBehavior {
     /// Return the simulated state. `R::take_picture` will never be invoked.
     ReturnSimulation,

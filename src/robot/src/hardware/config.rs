@@ -1,6 +1,7 @@
 use std::{fmt::Debug, ops::Index, path::PathBuf, str::FromStr};
 
 use clap::ValueEnum;
+use interpreter::puzzle_states::MismatchBehavior;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
@@ -22,6 +23,7 @@ pub struct RobotConfig {
     pub stealthchop: bool,
     pub qvis_app_path: PathBuf,
     pub corner_cut_help: u32,
+    pub mismatch: MismatchBehavior,
 }
 
 impl RobotConfig {

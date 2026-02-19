@@ -6,7 +6,7 @@ use tokio::io::{
     AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader,
 };
 
-use crate::puzzle_states::{MismatchBehavior, RobotLike, WrapSimulatedPuzzle};
+use crate::puzzle_states::RobotLike;
 
 pub trait Connection {
     type Reader: AsyncBufRead + Unpin + ?Sized;
@@ -202,7 +202,7 @@ where
                 serde_json::from_slice::<PermutationGroup>(&data).map_err(|e| e.to_string())?,
             );
 
-            let robot: WrapSimulatedPuzzle<R> = WrapSimulatedPuzzle::initialize(Arc::clone(&group), (MismatchBehavior::Fix { retry_count: 3 }, args))
+            let robot: R = R::initialize(Arc::clone(&group), args)
                 .await
                 .map_err(|e| e.to_string())?;
 
@@ -247,11 +247,15 @@ where
             writer.write_all("\n".as_bytes()).await?;
             writer.flush().await?;
         } else if command.starts_with('(') {
-            send_ack(&mut conn, async {
-                let perm = command.parse::<Permutation>()?;
+            send_ack(
+                &mut conn,
+                async {
+                    let perm = command.parse::<Permutation>()?;
 
-                robot.compose_perm(&perm).await.map_err(|e| e.to_string())
-            }.await)
+                    robot.compose_perm(&perm).await.map_err(|e| e.to_string())
+                }
+                .await,
+            )
             .await?;
         } else {
             send_ack(
@@ -327,7 +331,10 @@ mod tests {
             remote_robot.take_picture().await.unwrap(),
             &Permutation::from_cycles(vec![vec![0, 1]])
         );
-        remote_robot.compose_perm(&Permutation::from_cycles(vec![vec![1, 2, 3]])).await.unwrap();
+        remote_robot
+            .compose_perm(&Permutation::from_cycles(vec![vec![1, 2, 3]]))
+            .await
+            .unwrap();
         remote_robot.solve().await.unwrap();
         assert_eq!(
             remote_robot.take_picture().await.unwrap(),
@@ -340,7 +347,12 @@ mod tests {
                 .is_err()
         );
         assert!(remote_robot.take_picture().await.is_err());
-        assert!(remote_robot.compose_perm(&Permutation::identity()).await.is_err());
+        assert!(
+            remote_robot
+                .compose_perm(&Permutation::identity())
+                .await
+                .is_err()
+        );
         assert!(remote_robot.solve().await.is_err());
 
         drop(remote_robot);
@@ -403,7 +415,7 @@ mod tests {
         async fn solve(&mut self) -> Result<(), String> {
             let expected = self.0.pop_front().unwrap();
             let Command::Solve { response } = expected else {
-                panic!()
+                panic!("{expected:?}")
             };
 
             response

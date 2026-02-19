@@ -1078,6 +1078,7 @@ dependencies = [
  "pretty_assertions",
  "puzzle_theory",
  "qter_core",
+ "serde",
  "serde_json",
  "tokio",
  "tokio-stream",
