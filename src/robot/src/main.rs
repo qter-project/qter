@@ -4,7 +4,9 @@
 use chrono::Utc;
 use clap::{Parser, Subcommand};
 use env_logger::TimestampPrecision;
-use interpreter::puzzle_states::{RobotLike, SimulatedPuzzle, run_robot_server};
+use interpreter::puzzle_states::{
+    RobotLike, SimulatedPuzzle, WrapSimulatedPuzzle, run_robot_server,
+};
 use log::{LevelFilter, debug, warn};
 use puzzle_theory::permutations::Algorithm;
 use robot::{
@@ -205,8 +207,14 @@ async fn main() -> color_eyre::Result<()> {
                         run_robot_server::<_, SimulatedPuzzle>(conn, ()).await?;
                     } else {
                         let (qvis_app_handle, robot_handle) = maybe_handles.as_mut().unwrap();
-                        run_robot_server::<_, QterRobot>(conn, (robot_handle, qvis_app_handle))
-                            .await?;
+                        run_robot_server::<_, WrapSimulatedPuzzle<QterRobot>>(
+                            conn,
+                            (
+                                robot_handle.config().mismatch,
+                                (robot_handle, qvis_app_handle),
+                            ),
+                        )
+                        .await?;
                     }
 
                     Ok(())

@@ -57,7 +57,7 @@ impl MotorAction {
 }
 
 fn lower_commands(
-    mut commands: impl Iterator<Item = (f64, MotorCommand)>,
+    commands: impl Iterator<Item = (f64, MotorCommand)>,
 ) -> impl Iterator<Item = (f64, LoweredMotorCommand)> {
     let mut prev_dir: Option<Dir> = None;
 
@@ -73,15 +73,15 @@ fn lower_commands(
     let mut prev_time: f64 = 0.;
 
     gen move {
-        while let Some((t, command)) = commands.next() {
+        for (t, command) in commands {
             match command {
                 MotorCommand::StepCW => {
                     if change_dir(Dir::CW) {
-                        yield (t, LoweredMotorCommand::MakeCW)
+                        yield (prev_time, LoweredMotorCommand::MakeCW)
                     }
 
-                    yield (prev_time.midpoint(t), LoweredMotorCommand::StepEnable);
-                    yield (t, LoweredMotorCommand::StepDisable);
+                    yield (prev_time, LoweredMotorCommand::StepEnable);
+                    yield (prev_time.midpoint(t), LoweredMotorCommand::StepDisable);
                 }
                 MotorCommand::StepCCW => {
                     if change_dir(Dir::CCW) {
