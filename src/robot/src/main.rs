@@ -10,11 +10,13 @@ use interpreter::puzzle_states::{
 use log::{LevelFilter, debug, warn};
 use puzzle_theory::permutations::Algorithm;
 use robot::{
-    self, CUBE3, QterRobot, hardware::{
+    self, CUBE3, QterRobot,
+    hardware::{
         RobotHandle,
         config::{Face, Priority, RobotConfig},
         set_prio,
-    }, qvis_app::{self, QvisAppHandle}
+    },
+    qvis_app::{self, QvisAppHandle},
 };
 use std::{
     path::PathBuf,
@@ -197,12 +199,12 @@ async fn main() -> color_eyre::Result<()> {
                     debug!("Request accepted, waiting for connection...");
                     let conn = request.accept().await?;
                     debug!("Connection accepted, initializing robot server...");
-                    let (send, recv) = conn.accept_bi().await?;
+                    let (mut send, recv) = conn.accept_bi().await?;
                     debug!("Bi-directional stream accepted, running robot server...");
-                    let conn = (BufReader::new(recv), send);
+                    let conn = (BufReader::new(recv), &mut send);
 
-                    if simulated {
-                        run_robot_server::<_, SimulatedPuzzle>(conn, ()).await?;
+                    let res = if simulated {
+                        run_robot_server::<_, SimulatedPuzzle>(conn, ()).await
                     } else {
                         let (qvis_app_handle, robot_handle) = maybe_handles.as_mut().unwrap();
                         run_robot_server::<_, WrapSimulatedPuzzle<QterRobot>>(
@@ -212,8 +214,12 @@ async fn main() -> color_eyre::Result<()> {
                                 (robot_handle, qvis_app_handle),
                             ),
                         )
-                        .await?;
-                    }
+                        .await
+                    };
+
+                    send.finish().await?;
+
+                    res?;
 
                     Ok(())
                 }
