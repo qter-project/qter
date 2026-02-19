@@ -33,9 +33,7 @@ pub const fn mk_steps_from_inv(
     move |total_steps, v_max, a_max| {
         let mut out = Vec::new();
 
-        println!("{total_steps}");
         for i in 1..=total_steps {
-            println!("{i}");
             let t = inv(i, total_steps, v_max, a_max);
             out.push((t, MotorCommand::StepCW));
         }
