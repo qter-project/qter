@@ -395,17 +395,17 @@ fn motor_driver_thread_watchdog(
             }
 
             if drvstatus.contains(DrvStatus::OLA | DrvStatus::OLB) {
-                warn!(
+                debug!(
                     target: "watchdog",
                     "Motor {face:?} open load detected on phase A and B",
                 );
             } else if drvstatus.contains(DrvStatus::OLA) {
-                warn!(
+                debug!(
                     target: "watchdog",
                     "Motor {face:?} open load detected on phase A",
                 );
             } else if drvstatus.contains(DrvStatus::OLB) {
-                warn!(
+                debug!(
                     target: "watchdog",
                     "Motor {face:?} open load detected on phase B",
                 );
