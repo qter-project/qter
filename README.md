@@ -57,6 +57,9 @@ This was compiled from our custom high level programming language named *QAT* (Q
 }
 
 .macro fib-shuffle {
+    // Let `fib(n)` be the nth fibonacci number
+    // Expects $R1 = fib(n), $R2 = fib(n-1), $R3 = 0
+    // Sets the registers to $R1 = 0, $R2 = fib(n+1), $R3 = fib(n) by adding $R1 to $R2 and $R3
     ($R1:reg $R2:reg $R3:reg $counter:reg) => {
         dec $counter
         if solved $counter {
@@ -72,7 +75,7 @@ This was compiled from our custom high level programming language named *QAT* (Q
 
 input "Which Fibonacci number to calculate:" D
 if solved D {
-    halt "The number is: 0"
+    halt "The number is 0"
 }
 inc B
 loop {
@@ -84,27 +87,47 @@ loop {
 
 # Installation
 
-WIP
+First, install Rust through [rustup](https://rustup.rs) or your package manager. Second, run the following command to install Qter (TODO)
+
+<!-- ```bash -->
+<!-- ``` -->
 
 # Usage
 
-WIP
+Our CLI tool will allow you to compile and execute programs written in QAT. You can compile a program by executing the following command.
+
+```bash
+qter compile program.qat
+# Will output the file `program.q` with the compiled code
+```
+
+To interpret and execute a program, you can run the following command.
+```bash
+qter interpret program.qat
+```
 
 # How does Qter work?
 
 This repository hosts a suite of various twisty puzzle utilities to compile *QAT* programs to *Q*:
 
-- `puzzle_geometry`: Convert an arbitrary polyhedra and cutting planes into a twisty puzzle
 - `cycle_combination_finder`: Discover Qter architectures on a twisty puzzle
-- `cycle_combination_solver`: Solve for a Qter architecture on a twisty puzzle
-- `pog_ans`: Implementation of [tabled asymmetric numerical systems](https://en.wikipedia.org/wiki/Asymmetric_numeral_systems#Tabled_variant_(tANS)) compression for use in pruning tables
+- `cycle_combination_solver`: Find short move sequences for the "add 1" operation for each register of an architecture
 - `movecount_coefficient_calculator`: [Rewrite](https://www.speedsolving.com/threads/movecount-coefficient-calculator-online-tool-to-evaluate-the-speed-of-3x3-algorithms.79025/) of [trangium](https://github.com/trangium)'s online tool to score twisty puzzle move sequences by how easy they are to physically perform
 - `compiler`: Compile *QAT* code to the *Q* file format
 - `interpreter`: Simulate a twisty puzzle to execute *QAT* or *Q*
 - `robot`: Stepper motor control software for the Qter robot
-- `visualizer`: Qter program execution visualizer tool
+- `visualiser`: Qter program execution visualizer tool
 
-Refer to [our paper](https://qter.dev/paper.pdf) for a comprehensive technical breakdown of the mathematics and programming behind Qter.
+Some other repositories in the `qter-project` organization
+- `puzzle_theory`
+    - Contains generic code for analyzing twisty puzzles. If you're writing your own twisty puzzle code in Rust, consider using it as a library.
+    - `puzzle_geometry`: Convert an arbitrary polyhedra and cutting planes into a twisty puzzle
+- `pog_ans`: Implementation of [tabled asymmetric numerical systems](https://en.wikipedia.org/wiki/Asymmetric_numeral_systems#Tabled_variant_(tANS)) compression for use in pruning tables and compressing algorithm tables.
+- `qvis`: Implementation of our computer vision system for the robot; it is designed to be general purpose so you can reuse it for your robot if you like.
+- `tree-sitter-q`: Syntax highlighting for *Q* using tree-sitter
+
+
+Refer to [our paper](https://qter.dev/paper.pdf) for a technical breakdown of the mathematics and programming behind Qter.
 
 # About the Authors
 

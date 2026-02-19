@@ -1,14 +1,14 @@
 .registers {
-    A, B, C, D <- 3x3 builtin (30, 18, 10, 9)
+    A, B, C, COUNTER <- 3x3 builtin (30, 18, 10, 9)
 }
 
 .macro fib-shuffle {
     // Let `fib(n)` be the nth fibonacci number
     // Expects $R1 = fib(n), $R2 = fib(n-1), $R3 = 0
     // Sets the registers to $R1 = 0, $R2 = fib(n+1), $R3 = fib(n) by adding $R1 to $R2 and $R3
-    ($R1:reg $R2:reg $R3:reg $counter:reg) => {
-        dec $counter
-        if solved $counter {
+    ($R1:reg $R2:reg $R3:reg) => {
+        dec COUNTER
+        if solved COUNTER {
             halt "The number is" $R1
         }
         while not-solved $R1 {
@@ -19,19 +19,19 @@
     }
 }
 
-input "Which Fibonacci number to calculate:" D
-if solved D {
+input "Which Fibonacci number to calculate:" COUNTER
+if solved COUNTER {
     halt "The number is 0"
 }
 inc B
 loop {
-    fib-shuffle B A C D
-    fib-shuffle A C B D
-    fib-shuffle C B A D
+    fib-shuffle B A C
+    fib-shuffle A C B
+    fib-shuffle C B A
 }
 
 /*
-A  B  C  D
+A  B  C  COUNTER
 0  1  0  8
 1  0  1  7
 0  1  2  6
