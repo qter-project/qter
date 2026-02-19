@@ -1,7 +1,7 @@
 use crate::hardware::{
     TurnDir, UART0, UART4,
     config::{Face, RobotConfig},
-    motors::motor::{Motor, MotorAction, MotorCommand, time_of},
+    motors::motor::{Motor, MotorAction, MotorCommand },
     uart::{UartId, UartNode},
 };
 use itertools::Itertools;
@@ -122,7 +122,7 @@ impl Motors {
             TurnDir::Prime => (self[face].mk_quarter_turn(Dir::CCW), Dir::CCW),
         };
 
-        let time = time_of(&action);
+        let time = action.time_of();
 
         let actions = self.0.each_mut().map(|motor| {
             if motor.face() == face {
@@ -130,7 +130,7 @@ impl Motors {
             } else if motor.face().is_adjacent(face) {
                 motor.mk_corner_cut_help(dir, time)
             } else {
-                Vec::new()
+                MotorAction(Vec::new())
             }
         });
 
@@ -158,7 +158,7 @@ impl Motors {
             TurnDir::Normal | TurnDir::Prime => self[face2].mk_quarter_turn(dir2),
         };
 
-        let time = time_of(&turn1).max(time_of(&turn2));
+        let time = turn1.time_of().max(turn2.time_of());
 
         let actions = self.0.each_mut().map(|motor| {
             if motor.face() == face1 {
@@ -168,7 +168,7 @@ impl Motors {
             } else if dir1 == dir2 {
                 motor.mk_corner_cut_help(dir1, time)
             } else {
-                Vec::new()
+                MotorAction(Vec::new())
             }
         });
 

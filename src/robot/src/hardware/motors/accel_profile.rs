@@ -69,6 +69,22 @@ pub fn trapezoid_profile_inv(step: u32, total_steps: u32, v_max: f64, a_max: f64
     }
 }
 
+// pub fn trapezoid_profile(compensation: i32) -> MotorAction {
+//     |total_steps, v_max, a_max| {
+//         let (new_ics, accel) = accel_stage(
+//             InitialConditions {
+//                 position: 0,
+//                 velocity: 0.,
+//             },
+//             InitialConditions {
+//                 position: total_steps / 2,
+//                 velocity: v_max,
+//             },
+//             a_max,
+//         );
+//     }
+// }
+
 #[derive(Clone, Copy, Debug)]
 struct InitialConditions {
     position: i32,
@@ -135,10 +151,12 @@ pub fn accel_stage(
     let mut now = 0.;
 
     while ics.position != target_ics.position {
-        let target_pos_possibly_reachable = (ics.position - target_ics.position).signum() == ics.velocity.signum() as i32;
-        if !target_vel_reachable && !target_pos_possibly_reachable
-        {
-            panic!("Cannot reach either the target position or the given velocity with the given acceleration and ICs");
+        let target_pos_possibly_reachable =
+            (ics.position - target_ics.position).signum() == ics.velocity.signum() as i32;
+        if !target_vel_reachable && !target_pos_possibly_reachable {
+            panic!(
+                "Cannot reach either the target position or the given velocity with the given acceleration and ICs"
+            );
         }
 
         // Formula found by integrating velocity & using quadratic formula

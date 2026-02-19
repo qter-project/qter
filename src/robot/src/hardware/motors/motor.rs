@@ -28,6 +28,7 @@ impl MotorCommand {
 }
 
 /// The `f64` is the time to start the _next_ move.
+#[derive(Clone, Debug)]
 pub struct MotorAction(pub Vec<(f64, MotorCommand)>);
 
 impl MotorAction {
