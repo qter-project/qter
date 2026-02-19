@@ -471,12 +471,12 @@ fn motor_thread(
                         if let Some(instr) = fsm.next((face, dir)) {
                             match err_status() {
                                 Ok(()) => {
-                                    ack.send(Ok(())).unwrap();
+                                    let _ = ack.send(Ok(()));
                                     yield instr;
                                     break;
                                 }
                                 Err(err) => {
-                                    ack.send(Err(err)).unwrap();
+                                    let _ = ack.send(Err(err));
                                 }
                             };
                         } else {
