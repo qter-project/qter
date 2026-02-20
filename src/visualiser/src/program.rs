@@ -103,9 +103,11 @@ impl Program {
 
     pub fn instr_span(&self, idx: usize) -> StartEnd {
         let span = &self.instr_spans[idx];
+        let before_start = span.source().inner()[..span.start()].encode_utf16().count();
+        let between_start_and_end = span.slice().encode_utf16().count();
         StartEnd {
-            start: span.start(),
-            end: span.end(),
+            start: before_start,
+            end: before_start + between_start_and_end,
         }
     }
 }
