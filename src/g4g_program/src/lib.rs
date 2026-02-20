@@ -103,7 +103,8 @@ impl Display for Status {
 
 impl Status {
     pub fn robot_enabled(&self) -> bool {
-        !matches!(self, Status::TimeUntilEnabled(_))
+        // !matches!(self, Status::TimeUntilEnabled(_))
+        true
     }
 }
 
