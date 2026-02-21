@@ -47,6 +47,7 @@ class RegisterElement extends HTMLElement {
 
         let eq = document.createElement("span");
         eq.textContent = " = ";
+        eq.style.whiteSpaceCollapse = "preserve";
         container.appendChild(eq);
 
         let value = document.createElement("span");
@@ -107,10 +108,11 @@ class RegisterElement extends HTMLElement {
     }
 
     #updateValue() {
+        const FIGURE_DASH = "‒";
         if (this.#valueSpan != null) {
-            this.#valueSpan!.textContent = `${this.#value ?? "-"}`;
+            this.#valueSpan!.textContent = `${this.#value ?? FIGURE_DASH}`;
             for (let [i, value] of this.#cycleValues.entries()) {
-                this.#cycleSpans![i]!.textContent = `${value ?? "-"}`;
+                this.#cycleSpans![i]!.textContent = `${value ?? FIGURE_DASH}`;
             }
         }
     }

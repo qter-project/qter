@@ -98,6 +98,12 @@ main {
     padding: 1em;
 }
 
+#registers {
+    display: flex;
+    flex-flow: column nowrap;
+    gap: 0.5em;
+}
+
 ::highlight(comment) {
     color: #546E7A;
 }
