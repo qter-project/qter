@@ -66,14 +66,12 @@ pub fn solve_rob_twophase(perm: &Permutation) -> Result<Algorithm, std::io::Erro
     solve_rob_twophase_string(&mk_rob_twophase_input(perm))
 }
 
-pub fn solve_rob_twophase_string(rob_twophase_string: &str) -> Result<Algorithm, std::io::Error> {
-    static ROB_TWOPHASE: Mutex<Option<(ChildStdin, BufReader<ChildStdout>)>> = Mutex::new(None);
+static ROB_TWOPHASE: Mutex<Option<(ChildStdin, BufReader<ChildStdout>)>> = Mutex::new(None);
 
+pub fn init_rob_twophase() -> std::io::Result<()> {
     let mut maybe_rob_twophase = ROB_TWOPHASE.lock().unwrap();
 
-    let (twophase_stdin, twophase_stdout) = if let Some(v) = &mut *maybe_rob_twophase {
-        v
-    } else {
+    if maybe_rob_twophase.is_none() {
         // rob-twophase will dump tables in its current directory; lets have it dump them in some cache
         let mut cache = dirs::cache_dir().unwrap();
         cache.push("rob-twophase-tables");
@@ -98,43 +96,50 @@ pub fn solve_rob_twophase_string(rob_twophase_string: &str) -> Result<Algorithm,
             .spawn()?;
 
         let stdin = child.stdin.unwrap();
-        let stdout = BufReader::new(child.stdout.unwrap());
-
-        maybe_rob_twophase.insert((stdin, stdout))
-    };
-
-    /*
-    Rob Twophase TUI looks like
-
-    ```
-    This is rob-twophase v2.0; copyright Elias Frantar 2020.
-
-    Loading tables ...
-    Done. 0.518s
-
-    Enter >>solve FACECUBE<< to solve, >>scramble<< to scramble or >>bench<< to benchmark.
-
-    Ready!
-    solve LBDLULDDURDRRRFRURBFFRFBFRDLDBDDBDFBBULRLFFBUFLUUBUULL
-    30.177ms
-    R F2 R' U R U2 F2 U2 F' D' R D2 L2 D2 L' U2 F2 (17)
-    Ready!
-    solve ABCDEF
-    Face-error 2.
-    Ready!
-    ```
-    */
-
-    // Wait until rob-twophase tells us that its ready
-    loop {
-        let mut string = String::new();
-        twophase_stdout.read_line(&mut string)?;
-        trace!("{string}");
-
-        if string == "Ready!\n" {
-            break;
+        let mut stdout = BufReader::new(child.stdout.unwrap());
+        
+        /*
+        Rob Twophase TUI looks like
+    
+        ```
+        This is rob-twophase v2.0; copyright Elias Frantar 2020.
+    
+        Loading tables ...
+        Done. 0.518s
+    
+        Enter >>solve FACECUBE<< to solve, >>scramble<< to scramble or >>bench<< to benchmark.
+    
+        Ready!
+        solve LBDLULDDURDRRRFRURBFFRFBFRDLDBDDBDFBBULRLFFBUFLUUBUULL
+        30.177ms
+        R F2 R' U R U2 F2 U2 F' D' R D2 L2 D2 L' U2 F2 (17)
+        Ready!
+        solve ABCDEF
+        Face-error 2.
+        Ready!
+        ```
+        */
+    
+        // Wait until rob-twophase tells us that its ready
+        loop {
+            let mut string = String::new();
+            stdout.read_line(&mut string)?;
+            trace!("{string}");
+    
+            if string == "Ready!\n" {
+                break;
+            }
         }
+        let _ = maybe_rob_twophase.insert((stdin, stdout));
     }
+    Ok(())
+}
+
+pub fn solve_rob_twophase_string(rob_twophase_string: &str) -> Result<Algorithm, std::io::Error> {
+    init_rob_twophase()?;
+    let mut rob_twophase = ROB_TWOPHASE.lock().unwrap();
+    let (twophase_stdin, twophase_stdout) = rob_twophase.as_mut().unwrap();
+
 
     writeln!(twophase_stdin, "solve {}", rob_twophase_string)?;
     trace!("solve {rob_twophase_string}");
@@ -155,6 +160,16 @@ pub fn solve_rob_twophase_string(rob_twophase_string: &str) -> Result<Algorithm,
 
     // Remove parentheses and newline
     let alg = result.replace(['(', ')', '\n'], "");
+
+    loop {
+        let mut string = String::new();
+        twophase_stdout.read_line(&mut string)?;
+        trace!("{string}");
+
+        if string == "Ready!\n" {
+            break;
+        }
+    }
 
     // Split the string and remove the final move count
     Ok(Algorithm::new_from_move_seq(
