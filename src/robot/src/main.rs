@@ -68,7 +68,10 @@ enum Commands {
         simulated: bool,
     },
     Calibrate,
-    Solve,
+    Solve {
+        #[arg(long)]
+        wait: bool,
+    },
 }
 
 #[tokio::main]
@@ -240,7 +243,7 @@ async fn main() -> color_eyre::Result<()> {
             let mut robot_handle = RobotHandle::init(robot_config, now);
             qvis_app::calibrate(&mut qvis_app_handle, &mut robot_handle).await?;
         }
-        Commands::Solve => {
+        Commands::Solve { wait } => {
             let mut qvis_app_handle = QvisAppHandle::init(robot_config.qvis_app_path.clone())
                 .await
                 .unwrap();
@@ -251,6 +254,15 @@ async fn main() -> color_eyre::Result<()> {
                 (&mut robot_handle, &mut qvis_app_handle),
             )
             .await?;
+            if wait {
+                println!("Waiting for READY");
+                let lines = std::io::stdin().lines();
+                for line in lines {
+                    if line.unwrap().trim() == "READY" {
+                        break;
+                    }
+                }
+            }
             robot.solve().await?;
         }
     }
