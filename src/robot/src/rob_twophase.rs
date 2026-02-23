@@ -97,18 +97,18 @@ pub fn init_rob_twophase() -> std::io::Result<()> {
 
         let stdin = child.stdin.unwrap();
         let mut stdout = BufReader::new(child.stdout.unwrap());
-        
+
         /*
         Rob Twophase TUI looks like
-    
+
         ```
         This is rob-twophase v2.0; copyright Elias Frantar 2020.
-    
+
         Loading tables ...
         Done. 0.518s
-    
+
         Enter >>solve FACECUBE<< to solve, >>scramble<< to scramble or >>bench<< to benchmark.
-    
+
         Ready!
         solve LBDLULDDURDRRRFRURBFFRFBFRDLDBDDBDFBBULRLFFBUFLUUBUULL
         30.177ms
@@ -119,13 +119,13 @@ pub fn init_rob_twophase() -> std::io::Result<()> {
         Ready!
         ```
         */
-    
+
         // Wait until rob-twophase tells us that its ready
         loop {
             let mut string = String::new();
             stdout.read_line(&mut string)?;
             trace!("{string}");
-    
+
             if string == "Ready!\n" {
                 break;
             }
@@ -139,7 +139,6 @@ pub fn solve_rob_twophase_string(rob_twophase_string: &str) -> Result<Algorithm,
     init_rob_twophase()?;
     let mut rob_twophase = ROB_TWOPHASE.lock().unwrap();
     let (twophase_stdin, twophase_stdout) = rob_twophase.as_mut().unwrap();
-
 
     writeln!(twophase_stdin, "solve {}", rob_twophase_string)?;
     trace!("solve {rob_twophase_string}");

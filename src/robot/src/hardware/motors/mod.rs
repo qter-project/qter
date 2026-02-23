@@ -1,7 +1,7 @@
 use crate::hardware::{
     TurnDir, UART0, UART4,
     config::{Face, RobotConfig},
-    motors::motor::{Motor, MotorAction, MotorCommand },
+    motors::motor::{Motor, MotorAction, MotorCommand},
     uart::{UartId, UartNode},
 };
 use itertools::Itertools;
@@ -11,8 +11,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-mod motor;
 mod accel_profile;
+mod motor;
 
 /// Runs `N` blocks with delays concurrently.
 ///

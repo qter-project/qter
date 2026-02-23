@@ -96,7 +96,7 @@ struct InitialConditions {
 /// # Panics
 ///
 /// Panics if the the initial velocity and (`target_pos` - `ics.position`) are not the same sign.
-pub fn vel_stage(ics: InitialConditions, target_pos: i32) -> (InitialConditions, MotorAction) {
+fn vel_stage(ics: InitialConditions, target_pos: i32) -> (InitialConditions, MotorAction) {
     let amt_to_move = ics.position - target_pos;
 
     let command = match amt_to_move.cmp(&0) {
@@ -135,7 +135,7 @@ pub fn vel_stage(ics: InitialConditions, target_pos: i32) -> (InitialConditions,
 /// # Panics
 ///
 /// Panics if neither the given velocity nor target position can be reached.
-pub fn accel_stage(
+fn accel_stage(
     mut ics: InitialConditions,
     target_ics: InitialConditions,
     accel: f64,

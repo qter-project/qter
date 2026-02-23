@@ -36,15 +36,14 @@ impl MotorAction {
         self.0.last().map(|v| v.0).unwrap_or(0.)
     }
 
-    pub fn chain(&mut self, other: MotorAction) {
+    fn chain(&mut self, other: MotorAction) {
         let self_time = self.time_of();
 
-        self.0.extend(other.0.into_iter().map(|v| {
-            (v.0 + self_time, v.1)
-        }));
+        self.0
+            .extend(other.0.into_iter().map(|v| (v.0 + self_time, v.1)));
     }
 
-    pub fn reverse(&mut self) {
+    fn reverse(&mut self) {
         let self_time = self.time_of();
 
         for item in &mut self.0 {

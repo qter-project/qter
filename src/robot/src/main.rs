@@ -16,7 +16,8 @@ use robot::{
         config::{Face, Priority, RobotConfig},
         set_prio,
     },
-    qvis_app::{self, QvisAppHandle}, rob_twophase::init_rob_twophase,
+    qvis_app::{self, QvisAppHandle},
+    rob_twophase::init_rob_twophase,
 };
 use std::{
     path::PathBuf,
@@ -70,7 +71,7 @@ enum Commands {
     Calibrate,
     Solve {
         #[arg(long)]
-        g4g: bool,
+        looprepl: bool,
     },
 }
 
@@ -243,7 +244,7 @@ async fn main() -> color_eyre::Result<()> {
             let mut robot_handle = RobotHandle::init(robot_config, now);
             qvis_app::calibrate(&mut qvis_app_handle, &mut robot_handle).await?;
         }
-        Commands::Solve { g4g } => {
+        Commands::Solve { looprepl } => {
             let mut qvis_app_handle = QvisAppHandle::init(robot_config.qvis_app_path.clone())
                 .await
                 .unwrap();
@@ -254,15 +255,15 @@ async fn main() -> color_eyre::Result<()> {
                 (&mut robot_handle, &mut qvis_app_handle),
             )
             .await?;
-            if g4g {
+            if looprepl {
                 init_rob_twophase()?;
                 'outer: loop {
-                    println!("Waiting for READY");
+                    println!("Waiting for s");
                     let lines = std::io::stdin().lines();
                     for line in lines {
                         let result = line.unwrap();
                         let result = result.trim();
-                        if result == "READY" {
+                        if result == "s" {
                             break;
                         }
                         if result == "q" {
