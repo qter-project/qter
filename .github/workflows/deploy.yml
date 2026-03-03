@@ -74,13 +74,13 @@ jobs:
         run: mkdir www
 
       - name: Download docs artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: docs
           path: www
 
       - name: Download paper artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: paper
           path: www
