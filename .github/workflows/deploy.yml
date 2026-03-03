@@ -37,7 +37,7 @@ jobs:
         run: shiroa build docs --mode static-html
         
       - name: Upload artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: docs
           path: docs/dist
@@ -57,7 +57,7 @@ jobs:
         working-directory: media
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: paper
           path: media/paper/paper.pdf
