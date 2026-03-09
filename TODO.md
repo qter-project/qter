@@ -70,17 +70,15 @@
 
 ## QAT
 
-- ⭐Replace repeat-untils that can never terminate with a `halt` instruction
-- ⭐Precompute tables for builtin architectures
+- Replace repeat-untils that can never terminate with a `halt` instruction
 - ⭐Rhai macros for QAT
   - Allow encoding/decoding all possible types of instructions
 - 😎Translate QAT comments into Q
 - ⭐Memory tapes
   - ⭐Implement in QAT
-- Dynamically shuffle sub-cycles with syntax X ← A\*B\*C\*D, Y ← E\*F\*G\*H
 - Function macro
-- ⭐Directory of testing programs instead of hardcoding into Rust
-  - ⭐Inline testing in the QAT format
+- Directory of testing programs instead of hardcoding into Rust
+  - Inline testing in the QAT format
 - 😎Write tree sitter grammar
 - 😎Architecture switching
 - 😎Instruction to copy solving moves to other puzzle
@@ -88,6 +86,7 @@
 - 😎force conditional blocks that end with "halt" to codegen at the end of the instruction memory, optimizing a goto
 - 😎Test with https://github.com/dtolnay/trybuild
 - 😎Write a tree-sitter grammer for QAT
+- 😎Syntax for declaring what moduli you want from the registers
 - Evaluate repeat instruction for examinx
 - 😎Optimizations
   - Convert QAT to SSA
