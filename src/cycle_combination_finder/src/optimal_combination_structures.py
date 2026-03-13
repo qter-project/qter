@@ -6,18 +6,19 @@ orders. The output of this phase is directly used in the CCS.
 import collections
 import dataclasses
 import enum
+import functools
 import itertools
 import math
 import operator
-import functools
 import timeit
+
 import puzzle_orbit_definitions
 from common_types import (
+    EvenParityConstraint,  # noqa: F401
+    Orbit,  # noqa: F401
     OrientationStatus,
     OrientationSumConstraint,
     PuzzleOrbitDefinition,  # noqa: F401
-    Orbit,  # noqa: F401
-    EvenParityConstraint,  # noqa: F401
 )
 
 CycleCombination = collections.namedtuple(

@@ -1,7 +1,12 @@
-#![allow(unused)]
-use std::fmt;
+#![warn(clippy::pedantic)]
+#![allow(clippy::too_many_arguments, clippy::too_many_lines, clippy::bool_to_int_with_if, unused)]
 
-use puzzle_theory::{ksolve::KSolveSet, numbers::{self, Int, U}, puzzle_geometry::{num, parsing::puzzle}};
+use puzzle_theory::{
+    ksolve::KSolveSet,
+    numbers::{self, Int, U},
+    puzzle_geometry::parsing::puzzle,
+};
+use std::fmt;
 
 struct PrimePower {
     value: u16,
@@ -42,13 +47,13 @@ impl fmt::Debug for PossibleOrder {
 
 struct Partition {
     name: String,
-    partition: Vec<u16>,
+    data: Vec<u16>,
     order: Int<U>,
 }
 
 impl fmt::Debug for Partition {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self.partition)
+        write!(f, "{:?}", self.data)
     }
 }
 
@@ -160,7 +165,7 @@ fn possible_order_list(
 
     let mut paths = vec![];
     // create a stack to handle recursive
-    let mut stack: Vec<OrderIteration> = vec![OrderIteration {
+    let mut stack = vec![OrderIteration {
         index: 0,
         piece_count: 0,
         product: Int::<U>::from(1_u16),
@@ -235,7 +240,7 @@ fn possible_order_test(
     cycle_cubie_counts: &[u16],
     puzzle: &[KSolveSet],
     available_pieces: u16,
-    shared_pieces: &Vec<u16>,
+    shared_pieces: &[u16],
 ) -> Option<Vec<Assignment>> {
     let mut shared_sum = 0;
     for orbit in puzzle {
@@ -278,7 +283,7 @@ fn possible_order_test(
 
         // try adding the current prime power to each orbit
         for (o, orbit) in puzzle.iter().enumerate() {
-            let orbit_orient = orbit.orientation_count().get() as u16;
+            let orbit_orient = u16::from(orbit.orientation_count().get());
 
             // orbits with no orientation and the same piece count act the same. we should only check the first one
             // continue if this is a duplicate of an orbit that was already checked.
@@ -396,7 +401,7 @@ fn assignments_to_combo(
     registers: &[PossibleOrder],
     cycle_cubie_counts: &[u16],
     puzzle: &[KSolveSet],
-    shared_pieces: &Vec<u16>,
+    shared_pieces: &[u16],
 ) -> CycleCombination {
     let mut cycle_combination: Vec<Cycle> = vec![];
 
@@ -416,7 +421,7 @@ fn assignments_to_combo(
 
             partitions.push(Partition {
                 name: orbit.name().to_string(),
-                partition: assignments[registers.len() - 1 - r][o].clone(),
+                data: assignments[registers.len() - 1 - r][o].clone(),
                 order: lcm,
             });
         }
@@ -433,7 +438,7 @@ fn assignments_to_combo(
         used_cubie_counts: cycle_cubie_counts.to_vec(),
         order_product,
         cycles: cycle_combination,
-        shared_pieces: shared_pieces.clone(),
+        shared_pieces: shared_pieces.to_vec(),
     }
 }
 
@@ -456,7 +461,7 @@ fn optimal_equivalent_combination(
         } else {
             total_cubies += piece_count;
         }
-        cycle_cubie_counts[o] = piece_count
+        cycle_cubie_counts[o] = piece_count;
     }
 
     let cubies_per_register = total_cubies / num_registers;
@@ -530,8 +535,8 @@ fn optimal_equivalent_combination(
 }
 
 fn add_order_to_registers(
-    num_registers: &u16,
-    registers: Vec<PossibleOrder>,
+    num_registers: u16,
+    registers: &[PossibleOrder],
     possible_orders: &[PossibleOrder],
     cycle_cubie_counts: &[u16],
     puzzle: &[KSolveSet],
@@ -558,7 +563,7 @@ fn add_order_to_registers(
             }
 
             if overshadows {
-                max_redundant = combo.cycles[(*num_registers - 1) as usize]
+                max_redundant = combo.cycles[(num_registers - 1) as usize]
                     .order
                     .max(max_redundant);
             }
@@ -578,9 +583,9 @@ fn add_order_to_registers(
         }
 
         let mut registers_with_new: Vec<PossibleOrder> = vec![possible_order.clone()];
-        registers_with_new.extend(registers.clone());
+        registers_with_new.extend(registers.iter().cloned());
 
-        if (last_reg + 2) as u16 == *num_registers {
+        if (last_reg + 2) as u16 == num_registers {
             for shared_pieces in shared_piece_options {
                 if let Some(mut assignments) = possible_order_test(
                     &registers_with_new,
@@ -602,7 +607,7 @@ fn add_order_to_registers(
         } else {
             add_order_to_registers(
                 num_registers,
-                registers_with_new,
+                &registers_with_new,
                 possible_orders,
                 cycle_cubie_counts,
                 puzzle,
@@ -651,8 +656,8 @@ fn optimal_combinations(puzzle: &[KSolveSet], num_registers: u16) {
     ];
 
     add_order_to_registers(
-        &num_registers,
-        vec![],
+        num_registers,
+        &[],
         &possible_orders,
         &cycle_cubie_counts,
         puzzle,
@@ -670,12 +675,12 @@ fn optimal_combinations(puzzle: &[KSolveSet], num_registers: u16) {
 fn main() {
     let ksolve = puzzle("3x3").ksolve();
     let puzzle = ksolve.sets();
-    let cycle_combos: Option<CycleCombination> = optimal_equivalent_combination(puzzle, 3);
+    optimal_combinations(puzzle, 2);
 
-    println!(
-        "Highest Equivalent Order: {}",
-        cycle_combos.unwrap().cycles[0].order
-    );
+    // println!(
+    //     "Highest Equivalent Order: {}",
+    //     cycle_combos.unwrap().cycles[0].order
+    // );
 }
 
 #[cfg(test)]
@@ -724,7 +729,7 @@ mod tests {
     }
 
     #[test]
-    fn test_optimal_order_2_registers_5X5() {
+    fn test_optimal_order_2_registers_5x5() {
         let ksolve = puzzle("3x3").ksolve();
         let puzzle = ksolve.sets();
         optimal_combinations(puzzle, 2);

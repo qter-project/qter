@@ -116,7 +116,7 @@ This repository hosts a suite of various twisty puzzle utilities to compile *QAT
 - `compiler`: Compile *QAT* code to the *Q* file format
 - `interpreter`: Simulate a twisty puzzle to execute *QAT* or *Q*
 - `robot`: Stepper motor control software for the Qter robot
-- `visualiser`: Qter program execution visualizer tool
+- `visualiser`: Qter program execution visualiser tool
 
 Some other repositories in the `qter-project` organization
 - `puzzle_theory`
