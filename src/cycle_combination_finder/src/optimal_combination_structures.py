@@ -716,7 +716,7 @@ def main():
     start = timeit.default_timer()
     cycle_combinations = optimal_cycle_combinations(
         puzzle_orbit_definition=puzzle_orbit_definitions.PUZZLE_3x3,
-        num_cycles=2,
+        num_cycles=3,
     )
     print(timeit.default_timer() - start)
     print(recursive_shared_cycle_combinations.cache_info())

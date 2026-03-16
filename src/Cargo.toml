@@ -14,6 +14,7 @@ compiler.path = "compiler"
 g4g_program.path = "g4g_program"
 puzzle_theory.git = "https://github.com/qter-project/puzzle-theory"
 internment = { version = "0.8", features = [ "arc" ] }
+humanize-duration = "0.0.7"
 itertools = "0.14.0"
 chumsky = "0.12.0"
 ariadne = "0.6.0"

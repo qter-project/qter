@@ -11,8 +11,6 @@
 
 - right now it's not sufficient to assume either 1 or [# of orientations] if the factor to multiply by when a cycle orientations
   - <https://discord.com/channels/772576325897945119/1326029986578038784/1422286972357050438>
-- think about combining classical DP with knapsack
-  - <https://discord.com/channels/772576325897945119/1326029986578038784/1422435176792985682>
 
 ## CCS
 
@@ -36,7 +34,7 @@
     - <https://discord.com/channels/772576325897945119/1326029986578038784/1347580846647017482>
   - fix storage backend initialization meta
   - approximate pruning table
-    - reread this <https://discord.com/channels/@me/1399108854784065677/1431035660839555187> 
+    - reread this <https://discord.com/channels/@me/1399108854784065677/1431035660839555187>
   - tANS table compression
   - cycle type pruning table
     - with fewer state spaces, go back to an exact pruning table
@@ -64,7 +62,7 @@
 - 😎PGO
 - 😎replace pub(crate) with getters
 - can we use move tables? look into at the end
-- 😎use *mut u8 instead of Box<[u8]> for generic puzzle  
+- 😎use *mut u8 instead of Box<[u8]> for generic puzzle
 
 ## Paper
 
@@ -117,14 +115,12 @@
 
 ## End user
 
-- Web app of qter with a visualization
 - ⭐Youtube videos
 - ⭐Animation of the robot doing a computation
 
 ## Robot
 
 - ⭐Add robot to the README
-- 😎Build one
 
 ## Misc
 
@@ -142,3 +138,7 @@
     - Hazel (soldering protoboard)
     - Sriram (robot stuff? idk)
 
+## Docs
+
+- Add cayleypy to the paper
+- Add linear order growth to the paper

@@ -498,6 +498,8 @@ dependencies = [
 name = "cycle_combination_finder"
 version = "0.1.0"
 dependencies = [
+ "humanize-duration",
+ "log",
  "puzzle_theory",
  "qter_core",
 ]
@@ -518,7 +520,6 @@ dependencies = [
  "log",
  "memoize",
  "num-traits",
- "pareto_front",
  "pretty_env_logger",
  "puzzle_theory",
  "qter_core",
@@ -1403,12 +1404,6 @@ name = "owo-colors"
 version = "4.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c6901729fa79e91a0913333229e9ca5dc725089d1c363b2f4b4760709dc4a52"
-
-[[package]]
-name = "pareto_front"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b9c5b29bc46c2140b83938f0269cfa040e348727a11df9b02a3cb22aee2664f"
 
 [[package]]
 name = "parking_lot_core"
