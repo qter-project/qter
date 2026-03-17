@@ -85,19 +85,9 @@ pub struct OrbitDef {
     orientation_count: NonZeroU16,
 }
 
-impl From<&KSolveSet> for OrbitDef {
-    fn from(orbit: &KSolveSet) -> Self {
-        Self {
-            piece_count: orbit.piece_count(),
-            orientation_count: NonZeroU16::new(u16::from(orbit.orientation_count().get())).unwrap(),
-        }
-    }
-}
-
 #[derive(Copy, Clone, Debug, PartialEq)]
 struct MaxPrimePower {
     prime: u16,
-    // TODO: make this a list of min_piece_counts
     exponent: u16,
 }
 
@@ -115,6 +105,15 @@ pub enum RegisterCount {
 
 pub struct CycleCombinationFinder {
     orbit_defs: Vec<OrbitDef>,
+}
+
+impl From<&KSolveSet> for OrbitDef {
+    fn from(orbit: &KSolveSet) -> Self {
+        Self {
+            piece_count: orbit.piece_count(),
+            orientation_count: NonZeroU16::new(u16::from(orbit.orientation_count().get())).unwrap(),
+        }
+    }
 }
 
 impl CycleCombinationFinder {
@@ -201,7 +200,7 @@ impl CycleCombinationFinder {
         total_pieces: u16,
         max_prime_powers: &[MaxPrimePower],
     ) -> Vec<PossibleOrder> {
-        debug!("{max_prime_powers:?}");
+        debug!("{total_pieces:?} {max_prime_powers:?}");
         let mut paths = vec![];
         let mut log_path = |s: OrderIteration| {
             let prime_powers = if s.product == Int::<U>::from(1_u16) {
@@ -278,7 +277,6 @@ impl CycleCombinationFinder {
                 } else {
                     prime_power_iter
                 };
-                debug!("{prime_power_iter:?} {min_piece_count:?}");
                 // the new piece count will add min_pieces for the current power, plus two if parity needs handling
                 let new_piece_count = s.piece_count
                     + min_piece_count
@@ -314,6 +312,7 @@ impl CycleCombinationFinder {
         paths
             .sort_by(|a: &PossibleOrder, b: &PossibleOrder| b.order.partial_cmp(&a.order).unwrap());
 
+        debug!("{paths:#?}");
         paths
     }
 
@@ -730,10 +729,9 @@ impl CycleCombinationFinder {
                 let max_prime_powers = self.max_prime_powers_below(partition_max);
 
                 // get a list of all orders that would fit within a pieces_per_register amount of pieces
-                let possible_orders: Vec<PossibleOrder> =
-                    self.possible_order_list(total_pieces, &max_prime_powers);
+                let possible_orders = self.possible_order_list(total_pieces, &max_prime_powers);
 
-                debug!("Possible Orders: {possible_orders:?}");
+                // debug!("Possible Orders: {possible_orders:?}");
 
                 let mut cycle_combinations: Vec<CycleCombination> = vec![];
                 let shared_piece_options: Vec<Vec<u16>> = vec![
@@ -793,8 +791,16 @@ mod tests {
             .collect::<Vec<_>>()
     }
 
-    #[test]
-    fn test_cube3_max_prime_powers() {
+    #[test_log::test]
+    fn test_max_prime_powers_below_edge_cases() {
+        let cube3_ksolve = puzzle("3x3").ksolve();
+        let ccf = CycleCombinationFinder::from_ksolve(&cube3_ksolve).unwrap();
+        assert!(ccf.max_prime_powers_below(0).is_empty());
+        assert!(ccf.max_prime_powers_below(1).is_empty());
+    }
+
+    #[test_log::test]
+    fn test_cube3_max_prime_powers_below() {
         let cube3_ksolve = puzzle("3x3").ksolve();
         let ccf = CycleCombinationFinder::from_ksolve(&cube3_ksolve).unwrap();
         let max_prime_powers = ccf.max_prime_powers_below(12);
@@ -825,7 +831,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[test_log::test]
     fn test_cube3_2_optimal() {
         let cube3_ksolve = puzzle("3x3").ksolve();
         let ccf = CycleCombinationFinder::from_ksolve(&cube3_ksolve).unwrap();
@@ -848,7 +854,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[test_log::test]
     fn test_cube3_3_optimal() {
         let cube3_ksolve = puzzle("3x3").ksolve();
         let ccf = CycleCombinationFinder::from_ksolve(&cube3_ksolve).unwrap();
@@ -872,7 +878,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[test_log::test]
     fn test_cube3_2_equivalent() {
         let cube3_ksolve = puzzle("3x3").ksolve();
         let ccf = CycleCombinationFinder::from_ksolve(&cube3_ksolve).unwrap();
@@ -886,7 +892,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[test_log::test]
     fn test_cube3_3_equivalent() {
         let cube3_ksolve = puzzle("3x3").ksolve();
         let ccf = CycleCombinationFinder::from_ksolve(&cube3_ksolve).unwrap();
@@ -900,8 +906,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_megaminx_max_prime_powers() {
+    #[test_log::test]
+    fn test_megaminx_max_prime_powers_below() {
         let megaminx_ksolve = puzzle("megaminx").ksolve();
         let ccf = CycleCombinationFinder::from_ksolve(&megaminx_ksolve).unwrap();
         let max_prime_powers = ccf.max_prime_powers_below(30);
@@ -952,7 +958,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[test_log::test]
     fn test_megaminx_2_optimal() {
         let megaminx_ksolve = puzzle("megaminx").ksolve();
         let ccf = CycleCombinationFinder::from_ksolve(&megaminx_ksolve).unwrap();
@@ -981,7 +987,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[test_log::test]
     fn test_megaminx_3_optimal() {
         let megaminx_ksolve = puzzle("megaminx").ksolve();
         let ccf = CycleCombinationFinder::from_ksolve(&megaminx_ksolve).unwrap();
@@ -1011,7 +1017,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[test_log::test]
     fn test_megaminx_2_equivalent() {
         let cube3_ksolve = puzzle("megaminx").ksolve();
         let ccf = CycleCombinationFinder::from_ksolve(&cube3_ksolve).unwrap();
@@ -1025,7 +1031,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[test_log::test]
     fn test_megaminx_3_equivalent() {
         let cube3_ksolve = puzzle("megaminx").ksolve();
         let ccf = CycleCombinationFinder::from_ksolve(&cube3_ksolve).unwrap();
@@ -1039,8 +1045,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_slow_max_prime_powers() {
+    #[test_log::test]
+    fn test_slow_max_prime_powers_below() {
         let ccf = CycleCombinationFinder::from_orbit_defs(SLOW_ORBIT_DEFS.to_vec()).unwrap();
         let max_prime_powers = ccf.max_prime_powers_below(60);
         assert_eq!(
@@ -1118,7 +1124,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[test_log::test]
     fn test_slow_2_optimal() {
         let ccf = CycleCombinationFinder::from_orbit_defs(SLOW_ORBIT_DEFS.to_vec()).unwrap();
         let cycle_combinations = ccf.find(

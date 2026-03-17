@@ -9,5 +9,9 @@ puzzle_theory.workspace = true
 log.workspace = true
 humanize-duration.workspace = true
 
+[dev-dependencies]
+pretty_env_logger.workspace = true
+test-log.workspace = true
+
 [lints]
 workspace = true
