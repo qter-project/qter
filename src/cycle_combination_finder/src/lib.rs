@@ -22,11 +22,6 @@ use std::{fmt, num::NonZeroU16};
 
 mod primepowernum;
 
-struct PrimePower {
-    value: u16,
-    min_pieces: u16,
-}
-
 struct OrderIteration {
     index: usize,
     piece_count: u16,
@@ -102,13 +97,20 @@ impl From<&KSolveSet> for OrbitDef {
 #[derive(Copy, Clone, Debug, PartialEq)]
 struct MaxPrimePower {
     prime: u16,
+    // TODO: make this a list of min_piece_counts
     exponent: u16,
 }
 
 #[derive(Clone, Copy)]
-pub enum SearchStrategy {
+pub enum Optimality {
     Equivalent,
     Optimal,
+}
+
+#[derive(Clone, Copy)]
+pub enum RegisterCount {
+    Exactly(NonZeroU16),
+    All,
 }
 
 pub struct CycleCombinationFinder {
@@ -599,14 +601,18 @@ impl CycleCombinationFinder {
 
     pub fn find(
         &self,
-        search_strategy: SearchStrategy,
-        num_registers: Option<NonZeroU16>,
+        search_strategy: Optimality,
+        register_count: RegisterCount,
     ) -> Vec<CycleCombination> {
         let now = Instant::now();
 
-        let num_registers = num_registers.unwrap().get();
+        let RegisterCount::Exactly(register_count) = register_count else {
+            panic!("expected exactly variant for now");
+        };
+        let register_count = register_count.get();
+
         let ret = match search_strategy {
-            SearchStrategy::Equivalent => {
+            Optimality::Equivalent => {
                 // this is the main function. it returns a 'near optimal' combination such that all registers have equivalent order
                 // it may not be the most optimal, since there are some assumptions made to help efficiency
 
@@ -620,7 +626,7 @@ impl CycleCombinationFinder {
                         }
                 });
 
-                let pieces_per_register = total_pieces / num_registers;
+                let pieces_per_register = total_pieces / register_count;
 
                 let partition_max = self
                     .orbit_defs
@@ -659,10 +665,10 @@ impl CycleCombinationFinder {
                                 })
                                 .unwrap()
                                 / 1.max(possible_order.min_piece_counts[p]))
-                            .min(num_registers);
+                            .min(register_count);
                             // each unorientable register will use 'value' pieces instead of 'prime_combo.piece_counts[v]' pieces
                             // so we need to account for that difference
-                            unorientable_excess += (num_registers - orientable_registers)
+                            unorientable_excess += (register_count - orientable_registers)
                                 * (prime_power - possible_order.min_piece_counts[p]);
                         } else if prime_power % 3 == 0 {
                             let orientable_registers = (self
@@ -677,21 +683,21 @@ impl CycleCombinationFinder {
                                 })
                                 .unwrap()
                                 / 1.max(possible_order.min_piece_counts[p]))
-                            .min(num_registers);
-                            unorientable_excess += (num_registers - orientable_registers)
+                            .min(register_count);
+                            unorientable_excess += (register_count - orientable_registers)
                                 * (prime_power - possible_order.min_piece_counts[p]);
                         }
                     }
 
                     let available_pieces = total_pieces
-                        - num_registers * (possible_order.min_piece_counts.iter().sum::<u16>())
+                        - register_count * (possible_order.min_piece_counts.iter().sum::<u16>())
                         + 2;
                     // if the excess exceeds the total number of pieces, the order won't fit so we skip to the next
                     if unorientable_excess > available_pieces {
                         continue;
                     }
 
-                    let registers = vec![possible_order.clone(); num_registers as usize];
+                    let registers = vec![possible_order.clone(); register_count as usize];
                     let shared_pieces: Vec<u16> = vec![0, 0, 1, 1];
                     if let Some(mut assignments) =
                         self.possible_order_test(&registers, available_pieces, &shared_pieces)
@@ -706,7 +712,7 @@ impl CycleCombinationFinder {
 
                 vec![]
             }
-            SearchStrategy::Optimal => {
+            Optimality::Optimal => {
                 let total_pieces = self
                     .orbit_defs
                     .iter()
@@ -742,7 +748,7 @@ impl CycleCombinationFinder {
                 ];
 
                 self.add_order_to_registers(
-                    num_registers,
+                    register_count,
                     &[],
                     &possible_orders,
                     total_pieces,
@@ -763,6 +769,17 @@ mod tests {
     use super::*;
     use puzzle_theory::puzzle_geometry::parsing::puzzle;
 
+    const SLOW_ORBIT_DEFS: [OrbitDef; 2] = [
+        OrbitDef {
+            piece_count: NonZeroU16::new(60).unwrap(),
+            orientation_count: NonZeroU16::new(2).unwrap(),
+        },
+        OrbitDef {
+            piece_count: NonZeroU16::new(40).unwrap(),
+            orientation_count: NonZeroU16::new(3).unwrap(),
+        },
+    ];
+
     fn cycles(cycle_combinations: Vec<CycleCombination>) -> Vec<Vec<u32>> {
         cycle_combinations
             .into_iter()
@@ -774,50 +791,6 @@ mod tests {
                     .collect::<Vec<u32>>()
             })
             .collect::<Vec<_>>()
-    }
-
-    #[test]
-    fn test_slow_max_prime_powers() {
-        todo!();
-    }
-
-    #[test]
-    fn test_slow_2_optimal() {
-        let slow_orbit_defs = vec![
-            OrbitDef {
-                piece_count: 60.try_into().unwrap(),
-                orientation_count: 2.try_into().unwrap(),
-            },
-            OrbitDef {
-                piece_count: 40.try_into().unwrap(),
-                orientation_count: 3.try_into().unwrap(),
-            },
-        ];
-        let ccf = CycleCombinationFinder::from_orbit_defs(slow_orbit_defs).unwrap();
-        let cycle_combinations = ccf.find(SearchStrategy::Optimal, Some(2.try_into().unwrap()));
-        assert_eq!(
-            cycles(cycle_combinations),
-            vec![
-                vec![1396755360, 3],
-                vec![944863920, 9],
-                vec![845404560, 18],
-                vec![698377680, 90],
-                vec![349188840, 360],
-                vec![232792560, 630],
-                vec![116396280, 2520],
-                vec![41081040, 7560],
-                vec![36756720, 13860],
-                vec![20540520, 27720],
-                vec![18378360, 32760],
-                vec![12252240, 55440],
-                vec![6846840, 83160],
-                vec![6126120, 98280],
-                vec![3063060, 166320],
-                vec![2827440, 180180],
-                vec![2162160, 360360],
-                vec![1081080, 1081080],
-            ]
-        );
     }
 
     #[test]
@@ -856,7 +829,10 @@ mod tests {
     fn test_cube3_2_optimal() {
         let cube3_ksolve = puzzle("3x3").ksolve();
         let ccf = CycleCombinationFinder::from_ksolve(&cube3_ksolve).unwrap();
-        let cycle_combinations = ccf.find(SearchStrategy::Optimal, Some(2.try_into().unwrap()));
+        let cycle_combinations = ccf.find(
+            Optimality::Optimal,
+            RegisterCount::Exactly(2.try_into().unwrap()),
+        );
         assert_eq!(
             cycles(cycle_combinations),
             vec![
@@ -876,7 +852,10 @@ mod tests {
     fn test_cube3_3_optimal() {
         let cube3_ksolve = puzzle("3x3").ksolve();
         let ccf = CycleCombinationFinder::from_ksolve(&cube3_ksolve).unwrap();
-        let cycle_combinations = ccf.find(SearchStrategy::Optimal, Some(3.try_into().unwrap()));
+        let cycle_combinations = ccf.find(
+            Optimality::Optimal,
+            RegisterCount::Exactly(3.try_into().unwrap()),
+        );
         assert_eq!(
             cycles(cycle_combinations),
             vec![
@@ -897,7 +876,10 @@ mod tests {
     fn test_cube3_2_equivalent() {
         let cube3_ksolve = puzzle("3x3").ksolve();
         let ccf = CycleCombinationFinder::from_ksolve(&cube3_ksolve).unwrap();
-        let cycle_combinations = ccf.find(SearchStrategy::Equivalent, Some(2.try_into().unwrap()));
+        let cycle_combinations = ccf.find(
+            Optimality::Equivalent,
+            RegisterCount::Exactly(2.try_into().unwrap()),
+        );
         assert_eq!(
             cycle_combinations[0].cycles[0].order,
             Int::<U>::from(90_u16),
@@ -908,10 +890,263 @@ mod tests {
     fn test_cube3_3_equivalent() {
         let cube3_ksolve = puzzle("3x3").ksolve();
         let ccf = CycleCombinationFinder::from_ksolve(&cube3_ksolve).unwrap();
-        let cycle_combinations = ccf.find(SearchStrategy::Equivalent, Some(3.try_into().unwrap()));
+        let cycle_combinations = ccf.find(
+            Optimality::Equivalent,
+            RegisterCount::Exactly(3.try_into().unwrap()),
+        );
         assert_eq!(
             cycle_combinations[0].cycles[0].order,
             Int::<U>::from(30_u16),
+        );
+    }
+
+    #[test]
+    fn test_megaminx_max_prime_powers() {
+        let megaminx_ksolve = puzzle("megaminx").ksolve();
+        let ccf = CycleCombinationFinder::from_ksolve(&megaminx_ksolve).unwrap();
+        let max_prime_powers = ccf.max_prime_powers_below(30);
+        assert_eq!(
+            max_prime_powers,
+            vec![
+                MaxPrimePower {
+                    prime: 2,
+                    exponent: 5
+                },
+                MaxPrimePower {
+                    prime: 3,
+                    exponent: 3
+                },
+                MaxPrimePower {
+                    prime: 5,
+                    exponent: 2
+                },
+                MaxPrimePower {
+                    prime: 7,
+                    exponent: 1
+                },
+                MaxPrimePower {
+                    prime: 11,
+                    exponent: 1
+                },
+                MaxPrimePower {
+                    prime: 13,
+                    exponent: 1
+                },
+                MaxPrimePower {
+                    prime: 17,
+                    exponent: 1
+                },
+                MaxPrimePower {
+                    prime: 19,
+                    exponent: 1
+                },
+                MaxPrimePower {
+                    prime: 23,
+                    exponent: 1
+                },
+                MaxPrimePower {
+                    prime: 29,
+                    exponent: 1
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn test_megaminx_2_optimal() {
+        let megaminx_ksolve = puzzle("megaminx").ksolve();
+        let ccf = CycleCombinationFinder::from_ksolve(&megaminx_ksolve).unwrap();
+        let cycle_combinations = ccf.find(
+            Optimality::Optimal,
+            RegisterCount::Exactly(2.try_into().unwrap()),
+        );
+        assert_eq!(
+            cycles(cycle_combinations),
+            vec![
+                vec![720720, 1],
+                vec![540540, 2],
+                vec![360360, 18],
+                vec![196560, 36],
+                vec![166320, 72],
+                vec![98280, 120],
+                vec![83160, 180],
+                vec![65520, 360],
+                vec![55440, 504],
+                vec![32760, 840],
+                vec![27720, 1260],
+                vec![13860, 2520],
+                vec![7560, 3780],
+                vec![5544, 5040]
+            ]
+        );
+    }
+
+    #[test]
+    fn test_megaminx_3_optimal() {
+        let megaminx_ksolve = puzzle("megaminx").ksolve();
+        let ccf = CycleCombinationFinder::from_ksolve(&megaminx_ksolve).unwrap();
+        let cycle_combinations = ccf.find(
+            Optimality::Optimal,
+            RegisterCount::Exactly(3.try_into().unwrap()),
+        );
+        assert_eq!(
+            cycles(cycle_combinations),
+            vec![
+                vec![720720, 1, 1],
+                vec![360360, 12, 3],
+                vec![360360, 6, 6],
+                vec![180180, 12, 12],
+                vec![98280, 24, 18],
+                vec![83160, 36, 30],
+                vec![55440, 60, 36],
+                vec![32760, 90, 60],
+                vec![27720, 180, 72],
+                vec![27720, 120, 90],
+                vec![15120, 120, 120],
+                vec![9240, 180, 180],
+                vec![5040, 360, 360],
+                vec![2520, 630, 420],
+                vec![1260, 840, 630]
+            ]
+        );
+    }
+
+    #[test]
+    fn test_megaminx_2_equivalent() {
+        let cube3_ksolve = puzzle("megaminx").ksolve();
+        let ccf = CycleCombinationFinder::from_ksolve(&cube3_ksolve).unwrap();
+        let cycle_combinations = ccf.find(
+            Optimality::Equivalent,
+            RegisterCount::Exactly(2.try_into().unwrap()),
+        );
+        assert_eq!(
+            cycle_combinations[0].cycles[0].order,
+            Int::<U>::from(5040_u16),
+        );
+    }
+
+    #[test]
+    fn test_megaminx_3_equivalent() {
+        let cube3_ksolve = puzzle("megaminx").ksolve();
+        let ccf = CycleCombinationFinder::from_ksolve(&cube3_ksolve).unwrap();
+        let cycle_combinations = ccf.find(
+            Optimality::Equivalent,
+            RegisterCount::Exactly(3.try_into().unwrap()),
+        );
+        assert_eq!(
+            cycle_combinations[0].cycles[0].order,
+            Int::<U>::from(630_u16),
+        );
+    }
+
+    #[test]
+    fn test_slow_max_prime_powers() {
+        let ccf = CycleCombinationFinder::from_orbit_defs(SLOW_ORBIT_DEFS.to_vec()).unwrap();
+        let max_prime_powers = ccf.max_prime_powers_below(60);
+        assert_eq!(
+            max_prime_powers,
+            vec![
+                MaxPrimePower {
+                    prime: 2,
+                    exponent: 6,
+                },
+                MaxPrimePower {
+                    prime: 3,
+                    exponent: 4,
+                },
+                MaxPrimePower {
+                    prime: 5,
+                    exponent: 2,
+                },
+                MaxPrimePower {
+                    prime: 7,
+                    exponent: 2,
+                },
+                MaxPrimePower {
+                    prime: 11,
+                    exponent: 1,
+                },
+                MaxPrimePower {
+                    prime: 13,
+                    exponent: 1,
+                },
+                MaxPrimePower {
+                    prime: 17,
+                    exponent: 1,
+                },
+                MaxPrimePower {
+                    prime: 19,
+                    exponent: 1,
+                },
+                MaxPrimePower {
+                    prime: 23,
+                    exponent: 1,
+                },
+                MaxPrimePower {
+                    prime: 29,
+                    exponent: 1,
+                },
+                MaxPrimePower {
+                    prime: 31,
+                    exponent: 1,
+                },
+                MaxPrimePower {
+                    prime: 37,
+                    exponent: 1,
+                },
+                MaxPrimePower {
+                    prime: 41,
+                    exponent: 1,
+                },
+                MaxPrimePower {
+                    prime: 43,
+                    exponent: 1,
+                },
+                MaxPrimePower {
+                    prime: 47,
+                    exponent: 1,
+                },
+                MaxPrimePower {
+                    prime: 53,
+                    exponent: 1,
+                },
+                MaxPrimePower {
+                    prime: 59,
+                    exponent: 1,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn test_slow_2_optimal() {
+        let ccf = CycleCombinationFinder::from_orbit_defs(SLOW_ORBIT_DEFS.to_vec()).unwrap();
+        let cycle_combinations = ccf.find(
+            Optimality::Optimal,
+            RegisterCount::Exactly(2.try_into().unwrap()),
+        );
+        assert_eq!(
+            cycles(cycle_combinations),
+            vec![
+                vec![1396755360, 3],
+                vec![944863920, 9],
+                vec![845404560, 18],
+                vec![698377680, 90],
+                vec![349188840, 360],
+                vec![232792560, 630],
+                vec![116396280, 2520],
+                vec![41081040, 7560],
+                vec![36756720, 13860],
+                vec![20540520, 27720],
+                vec![18378360, 32760],
+                vec![12252240, 55440],
+                vec![6846840, 83160],
+                vec![6126120, 98280],
+                vec![3063060, 166320],
+                vec![2827440, 180180],
+                vec![2162160, 360360],
+                vec![1081080, 1081080],
+            ]
         );
     }
 }
