@@ -1,138 +1,116 @@
 #
-#   Count the number of positions of the Rubik's cube of a particular order.
+#   Compute the set of achievable orders of 3x3 Rubik's Cube positions.
 #
-#   Do corners and edges separately, taking into account the orientations of
-#   each, and then combine the results.
+#   We do edges and corners separately, taking into account:
+#     - permutation parity
+#     - total orientation sum modulo 2 (edges) or 3 (corners)
+#     - order of the resulting permutation-with-orientation
 #
-#   For simplicity we make use of the fact that the maximum order is 1260.
-#   We do not attempt to make this particularly fast.
+#   Then we combine edge and corner possibilities:
+#     - edge parity must equal corner parity
+#     - edge orientation sum must be 0 mod 2
+#     - corner orientation sum must be 0 mod 3
+#     - full order = lcm(edge_order, corner_order)
 #
-#   We use dynamic programming, and build a matrix that is
+#   This version computes only WHICH orders are possible, not how many states
+#   realize each order.
 #
-# (parity: 0..1) x (totp: 0..o-1) x (cubies:  0..n) x (order: 0..1260) -> count
-#
-#   Given a number of cubies and an orientation modulo, build an array as
-#   described above.
-#
-import math
 
-maxorder = 1260
+import math
+import pprint
+
+MAX_ORDER = 1260
 
 
 def lcm(a, b):
     return a // math.gcd(a, b) * b
 
 
-# I think this is "a choose b × number of ways to permute a things"; or the P(a, b) function we learned in CS182
-def perm(a, b):
-    r = 1
-    for i in range(b):
-        r = r * (a - i)
-    return r
+def possible_orders_for_piece_type(piece_count, orientation_count):
+    """
+    General DP for a piece system with:
+      - piece_count pieces
+      - orientation_count orientations per piece (mod orientation_count)
 
+    Returns:
+      dp[parity][orientation_sum][used] = set of reachable orders
 
-def order_of_just_permutations(thing_count, rotations):
-    matrix_of_order_counts = [[], []]
+    where:
+      parity = 0 (even), 1 (odd)
+      orientation_sum = total orientation sum mod orientation_count
+      used = number of pieces accounted for
 
-    for parity in range(2):
-        for first_rotation in range(rotations):
-            matrix_of_order_counts[parity].append([])
-            matrix_of_order_counts[parity][first_rotation].append([0])
+    This enumerates abstract cycle structures, not exact labeled-piece counts.
+    """
 
-    matrix_of_order_counts[0][0][0].append(1)
+    dp = [
+        [[set() for _ in range(piece_count + 1)] for _ in range(orientation_count)]
+        for _ in range(2)
+    ]
 
-    for cycle_computing in range(1, thing_count + 1):
-        for parity in range(2):
-            matrix_of_order_counts[parity].append([])
-            for first_rotation in range(rotations):
-                matrix_of_order_counts[parity][first_rotation].append([])
-                for composing_cycle in range(1, cycle_computing + 1):
-                    for second_rotation in range(rotations):
-                        rotation_composition = (
-                            second_rotation + first_rotation
-                        ) % rotations
+    # Base case: empty decomposition
+    dp[0][0][0].add(1)
 
-                        order_contribution = composing_cycle
-                        if second_rotation != 0:
-                            order_contribution *= rotations
-                        if composing_cycle % 2 == 0:
-                            signature = 1 - parity
+    # Build up by adding one cycle at a time
+    for pieces in range(1, piece_count + 1):
+        for target_parity in range(2):
+            for target_orient_sum in range(orientation_count):
+                recorder = dp[target_parity][target_orient_sum][pieces]
+
+                # Add one new cycle of length cycle_len
+                for cycle_len in range(1, pieces + 1):
+                    # A cycle of length k has permutation parity (k - 1) mod 2
+                    cycle_parity = (cycle_len - 1) % 2
+
+                    # Therefore previous parity must be:
+                    prev_parity = target_parity ^ cycle_parity
+
+                    prev_used = pieces - cycle_len
+
+                    # The cycle can have any net orientation sum mod orientation_count
+                    for cycle_orient_sum in range(orientation_count):
+                        prev_orient_sum = (
+                            target_orient_sum - cycle_orient_sum
+                        ) % orientation_count
+
+                        # Order contribution of this cycle
+                        #
+                        # For the standard "orientation sum around the cycle" model:
+                        # - if cycle_orient_sum == 0, contribution = cycle_len
+                        # - else contribution = cycle_len * orientation_count / gcd(orientation_count, cycle_orient_sum)
+                        #
+                        # For M = 2 or 3, this reduces to:
+                        # - cycle_len if zero
+                        # - cycle_len * M if nonzero
+                        if cycle_orient_sum == 0:
+                            cycle_order = cycle_len
                         else:
-                            signature = parity
-
-                        cnt = perm(cycle_computing - 1, composing_cycle - 1) * pow(
-                            rotations, composing_cycle - 1
-                        )
-                        for order in range(
-                            1,
-                            len(
-                                matrix_of_order_counts[signature][rotation_composition][
-                                    cycle_computing - composing_cycle
-                                ]
-                            ),
-                        ):
-                            new_order = lcm(order_contribution, order)
-
-                            while new_order >= len(
-                                matrix_of_order_counts[parity][first_rotation][
-                                    cycle_computing
-                                ]
-                            ):
-                                matrix_of_order_counts[parity][first_rotation][
-                                    cycle_computing
-                                ].append(0)
-
-                            matrix_of_order_counts[parity][first_rotation][
-                                cycle_computing
-                            ][new_order] += (
-                                cnt
-                                * matrix_of_order_counts[signature][
-                                    rotation_composition
-                                ][cycle_computing - composing_cycle][order]
+                            cycle_order = (
+                                cycle_len
+                                * orientation_count
+                                // math.gcd(orientation_count, cycle_orient_sum)
                             )
 
-    return matrix_of_order_counts
+                        for prev_order in dp[prev_parity][prev_orient_sum][prev_used]:
+                            recorder.add(lcm(prev_order, cycle_order))
+
+    return dp
 
 
-edges = order_of_just_permutations(12, 2)
-corners = order_of_just_permutations(8, 3)
-totals = [0] * (maxorder + 1)
+# Build edge and corner possibilities
+edges = possible_orders_for_piece_type(60, 10)
+corners = possible_orders_for_piece_type(40, 20)
 
-for p in range(2):
-    for eo in range(1, len(edges[p][0][12])):
-        if edges[p][0][12][eo] == 0:
-            continue
-        for co in range(1, len(corners[p][0][8])):
-            v = lcm(eo, co)
-            if corners[p][0][8][co] > 0 and v <= maxorder:
-                totals[v] += edges[p][0][12][eo] * corners[p][0][8][co]
-            elif corners[p][0][8][co] > 0:
-                print("Unexpected", v, corners[p][0][8][co])
+# Combine them into full cube orders
+seen = set()
+for parity in range(2):
+    for edge_order in edges[parity][0][60]:
+        for corner_order in corners[parity][0][40]:
+            full_order = lcm(edge_order, corner_order)
+            seen.add(full_order)
 
-order_sum = 0
-cube_states = 0
+orders = sorted(seen)
 
-for order in range(len(totals)):
-    cube_states += totals[order]
-
-for order in range(len(totals)):
-    if totals[order] > 0:
-        order_sum += order * totals[order]
-        percent = totals[order] * 100 / cube_states
-        print(order, totals[order], percent)
-
-order_sum_without_trivial = order_sum - 1 - 4 * 12 - 2 * 6
-cube_states_without_trivial = cube_states - 19
-
-g1 = math.gcd(order_sum, cube_states)
-order_sum //= g1
-cube_states //= g1
-
-g2 = math.gcd(order_sum_without_trivial, cube_states_without_trivial)
-order_sum_without_trivial //= g2
-cube_states_without_trivial //= g2
-
-print(order_sum, "/", cube_states)
-print(order_sum / cube_states)
-print(order_sum_without_trivial, "/", cube_states_without_trivial)
-print(order_sum_without_trivial / cube_states_without_trivial)
+# pprint.pprint(orders)
+print()
+print("Number of distinct achievable orders:", len(orders))

@@ -576,15 +576,12 @@ def highest_order_cycles_from_cubie_counts(
 def reduced_integer_partitions(
     cycle_cubie_count,
     orbit_index,
-    s,
     puzzle_orbit_definition,
     even_parity_constraints_helper,
 ):
     orbit = puzzle_orbit_definition.orbits[orbit_index]
     partition_objs = []
     for partition in integer_partitions(cycle_cubie_count):
-        if s:
-            partition = (1,) + partition
         lcm = math.lcm(*partition)
         order = lcm
 

@@ -8,6 +8,8 @@ qter_core.workspace = true
 puzzle_theory.workspace = true
 log.workspace = true
 humanize-duration.workspace = true
+fxhash = "0.2.1"
+num-integer = "0.1.46"
 
 [dev-dependencies]
 pretty_env_logger.workspace = true

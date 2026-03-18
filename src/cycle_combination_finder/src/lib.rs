@@ -313,6 +313,7 @@ impl CycleCombinationFinder {
             .sort_by(|a: &PossibleOrder, b: &PossibleOrder| b.order.partial_cmp(&a.order).unwrap());
 
         debug!("{paths:#?}");
+        // println!("{:?}", paths.len());
         paths
     }
 
@@ -725,11 +726,14 @@ impl CycleCombinationFinder {
                     // TODO enforce length is non zero
                     .unwrap();
 
+                let now2 = Instant::now();
                 // get list of prime powers that fit within the largest partition
                 let max_prime_powers = self.max_prime_powers_below(partition_max);
 
                 // get a list of all orders that would fit within a pieces_per_register amount of pieces
                 let possible_orders = self.possible_order_list(total_pieces, &max_prime_powers);
+                println!("{}", now2.elapsed().human(Truncate::Millis));
+                println!("a {:?}", possible_orders.len());
 
                 // debug!("Possible Orders: {possible_orders:?}");
 
@@ -789,6 +793,22 @@ mod tests {
                     .collect::<Vec<u32>>()
             })
             .collect::<Vec<_>>()
+    }
+
+    #[test_log::test]
+    fn test_foo() {
+        let ccf = CycleCombinationFinder::from_orbit_defs(vec![OrbitDef {
+            piece_count: 150.try_into().unwrap(),
+            orientation_count: 2.try_into().unwrap(),
+        }, OrbitDef {
+            piece_count: 100.try_into().unwrap(),
+            orientation_count: 3.try_into().unwrap(),
+        }])
+        .unwrap();
+        let cycle_combinations = ccf.find(
+            Optimality::Optimal,
+            RegisterCount::Exactly(2.try_into().unwrap()),
+        );
     }
 
     #[test_log::test]

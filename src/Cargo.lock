@@ -498,8 +498,10 @@ dependencies = [
 name = "cycle_combination_finder"
 version = "0.1.0"
 dependencies = [
+ "fxhash",
  "humanize-duration",
  "log",
+ "num-integer",
  "pretty_env_logger",
  "puzzle_theory",
  "qter_core",
