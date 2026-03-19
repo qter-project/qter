@@ -2,7 +2,7 @@ use std::{
     cmp::Ordering,
     f32::consts::LN_2,
     simd::{
-        cmp::{SimdOrd, SimdPartialEq, SimdPartialOrd},
+        cmp::SimdOrd,
         f32x32,
         num::{SimdFloat, SimdUint},
         u8x32,

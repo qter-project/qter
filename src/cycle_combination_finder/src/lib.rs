@@ -599,6 +599,7 @@ impl CycleCombinationFinder {
         }
     }
 
+    #[must_use]
     pub fn find(
         &self,
         search_strategy: Optimality,
