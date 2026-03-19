@@ -37,17 +37,13 @@ impl<const N: usize> OrderFactors<N>
 where
     LaneCount<N>: SupportedLaneCount,
 {
-    #[inline]
-    #[must_use]
-    pub fn one() -> Self {
+    fn one() -> Self {
         Self {
             exps: Simd::splat(0),
         }
     }
 
-    #[inline]
-    #[must_use]
-    pub fn to_u64(&self) -> u64 {
+    fn to_u64(&self) -> u64 {
         let mut result = 1u64;
         for (i, p) in PRIMES.into_iter().enumerate() {
             for _ in 0..self.exps[i] {
@@ -57,17 +53,25 @@ where
         result
     }
 
-    #[must_use]
-    pub fn exp_sum(&self) -> u16 {
+    fn exp_sum(&self) -> u16 {
         self.exps.cast::<u16>().reduce_sum()
     }
 
-    fn combine_with_src_to_dst(&self, src: &FxHashSet<Self>, dst: &mut FxHashSet<Self>) {
-        dst.extend(src.iter().map(|order| {
-            let exps = order.exps.simd_max(self.exps);
-            OrderFactors::<N> { exps }
-        }));
+    fn lcm(&self, other: &Self) -> Self {
+        Self {
+            exps: self.exps.simd_max(other.exps),
+        }
     }
+}
+
+fn combine_orders<const N: usize>(
+    dst: &mut FxHashSet<OrderFactors<N>>,
+    src: &FxHashSet<OrderFactors<N>>,
+    combine: &OrderFactors<N>,
+) where
+    LaneCount<N>: SupportedLaneCount,
+{
+    dst.extend(src.iter().map(|order| order.lcm(combine)));
 }
 
 impl<const N: usize> Display for OrderFactors<N>
@@ -118,7 +122,7 @@ where
         })
         .collect();
 
-    // Empty decomposition
+    // Identity
     dp[0][0][0].insert(OrderFactors::<N>::one());
 
     // Canonical cycle types in sorted order:
@@ -146,10 +150,7 @@ where
             }
 
             if n > 1 {
-                let idx = PRIMES
-                    .into_iter()
-                    .position(|p| p == n)
-                    .expect("prime basis missing leftover prime factor");
+                let idx = PRIMES.into_iter().position(|p| p == n).unwrap();
                 exps[idx] += 1;
             }
 
@@ -196,7 +197,7 @@ where
                                 let src = &left[second_piece_count]; // prev_used < used always
                                 let dst = &mut right[0]; // index `used`
 
-                                subproblem_order.combine_with_src_to_dst(src, dst);
+                                combine_orders(dst, src, &subproblem_order);
                             }
                             Ordering::Less => {
                                 let parity_bucket = &mut dp[first_parity];
@@ -204,7 +205,7 @@ where
                                 let src = &left[second_orient_sum][second_piece_count];
                                 let dst = &mut right[0][first_piece_count];
 
-                                subproblem_order.combine_with_src_to_dst(src, dst);
+                                combine_orders(dst, src, &subproblem_order);
                             }
                             Ordering::Greater => {
                                 let parity_bucket = &mut dp[first_parity];
@@ -212,7 +213,7 @@ where
                                 let dst = &mut left[first_orient_sum][first_piece_count];
                                 let src = &right[0][second_piece_count];
 
-                                subproblem_order.combine_with_src_to_dst(src, dst);
+                                combine_orders(dst, src, &subproblem_order);
                             }
                         },
                         Ordering::Less => {
@@ -220,14 +221,14 @@ where
                             let src = &left[second_parity][second_orient_sum][second_piece_count];
                             let dst = &mut right[0][first_orient_sum][first_piece_count];
 
-                            subproblem_order.combine_with_src_to_dst(src, dst);
+                            combine_orders(dst, src, &subproblem_order);
                         }
                         Ordering::Greater => {
                             let (left, right) = dp.split_at_mut(second_parity);
                             let dst = &mut left[first_parity][first_orient_sum][first_piece_count];
                             let src = &right[0][second_orient_sum][second_piece_count];
 
-                            subproblem_order.combine_with_src_to_dst(src, dst);
+                            combine_orders(dst, src, &subproblem_order);
                         }
                     }
                 }
@@ -311,7 +312,7 @@ fn collect_distinct_maxima_for_x<const N: usize>(
         out.insert(OrderFactors {
             exps: Simd::from_array(*cur),
         });
-    } else if node.subtree_max.simd_gt(x.exps).to_bitmask() >> node.level == 0 {
+    } else if node.subtree_max.exps.simd_gt(x.exps).to_bitmask() >> node.level == 0 {
         // If all remaining subtree exponents are <= x on remaining levels,
         // then every y in this subtree yields exactly x on remaining levels.
         let mut exps = x.exps;
@@ -335,7 +336,7 @@ where
     // Children keyed by exponent value at this level.
     children: FxHashMap<u8, MaxTrieNode<N>>,
     // For pruning: coordinatewise maxima over all vectors in this subtree.
-    subtree_max: Simd<u8, N>,
+    subtree_max: OrderFactors<N>,
 }
 
 impl<const N: usize> MaxTrieNode<N>
@@ -346,12 +347,12 @@ where
         Self {
             level,
             children: FxHashMap::default(),
-            subtree_max: Simd::splat(0),
+            subtree_max: OrderFactors::one(),
         }
     }
 
     fn insert(&mut self, v: OrderFactors<N>) {
-        self.subtree_max = self.subtree_max.simd_max(v.exps);
+        self.subtree_max = self.subtree_max.lcm(&v);
 
         if self.level == N {
             return;
