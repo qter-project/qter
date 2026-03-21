@@ -3,19 +3,20 @@
 #![allow(clippy::missing_panics_doc, clippy::too_many_lines)]
 
 use dashmap::DashSet;
-use fxhash::{FxBuildHasher, FxHashMap, FxHashSet};
+use fxhash::{FxBuildHasher, FxHashSet};
+use humanize_duration::{Truncate, prelude::DurationExt};
 use log::debug;
 use num_integer::gcd;
 use rayon::prelude::*;
 use std::{
-    fmt::{Debug, Display, Formatter},
-    simd::{
-        LaneCount, Simd, SupportedLaneCount,
-        cmp::{SimdOrd, SimdPartialOrd},
-        num::SimdUint,
-    },
+    fmt::{Debug, Formatter},
+    simd::{LaneCount, Simd, SupportedLaneCount, cmp::SimdOrd, num::SimdUint},
     time::Instant,
 };
+
+use crate::trie::MaxTrieNode;
+
+mod trie;
 
 const N: usize = 32;
 
@@ -24,7 +25,7 @@ const PRIMES: [u64; N] = [
     101, 103, 107, 109, 113, 127, 131,
 ];
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct OrderFactors<const N: usize>
 where
     LaneCount<N>: SupportedLaneCount,
@@ -42,7 +43,7 @@ where
         }
     }
 
-    fn to_u64(&self) -> u64 {
+    fn as_u64(&self) -> u64 {
         let mut result = 1u64;
         for (i, p) in PRIMES.into_iter().enumerate() {
             for _ in 0..self.exps[i] {
@@ -63,12 +64,12 @@ where
     }
 }
 
-impl<const N: usize> Display for OrderFactors<N>
+impl<const N: usize> Debug for OrderFactors<N>
 where
     LaneCount<N>: SupportedLaneCount,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "OF({})", self.to_u64())
+        write!(f, "OF({})", self.as_u64())
     }
 }
 
@@ -76,7 +77,7 @@ where
 pub fn possible_orders_for_piece_type_with_primes<const N: usize>(
     piece_count: usize,
     orientation_count: usize,
-) -> Vec<Vec<Vec<FxHashSet<OrderFactors<N>>>>>
+) -> Vec<Vec<FxHashSet<OrderFactors<N>>>>
 where
     LaneCount<N>: SupportedLaneCount,
 {
@@ -86,10 +87,10 @@ where
     where
         LaneCount<N>: SupportedLaneCount,
     {
-        cycle_piece_count: usize,
-        cycle_parity: usize,
-        cycle_orient_sum: usize,
-        cycle_order: OrderFactors<N>,
+        piece_count: usize,
+        parity: usize,
+        orient_sum: usize,
+        order: OrderFactors<N>,
     }
 
     assert!(
@@ -99,29 +100,25 @@ where
         PRIMES.len()
     );
 
-    let mut dp: Vec<Vec<Vec<FxHashSet<OrderFactors<N>>>>> = (0..2)
+    let mut dp: Vec<Vec<Vec<FxHashSet<OrderFactors<N>>>>> = (0..=piece_count)
         .map(|_| {
             (0..orientation_count)
-                .map(|_| {
-                    (0..=piece_count)
-                        .map(|_| FxHashSet::<OrderFactors<N>>::default())
-                        .collect::<Vec<_>>()
-                })
-                .collect::<Vec<_>>()
+                .map(|_| (0..2).map(|_| FxHashSet::default()).collect())
+                .collect()
         })
         .collect();
 
     // Identity
-    dp[0][0][0].insert(OrderFactors::<N>::one());
+    dp[0][0][0].insert(OrderFactors::one());
 
-    let cycles = (1..=piece_count)
-        .flat_map(|cycle_piece_count| {
-            (0..orientation_count).map(move |cycle_orient_sum| {
-                let cycle_order = if cycle_orient_sum == 0 {
-                    cycle_piece_count as u64
+    let cycles: Vec<Cycle<N>> = (1..=piece_count)
+        .flat_map(|piece_count| {
+            (0..orientation_count).map(move |orient_sum| {
+                let cycle_order = if orient_sum == 0 {
+                    piece_count as u64
                 } else {
-                    (cycle_piece_count as u64 * orientation_count as u64)
-                        / gcd(orientation_count as u64, cycle_orient_sum as u64)
+                    (piece_count as u64 * orientation_count as u64)
+                        / gcd(orientation_count as u64, orient_sum as u64)
                 };
 
                 let mut exps = [0u8; N];
@@ -143,101 +140,63 @@ where
                 }
 
                 Cycle {
-                    cycle_piece_count,
-                    cycle_parity: (cycle_piece_count - 1) % 2,
-                    cycle_orient_sum,
-                    cycle_order: OrderFactors::<N> {
+                    piece_count,
+                    parity: (piece_count - 1) % 2,
+                    orient_sum,
+                    order: OrderFactors::<N> {
                         exps: Simd::from_array(exps),
                     },
                 }
             })
         })
-        .collect::<Vec<_>>();
+        .collect();
 
-    // Build by total piece count.
-    //
-    // For a fixed dst_piece_count, every destination bucket depends only on
-    // smaller piece counts, so all buckets at this layer can be computed independently.
+    // For a dst_piece_count, every destination bucket depends only on
+    // smaller piece counts, so all buckets at this layer can be computed
+    // independently
     for dst_piece_count in 1..=piece_count {
-        let bucket_count = 2 * orientation_count;
-
-        let layer_results: Vec<(usize, usize, FxHashSet<OrderFactors<N>>)> = (0..bucket_count)
-            .into_par_iter()
-            .map(|bucket_idx| {
-                let dst_parity = bucket_idx / orientation_count;
-                let dst_orient_sum = bucket_idx % orientation_count;
-
-                let mut dst = FxHashSet::<OrderFactors<N>>::default();
-
+        let (subproblems, [problem, ..]) = dp.split_at_mut(dst_piece_count) else {
+            panic!();
+        };
+        // TODO: we shouldn't have to loop over every single orient_sum because
+        // of GCD magic
+        problem
+            .par_iter_mut()
+            .enumerate()
+            .flat_map_iter(|(dst_orient_sum, tmp)| {
+                tmp.iter_mut()
+                    .enumerate()
+                    .map(move |(dst_parity, dst)| (dst_orient_sum, dst_parity, dst))
+            })
+            .for_each(|(dst_orient_sum, dst_parity, dst)| {
                 for cycle in cycles
                     .iter()
-                    .filter(|c| c.cycle_piece_count <= dst_piece_count)
+                    .take_while(|c| c.piece_count <= dst_piece_count)
                 {
-                    let src_piece_count = dst_piece_count - cycle.cycle_piece_count;
-                    let src_parity = dst_parity ^ cycle.cycle_parity;
+                    let src_piece_count = dst_piece_count - cycle.piece_count;
+                    let src_parity = dst_parity ^ cycle.parity;
+                    let src_orient_sum =
+                        (dst_orient_sum + orientation_count - cycle.orient_sum) % orientation_count;
 
-                    let src_orient_sum = (dst_orient_sum + orientation_count
-                        - (cycle.cycle_orient_sum % orientation_count))
-                        % orientation_count;
-
-                    let src = &dp[src_parity][src_orient_sum][src_piece_count];
-                    if src.is_empty() {
-                        continue;
+                    let src = &subproblems[src_piece_count][src_orient_sum][src_parity];
+                    if !src.is_empty() {
+                        dst.extend(src.iter().map(|order| order.lcm(&cycle.order)));
                     }
-
-                    dst.extend(src.iter().map(|order| order.lcm(&cycle.cycle_order)));
                 }
-
-                (dst_parity, dst_orient_sum, dst)
-            })
-            .collect();
-
-        for (dst_parity, dst_orient_sum, set) in layer_results {
-            dp[dst_parity][dst_orient_sum][dst_piece_count] = set;
-        }
-        // let (prev, rest) = dp.split_at_mut(dst_piece_count);
-        // let dst_layer = &mut rest[0];
-
-        // dst_layer
-        //     .par_iter_mut()
-        //     .enumerate()
-        //     .for_each(|(dst_parity, parity_vec)| {
-        //         parity_vec
-        //             .iter_mut()
-        //             .enumerate()
-        //             .for_each(|(dst_orient_sum, dst)| {
-        //                 for cycle in cycles
-        //                     .iter()
-        //                     .filter(|c| c.cycle_piece_count <= dst_piece_count)
-        //                 {
-        //                     let src_piece_count = dst_piece_count - cycle.cycle_piece_count;
-        //                     let src_parity = dst_parity ^ cycle.cycle_parity;
-        //                     let src_orient_sum = (dst_orient_sum + orientation_count
-        //                         - (cycle.cycle_orient_sum % orientation_count))
-        //                         % orientation_count;
-
-        //                     let src = &prev[src_piece_count][src_parity][src_orient_sum];
-        //                     if src.is_empty() {
-        //                         continue;
-        //                     }
-
-        //                     dst.extend(src.iter().map(|order| order.lcm(&cycle.cycle_order)));
-        //                 }
-        //             });
-        //     });
+            });
     }
 
-    dp
+    std::mem::take(&mut dp[piece_count])
 }
 
 fn main() {
     pretty_env_logger::init();
 
-    let edge = (120, 20);
-    let corner = (80, 30);
+    let edge = (120, 2);
+    let corner = (80, 3);
 
-    let orgnow = Instant::now();
-    
+    let start = Instant::now();
+
     let mut binding = [edge, corner]
         .into_par_iter()
         .map(|(piece_count, orient_count)| {
@@ -246,11 +205,13 @@ fn main() {
         .collect::<Vec<_>>();
     let mut edges = std::mem::take(&mut binding[0]);
     let mut corners = std::mem::take(&mut binding[1]);
+    debug!("DP in {}", start.elapsed().human(Truncate::Millis));
 
     let all_distinct_orders = DashSet::<OrderFactors<N>, FxBuildHasher>::default();
     for parity in 0..2 {
-        let a = std::mem::take(&mut edges[parity][0][edge.0]);
-        let b = std::mem::take(&mut corners[parity][0][corner.0]);
+        let begin_setup = start.elapsed();
+        let a = std::mem::take(&mut edges[0][parity]);
+        let b = std::mem::take(&mut corners[0][parity]);
 
         let (mut outer, inner) = if a.len() >= b.len() {
             (a.into_iter().collect::<Vec<_>>(), b)
@@ -260,12 +221,13 @@ fn main() {
 
         outer.sort_unstable_by_key(|x| std::cmp::Reverse(x.exp_sum()));
 
-        let mut root = MaxTrieNode::<N>::new(0);
+        let mut root = MaxTrieNode::new(0);
         for y in inner {
             root.insert(y);
         }
 
-        let now = Instant::now();
+        let finished_setup = begin_setup.saturating_sub(start.elapsed());
+        debug!("Setup in {}", finished_setup.human(Truncate::Millis));
         outer
             .into_par_iter()
             .fold(FxHashSet::default, |mut local_acc, order| {
@@ -278,79 +240,24 @@ fn main() {
                     all_distinct_orders.insert(order);
                 }
             });
-        debug!("Main in {:?}", now.elapsed());
+        debug!(
+            "Main in {}",
+            start
+                .elapsed()
+                .saturating_sub(finished_setup)
+                .human(Truncate::Millis)
+        );
     }
 
-    println!("{:?}", orgnow.elapsed());
+    println!("{:?}", start.elapsed());
 
     println!("Total distinct orders: {}", all_distinct_orders.len());
     let mut all_combined = all_distinct_orders
         .into_iter()
-        .map(|f| f.to_u64())
+        .map(|f| f.as_u64())
         .collect::<Vec<_>>();
     all_combined.sort_unstable();
-    for &order in all_combined.iter().rev().take(100) {
+    for &order in all_combined.iter().rev().take(10) {
         println!("{order}");
-    }
-}
-
-#[derive(Debug)]
-struct MaxTrieNode<const N: usize>
-where
-    LaneCount<N>: SupportedLaneCount,
-{
-    level: usize,
-    // Children keyed by exponent value at this level.
-    children: FxHashMap<u8, MaxTrieNode<N>>,
-    // For pruning: coordinatewise maxima over all vectors in this subtree.
-    subtree_max: OrderFactors<N>,
-}
-
-impl<const N: usize> MaxTrieNode<N>
-where
-    LaneCount<N>: SupportedLaneCount,
-{
-    fn new(level: usize) -> Self {
-        Self {
-            level,
-            children: FxHashMap::default(),
-            subtree_max: OrderFactors::one(),
-        }
-    }
-
-    fn insert(&mut self, v: OrderFactors<N>) {
-        self.subtree_max = self.subtree_max.lcm(&v);
-
-        if self.level != N {
-            self.children
-                .entry(v.exps[self.level])
-                .or_insert_with(|| Self::new(self.level + 1))
-                .insert(v);
-        }
-    }
-
-    fn collect_distinct_lcms(
-        &self,
-        order: &OrderFactors<N>,
-        cur: &mut [u8; N],
-        out: &mut FxHashSet<OrderFactors<N>>,
-    ) {
-        if self.level == N {
-            out.insert(OrderFactors {
-                exps: Simd::from_array(*cur),
-            });
-        } else if self.subtree_max.exps.simd_gt(order.exps).to_bitmask() >> self.level == 0 {
-            // If all remaining subtree exponents are <= x on remaining levels,
-            // then every y in this subtree yields exactly x on remaining levels.
-            let mut exps = order.exps;
-            exps[..self.level].copy_from_slice(&cur[..self.level]);
-            out.insert(OrderFactors { exps });
-        } else {
-            for (&exp, child) in &self.children {
-                let old = std::mem::replace(&mut cur[self.level], order.exps[self.level].max(exp));
-                child.collect_distinct_lcms(order, cur, out);
-                cur[self.level] = old;
-            }
-        }
     }
 }
