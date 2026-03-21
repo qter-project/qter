@@ -2,25 +2,25 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::missing_panics_doc, clippy::too_many_lines)]
 
+use crate::trie::MaxOrderTrie;
 use dashmap::DashSet;
 use fxhash::{FxBuildHasher, FxHashSet};
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::debug;
 use num_integer::gcd;
+use puzzle_theory::numbers::{Int, U};
 use rayon::prelude::*;
 use std::{
     fmt::{Debug, Formatter},
-    simd::{LaneCount, Simd, SupportedLaneCount, cmp::SimdOrd, num::SimdUint},
+    simd::{LaneCount, Simd, SupportedLaneCount, cmp::SimdOrd},
     time::Instant,
 };
-
-use crate::trie::MaxTrieNode;
 
 mod trie;
 
 const N: usize = 32;
 
-const PRIMES: [u64; N] = [
+const PRIMES: [u8; N] = [
     2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97,
     101, 103, 107, 109, 113, 127, 131,
 ];
@@ -43,18 +43,14 @@ where
         }
     }
 
-    fn as_u64(&self) -> u64 {
-        let mut result = 1u64;
+    fn as_bigint(&self) -> Int<U> {
+        let mut result = Int::one();
         for (i, p) in PRIMES.into_iter().enumerate() {
             for _ in 0..self.exps[i] {
-                result *= p;
+                result *= Int::<U>::from(p);
             }
         }
         result
-    }
-
-    fn exp_sum(&self) -> u16 {
-        self.exps.cast::<u16>().reduce_sum()
     }
 
     fn lcm(&self, other: &Self) -> Self {
@@ -69,7 +65,7 @@ where
     LaneCount<N>: SupportedLaneCount,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "OF({})", self.as_u64())
+        write!(f, "OF({})", self.as_bigint())
     }
 }
 
@@ -125,6 +121,7 @@ where
                 let mut n = cycle_order;
 
                 for (i, p) in PRIMES.into_iter().enumerate() {
+                    let p = u64::from(p);
                     if p * p > n && n > 1 {
                         break;
                     }
@@ -135,7 +132,7 @@ where
                 }
 
                 if n > 1 {
-                    let idx = PRIMES.into_iter().position(|p| p == n).unwrap();
+                    let idx = PRIMES.into_iter().position(|p| u64::from(p) == n).unwrap();
                     exps[idx] += 1;
                 }
 
@@ -197,14 +194,14 @@ fn main() {
 
     let start = Instant::now();
 
-    let mut binding = [edge, corner]
+    let [mut edges, mut corners] = [edge, corner]
         .into_par_iter()
         .map(|(piece_count, orient_count)| {
             possible_orders_for_piece_type_with_primes::<N>(piece_count, orient_count)
         })
-        .collect::<Vec<_>>();
-    let mut edges = std::mem::take(&mut binding[0]);
-    let mut corners = std::mem::take(&mut binding[1]);
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
     debug!("DP in {}", start.elapsed().human(Truncate::Millis));
 
     let all_distinct_orders = DashSet::<OrderFactors<N>, FxBuildHasher>::default();
@@ -213,15 +210,13 @@ fn main() {
         let a = std::mem::take(&mut edges[0][parity]);
         let b = std::mem::take(&mut corners[0][parity]);
 
-        let (mut outer, inner) = if a.len() >= b.len() {
+        let (outer, inner) = if a.len() >= b.len() {
             (a.into_iter().collect::<Vec<_>>(), b)
         } else {
             (b.into_iter().collect::<Vec<_>>(), a)
         };
 
-        outer.sort_unstable_by_key(|x| std::cmp::Reverse(x.exp_sum()));
-
-        let mut root = MaxTrieNode::new(0);
+        let mut root = MaxOrderTrie::new(0);
         for y in inner {
             root.insert(y);
         }
@@ -232,7 +227,7 @@ fn main() {
             .into_par_iter()
             .fold(FxHashSet::default, |mut local_acc, order| {
                 let mut cur = [0u8; N];
-                root.collect_distinct_lcms(&order, &mut cur, &mut local_acc);
+                root.collect_distinct_orders(&order, &mut cur, &mut local_acc);
                 local_acc
             })
             .for_each(|local_acc| {
@@ -254,7 +249,7 @@ fn main() {
     println!("Total distinct orders: {}", all_distinct_orders.len());
     let mut all_combined = all_distinct_orders
         .into_iter()
-        .map(|f| f.as_u64())
+        .map(|f| f.as_bigint())
         .collect::<Vec<_>>();
     all_combined.sort_unstable();
     for &order in all_combined.iter().rev().take(10) {

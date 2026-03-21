@@ -13,6 +13,7 @@ num-integer = "0.1.46"
 pretty_env_logger.workspace = true
 rayon = "1.11.0"
 dashmap = "6.1.0"
+ndarray = { version = "0.17.2", features = ["rayon"] }
 
 [dev-dependencies]
 test-log.workspace = true
