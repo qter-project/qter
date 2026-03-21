@@ -7,6 +7,7 @@ use dashmap::DashSet;
 use fxhash::{FxBuildHasher, FxHashSet};
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::debug;
+use ndarray::{Array2, Array3, Axis, Zip};
 use num_integer::gcd;
 use puzzle_theory::numbers::{Int, U};
 use rayon::prelude::*;
@@ -73,7 +74,7 @@ where
 pub fn possible_orders_for_piece_type_with_primes<const N: usize>(
     piece_count: usize,
     orientation_count: usize,
-) -> Vec<Vec<FxHashSet<OrderFactors<N>>>>
+) -> Array2<FxHashSet<OrderFactors<N>>>
 where
     LaneCount<N>: SupportedLaneCount,
 {
@@ -96,16 +97,13 @@ where
         PRIMES.len()
     );
 
-    let mut dp: Vec<Vec<Vec<FxHashSet<OrderFactors<N>>>>> = (0..=piece_count)
-        .map(|_| {
-            (0..orientation_count)
-                .map(|_| (0..2).map(|_| FxHashSet::default()).collect())
-                .collect()
-        })
-        .collect();
+    let mut dp = Array3::from_elem(
+        (piece_count + 1, orientation_count, 2),
+        FxHashSet::<OrderFactors<N>>::default(),
+    );
 
     // Identity
-    dp[0][0][0].insert(OrderFactors::one());
+    dp[(0, 0, 0)].insert(OrderFactors::one());
 
     let cycles: Vec<Cycle<N>> = (1..=piece_count)
         .flat_map(|piece_count| {
@@ -152,20 +150,14 @@ where
     // smaller piece counts, so all buckets at this layer can be computed
     // independently
     for dst_piece_count in 1..=piece_count {
-        let (subproblems, [problem, ..]) = dp.split_at_mut(dst_piece_count) else {
-            panic!();
-        };
+        let (subproblems, mut problems) = dp.view_mut().split_at(Axis(0), dst_piece_count);
+        let problem = problems.index_axis_mut(Axis(0), 0);
+
         // TODO: we shouldn't have to loop over every single orient_sum because
         // of GCD magic
-        problem
-            .par_iter_mut()
-            .enumerate()
-            .flat_map_iter(|(dst_orient_sum, tmp)| {
-                tmp.iter_mut()
-                    .enumerate()
-                    .map(move |(dst_parity, dst)| (dst_orient_sum, dst_parity, dst))
-            })
-            .for_each(|(dst_orient_sum, dst_parity, dst)| {
+        Zip::indexed(problem)
+            .into_par_iter()
+            .for_each(|((dst_orient_sum, dst_parity), dst)| {
                 for cycle in cycles
                     .iter()
                     .take_while(|c| c.piece_count <= dst_piece_count)
@@ -175,7 +167,8 @@ where
                     let src_orient_sum =
                         (dst_orient_sum + orientation_count - cycle.orient_sum) % orientation_count;
 
-                    let src = &subproblems[src_piece_count][src_orient_sum][src_parity];
+                    // let src = &subproblems[src_piece_count][src_orient_sum][src_parity];
+                    let src = &subproblems[(src_piece_count, src_orient_sum, src_parity)];
                     if !src.is_empty() {
                         dst.extend(src.iter().map(|order| order.lcm(&cycle.order)));
                     }
@@ -183,7 +176,7 @@ where
             });
     }
 
-    std::mem::take(&mut dp[piece_count])
+    dp.index_axis_move(Axis(0), piece_count)
 }
 
 fn main() {
@@ -207,13 +200,19 @@ fn main() {
     let all_distinct_orders = DashSet::<OrderFactors<N>, FxBuildHasher>::default();
     for parity in 0..2 {
         let begin_setup = start.elapsed();
-        let a = std::mem::take(&mut edges[0][parity]);
-        let b = std::mem::take(&mut corners[0][parity]);
+        let a = std::mem::take(&mut edges[(0, parity)]);
+        let b = std::mem::take(&mut corners[(0, parity)]);
 
         let (outer, inner) = if a.len() >= b.len() {
-            (a.into_iter().collect::<Vec<_>>(), b)
+            (
+                a.into_iter().collect::<Vec<_>>(),
+                b.into_iter().collect::<Vec<_>>(),
+            )
         } else {
-            (b.into_iter().collect::<Vec<_>>(), a)
+            (
+                b.into_iter().collect::<Vec<_>>(),
+                a.into_iter().collect::<Vec<_>>(),
+            )
         };
 
         let mut root = MaxOrderTrie::new(0);
