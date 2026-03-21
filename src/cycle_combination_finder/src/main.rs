@@ -2,79 +2,33 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::missing_panics_doc, clippy::too_many_lines)]
 
-use crate::trie::MaxOrderTrie;
+use crate::{
+    orderexps::{OrderExps, PRIMES},
+    trie::MaxOrderTrie,
+};
 use dashmap::DashSet;
 use fxhash::{FxBuildHasher, FxHashSet};
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::debug;
 use ndarray::{Array2, Array3, Axis, Zip};
 use num_integer::gcd;
-use puzzle_theory::numbers::{Int, U};
 use rayon::prelude::*;
 use std::{
-    fmt::{Debug, Formatter},
-    simd::{LaneCount, Simd, SupportedLaneCount, cmp::SimdOrd},
+    fmt::Debug,
+    simd::{LaneCount, Simd, SupportedLaneCount},
     time::Instant,
 };
 
+mod orderexps;
 mod trie;
 
-const N: usize = 32;
-
-const PRIMES: [u8; N] = [
-    2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97,
-    101, 103, 107, 109, 113, 127, 131,
-];
-
-#[derive(Clone, PartialEq, Eq, Hash)]
-pub struct OrderFactors<const N: usize>
-where
-    LaneCount<N>: SupportedLaneCount,
-{
-    exps: Simd<u8, N>,
-}
-
-impl<const N: usize> OrderFactors<N>
-where
-    LaneCount<N>: SupportedLaneCount,
-{
-    fn one() -> Self {
-        Self {
-            exps: Simd::splat(0),
-        }
-    }
-
-    fn as_bigint(&self) -> Int<U> {
-        let mut result = Int::one();
-        for (i, p) in PRIMES.into_iter().enumerate() {
-            for _ in 0..self.exps[i] {
-                result *= Int::<U>::from(p);
-            }
-        }
-        result
-    }
-
-    fn lcm(&self, other: &Self) -> Self {
-        Self {
-            exps: self.exps.simd_max(other.exps),
-        }
-    }
-}
-
-impl<const N: usize> Debug for OrderFactors<N>
-where
-    LaneCount<N>: SupportedLaneCount,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "OF({})", self.as_bigint())
-    }
-}
+pub const N: usize = 32;
 
 #[must_use]
 pub fn possible_orders_for_piece_type_with_primes<const N: usize>(
     piece_count: usize,
     orientation_count: usize,
-) -> Array2<FxHashSet<OrderFactors<N>>>
+) -> Array2<FxHashSet<OrderExps<N>>>
 where
     LaneCount<N>: SupportedLaneCount,
 {
@@ -87,23 +41,16 @@ where
         piece_count: usize,
         parity: usize,
         orient_sum: usize,
-        order: OrderFactors<N>,
+        order: OrderExps<N>,
     }
-
-    assert!(
-        PRIMES.len() <= N,
-        "Need OrderFactors<{}>, but got {} primes",
-        N,
-        PRIMES.len()
-    );
 
     let mut dp = Array3::from_elem(
         (piece_count + 1, orientation_count, 2),
-        FxHashSet::<OrderFactors<N>>::default(),
+        FxHashSet::<OrderExps<N>>::default(),
     );
 
     // Identity
-    dp[(0, 0, 0)].insert(OrderFactors::one());
+    dp[(0, 0, 0)].insert(OrderExps::one());
 
     let cycles: Vec<Cycle<N>> = (1..=piece_count)
         .flat_map(|piece_count| {
@@ -138,9 +85,7 @@ where
                     piece_count,
                     parity: (piece_count - 1) % 2,
                     orient_sum,
-                    order: OrderFactors::<N> {
-                        exps: Simd::from_array(exps),
-                    },
+                    order: OrderExps(Simd::from_array(exps)),
                 }
             })
         })
@@ -167,7 +112,6 @@ where
                     let src_orient_sum =
                         (dst_orient_sum + orientation_count - cycle.orient_sum) % orientation_count;
 
-                    // let src = &subproblems[src_piece_count][src_orient_sum][src_parity];
                     let src = &subproblems[(src_piece_count, src_orient_sum, src_parity)];
                     if !src.is_empty() {
                         dst.extend(src.iter().map(|order| order.lcm(&cycle.order)));
@@ -197,7 +141,7 @@ fn main() {
         .unwrap();
     debug!("DP in {}", start.elapsed().human(Truncate::Millis));
 
-    let all_distinct_orders = DashSet::<OrderFactors<N>, FxBuildHasher>::default();
+    let all_distinct_orders = DashSet::<OrderExps<N>, FxBuildHasher>::default();
     for parity in 0..2 {
         let begin_setup = start.elapsed();
         let a = std::mem::take(&mut edges[(0, parity)]);

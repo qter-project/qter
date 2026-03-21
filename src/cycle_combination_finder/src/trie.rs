@@ -1,4 +1,4 @@
-use crate::OrderFactors;
+use crate::OrderExps;
 use fxhash::{FxHashMap, FxHashSet};
 use std::simd::{LaneCount, Simd, SupportedLaneCount, cmp::SimdPartialOrd};
 
@@ -9,7 +9,7 @@ where
 {
     level: usize,
     children: FxHashMap<u8, MaxOrderTrie<N>>,
-    subtree_max_order: OrderFactors<N>,
+    subtree_max_order: OrderExps<N>,
 }
 
 impl<const N: usize> MaxOrderTrie<N>
@@ -20,40 +20,38 @@ where
         Self {
             level,
             children: FxHashMap::default(),
-            subtree_max_order: OrderFactors::one(),
+            subtree_max_order: OrderExps::one(),
         }
     }
 
-    pub fn insert(&mut self, v: OrderFactors<N>) {
-        self.subtree_max_order = self.subtree_max_order.lcm(&v);
+    pub fn insert(&mut self, order: OrderExps<N>) {
+        self.subtree_max_order = self.subtree_max_order.lcm(&order);
 
         if self.level != N {
             self.children
-                .entry(v.exps[self.level])
+                .entry(order.0[self.level])
                 .or_insert_with(|| Self::new(self.level + 1))
-                .insert(v);
+                .insert(order);
         }
     }
 
     pub fn collect_distinct_orders(
         &self,
-        order: &OrderFactors<N>,
+        order: &OrderExps<N>,
         acc: &mut [u8; N],
-        out: &mut FxHashSet<OrderFactors<N>>,
+        out: &mut FxHashSet<OrderExps<N>>,
     ) {
         if self.level == N {
-            out.insert(OrderFactors {
-                exps: Simd::from_array(*acc),
-            });
-        } else if self.subtree_max_order.exps.simd_gt(order.exps).to_bitmask() >> self.level == 0 {
+            out.insert(OrderExps(Simd::from_array(*acc)));
+        } else if self.subtree_max_order.0.simd_gt(order.0).to_bitmask() >> self.level == 0 {
             // If all remaining subtree exponents are <= x on remaining levels,
             // then every y in this subtree yields exactly x on remaining levels.
-            let mut exps = order.exps;
+            let mut exps = order.0;
             exps[..self.level].copy_from_slice(&acc[..self.level]);
-            out.insert(OrderFactors { exps });
+            out.insert(OrderExps(exps));
         } else {
             for (&exp, child) in &self.children {
-                let old = std::mem::replace(&mut acc[self.level], order.exps[self.level].max(exp));
+                let old = std::mem::replace(&mut acc[self.level], order.0[self.level].max(exp));
                 child.collect_distinct_orders(order, acc, out);
                 acc[self.level] = old;
             }
