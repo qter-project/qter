@@ -15,3 +15,4 @@ pub mod finder;
 pub mod orderexps;
 pub mod puzzle;
 pub mod trie;
+mod dp;

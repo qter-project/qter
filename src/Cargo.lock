@@ -524,12 +524,12 @@ name = "cycle_combination_finder"
 version = "0.1.0"
 dependencies = [
  "dashmap 6.1.0",
+ "env_logger 0.11.9",
  "fxhash",
  "humanize-duration",
  "log",
  "ndarray",
  "num-integer",
- "pretty_env_logger",
  "puzzle_theory",
  "qter_core",
  "rayon",
