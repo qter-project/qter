@@ -1,5 +1,6 @@
-use super::puzzle::{PuzzleDef, PuzzleState};
 use std::{marker::PhantomData, ops::Index, slice::SliceIndex};
+
+use super::puzzle::{PuzzleDef, PuzzleState};
 
 pub trait PuzzleStateHistory<'id, P: PuzzleState<'id>> {
     const UPPER_GODS_NUMBER_BOUND: Option<usize>;
@@ -142,8 +143,9 @@ impl<'id, P: PuzzleState<'id>, H: PuzzleStateHistory<'id, P>> StackedPuzzleState
 }
 
 impl<'id, P: PuzzleState<'id>> PuzzleStateHistory<'id, P> for Vec<P> {
-    const UPPER_GODS_NUMBER_BOUND: Option<usize> = None;
     type Buf = Vec<(P, usize)>;
+
+    const UPPER_GODS_NUMBER_BOUND: Option<usize> = None;
 
     fn initialize(puzzle_def: &PuzzleDef<'id, P>) -> Vec<(P, usize)> {
         vec![(puzzle_def.new_solved_state(), 0)]
@@ -165,8 +167,9 @@ impl<'id, const N: usize, P: PuzzleState<'id>> PuzzleStateHistory<'id, P> for [P
 where
     [P; N]: PuzzleStateHistoryArrayBuf<'id, P>,
 {
-    const UPPER_GODS_NUMBER_BOUND: Option<usize> = Some(N - 1);
     type Buf = [(P, usize); N];
+
+    const UPPER_GODS_NUMBER_BOUND: Option<usize> = Some(N - 1);
 
     fn initialize(puzzle_def: &PuzzleDef<'id, P>) -> [(P, usize); N] {
         let mut ret = core::array::from_fn(|_| (puzzle_def.new_solved_state(), usize::MAX));
@@ -184,10 +187,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::puzzle::{Move, cube3::Cube3};
     use generativity::{Guard, make_guard};
     use puzzle_theory::puzzle_geometry::parsing::puzzle;
+
+    use super::*;
+    use crate::puzzle::{Move, cube3::Cube3};
 
     fn move_index<'id, P: PuzzleState<'id>>(
         puzzle_def: &PuzzleDef<'id, P>,

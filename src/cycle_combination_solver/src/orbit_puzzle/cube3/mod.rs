@@ -3,8 +3,9 @@
 
 #![allow(unused)]
 
-use crate::orbit_puzzle::{OrbitPuzzleStateImplementor, SpecializedOrbitPuzzleState};
 use std::{hash::Hash, hint::unreachable_unchecked, num::NonZeroU8};
+
+use crate::orbit_puzzle::{OrbitPuzzleStateImplementor, SpecializedOrbitPuzzleState};
 
 pub mod avx2;
 pub mod portable;

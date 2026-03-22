@@ -1,14 +1,16 @@
-use super::FACT_UNTIL_19;
-use crate::{
-    orbit_puzzle::{cube3::Cube3Edges, cubeN::CubeNCorners, slice_orbit_puzzle::SliceOrbitPuzzle},
-    puzzle::{AuxMemRefMut, OrbitDef},
-};
-use enum_dispatch::enum_dispatch;
-use itertools::Itertools;
 use std::{
     hash::Hash,
     num::NonZeroU8,
     simd::{LaneCount, Simd, SupportedLaneCount, cmp::SimdPartialOrd, num::SimdUint},
+};
+
+use enum_dispatch::enum_dispatch;
+use itertools::Itertools;
+
+use super::FACT_UNTIL_19;
+use crate::{
+    orbit_puzzle::{cube3::Cube3Edges, cubeN::CubeNCorners, slice_orbit_puzzle::SliceOrbitPuzzle},
+    puzzle::{AuxMemRefMut, OrbitDef},
 };
 
 pub mod cube3;

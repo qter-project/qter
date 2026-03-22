@@ -1,4 +1,3 @@
-use crate::common::OptimalCycleStructureTest;
 use cycle_combination_solver::{
     pruning::{PruningTables, ZeroTable},
     puzzle::{PuzzleDef, PuzzleState, slice_puzzle::HeapPuzzle},
@@ -6,6 +5,8 @@ use cycle_combination_solver::{
 };
 use generativity::make_guard;
 use puzzle_theory::puzzle_geometry::parsing::puzzle;
+
+use crate::common::OptimalCycleStructureTest;
 
 mod common;
 

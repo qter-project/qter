@@ -1,10 +1,11 @@
 #![allow(unused)]
 
+use std::hash::Hash;
+
 use crate::puzzle::{
     SortedCycleStructureRef,
     cube3::common::{CornersTransformation, Cube3OrbitType, Cube3State, EdgesTransformation},
 };
-use std::hash::Hash;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Cube3 {

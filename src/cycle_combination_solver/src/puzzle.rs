@@ -1,12 +1,14 @@
-use crate::orbit_puzzle::OrbitPuzzleStateImplementor;
+use std::{fmt::Debug, hash::Hash, num::NonZeroU8, time::Instant};
+
 use generativity::{Guard, Id};
 use heuristic_graph_coloring::{VecVecGraph, color_rlf};
 use humanize_duration::{Truncate, prelude::DurationExt};
 use itertools::Itertools;
 use log::debug;
 use puzzle_theory::ksolve::KSolve;
-use std::{fmt::Debug, hash::Hash, num::NonZeroU8, time::Instant};
 use thiserror::Error;
+
+use crate::orbit_puzzle::OrbitPuzzleStateImplementor;
 
 pub mod cube3;
 pub mod slice_puzzle;
@@ -20,7 +22,8 @@ pub trait PuzzleState<'id>: Clone + PartialEq + Debug + 'id {
         Self: 'a;
     type OrbitIdentifier: OrbitIdentifier<'id> + Copy + Debug;
 
-    /// Get a default multi bit vector for use in `induces_sorted_cycle_structure`
+    /// Get a default multi bit vector for use in
+    /// `induces_sorted_cycle_structure`
     fn new_aux_mem(sorted_orbit_defs: SortedOrbitDefsRef<'id, '_>) -> AuxMem<'id>;
 
     /// Create a puzzle state from a sorted transformation and sorted
@@ -98,7 +101,8 @@ pub struct PuzzleDef<'id, P: PuzzleState<'id>> {
 #[derive(Error, Debug)]
 pub enum KSolveConversionError {
     #[error(
-        "Puzzles with set sizes larger than 255 are not yet supported, but it will be in the future"
+        "Puzzles with set sizes larger than 255 are not yet supported, but it will be in the \
+         future"
     )]
     SetSizeTooBig,
     #[error("Invalid move class")]
@@ -162,7 +166,8 @@ pub enum SortedCycleStructureCreationError {
     #[error("Cycle structure uses zero-length cycles, which is not allowed")]
     ZeroLengthCycle,
     #[error(
-        "There must be the same number of cycle structures as orbit definitions, expected {expected}, got {actual}"
+        "There must be the same number of cycle structures as orbit definitions, expected \
+         {expected}, got {actual}"
     )]
     MismatchedLength { expected: usize, actual: usize },
 }
@@ -449,7 +454,8 @@ impl<'id, P: PuzzleState<'id>> PuzzleDef<'id, P> {
     ///
     /// # Panics
     ///
-    /// Panics if the solved state cannot be created from the sorted orbit definitions. We assume you would have wanted to panic here anyways.
+    /// Panics if the solved state cannot be created from the sorted orbit
+    /// definitions. We assume you would have wanted to panic here anyways.
     #[must_use]
     pub fn new_solved_state(&self) -> P {
         solved_state_from_sorted_orbit_defs(&self.sorted_orbit_defs, self.id).unwrap()
@@ -728,13 +734,14 @@ pub fn apply_random_moves<'id, P: PuzzleState<'id>>(
 mod tests {
     extern crate test;
 
+    use generativity::make_guard;
+    use puzzle_theory::puzzle_geometry::parsing::puzzle;
+    use test::Bencher;
+
     use super::{
         slice_puzzle::{HeapPuzzle, StackPuzzle},
         *,
     };
-    use generativity::make_guard;
-    use puzzle_theory::puzzle_geometry::parsing::puzzle;
-    use test::Bencher;
 
     type StackCube3<'id> = StackPuzzle<'id, 40>;
 

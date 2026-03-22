@@ -1,6 +1,10 @@
 //! The default and fallback implementation for 3x3 orbits during pruning table
 //! generation.
 
+use std::{cmp::Ordering, hint::unreachable_unchecked, num::NonZeroU8};
+
+use itertools::Itertools;
+
 use super::OrbitPuzzleState;
 use crate::{
     orbit_puzzle::OrbitPuzzleStateImplementor,
@@ -9,8 +13,6 @@ use crate::{
         slice_puzzle::{exact_hasher_slice_orbit_bytes, slice_orbit_size},
     },
 };
-use itertools::Itertools;
-use std::{cmp::Ordering, hint::unreachable_unchecked, num::NonZeroU8};
 
 /// An orbit state of a puzzle that is represented as a slice of bytes. The
 /// memory layout is a permutation vector directly followed by an orientation

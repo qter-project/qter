@@ -63,8 +63,9 @@ pub unsafe fn pandita2(perm: &mut [u8]) {
 mod tests {
     extern crate test;
 
-    use super::*;
     use itertools::Itertools;
+
+    use super::*;
 
     const PERM_FIVE: [[u8; 5]; 120] = [
         [0, 1, 2, 3, 4],

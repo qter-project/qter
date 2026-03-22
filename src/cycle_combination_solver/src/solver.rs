@@ -1,3 +1,10 @@
+use std::{borrow::Cow, cmp::Ordering, time::Instant, vec::IntoIter};
+
+use humanize_duration::{Truncate, prelude::DurationExt};
+use itertools::Itertools;
+use log::{Level, debug, info, log_enabled, trace};
+use thiserror::Error;
+
 use super::{
     canonical_fsm::{CanonicalFSMState, PuzzleCanonicalFSM},
     pruning::PruningTables,
@@ -5,11 +12,6 @@ use super::{
     puzzle_state_history::{PuzzleStateHistory, StackedPuzzleStateHistory},
 };
 use crate::{puzzle::AuxMem, start, success, working};
-use humanize_duration::{Truncate, prelude::DurationExt};
-use itertools::Itertools;
-use log::{Level, debug, info, log_enabled, trace};
-use std::{borrow::Cow, cmp::Ordering, time::Instant, vec::IntoIter};
-use thiserror::Error;
 
 pub struct CycleStructureSolver<'id, P: PuzzleState<'id>, T: PruningTables<'id, P>> {
     puzzle_def: PuzzleDef<'id, P>,
@@ -179,20 +181,20 @@ impl<'id, P: PuzzleState<'id>, T: PruningTables<'id, P>> CycleStructureSolver<'i
         //
         // - `X` as the node about to be explored in the recursive step of IDA*
         // - The inequality symbols lexicographically
-        // - `HISTORY(i)` as a function that returns the one-indexed move in the
-        //   current move history.
+        // - `HISTORY(i)` as a function that returns the one-indexed move in the current
+        //   move history.
         // - The integer `i`, initialized to zero
         //
         // The sequence symmetry optimization recursively goes through the
         // following decision tree to ensure it only ever searches the
         // lexicographically minimal sequence by their rotation:
         //
-        // - If i == 0 or X > HISTORY(i), then append X to the move history and
-        //   set `i` to one in the next recursion.
-        // - If X == HISTORY(i), then append X to the move history and increment
-        //   `i` in the next recursion.
-        // - If X < HISTORY(i), then prune X. X can be rotated to the front of
-        //   the sequence to produce something lexicographically lesser.
+        // - If i == 0 or X > HISTORY(i), then append X to the move history and set `i`
+        //   to one in the next recursion.
+        // - If X == HISTORY(i), then append X to the move history and increment `i` in
+        //   the next recursion.
+        // - If X < HISTORY(i), then prune X. X can be rotated to the front of the
+        //   sequence to produce something lexicographically lesser.
         //
         // SAFETY: `entry_index` starts at zero in the initial call, and
         // `B::initialize` guarantees that the first entry is bound. For every
@@ -301,10 +303,10 @@ impl<'id, P: PuzzleState<'id>, T: PruningTables<'id, P>> CycleStructureSolver<'i
             }
 
             // SAFETY:
-            // 1) `pop_stack` is called for every `push_stack` call, so
-            //    pop_stack cannot be called more than push_stack.
-            // 2) `resize_if_needed` is appropriately called in `solve` before
-            //    every call to this function.
+            // 1) `pop_stack` is called for every `push_stack` call, so pop_stack cannot be
+            //    called more than push_stack.
+            // 2) `resize_if_needed` is appropriately called in `solve` before every call to
+            //    this function.
             // 3) `move_index` is defined to be bound.
             unsafe {
                 mutable
@@ -393,9 +395,9 @@ impl<'id, P: PuzzleState<'id>, T: PruningTables<'id, P>> CycleStructureSolver<'i
             // If we never returned, we might still be able to propagate the
             // pathmaxed value.
             // TODO: test when approximate tables work
-            // if child_admissible_goal_heuristic.0 > admissible_prune_cost + 1 {
-            //     admissible_prune_cost = child_admissible_goal_heuristic.0 - 1;
-            // }
+            // if child_admissible_goal_heuristic.0 > admissible_prune_cost + 1
+            // {     admissible_prune_cost =
+            // child_admissible_goal_heuristic.0 - 1; }
         }
         AdmissibleGoalHeuristic(
             // This optimizes to branchless code

@@ -4,14 +4,6 @@
 
 #![cfg_attr(any(avx2, not(simd8and16)), allow(dead_code, unused_variables))]
 
-use super::common::{CornersTransformation, Cube3State, EdgesTransformation};
-use crate::{
-    orbit_puzzle::exact_hasher_orbit,
-    puzzle::{
-        SortedCycleStructureRef,
-        cube3::{CUBE_3_SORTED_ORBIT_DEFS, common::Cube3OrbitType},
-    },
-};
 use std::{
     fmt::{self, Debug, Formatter},
     hash::Hash,
@@ -20,6 +12,15 @@ use std::{
         cmp::{SimdOrd, SimdPartialEq, SimdPartialOrd},
         num::SimdInt,
         u8x8, u8x16,
+    },
+};
+
+use super::common::{CornersTransformation, Cube3State, EdgesTransformation};
+use crate::{
+    orbit_puzzle::exact_hasher_orbit,
+    puzzle::{
+        SortedCycleStructureRef,
+        cube3::{CUBE_3_SORTED_ORBIT_DEFS, common::Cube3OrbitType},
     },
 };
 
@@ -247,7 +248,8 @@ impl Cube3State for UncompressedCube3 {
     }
 }
 
-/// An alternate compressed 3x3 cube representation. The byte layout is as follows.
+/// An alternate compressed 3x3 cube representation. The byte layout is as
+/// follows.
 ///
 /// `edges`
 ///
@@ -824,16 +826,18 @@ impl Cube3 {
 #[cfg(test)]
 mod tests {
     extern crate test;
-    use super::*;
-    use crate::puzzle::{PuzzleDef, apply_moves};
     use generativity::make_guard;
     use puzzle_theory::puzzle_geometry::parsing::puzzle;
+
+    use super::*;
+    use crate::puzzle::{PuzzleDef, apply_moves};
 
     #[test]
     #[cfg_attr(not(simd8and16), ignore = "simd8and16 not enabled")]
     fn test_uncompressed_brute_force_inversion() {
         make_guard!(guard);
-        let cube3_def = PuzzleDef::<UncompressedCube3>::new(&puzzle("3x3").ksolve(), guard).unwrap();
+        let cube3_def =
+            PuzzleDef::<UncompressedCube3>::new(&puzzle("3x3").ksolve(), guard).unwrap();
         let solved = cube3_def.new_solved_state();
         let mut result = solved;
 
@@ -917,7 +921,8 @@ mod tests {
     #[cfg_attr(not(simd8and16), ignore = "simd8and16 not enabled")]
     fn test_uncompressed_raw_inversion() {
         make_guard!(guard);
-        let cube3_def = PuzzleDef::<UncompressedCube3>::new(&puzzle("3x3").ksolve(), guard).unwrap();
+        let cube3_def =
+            PuzzleDef::<UncompressedCube3>::new(&puzzle("3x3").ksolve(), guard).unwrap();
         let solved = cube3_def.new_solved_state();
         let mut result = solved;
 
@@ -1001,7 +1006,8 @@ mod tests {
     #[cfg_attr(not(simd8and16), ignore = "simd8and16 not enabled")]
     fn bench_uncompressed_brute_force_inversion(b: &mut test::Bencher) {
         make_guard!(guard);
-        let cube3_def = PuzzleDef::<UncompressedCube3>::new(&puzzle("3x3").ksolve(), guard).unwrap();
+        let cube3_def =
+            PuzzleDef::<UncompressedCube3>::new(&puzzle("3x3").ksolve(), guard).unwrap();
         let solved = cube3_def.new_solved_state();
         let mut result = solved;
         let order_1260 = apply_moves(&cube3_def, &solved, "R U2 D' B D'", 100);
@@ -1014,7 +1020,8 @@ mod tests {
     #[cfg_attr(not(simd8and16), ignore = "simd8and16 not enabled")]
     fn bench_uncompressed_raw_inversion(b: &mut test::Bencher) {
         make_guard!(guard);
-        let cube3_def = PuzzleDef::<UncompressedCube3>::new(&puzzle("3x3").ksolve(), guard).unwrap();
+        let cube3_def =
+            PuzzleDef::<UncompressedCube3>::new(&puzzle("3x3").ksolve(), guard).unwrap();
         let solved = cube3_def.new_solved_state();
         let mut result = solved;
         let order_1260 = apply_moves(&cube3_def, &solved, "R U2 D' B D'", 100);

@@ -1,5 +1,10 @@
 //! The default, generic implementation for representing puzzle states.
 
+use std::{fmt::Debug, hint::assert_unchecked, slice};
+
+use generativity::Id;
+use itertools::Itertools;
+
 use super::{
     BrandedOrbitDef, OrbitIdentifier, SortedOrbitDefsRef, TransformationsMeta,
     TransformationsMetaError,
@@ -17,9 +22,6 @@ use crate::{
         AuxMem, AuxMemRefMut, OrbitDef, PuzzleState, SortedCycleStructure, SortedCycleStructureRef,
     },
 };
-use generativity::Id;
-use itertools::Itertools;
-use std::{fmt::Debug, hint::assert_unchecked, slice};
 
 trait SlicePuzzle<'id>: PartialEq + Debug + Clone + 'id {
     fn as_slice(&self) -> &[u8];
@@ -81,7 +83,6 @@ impl<'id, S: SlicePuzzle<'id>> PuzzleState<'id> for S {
         = &'a [u8]
     where
         Self: 'a;
-
     type OrbitIdentifier = SliceOrbitIdentifier<'id>;
 
     fn new_aux_mem(sorted_orbit_defs: SortedOrbitDefsRef<'id, '_>) -> AuxMem<'id> {

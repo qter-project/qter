@@ -1,10 +1,8 @@
-//! A SIMD optimized implementation for N-cube corners for platforms that support AVX2.
+//! A SIMD optimized implementation for N-cube corners for platforms that
+//! support AVX2.
 
 #![cfg_attr(not(avx2), allow(dead_code, unused_variables))]
 
-use crate::orbit_puzzle::{
-    OrbitPuzzleStateImplementor, SpecializedOrbitPuzzleState, exact_hasher_orbit,
-};
 use std::{
     hash::Hash,
     num::NonZeroU8,
@@ -12,6 +10,10 @@ use std::{
         cmp::{SimdPartialEq, SimdPartialOrd},
         u8x8,
     },
+};
+
+use crate::orbit_puzzle::{
+    OrbitPuzzleStateImplementor, SpecializedOrbitPuzzleState, exact_hasher_orbit,
 };
 
 /// A lookup table used to correct corner orientation during composition
@@ -173,7 +175,8 @@ pub fn induces_sorted_cycle_structure(
 
 /// Exact hasher for corner orbit
 pub fn exact_hasher(cube: &CubeNCorners) -> u64 {
-    // Use the exact same constants as 3x3 cube corners since all cubes have 8 corners
+    // Use the exact same constants as 3x3 cube corners since all cubes have 8
+    // corners
     const PIECE_COUNT: u16 = 8;
     const ORI_COUNT: u16 = 3;
 

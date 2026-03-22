@@ -2,11 +2,10 @@
 
 #![cfg_attr(not(avx2), allow(dead_code, unused_variables))]
 
-use super::common::{CornersTransformation, Cube3OrbitType, Cube3State, EdgesTransformation};
-use crate::{
-    orbit_puzzle::exact_hasher_orbit,
-    puzzle::{SortedCycleStructureRef, cube3::CUBE_3_SORTED_ORBIT_DEFS},
-};
+#[cfg(all(avx2, target_arch = "x86"))]
+use core::arch::x86::_mm256_shuffle_epi8;
+#[cfg(all(avx2, target_arch = "x86_64"))]
+use core::arch::x86_64::_mm256_shuffle_epi8;
 use std::{
     fmt::{self, Formatter},
     hash::Hash,
@@ -18,10 +17,11 @@ use std::{
     },
 };
 
-#[cfg(all(avx2, target_arch = "x86"))]
-use core::arch::x86::_mm256_shuffle_epi8;
-#[cfg(all(avx2, target_arch = "x86_64"))]
-use core::arch::x86_64::_mm256_shuffle_epi8;
+use super::common::{CornersTransformation, Cube3OrbitType, Cube3State, EdgesTransformation};
+use crate::{
+    orbit_puzzle::exact_hasher_orbit,
+    puzzle::{SortedCycleStructureRef, cube3::CUBE_3_SORTED_ORBIT_DEFS},
+};
 
 /// A representation of a 3x3 cube in a __m256i vector. The following design
 /// has been taken from Andrew Skalski's [vcube].
@@ -696,10 +696,11 @@ impl Cube3 {
 #[cfg(test)]
 mod tests {
     extern crate test;
-    use super::*;
-    use crate::puzzle::{PuzzleDef, apply_moves};
     use generativity::make_guard;
     use puzzle_theory::puzzle_geometry::parsing::puzzle;
+
+    use super::*;
+    use crate::puzzle::{PuzzleDef, apply_moves};
 
     #[test]
     #[cfg_attr(not(avx2), ignore = "AVX2 not enabled")]

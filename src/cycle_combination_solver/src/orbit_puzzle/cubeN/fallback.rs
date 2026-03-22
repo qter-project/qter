@@ -1,8 +1,8 @@
 #![allow(unused)]
 
+use std::{hash::Hash, num::NonZeroU8};
+
 use crate::orbit_puzzle::{OrbitPuzzleStateImplementor, SpecializedOrbitPuzzleState};
-use std::hash::Hash;
-use std::num::NonZeroU8;
 
 #[derive(Clone, PartialEq)]
 pub struct CubeNCorners {

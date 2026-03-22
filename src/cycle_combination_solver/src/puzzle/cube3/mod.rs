@@ -1,7 +1,8 @@
 //! SIMD optimized implementations for 3x3 cubes
 
-use crate::{puzzle::OrbitDef, puzzle_state_history::PuzzleStateHistoryArrayBuf};
 use std::num::NonZeroU8;
+
+use crate::{puzzle::OrbitDef, puzzle_state_history::PuzzleStateHistoryArrayBuf};
 
 /// The expected sorted orbit definition for 3x3 puzzles.
 pub const CUBE_3_SORTED_ORBIT_DEFS: [OrbitDef; 2] = [
@@ -18,18 +19,22 @@ pub const CUBE_3_SORTED_ORBIT_DEFS: [OrbitDef; 2] = [
 mod common {
     //! Common traits and types for the parent module.
 
-    use crate::orbit_puzzle::cube3::Cube3Edges;
-    use crate::orbit_puzzle::cubeN::CubeNCorners;
-    use crate::orbit_puzzle::{OrbitPuzzleStateImplementor, SpecializedOrbitPuzzleState};
-    use crate::puzzle::cube3::{CUBE_3_SORTED_ORBIT_DEFS, portable};
-    use crate::puzzle::{
-        AuxMem, AuxMemRefMut, BrandedOrbitDef, OrbitDef, OrbitIdentifier, PuzzleState,
-        SortedCycleStructureRef, SortedOrbitDefsRef, TransformationsMeta, TransformationsMetaError,
-        cube3,
-    };
+    use std::{fmt::Debug, hash::Hash};
+
     use generativity::Id;
-    use std::fmt::Debug;
-    use std::hash::Hash;
+
+    use crate::{
+        orbit_puzzle::{
+            OrbitPuzzleStateImplementor, SpecializedOrbitPuzzleState, cube3::Cube3Edges,
+            cubeN::CubeNCorners,
+        },
+        puzzle::{
+            AuxMem, AuxMemRefMut, BrandedOrbitDef, OrbitDef, OrbitIdentifier, PuzzleState,
+            SortedCycleStructureRef, SortedOrbitDefsRef, TransformationsMeta,
+            TransformationsMetaError, cube3,
+            cube3::{CUBE_3_SORTED_ORBIT_DEFS, portable},
+        },
+    };
 
     /// An orbit identifier for 3x3 cubes.
     #[derive(Debug, Clone, Copy)]
@@ -229,12 +234,10 @@ pub(in crate::puzzle) mod avx2;
 pub(in crate::puzzle) mod portable;
 pub(in crate::puzzle) mod simd8and16;
 
-#[cfg(not(any(avx2, simd8and16)))]
-pub use portable::Cube3;
-
 #[cfg(avx2)]
 pub use avx2::Cube3;
-
+#[cfg(not(any(avx2, simd8and16)))]
+pub use portable::Cube3;
 #[cfg(all(not(avx2), simd8and16))]
 pub use simd8and16::Cube3;
 

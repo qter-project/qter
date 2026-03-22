@@ -2,9 +2,11 @@
 //! Garron's implementation in twsearch with permission:
 //! <https://github.com/cubing/twsearch/blob/main/src/rs/_internal/canonical_fsm/canonical_fsm.rs>
 
-use super::puzzle::{PuzzleDef, PuzzleState};
-use generativity::Id;
 use std::{collections::HashMap, marker::PhantomData, num::NonZeroUsize};
+
+use generativity::Id;
+
+use super::puzzle::{PuzzleDef, PuzzleState};
 
 // Bit N is indexed by a `MoveClassIndex` value of N.
 type MoveClassMask = Vec<bool>;
@@ -32,8 +34,7 @@ impl<'id, P: PuzzleState<'id>> From<&PuzzleDef<'id, P>> for PuzzleCanonicalFSM<'
         // all move classes. This is because multiples can commute differently
         // than their quantum values. For example:
         //
-        // - The standard T-Perm (`R U R' U' R' F R2 U' R' U' R U R' F'`) has
-        //   order 2.
+        // - The standard T-Perm (`R U R' U' R' F R2 U' R' U' R U R' F'`) has order 2.
         // - `R2 U2` has order 6.
         // - T-perm and `(R2 U2)3` commute.
         let mut result_1 = puzzle_def.new_solved_state();
@@ -182,10 +183,11 @@ impl<'id, P: PuzzleState<'id>> PuzzleCanonicalFSM<'id, P> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::puzzle::{PuzzleDef, cube3::Cube3, slice_puzzle::HeapPuzzle};
     use generativity::make_guard;
     use puzzle_theory::puzzle_geometry::parsing::puzzle;
+
+    use super::*;
+    use crate::puzzle::{PuzzleDef, cube3::Cube3, slice_puzzle::HeapPuzzle};
 
     #[test]
     fn test_canonical_fsm_puzzle_initially_all_legal() {

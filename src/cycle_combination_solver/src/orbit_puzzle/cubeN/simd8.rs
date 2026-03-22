@@ -1,12 +1,9 @@
-//! A SIMD optimized implementation for N-cube corners for platforms that support
-//! 8 and 16 byte SIMD. This file was derived from `puzzle/cube3/simd8and16.rs`
+//! A SIMD optimized implementation for N-cube corners for platforms that
+//! support 8 and 16 byte SIMD. This file was derived from
+//! `puzzle/cube3/simd8and16.rs`
 
 #![cfg_attr(any(avx2, not(simd8)), allow(dead_code, unused_variables))]
 
-use crate::{
-    orbit_puzzle::{OrbitPuzzleStateImplementor, SpecializedOrbitPuzzleState, exact_hasher_orbit},
-    puzzle::cube3::CUBE_3_SORTED_ORBIT_DEFS,
-};
 use std::{
     hash::Hash,
     num::NonZeroU8,
@@ -14,6 +11,11 @@ use std::{
         cmp::{SimdPartialEq, SimdPartialOrd},
         u8x8,
     },
+};
+
+use crate::{
+    orbit_puzzle::{OrbitPuzzleStateImplementor, SpecializedOrbitPuzzleState, exact_hasher_orbit},
+    puzzle::cube3::CUBE_3_SORTED_ORBIT_DEFS,
 };
 
 /// A lookup table used to correct corner orientation during composition.

@@ -4,7 +4,8 @@ use std::collections::VecDeque;
 ///
 /// The graph is represented as:
 /// - `n`: the number of nodes (nodes are 0..n-1)
-/// - `edges`: a slice of directed edges [from, to], where nodes are zero-indexed
+/// - `edges`: a slice of directed edges [from, to], where nodes are
+///   zero-indexed
 pub struct AllTopologicalSorts {
     solution_length: usize,
     /// Adjacency list: successors[i] contains nodes that i points to
@@ -24,7 +25,8 @@ impl AllTopologicalSorts {
     ///
     /// # Arguments
     /// * `n` - Number of nodes (graph contains nodes 0..n-1)
-    /// * `edges` - Slice of edges, where each edge is [from, to] with 0-based indices
+    /// * `edges` - Slice of edges, where each edge is [from, to] with 0-based
+    ///   indices
     ///
     /// # Panics
     ///
@@ -75,12 +77,14 @@ impl Iterator for AllTopologicalSorts {
         // ISSN 0020-0190, https://doi.org/10.1016/0020-0190(74)90001-5.
         //
         // The algorithm works by:
-        // 1. Maintaining a deque `available` of nodes with in-degree 0 (no incoming edges)
+        // 1. Maintaining a deque `available` of nodes with in-degree 0 (no incoming
+        //    edges)
         // 2. At each position in the sort, we can choose any node from `available`
         // 3. When we choose a node, we "remove" its outgoing edges by decrementing
         //    successor counts, potentially adding new nodes to `available`
         // 4. We track the first choice at each position in `bases` for backtracking:
-        //    - When we first reach position i, we record which node we chose in bases[i]
+        //    - When we first reach position i, we record which node we chose in
+        //      bases[i]
         //    - During backtracking, when we return to position i, we rotate `available`
         //      to try different choices at that position
         //    - We know we've tried all choices at position i when the deque has been

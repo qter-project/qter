@@ -1,11 +1,9 @@
 //! SIMD optimized implementations for N-cube corners
 
-#[cfg(not(any(avx2, simd8)))]
-pub use fallback::CubeNCorners;
-
 #[cfg(avx2)]
 pub use avx2::CubeNCorners;
-
+#[cfg(not(any(avx2, simd8)))]
+pub use fallback::CubeNCorners;
 #[cfg(all(not(avx2), simd8))]
 pub use simd8::CubeNCorners;
 

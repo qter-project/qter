@@ -1,4 +1,3 @@
-use crate::common::OptimalCycleStructureTest;
 use cycle_combination_solver::{
     make_guard,
     pruning::{
@@ -11,6 +10,8 @@ use cycle_combination_solver::{
     solver::{CycleStructureSolver, CycleStructureSolverError, SearchStrategy},
 };
 use puzzle_theory::puzzle_geometry::parsing::puzzle;
+
+use crate::common::OptimalCycleStructureTest;
 
 mod common;
 
