@@ -16,7 +16,7 @@ log.workspace = true
 memoize = "0.4.2"
 num-traits = "0.2.19"
 qter_core.workspace = true
-thiserror = "2.0.11"
+thiserror.workspace = true
 puzzle_theory.workspace = true
 
 [dev-dependencies]

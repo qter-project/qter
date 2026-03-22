@@ -534,6 +534,7 @@ dependencies = [
  "qter_core",
  "rayon",
  "test-log",
+ "thiserror",
 ]
 
 [[package]]

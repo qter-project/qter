@@ -2,10 +2,12 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::missing_panics_doc, clippy::too_many_lines)]
 
-use crate::{
-    orderexps::{OrderExps, PRIMES},
-    trie::MaxOrderTrie,
+use std::{
+    fmt::Debug,
+    simd::{LaneCount, Simd, SupportedLaneCount},
+    time::Instant,
 };
+
 use dashmap::DashSet;
 use fxhash::{FxBuildHasher, FxHashSet};
 use humanize_duration::{Truncate, prelude::DurationExt};
@@ -13,10 +15,10 @@ use log::debug;
 use ndarray::{Array2, Array3, Axis, Zip};
 use num_integer::gcd;
 use rayon::prelude::*;
-use std::{
-    fmt::Debug,
-    simd::{LaneCount, Simd, SupportedLaneCount},
-    time::Instant,
+
+use crate::{
+    orderexps::{OrderExps, PRIMES},
+    trie::MaxOrderTrie,
 };
 
 mod orderexps;
@@ -126,8 +128,8 @@ where
 fn main() {
     pretty_env_logger::init();
 
-    let edge = (120, 2);
-    let corner = (80, 3);
+    let edge = (12, 2);
+    let corner = (8, 3);
 
     let start = Instant::now();
 
