@@ -254,32 +254,33 @@ impl PuzzleDef {
                         )
                     })
                     .collect::<BinaryHeap<_>>();
-                while orbit_possible_orders.len() > 1 {
-                    let acc = DashSet::<OrderExps<N>, FxBuildHasher>::default();
-                    let inner = orbit_possible_orders.pop().unwrap();
-                    let outer = orbit_possible_orders.pop().unwrap();
-                    let mut root = MaxOrderTrie::new(0);
-                    for y in inner.0 {
-                        root.insert(y.clone());
+                while let Some(smallest) = orbit_possible_orders.pop() {
+                    if let Some(smaller) = orbit_possible_orders.pop() {
+                        let acc = DashSet::<OrderExps<N>, FxBuildHasher>::default();
+                        let mut root = MaxOrderTrie::new(0);
+                        for y in smallest.0 {
+                            root.insert(y.clone());
+                        }
+                        smaller
+                            .0
+                            .into_par_iter()
+                            .fold(FxHashSet::default, |mut local_acc, order| {
+                                let mut acc = [0u8; N];
+                                root.collect_distinct_orders(&order, &mut acc, &mut local_acc);
+                                local_acc
+                            })
+                            .for_each(|local_acc| {
+                                for order in local_acc {
+                                    acc.insert(order);
+                                }
+                            });
+                        orbit_possible_orders.push(OrdWrapper(acc));
+                    } else {
+                        for order in smallest.0 {
+                            possible_orders.insert(order);
+                        }
+                        break;
                     }
-                    outer
-                        .0
-                        .into_par_iter()
-                        .fold(FxHashSet::default, |mut local_acc, order| {
-                            let mut acc = [0u8; N];
-                            root.collect_distinct_orders(&order, &mut acc, &mut local_acc);
-                            local_acc
-                        })
-                        .for_each(|local_acc| {
-                            for order in local_acc {
-                                acc.insert(order);
-                            }
-                        });
-                    orbit_possible_orders.push(OrdWrapper(acc));
-                }
-                let last = orbit_possible_orders.pop().unwrap();
-                for order in last.0 {
-                    possible_orders.insert(order);
                 }
             },
         );
@@ -410,8 +411,8 @@ mod tests {
         assert_eq!(
             possible_orders.rchunks(10).next().unwrap(),
             bigint(&[
-                281801520, 232792560, 140900760, 116396280, 104984880, 93933840, 78738660,
-                77597520, 70450380, 58198140
+                58198140, 70450380, 77597520, 78738660, 93933840, 104984880, 116396280, 140900760,
+                232792560, 281801520
             ])
         );
     }
