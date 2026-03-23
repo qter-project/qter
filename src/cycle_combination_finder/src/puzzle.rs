@@ -47,7 +47,7 @@ pub enum OrientationStatus {
     CannotOrient,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum OrientationSumConstraint {
     Zero,
     None,

@@ -7,13 +7,13 @@ use std::{
 };
 
 use fxhash::FxHashSet;
-use ndarray::{Array2, Array3, Axis, Zip};
+use ndarray::{Array2, Array3, ArrayView3, ArrayViewMut3, Axis, Zip};
 use num_integer::gcd;
 use rayon::prelude::*;
 
 use crate::{
     orderexps::{OrderExps, PRIMES},
-    puzzle::OrbitDef,
+    puzzle::{OrbitDef, OrientationStatus, OrientationSumConstraint, ParityConstraint},
 };
 
 impl OrbitDef {
@@ -75,47 +75,72 @@ impl OrbitDef {
             })
             .collect();
 
-        let mut dp = Array3::from_elem(
-            (piece_count + 1, orientation_count, 2),
-            FxHashSet::<OrderExps<N>>::default(),
-        );
+        let mut dp: Array3<FxHashSet<OrderExps<N>>> =
+            Array3::default((piece_count, orientation_count, 2));
 
         // Identity
         dp[(0, 0, 0)].insert(OrderExps::one());
 
-        // For a dst_piece_count, every destination bucket depends only on
-        // smaller piece counts, so all buckets at this layer can be computed
-        // independently
-        for dst_piece_count in 1..=piece_count {
+        let solve_problem = |subproblems: ArrayView3<FxHashSet<OrderExps<N>>>,
+                             dst_piece_count,
+                             dst_orient_sum,
+                             dst_parity,
+                             dst: &mut FxHashSet<OrderExps<N>>| {
+            for cycle in cycles
+                .iter()
+                .take_while(|&c| c.piece_count <= dst_piece_count)
+            {
+                let src_piece_count = dst_piece_count - cycle.piece_count;
+                let src_parity = dst_parity ^ cycle.parity;
+                let src_orient_sum =
+                    (dst_orient_sum + orientation_count - cycle.orient_sum) % orientation_count;
+
+                let src = &subproblems[(src_piece_count, src_orient_sum, src_parity)];
+                if !src.is_empty() {
+                    dst.extend(src.iter().map(|order| order.lcm(&cycle.order)));
+                }
+            }
+        };
+
+        for dst_piece_count in 1..piece_count {
             let (subproblems, mut problems) = dp.view_mut().split_at(Axis(0), dst_piece_count);
             let problem = problems.index_axis_mut(Axis(0), 0);
 
             // TODO: we shouldn't have to loop over every single orient_sum because
             // of GCD magic
-            // TODO: don't compute (12, 1, 0) for edges if we know the orientation sum must
-            // be zero
             Zip::indexed(problem).into_par_iter().for_each(
                 |((dst_orient_sum, dst_parity), dst)| {
-                    for cycle in cycles
-                        .iter()
-                        .take_while(|c| c.piece_count <= dst_piece_count)
-                    {
-                        let src_piece_count = dst_piece_count - cycle.piece_count;
-                        let src_parity = dst_parity ^ cycle.parity;
-                        let src_orient_sum = (dst_orient_sum + orientation_count
-                            - cycle.orient_sum)
-                            % orientation_count;
-
-                        let src = &subproblems[(src_piece_count, src_orient_sum, src_parity)];
-                        if !src.is_empty() {
-                            dst.extend(src.iter().map(|order| order.lcm(&cycle.order)));
-                        }
-                    }
+                    solve_problem(
+                        subproblems.view(),
+                        dst_piece_count,
+                        dst_orient_sum,
+                        dst_parity,
+                        dst,
+                    );
                 },
             );
         }
 
-        dp.index_axis_move(Axis(0), piece_count)
+        let mut possible_orders: Array2<FxHashSet<OrderExps<N>>> = Array2::default((
+            match self.orientation {
+                OrientationStatus::CanOrient {
+                    sum_constraint: OrientationSumConstraint::Zero,
+                    ..
+                }
+                | OrientationStatus::CannotOrient => 1,
+                OrientationStatus::CanOrient { count, .. } => count as usize,
+            },
+            match self.parity_constraint {
+                ParityConstraint::Even => 1,
+                ParityConstraint::None => 2,
+            },
+        ));
+        Zip::indexed(possible_orders.view_mut())
+            .into_par_iter()
+            .for_each(|((dst_orient_sum, dst_parity), dst)| {
+                solve_problem(dp.view(), piece_count, dst_orient_sum, dst_parity, dst);
+            });
+        possible_orders
     }
 }
 
@@ -167,18 +192,18 @@ mod tests {
         let puzzle_def = PuzzleDef::from_orbit_defs_naive(
             vec![
                 OrbitDef {
-                    piece_count: 20.try_into().unwrap(),
+                    piece_count: 80.try_into().unwrap(),
                     parity_constraint: ParityConstraint::None,
                     orientation: OrientationStatus::CanOrient {
-                        count: 3,
+                        count: 30,
                         sum_constraint: OrientationSumConstraint::Zero,
                     },
                 },
                 OrbitDef {
-                    piece_count: 30.try_into().unwrap(),
+                    piece_count: 120.try_into().unwrap(),
                     parity_constraint: ParityConstraint::None,
                     orientation: OrientationStatus::CanOrient {
-                        count: 2,
+                        count: 20,
                         sum_constraint: OrientationSumConstraint::Zero,
                     },
                 },
@@ -265,21 +290,20 @@ mod tests {
         //         let things = vec![];
         //     });
 
+        // TODO: improve naming
         orbit_possible_orders_combinations.into_par_iter().for_each(
             |orbit_possible_orders_combination| {
                 let mut orbit_possible_orders = all_orbit_possible_orders
                     .iter()
                     .zip(orbit_possible_orders_combination)
                     .map(|(orbit_possible_orders, (orient_sum, parity))| {
+                        // TODO: optimize by consuming
                         E(orbit_possible_orders[(orient_sum, parity)]
                             .iter()
                             .cloned()
                             .collect::<DashSet<_, FxBuildHasher>>())
                     })
                     .collect::<BinaryHeap<_>>();
-                for i in &orbit_possible_orders {
-                    println!("{:?} {:?}", std::thread::current().id(), i.0.len());
-                }
                 while orbit_possible_orders.len() > 1 {
                     let acc = DashSet::<OrderExps<N>, FxBuildHasher>::default();
                     let inner = orbit_possible_orders.pop().unwrap();
