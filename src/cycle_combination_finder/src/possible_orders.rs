@@ -2,18 +2,23 @@
 #![allow(clippy::missing_panics_doc, clippy::too_many_lines)]
 
 use std::{
+    cmp::Ordering,
+    collections::BinaryHeap,
     fmt::Debug,
     simd::{LaneCount, Simd, SupportedLaneCount},
 };
 
-use fxhash::FxHashSet;
+use dashmap::DashSet;
+use fxhash::{FxBuildHasher, FxHashSet};
 use ndarray::{Array2, Array3, ArrayView3, Axis, Zip};
 use num_integer::gcd;
 use rayon::prelude::*;
 
 use crate::{
+    N,
     orderexps::{OrderExps, PRIMES},
-    puzzle::{OrbitDef, OrientationStatus, OrientationSumConstraint, ParityConstraint},
+    puzzle::{OrbitDef, OrientationStatus, OrientationSumConstraint, ParityConstraint, PuzzleDef},
+    trie::MaxOrderTrie,
 };
 
 impl OrbitDef {
@@ -144,79 +149,33 @@ impl OrbitDef {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::{cmp::Ordering, collections::BinaryHeap, time::Instant};
+// struct E<'a>(&'a FxHashSet<OrderExps<N>>);
+// TODO: dynamic dispatch
+struct OrdWrapper(DashSet<OrderExps<N>, FxBuildHasher>);
 
-    use dashmap::DashSet;
-    use fxhash::{FxBuildHasher, FxHashSet};
-    use humanize_duration::{Truncate, prelude::DurationExt};
-    use ndarray::Array2;
-    use rayon::prelude::*;
-
-    use crate::{
-        N,
-        orderexps::OrderExps,
-        puzzle::{
-            EvenParityConstraints, OrbitDef, OrientationStatus, OrientationSumConstraint,
-            ParityConstraint, PuzzleDef,
-        },
-        trie::MaxOrderTrie,
-    };
-
-    // struct E<'a>(&'a FxHashSet<OrderExps<N>>);
-    struct E(DashSet<OrderExps<N>, FxBuildHasher>);
-
-    impl PartialOrd for E {
-        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-            Some(self.cmp(other))
-        }
+impl PartialOrd for OrdWrapper {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
+}
 
-    impl Ord for E {
-        fn cmp(&self, other: &Self) -> Ordering {
-            other.0.len().cmp(&self.0.len())
-        }
+impl Ord for OrdWrapper {
+    fn cmp(&self, other: &Self) -> Ordering {
+        other.0.len().cmp(&self.0.len())
     }
+}
 
-    impl PartialEq for E {
-        fn eq(&self, other: &Self) -> bool {
-            self.0.len() == other.0.len()
-        }
+impl PartialEq for OrdWrapper {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.len() == other.0.len()
     }
+}
 
-    impl Eq for E {}
+impl Eq for OrdWrapper {}
 
-    #[test_log::test]
-    fn main() {
-        let puzzle_def = PuzzleDef::from_orbit_defs_naive(
-            vec![
-                OrbitDef {
-                    piece_count: 8.try_into().unwrap(),
-                    parity_constraint: ParityConstraint::None,
-                    orientation: OrientationStatus::CanOrient {
-                        count: 3,
-                        sum_constraint: OrientationSumConstraint::Zero,
-                    },
-                },
-                OrbitDef {
-                    piece_count: 24.try_into().unwrap(),
-                    parity_constraint: ParityConstraint::None,
-                    orientation: OrientationStatus::CannotOrient,
-                },
-                OrbitDef {
-                    piece_count: 24.try_into().unwrap(),
-                    parity_constraint: ParityConstraint::None,
-                    orientation: OrientationStatus::CannotOrient,
-                },
-            ],
-            OrientationSumConstraint::Zero,
-            EvenParityConstraints(vec![vec![0, 1]]),
-        )
-        .unwrap();
-        let start = Instant::now();
-
-        let all_orbit_possible_orders = puzzle_def
+impl PuzzleDef {
+    pub fn possible_orders(&self) -> DashSet<OrderExps<N>, FxBuildHasher> {
+        let all_orbit_possible_orders = self
             .orbit_defs()
             .par_iter()
             .copied()
@@ -228,8 +187,7 @@ mod tests {
         loop {
             let mut end = true;
             let valid_parity =
-                puzzle_def
-                    .even_parity_constraints()
+                self.even_parity_constraints()
                     .0
                     .iter()
                     .all(|even_parity_constraint| {
@@ -239,7 +197,7 @@ mod tests {
                             .sum::<usize>()
                             .is_multiple_of(2)
                     });
-            let valid_orient_sum = match puzzle_def.orientation_sum_constraint() {
+            let valid_orient_sum = match self.orientation_sum_constraint() {
                 OrientationSumConstraint::Zero if curr.iter().map(|&i| i.0).sum::<usize>() == 0 => {
                     true
                 }
@@ -270,9 +228,8 @@ mod tests {
                 break;
             }
         }
-        
-        let all_distinct_orders = DashSet::<OrderExps<N>, FxBuildHasher>::default();
-        // TODO: move out of orbit_possible_orders in the par iter loop
+
+        let possible_orders = DashSet::<OrderExps<N>, FxBuildHasher>::default();
         // let all_orbit_possible_orders_iter = all_orbit_possible_orders
         //     .into_iter()
         //     .map(|a| a.into_par_iter())
@@ -292,22 +249,18 @@ mod tests {
                     .zip(orbit_possible_orders_combination)
                     .map(|(orbit_possible_orders, (orient_sum, parity))| {
                         // TODO: optimize by consuming
-                        E(orbit_possible_orders[(orient_sum, parity)]
-                            .iter()
-                            .cloned()
-                            .collect::<DashSet<_, FxBuildHasher>>())
+                        OrdWrapper(
+                            orbit_possible_orders[(orient_sum, parity)]
+                                .iter()
+                                .cloned()
+                                .collect::<DashSet<_, FxBuildHasher>>(),
+                        )
                     })
                     .collect::<BinaryHeap<_>>();
                 while orbit_possible_orders.len() > 1 {
                     let acc = DashSet::<OrderExps<N>, FxBuildHasher>::default();
                     let inner = orbit_possible_orders.pop().unwrap();
                     let outer = orbit_possible_orders.pop().unwrap();
-                    println!(
-                        "{:?} inner {:?} outer {:?}",
-                        std::thread::current().id(),
-                        inner.0.len(),
-                        outer.0.len()
-                    );
                     let mut root = MaxOrderTrie::new(0);
                     for y in inner.0 {
                         root.insert(y.clone());
@@ -325,26 +278,145 @@ mod tests {
                                 acc.insert(order);
                             }
                         });
-                    orbit_possible_orders.push(E(acc));
+                    orbit_possible_orders.push(OrdWrapper(acc));
                 }
                 let last = orbit_possible_orders.pop().unwrap();
                 for order in last.0 {
-                    all_distinct_orders.insert(order);
+                    possible_orders.insert(order);
                 }
             },
         );
+        possible_orders
+    }
+}
 
-        println!("{}", start.elapsed().human(Truncate::Micro));
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unreadable_literal)]
+    use std::time::Instant;
 
-        println!("Total distinct orders: {}", all_distinct_orders.len());
-        let mut all_combined = all_distinct_orders
+    use humanize_duration::{Truncate, prelude::DurationExt};
+    use log::debug;
+    use puzzle_theory::numbers::{Int, U};
+
+    use crate::puzzle::{
+        EvenParityConstraints, OrbitDef, OrientationStatus, OrientationSumConstraint,
+        ParityConstraint, PuzzleDef,
+    };
+
+    fn bigint(n: &'static [u64]) -> Vec<Int<U>> {
+        n.iter().map(|&i| Int::<U>::from(i)).collect()
+    }
+
+    #[test_log::test]
+    fn cube4_possible_orders() {
+        let puzzle_def = PuzzleDef::from_orbit_defs_naive(
+            vec![
+                OrbitDef {
+                    piece_count: 8.try_into().unwrap(),
+                    parity_constraint: ParityConstraint::None,
+                    orientation: OrientationStatus::CanOrient {
+                        count: 3,
+                        sum_constraint: OrientationSumConstraint::Zero,
+                    },
+                },
+                OrbitDef {
+                    piece_count: 24.try_into().unwrap(),
+                    parity_constraint: ParityConstraint::None,
+                    orientation: OrientationStatus::CannotOrient,
+                },
+                OrbitDef {
+                    piece_count: 24.try_into().unwrap(),
+                    parity_constraint: ParityConstraint::None,
+                    orientation: OrientationStatus::CannotOrient,
+                },
+            ],
+            OrientationSumConstraint::Zero,
+            EvenParityConstraints(vec![vec![0, 1]]),
+        )
+        .unwrap();
+        let start = Instant::now();
+        let possible_orders = puzzle_def.possible_orders();
+        debug!(
+            "Possible orders in {}",
+            start.elapsed().human(Truncate::Micro)
+        );
+
+        assert_eq!(possible_orders.len(), 877);
+
+        let mut possible_orders = possible_orders
             .into_iter()
             .map(|f| f.as_bigint())
             .collect::<Vec<_>>();
-        all_combined.sort_unstable();
-        for &order in all_combined.iter().rev().take(10) {
-            println!("{order}");
-        }
-        panic!();
+        possible_orders.sort_unstable();
+        assert_eq!(
+            possible_orders.rchunks(10).next().unwrap(),
+            bigint(&[
+                360360, 376740, 406980, 437580, 471240, 489060, 510510, 556920, 720720, 765765
+            ])
+        );
+    }
+
+    #[test_log::test]
+    fn cube5_possible_orders() {
+        let puzzle_def = PuzzleDef::from_orbit_defs_naive(
+            vec![
+                OrbitDef {
+                    piece_count: 8.try_into().unwrap(),
+                    parity_constraint: ParityConstraint::None,
+                    orientation: OrientationStatus::CanOrient {
+                        count: 3,
+                        sum_constraint: OrientationSumConstraint::Zero,
+                    },
+                },
+                OrbitDef {
+                    piece_count: 12.try_into().unwrap(),
+                    parity_constraint: ParityConstraint::None,
+                    orientation: OrientationStatus::CanOrient {
+                        count: 2,
+                        sum_constraint: OrientationSumConstraint::Zero,
+                    },
+                },
+                OrbitDef {
+                    piece_count: 24.try_into().unwrap(),
+                    parity_constraint: ParityConstraint::None,
+                    orientation: OrientationStatus::CannotOrient,
+                },
+                OrbitDef {
+                    piece_count: 24.try_into().unwrap(),
+                    parity_constraint: ParityConstraint::None,
+                    orientation: OrientationStatus::CannotOrient,
+                },
+                OrbitDef {
+                    piece_count: 24.try_into().unwrap(),
+                    parity_constraint: ParityConstraint::None,
+                    orientation: OrientationStatus::CannotOrient,
+                },
+            ],
+            OrientationSumConstraint::Zero,
+            EvenParityConstraints(vec![vec![0, 1], vec![0, 2, 3], vec![0, 4]]),
+        )
+        .unwrap();
+        let start = Instant::now();
+        let possible_orders = puzzle_def.possible_orders();
+        debug!(
+            "Possible orders in {}",
+            start.elapsed().human(Truncate::Micro)
+        );
+
+        assert_eq!(possible_orders.len(), 1770);
+
+        let mut possible_orders = possible_orders
+            .into_iter()
+            .map(|f| f.as_bigint())
+            .collect::<Vec<_>>();
+        possible_orders.sort_unstable();
+        assert_eq!(
+            possible_orders.rchunks(10).next().unwrap(),
+            bigint(&[
+                281801520, 232792560, 140900760, 116396280, 104984880, 93933840, 78738660,
+                77597520, 70450380, 58198140
+            ])
+        );
     }
 }

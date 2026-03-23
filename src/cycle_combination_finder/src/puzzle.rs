@@ -21,6 +21,11 @@ pub enum PuzzleDefCreationError {
     OutOfBounds { length: usize, actual: usize },
     #[error("Orientation count of {0} cannot be 0 or 1")]
     InvalidOrientationCount(u8),
+    #[error(
+        "You should not supply one orbit as an even constraint. Instead, set the \
+         `parity_constraint` field to even on that orbit"
+    )]
+    SingleParityConstraint,
 }
 
 pub struct PuzzleDef {
