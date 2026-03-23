@@ -230,10 +230,10 @@ def minx(N):
 
 
 PUZZLE_4x4 = cube(4)
-print(PUZZLE_4x4)
 PUZZLE_2x2 = cube(2)
 PUZZLE_3x3 = cube(3)
 PUZZLE_5x5 = cube(5)
+print(PUZZLE_5x5)
 PUZZLE_6x6 = cube(6)
 PUZZLE_KILOMINX = minx(2)
 PUZZLE_MEGAMINX = minx(3)

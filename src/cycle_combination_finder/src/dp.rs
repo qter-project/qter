@@ -7,7 +7,7 @@ use std::{
 };
 
 use fxhash::FxHashSet;
-use ndarray::{Array2, Array3, ArrayView3, ArrayViewMut3, Axis, Zip};
+use ndarray::{Array2, Array3, ArrayView3, Axis, Zip};
 use num_integer::gcd;
 use rayon::prelude::*;
 
@@ -192,29 +192,23 @@ mod tests {
         let puzzle_def = PuzzleDef::from_orbit_defs_naive(
             vec![
                 OrbitDef {
-                    piece_count: 80.try_into().unwrap(),
+                    piece_count: 8.try_into().unwrap(),
                     parity_constraint: ParityConstraint::None,
                     orientation: OrientationStatus::CanOrient {
-                        count: 30,
+                        count: 3,
                         sum_constraint: OrientationSumConstraint::Zero,
                     },
                 },
                 OrbitDef {
-                    piece_count: 120.try_into().unwrap(),
+                    piece_count: 24.try_into().unwrap(),
                     parity_constraint: ParityConstraint::None,
-                    orientation: OrientationStatus::CanOrient {
-                        count: 20,
-                        sum_constraint: OrientationSumConstraint::Zero,
-                    },
+                    orientation: OrientationStatus::CannotOrient,
                 },
-                // OrbitDef {
-                //     piece_count: 2.try_into().unwrap(),
-                //     parity_constraint: ParityConstraint::None,
-                //     orientation: OrientationStatus::CanOrient {
-                //         count: 6,
-                //         sum_constraint: OrientationSumConstraint::Zero,
-                //     },
-                // },
+                OrbitDef {
+                    piece_count: 24.try_into().unwrap(),
+                    parity_constraint: ParityConstraint::None,
+                    orientation: OrientationStatus::CannotOrient,
+                },
             ],
             OrientationSumConstraint::Zero,
             EvenParityConstraints(vec![vec![0, 1]]),
@@ -276,7 +270,7 @@ mod tests {
                 break;
             }
         }
-
+        
         let all_distinct_orders = DashSet::<OrderExps<N>, FxBuildHasher>::default();
         // TODO: move out of orbit_possible_orders in the par iter loop
         // let all_orbit_possible_orders_iter = all_orbit_possible_orders

@@ -15,10 +15,10 @@ pub enum PuzzleDefCreationError {
     #[error("Even parity constraint contains the duplicated index {0}")]
     DuplicateIndicies(usize),
     #[error(
-        "Even parity constraint index is out of bounds. Expected a maximum of {max} but found \
+        "Even parity constraint index is out of bounds. Expected a maximum of {length} but found \
          {actual}"
     )]
-    OutOfBounds { max: usize, actual: usize },
+    OutOfBounds { length: usize, actual: usize },
     #[error("Orientation count of {0} cannot be 0 or 1")]
     InvalidOrientationCount(u8),
 }
@@ -143,7 +143,7 @@ impl PuzzleDef {
                 for &i in even_parity_constraint {
                     if orbit_defs.get(i).is_none() {
                         return Err(PuzzleDefCreationError::OutOfBounds {
-                            max: orbit_defs.len(),
+                            length: orbit_defs.len(),
                             actual: i,
                         });
                     }
