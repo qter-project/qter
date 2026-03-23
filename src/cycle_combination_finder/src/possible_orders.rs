@@ -1,6 +1,3 @@
-#![warn(clippy::pedantic)]
-#![allow(clippy::missing_panics_doc, clippy::too_many_lines)]
-
 use std::{
     cmp::Ordering,
     collections::BinaryHeap,
@@ -292,7 +289,6 @@ impl PuzzleDef {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unreadable_literal)]
     use std::time::Instant;
 
     use humanize_duration::{Truncate, prelude::DurationExt};
