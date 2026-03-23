@@ -14,6 +14,8 @@ Me, Henry are members of Purdue Hackers... and I run a youtube channel called Th
 
 What we're going to talk about is how a Rubik's cube could possibly be a computer, then we will talk about the mathematics underlying it, then we'll do a Q&A. But first, we'll give a demonstration our project using this Rubik's cube solving robot that we built to run Qter programs. We'll have Arhan and the robot race to compute (???)!
 
+- Mention Daniel and Neel while running the robot
+
 = How Qter works
 
 == Numbers
@@ -167,11 +169,11 @@ Now that's all of the instructions! You can put these together to compute fibona
 
 == Cycles
 
-- Delegate writing to Henry (unless Asher wants to do it)
+- Delegate writing to Arhan
 
 == CCF
 
-- Delegate writing to ?????
+- Delegate writing to Arhan
 
 == CCS
 
@@ -180,3 +182,5 @@ Now that's all of the instructions! You can put these together to compute fibona
 = Q&A in chat
 
 = Conclusion / Transition to SIGHORSE panel
+
+Well, now we're out of time! If you want to learn more about Qter, you can read our writeup about the project at `qter.dev/paper.pdf`, or even better, you can donate at "The Lore" tier to get a copy of a book called SIGHORSE, which is faux academic journal that Purdue Hackers put together that includes papers detailing lots of other Purdue Hackers projects including ours. The next stream session will be a panel interviewing some of the people involved with producing SIGHORSE, so hold on tight for that!
