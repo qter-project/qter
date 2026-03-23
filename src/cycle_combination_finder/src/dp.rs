@@ -18,9 +18,7 @@ use crate::{
 
 impl OrbitDef {
     #[must_use]
-    pub fn possible_orders_for_piece_type_with_primes<const N: usize>(
-        self,
-    ) -> Array2<FxHashSet<OrderExps<N>>>
+    pub fn possible_orders<const N: usize>(self) -> Array2<FxHashSet<OrderExps<N>>>
     where
         LaneCount<N>: SupportedLaneCount,
     {
@@ -121,93 +119,172 @@ impl OrbitDef {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Instant;
+    use std::{cmp::Ordering, collections::BinaryHeap, time::Instant};
 
     use dashmap::DashSet;
     use fxhash::{FxBuildHasher, FxHashSet};
     use humanize_duration::{Truncate, prelude::DurationExt};
-    use log::debug;
+    use ndarray::Array2;
     use rayon::prelude::*;
 
     use crate::{
         N,
         orderexps::OrderExps,
-        puzzle::{OrbitDef, OrientationSumConstraint, ParityConstraint},
+        puzzle::{OrbitDef, OrientationSumConstraint, ParityConstraint, PuzzleDef},
         trie::MaxOrderTrie,
     };
 
+    // struct E<'a>(&'a FxHashSet<OrderExps<N>>);
+    struct E(DashSet<OrderExps<N>, FxBuildHasher>);
+
+    impl PartialOrd for E {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+
+    impl Ord for E {
+        fn cmp(&self, other: &Self) -> Ordering {
+            other.0.len().cmp(&self.0.len())
+        }
+    }
+
+    impl PartialEq for E {
+        fn eq(&self, other: &Self) -> bool {
+            self.0.len() == other.0.len()
+        }
+    }
+
+    impl Eq for E {}
+
     #[test_log::test]
     fn main() {
-        let edge = OrbitDef {
-            piece_count: 120.try_into().unwrap(),
-            orientation_count: 2.try_into().unwrap(),
-            orientation_sum_constraint: OrientationSumConstraint::Zero,
-            parity_constraint: ParityConstraint::None,
-        };
-        let corner = OrbitDef {
-            piece_count: 80.try_into().unwrap(),
-            orientation_count: 3.try_into().unwrap(),
-            orientation_sum_constraint: OrientationSumConstraint::Zero,
-            parity_constraint: ParityConstraint::None,
-        };
-
+        let puzzle_def = PuzzleDef::from_orbit_defs_naive(
+            vec![
+                OrbitDef {
+                    piece_count: 8.try_into().unwrap(),
+                    orientation_count: 3.try_into().unwrap(),
+                    orientation_sum_constraint: OrientationSumConstraint::Zero,
+                    parity_constraint: ParityConstraint::None,
+                },
+                OrbitDef {
+                    piece_count: 12.try_into().unwrap(),
+                    orientation_count: 2.try_into().unwrap(),
+                    orientation_sum_constraint: OrientationSumConstraint::Zero,
+                    parity_constraint: ParityConstraint::None,
+                },
+            ],
+            OrientationSumConstraint::Zero,
+            ParityConstraint::Even,
+        )
+        .unwrap();
         let start = Instant::now();
 
-        let [mut edges, mut corners] = [edge, corner]
+        let all_orbit_possible_orders = puzzle_def
+            .orbit_defs()
             .par_iter()
             .copied()
-            .map(OrbitDef::possible_orders_for_piece_type_with_primes)
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
-        debug!("DP in {}", start.elapsed().human(Truncate::Millis));
+            .map(OrbitDef::possible_orders::<N>)
+            .collect::<Vec<_>>();
 
-        let all_distinct_orders = DashSet::<OrderExps<N>, FxBuildHasher>::default();
-        for parity in 0..2 {
-            let begin_setup = start.elapsed();
-            let a = std::mem::take(&mut edges[(0, parity)]);
-            let b = std::mem::take(&mut corners[(0, parity)]);
-
-            let (outer, inner) = if a.len() >= b.len() {
-                (
-                    a.into_iter().collect::<Vec<_>>(),
-                    b.into_iter().collect::<Vec<_>>(),
-                )
-            } else {
-                (
-                    b.into_iter().collect::<Vec<_>>(),
-                    a.into_iter().collect::<Vec<_>>(),
-                )
+        let mut orbit_possible_orders_combinations = vec![];
+        let mut curr = vec![(0, 0); all_orbit_possible_orders.len()];
+        loop {
+            let mut end = true;
+            let (puzzle_orient_sum, puzzle_parity) = curr
+                .iter()
+                .fold((0usize, 0usize), |acc, i| (acc.0 + i.0, acc.1 + i.1));
+            let valid_parity = match puzzle_def.parity_constraint() {
+                ParityConstraint::Even if puzzle_parity.is_multiple_of(2) => true,
+                ParityConstraint::None => true,
+                ParityConstraint::Even => false,
             };
-
-            let mut root = MaxOrderTrie::new(0);
-            for y in inner {
-                root.insert(y);
+            let valid_orient_sum = match puzzle_def.orientation_sum_constraint() {
+                OrientationSumConstraint::Zero if puzzle_orient_sum == 0 => true,
+                OrientationSumConstraint::None => true,
+                OrientationSumConstraint::Zero => false,
+            };
+            if valid_orient_sum && valid_parity {
+                orbit_possible_orders_combinations.push(curr.clone());
             }
-
-            let finished_setup = begin_setup.saturating_sub(start.elapsed());
-            outer
-                .into_par_iter()
-                .fold(FxHashSet::default, |mut local_acc, order| {
-                    let mut acc = [0u8; N];
-                    root.collect_distinct_orders(&order, &mut acc, &mut local_acc);
-                    local_acc
-                })
-                .for_each(|local_acc| {
-                    for order in local_acc {
-                        all_distinct_orders.insert(order);
-                    }
-                });
-            debug!(
-                "Main in {}",
-                start
-                    .elapsed()
-                    .saturating_sub(finished_setup)
-                    .human(Truncate::Millis)
-            );
+            for ((orient_sum, parity), (max_orient_sum, max_parity)) in curr
+                .iter_mut()
+                .zip(all_orbit_possible_orders.iter().map(Array2::dim))
+            {
+                *orient_sum += 1;
+                if *orient_sum < max_orient_sum {
+                    end = false;
+                    break;
+                }
+                *orient_sum = 0;
+                *parity += 1;
+                if *parity < max_parity {
+                    end = false;
+                    break;
+                }
+                *parity = 0;
+            }
+            if end {
+                break;
+            }
         }
 
-        println!("{}", start.elapsed().human(Truncate::Millis));
+        let all_distinct_orders = DashSet::<OrderExps<N>, FxBuildHasher>::default();
+        // TODO: move out of orbit_possible_orders in the par iter loop
+        // let all_orbit_possible_orders_iter = all_orbit_possible_orders
+        //     .into_iter()
+        //     .map(|a| a.into_par_iter())
+        //     .collect::<Vec<_>>();
+        // orbit_possible_orders_combinations
+        //     .into_par_iter()
+        //     .zip(all_orbit_possible_orders_iter)
+        //     .for_each(|(orient_sum, par)| {
+        //         let things = vec![];
+        //     });
+
+        orbit_possible_orders_combinations.into_par_iter().for_each(
+            |orbit_possible_orders_combination| {
+                let mut orbit_possible_orders = all_orbit_possible_orders
+                    .iter()
+                    .zip(orbit_possible_orders_combination)
+                    .map(|(orbit_possible_orders, (orient_sum, parity))| {
+                        E(orbit_possible_orders[(orient_sum, parity)]
+                            .iter()
+                            .cloned()
+                            .collect::<DashSet<_, FxBuildHasher>>())
+                    })
+                    .collect::<BinaryHeap<_>>();
+                while orbit_possible_orders.len() > 1 {
+                    let acc = DashSet::<OrderExps<N>, FxBuildHasher>::default();
+                    let inner = orbit_possible_orders.pop().unwrap();
+                    let outer = orbit_possible_orders.pop().unwrap();
+                    let mut root = MaxOrderTrie::new(0);
+                    for y in inner.0 {
+                        root.insert(y.clone());
+                    }
+                    outer
+                        .0
+                        .into_par_iter()
+                        .fold(FxHashSet::default, |mut local_acc, order| {
+                            let mut acc = [0u8; N];
+                            root.collect_distinct_orders(&order, &mut acc, &mut local_acc);
+                            local_acc
+                        })
+                        .for_each(|local_acc| {
+                            for order in local_acc {
+                                acc.insert(order);
+                            }
+                        });
+                    orbit_possible_orders.push(E(acc));
+                }
+                let last = orbit_possible_orders.pop().unwrap();
+                for order in last.0 {
+                    all_distinct_orders.insert(order);
+                }
+            },
+        );
+
+        println!("{}", start.elapsed().human(Truncate::Micro));
 
         println!("Total distinct orders: {}", all_distinct_orders.len());
         let mut all_combined = all_distinct_orders
@@ -215,7 +292,7 @@ mod tests {
             .map(|f| f.as_bigint())
             .collect::<Vec<_>>();
         all_combined.sort_unstable();
-        for &order in all_combined.iter().rev().take(10) {
+        for &order in all_combined.iter().rev() {
             println!("{order}");
         }
         panic!();

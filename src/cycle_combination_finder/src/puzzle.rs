@@ -120,6 +120,16 @@ impl PuzzleDef {
     pub fn orbit_defs(&self) -> &[OrbitDef] {
         &self.orbit_defs
     }
+
+    #[must_use]
+    pub fn orientation_sum_constraint(&self) -> OrientationSumConstraint {
+        self.orientation_sum_constraint
+    }
+
+    #[must_use]
+    pub fn parity_constraint(&self) -> ParityConstraint {
+        self.parity_constraint
+    }
 }
 
 impl OrbitDef {
