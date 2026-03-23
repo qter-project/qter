@@ -2,7 +2,7 @@ use std::num::NonZeroU16;
 
 use cycle_combination_finder::{
     finder::{CycleCombinationFinder, MaxPrimePower, Optimality, RegisterCount},
-    puzzle::{OrientationSumConstraint, ParityConstraint, PuzzleDef},
+    puzzle::{EvenParityConstraints, OrientationSumConstraint, ParityConstraint, PuzzleDef},
 };
 use puzzle_theory::{
     numbers::{Int, U},
@@ -17,7 +17,7 @@ pub fn megaminx() -> PuzzleDef {
     PuzzleDef::from_ksolve_naive(
         &puzzle("megaminx").ksolve(),
         OrientationSumConstraint::Zero,
-        ParityConstraint::Even,
+        EvenParityConstraints(vec![vec![0, 1]]),
         vec![
             (OrientationSumConstraint::Zero, ParityConstraint::None),
             (OrientationSumConstraint::Zero, ParityConstraint::None),

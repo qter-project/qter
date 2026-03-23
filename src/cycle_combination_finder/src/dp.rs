@@ -35,7 +35,7 @@ impl OrbitDef {
         }
 
         let piece_count = self.piece_count.get() as usize;
-        let orientation_count = self.orientation_count.get() as usize;
+        let orientation_count = self.orientation_count() as usize;
         let cycles: Vec<Cycle<N>> = (1..=piece_count)
             .flat_map(|piece_count| {
                 (0..orientation_count).map(move |orient_sum| {
@@ -92,6 +92,8 @@ impl OrbitDef {
 
             // TODO: we shouldn't have to loop over every single orient_sum because
             // of GCD magic
+            // TODO: don't compute (12, 1, 0) for edges if we know the orientation sum must
+            // be zero
             Zip::indexed(problem).into_par_iter().for_each(
                 |((dst_orient_sum, dst_parity), dst)| {
                     for cycle in cycles
@@ -130,7 +132,10 @@ mod tests {
     use crate::{
         N,
         orderexps::OrderExps,
-        puzzle::{OrbitDef, OrientationSumConstraint, ParityConstraint, PuzzleDef},
+        puzzle::{
+            EvenParityConstraints, OrbitDef, OrientationStatus, OrientationSumConstraint,
+            ParityConstraint, PuzzleDef,
+        },
         trie::MaxOrderTrie,
     };
 
@@ -162,20 +167,32 @@ mod tests {
         let puzzle_def = PuzzleDef::from_orbit_defs_naive(
             vec![
                 OrbitDef {
-                    piece_count: 8.try_into().unwrap(),
-                    orientation_count: 3.try_into().unwrap(),
-                    orientation_sum_constraint: OrientationSumConstraint::Zero,
+                    piece_count: 20.try_into().unwrap(),
                     parity_constraint: ParityConstraint::None,
+                    orientation: OrientationStatus::CanOrient {
+                        count: 3,
+                        sum_constraint: OrientationSumConstraint::Zero,
+                    },
                 },
                 OrbitDef {
-                    piece_count: 12.try_into().unwrap(),
-                    orientation_count: 2.try_into().unwrap(),
-                    orientation_sum_constraint: OrientationSumConstraint::Zero,
+                    piece_count: 30.try_into().unwrap(),
                     parity_constraint: ParityConstraint::None,
+                    orientation: OrientationStatus::CanOrient {
+                        count: 2,
+                        sum_constraint: OrientationSumConstraint::Zero,
+                    },
                 },
+                // OrbitDef {
+                //     piece_count: 2.try_into().unwrap(),
+                //     parity_constraint: ParityConstraint::None,
+                //     orientation: OrientationStatus::CanOrient {
+                //         count: 6,
+                //         sum_constraint: OrientationSumConstraint::Zero,
+                //     },
+                // },
             ],
             OrientationSumConstraint::Zero,
-            ParityConstraint::Even,
+            EvenParityConstraints(vec![vec![0, 1]]),
         )
         .unwrap();
         let start = Instant::now();
@@ -191,16 +208,22 @@ mod tests {
         let mut curr = vec![(0, 0); all_orbit_possible_orders.len()];
         loop {
             let mut end = true;
-            let (puzzle_orient_sum, puzzle_parity) = curr
-                .iter()
-                .fold((0usize, 0usize), |acc, i| (acc.0 + i.0, acc.1 + i.1));
-            let valid_parity = match puzzle_def.parity_constraint() {
-                ParityConstraint::Even if puzzle_parity.is_multiple_of(2) => true,
-                ParityConstraint::None => true,
-                ParityConstraint::Even => false,
-            };
+            let valid_parity =
+                puzzle_def
+                    .even_parity_constraints()
+                    .0
+                    .iter()
+                    .all(|even_parity_constraint| {
+                        even_parity_constraint
+                            .iter()
+                            .map(|&i| curr[i].1)
+                            .sum::<usize>()
+                            .is_multiple_of(2)
+                    });
             let valid_orient_sum = match puzzle_def.orientation_sum_constraint() {
-                OrientationSumConstraint::Zero if puzzle_orient_sum == 0 => true,
+                OrientationSumConstraint::Zero if curr.iter().map(|&i| i.0).sum::<usize>() == 0 => {
+                    true
+                }
                 OrientationSumConstraint::None => true,
                 OrientationSumConstraint::Zero => false,
             };
@@ -254,10 +277,19 @@ mod tests {
                             .collect::<DashSet<_, FxBuildHasher>>())
                     })
                     .collect::<BinaryHeap<_>>();
+                for i in &orbit_possible_orders {
+                    println!("{:?} {:?}", std::thread::current().id(), i.0.len());
+                }
                 while orbit_possible_orders.len() > 1 {
                     let acc = DashSet::<OrderExps<N>, FxBuildHasher>::default();
                     let inner = orbit_possible_orders.pop().unwrap();
                     let outer = orbit_possible_orders.pop().unwrap();
+                    println!(
+                        "{:?} inner {:?} outer {:?}",
+                        std::thread::current().id(),
+                        inner.0.len(),
+                        outer.0.len()
+                    );
                     let mut root = MaxOrderTrie::new(0);
                     for y in inner.0 {
                         root.insert(y.clone());
@@ -292,7 +324,7 @@ mod tests {
             .map(|f| f.as_bigint())
             .collect::<Vec<_>>();
         all_combined.sort_unstable();
-        for &order in all_combined.iter().rev() {
+        for &order in all_combined.iter().rev().take(10) {
             println!("{order}");
         }
         panic!();

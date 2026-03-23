@@ -4,12 +4,9 @@ use std::{fmt, num::NonZeroU16, time::Instant};
 
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::{debug, info};
-use puzzle_theory::{
-    ksolve::{KSolve, KSolveSet},
-    numbers::{self, Int, U},
-};
+use puzzle_theory::numbers::{self, Int, U};
 
-use crate::puzzle::{OrbitDef, PuzzleDef};
+use crate::puzzle::PuzzleDef;
 
 struct OrderIteration {
     index: usize,
@@ -118,6 +115,7 @@ impl CycleCombinationFinder {
 
     /// return a 2D list of prime powers below n. The first index is the prime,
     /// the second is the power of that prime Return all
+    #[must_use]
     pub fn max_prime_powers_below(&self, n: u16) -> Vec<MaxPrimePower> {
         #[derive(Copy, Clone, Debug, PartialEq)]
         enum SieveNumberState {
@@ -165,7 +163,7 @@ impl CycleCombinationFinder {
                 .puzzle_def
                 .orbit_defs()
                 .iter()
-                .find(|&&orbit_def| orbit_def.orientation_count.get() as usize == prime)
+                .find(|&&orbit_def| orbit_def.orientation_count() as usize == prime)
                 .is_some_and(|&orbit_def| min_piece_count as u16 <= orbit_def.piece_count.get())
             {
                 exponent += 1;
@@ -230,7 +228,7 @@ impl CycleCombinationFinder {
                 .iter()
                 .copied()
                 .find(|&orbit_def| {
-                    orbit_def.orientation_count.get() as u16 == max_prime_power.prime
+                    u16::from(orbit_def.orientation_count()) == max_prime_power.prime
                 });
             let min_piece_count = if maybe_orbit_def.is_some() {
                 0
@@ -319,7 +317,7 @@ impl CycleCombinationFinder {
     ) -> Option<Vec<Assignment>> {
         let mut shared_sum = 0;
         for &orbit_def in self.puzzle_def.orbit_defs() {
-            shared_sum += shared_pieces[orbit_def.orientation_count.get() as usize];
+            shared_sum += shared_pieces[orbit_def.orientation_count() as usize];
         }
         if shared_sum > available_pieces {
             return None;
@@ -360,7 +358,7 @@ impl CycleCombinationFinder {
 
             // try adding the current prime power to each orbit
             for (o, &orbit_def) in self.puzzle_def.orbit_defs().iter().enumerate() {
-                let orbit_orient = orbit_def.orientation_count.get();
+                let orbit_orient = orbit_def.orientation_count();
 
                 // orbits with no orientation and the same piece count act the same. we should
                 // only check the first one continue if this is a duplicate of
@@ -496,8 +494,8 @@ impl CycleCombinationFinder {
                     lcm = numbers::lcm(lcm, Int::<U>::from(a));
                 }
 
-                if orbit_def.orientation_count.get() > 1 {
-                    lcm *= Int::<U>::from(orbit_def.orientation_count.get());
+                if orbit_def.orientation_count() > 1 {
+                    lcm *= Int::<U>::from(orbit_def.orientation_count());
                     //assignments[r][o].push(1);
                 }
 
@@ -626,7 +624,7 @@ impl CycleCombinationFinder {
                         .iter()
                         .fold(0, |sum, &orbit_def| {
                             sum + orbit_def.piece_count.get()
-                                - if orbit_def.orientation_count.get() > 1 {
+                                - if orbit_def.orientation_count() > 1 {
                                     1
                                 } else {
                                     0
@@ -668,7 +666,7 @@ impl CycleCombinationFinder {
                                 .orbit_defs()
                                 .iter()
                                 .find_map(|&orbit_def| {
-                                    if orbit_def.orientation_count.get() == 2 {
+                                    if orbit_def.orientation_count() == 2 {
                                         Some(orbit_def.piece_count.get())
                                     } else {
                                         None
@@ -688,7 +686,7 @@ impl CycleCombinationFinder {
                                 .orbit_defs()
                                 .iter()
                                 .find_map(|&orbit_def| {
-                                    if orbit_def.orientation_count.get() == 3 {
+                                    if orbit_def.orientation_count() == 3 {
                                         Some(orbit_def.piece_count.get())
                                     } else {
                                         None
