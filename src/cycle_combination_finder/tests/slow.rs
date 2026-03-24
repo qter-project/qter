@@ -2,7 +2,7 @@ use std::num::NonZeroU16;
 
 use cycle_combination_finder::{
     finder::{CycleCombinationFinder, Optimality, RegisterCount},
-    puzzle::misc::SLOW,
+    puzzle::misc::SLOW1,
 };
 
 use crate::common::cycles;
@@ -11,7 +11,7 @@ mod common;
 
 #[test_log::test]
 fn test_2_optimal() {
-    let slow = SLOW.clone();
+    let slow = SLOW1.clone();
     let ccf = CycleCombinationFinder::from(slow);
     let cycle_combinations = ccf.find(
         Optimality::Optimal,

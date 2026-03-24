@@ -783,7 +783,7 @@ impl CycleCombinationFinder {
 mod tests {
     use crate::{
         finder::{CycleCombinationFinder, MaxPrimePower},
-        puzzle::{cubeN::CUBE3, minxN::MEGAMINX, misc::SLOW},
+        puzzle::{cubeN::CUBE3, minxN::MEGAMINX, misc::SLOW1},
     };
 
     #[test_log::test]
@@ -880,7 +880,7 @@ mod tests {
     
     #[test_log::test]
     fn test_slow_max_prime_powers_below() {
-        let slow = SLOW.clone();
+        let slow = SLOW1.clone();
         let ccf = CycleCombinationFinder::from(slow);
         let max_prime_powers = ccf.max_prime_powers_below(60);
         assert_eq!(

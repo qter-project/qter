@@ -150,63 +150,48 @@ impl OrbitDef {
     }
 }
 
-// struct E<'a>(&'a FxHashSet<OrderExps<N>>);
-// TODO: dynamic dispatch
-enum OrdWrapper {
-    A(DashSet<OrderExps<N>, FxBuildHasher>),
-    B(FxHashSet<OrderExps<N>>),
+enum LcmOrders<'a> {
+    CombinedOrders(DashSet<OrderExps<N>, FxBuildHasher>),
+    OrbitOrders(&'a FxHashSet<OrderExps<N>>),
 }
 
-// impl IntoIterator for OrdWrapper {
-//     type IntoIter;
-//     type Item;
-
-//     fn into_iter(self) -> Self::IntoIter {
-//         todo!()
-//     }
-// }
-
-impl PartialOrd for OrdWrapper {
+impl PartialOrd for LcmOrders<'_> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for OrdWrapper {
+impl Ord for LcmOrders<'_> {
     fn cmp(&self, other: &Self) -> Ordering {
         match (self, other) {
-            (OrdWrapper::A(a), OrdWrapper::B(b)) => b.len().cmp(&a.len()),
-            (OrdWrapper::A(a), OrdWrapper::A(b)) => b.len().cmp(&a.len()),
-            (OrdWrapper::B(a), OrdWrapper::A(b)) => b.len().cmp(&a.len()),
-            (OrdWrapper::B(a), OrdWrapper::B(b)) => b.len().cmp(&a.len()),
+            (LcmOrders::CombinedOrders(a), LcmOrders::OrbitOrders(b)) => a.len().cmp(&b.len()),
+            (LcmOrders::CombinedOrders(a), LcmOrders::CombinedOrders(b)) => a.len().cmp(&b.len()),
+            (LcmOrders::OrbitOrders(a), LcmOrders::CombinedOrders(b)) => a.len().cmp(&b.len()),
+            (LcmOrders::OrbitOrders(a), LcmOrders::OrbitOrders(b)) => a.len().cmp(&b.len()),
         }
+        .reverse()
     }
 }
 
-impl PartialEq for OrdWrapper {
+impl PartialEq for LcmOrders<'_> {
     fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (OrdWrapper::A(a), OrdWrapper::B(b)) => a.len() == b.len(),
-            (OrdWrapper::A(a), OrdWrapper::A(b)) => a.len() == b.len(),
-            (OrdWrapper::B(a), OrdWrapper::A(b)) => a.len() == b.len(),
-            (OrdWrapper::B(a), OrdWrapper::B(b)) => a.len() == b.len(),
-        }
+        self.cmp(other) == Ordering::Equal
     }
 }
 
-impl Eq for OrdWrapper {}
+impl Eq for LcmOrders<'_> {}
 
 impl PuzzleDef {
     pub fn possible_orders(&self) -> DashSet<OrderExps<N>, FxBuildHasher> {
-        let all_orbit_possible_orders = self
+        let all_orbit_orders = self
             .orbit_defs()
             .par_iter()
             .copied()
             .map(OrbitDef::possible_orders::<N>)
             .collect::<Vec<_>>();
 
-        let mut orbit_possible_orders_combinations = vec![];
-        let mut curr = vec![(0, 0); all_orbit_possible_orders.len()];
+        let mut orbit_orders_cart_product = vec![];
+        let mut curr = vec![(0, 0); all_orbit_orders.len()];
         loop {
             let mut end = true;
             let valid_parity =
@@ -228,11 +213,11 @@ impl PuzzleDef {
                 OrientationSumConstraint::Zero => false,
             };
             if valid_orient_sum && valid_parity {
-                orbit_possible_orders_combinations.push(curr.clone());
+                orbit_orders_cart_product.push(curr.clone());
             }
             for ((orient_sum, parity), (max_orient_sum, max_parity)) in curr
                 .iter_mut()
-                .zip(all_orbit_possible_orders.iter().map(Array2::dim))
+                .zip(all_orbit_orders.iter().map(Array2::dim))
             {
                 *orient_sum += 1;
                 if *orient_sum < max_orient_sum {
@@ -254,34 +239,34 @@ impl PuzzleDef {
 
         let possible_orders = DashSet::<OrderExps<N>, FxBuildHasher>::default();
 
-        // TODO: improve naming
-        orbit_possible_orders_combinations.into_par_iter().for_each(
-            |orbit_possible_orders_combination| {
-                let mut orbit_possible_orders = all_orbit_possible_orders
+        orbit_orders_cart_product
+            .into_par_iter()
+            .for_each(|orbit_orders_combination| {
+                let mut smallest_len_orders = all_orbit_orders
                     .iter()
-                    .zip(orbit_possible_orders_combination)
-                    .map(|(orbit_possible_orders, (orient_sum, parity))| {
-                        OrdWrapper::B(orbit_possible_orders[(orient_sum, parity)].clone())
+                    .zip(orbit_orders_combination)
+                    .map(|(orbit_orders, (orient_sum, parity))| {
+                        LcmOrders::OrbitOrders(&orbit_orders[(orient_sum, parity)])
                     })
                     .collect::<BinaryHeap<_>>();
-                while let Some(smallest) = orbit_possible_orders.pop() {
-                    if let Some(smaller) = orbit_possible_orders.pop() {
-                        let acc = DashSet::<OrderExps<N>, FxBuildHasher>::default();
+                while let Some(smallest_len) = smallest_len_orders.pop() {
+                    if let Some(smaller_len) = smallest_len_orders.pop() {
+                        let combined = DashSet::<OrderExps<N>, FxBuildHasher>::default();
                         let mut root = MaxOrderTrie::new(0);
-                        match smallest {
-                            OrdWrapper::A(a) => {
-                                for y in a {
-                                    root.insert(y.clone());
+                        match smallest_len {
+                            LcmOrders::CombinedOrders(smallest_len) => {
+                                for y in smallest_len {
+                                    root.insert(y);
                                 }
                             }
-                            OrdWrapper::B(b) => {
-                                for y in b {
+                            LcmOrders::OrbitOrders(smallest_len) => {
+                                for y in smallest_len {
                                     root.insert(y.clone());
                                 }
                             }
                         }
-                        match smaller {
-                            OrdWrapper::A(a) => a
+                        match smaller_len {
+                            LcmOrders::CombinedOrders(smaller_len) => smaller_len
                                 .into_par_iter()
                                 .fold(FxHashSet::default, |mut local_acc, order| {
                                     let mut acc = [0u8; N];
@@ -290,42 +275,42 @@ impl PuzzleDef {
                                 })
                                 .for_each(|local_acc| {
                                     for order in local_acc {
-                                        acc.insert(order);
+                                        combined.insert(order);
                                     }
                                 }),
-                            OrdWrapper::B(b) => b
+                            LcmOrders::OrbitOrders(smaller_len) => smaller_len
                                 .into_par_iter()
                                 .fold(FxHashSet::default, |mut local_acc, order| {
                                     let mut acc = [0u8; N];
-                                    root.collect_distinct_orders(&order, &mut acc, &mut local_acc);
+                                    root.collect_distinct_orders(order, &mut acc, &mut local_acc);
                                     local_acc
                                 })
                                 .for_each(|local_acc| {
                                     for order in local_acc {
-                                        acc.insert(order);
+                                        combined.insert(order);
                                     }
                                 }),
                         }
 
-                        orbit_possible_orders.push(OrdWrapper::A(acc));
+                        smallest_len_orders.push(LcmOrders::CombinedOrders(combined));
                     } else {
-                        match smallest {
-                            OrdWrapper::A(a) => {
-                                for order in a {
+                        let all_combined = smallest_len;
+                        match all_combined {
+                            LcmOrders::CombinedOrders(all_combined) => {
+                                for order in all_combined {
                                     possible_orders.insert(order);
                                 }
                             }
-                            OrdWrapper::B(b) => {
-                                for order in b {
-                                    possible_orders.insert(order);
+                            LcmOrders::OrbitOrders(all_combined) => {
+                                for order in all_combined {
+                                    possible_orders.insert(order.clone());
                                 }
                             }
                         }
                         break;
                     }
                 }
-            },
-        );
+            });
         possible_orders
     }
 }
@@ -341,6 +326,7 @@ mod tests {
     use crate::puzzle::{
         cubeN::{CUBE3, CUBE4, CUBE5},
         minxN::MEGAMINX,
+        misc::SLOW2,
     };
 
     fn bigint(n: &'static [u64]) -> Vec<Int<U>> {
@@ -442,6 +428,40 @@ mod tests {
             possible_orders.rchunks(10).next().unwrap(),
             bigint(&[
                 278460, 282744, 308880, 332640, 353430, 360360, 432432, 471240, 540540, 720720,
+            ])
+        );
+    }
+
+    #[test_log::test]
+    fn slow_possible_orders() {
+        let slow = &*SLOW2;
+        let start = Instant::now();
+        let possible_orders = slow.possible_orders();
+        info!(
+            "Possible orders in {}",
+            start.elapsed().human(Truncate::Micro)
+        );
+
+        assert_eq!(possible_orders.len(), 1234189);
+
+        let mut possible_orders = possible_orders
+            .into_iter()
+            .map(|f| f.as_bigint())
+            .collect::<Vec<_>>();
+        possible_orders.sort_unstable();
+        assert_eq!(
+            possible_orders.rchunks(10).next().unwrap(),
+            bigint(&[
+                48572104155120,
+                48734191265760,
+                51483005814240,
+                51705788294160,
+                55271704728240,
+                56241383758560,
+                57761421157440,
+                72201776446800,
+                86176313823600,
+                86642131736160
             ])
         );
         panic!();
