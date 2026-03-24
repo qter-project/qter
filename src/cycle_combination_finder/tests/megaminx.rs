@@ -1,86 +1,18 @@
 use std::num::NonZeroU16;
 
 use cycle_combination_finder::{
-    finder::{CycleCombinationFinder, MaxPrimePower, Optimality, RegisterCount},
-    puzzle::{EvenParityConstraints, OrientationSumConstraint, ParityConstraint, PuzzleDef},
+    finder::{CycleCombinationFinder, Optimality, RegisterCount},
+    puzzle::minxN::MEGAMINX,
 };
-use puzzle_theory::{
-    numbers::{Int, U},
-    puzzle_geometry::parsing::puzzle,
-};
+use puzzle_theory::numbers::{Int, U};
 
 use crate::common::cycles;
 
 mod common;
 
-pub fn megaminx() -> PuzzleDef {
-    PuzzleDef::from_ksolve_naive(
-        &puzzle("megaminx").ksolve(),
-        OrientationSumConstraint::Zero,
-        EvenParityConstraints(vec![vec![0, 1]]),
-        vec![
-            (OrientationSumConstraint::Zero, ParityConstraint::None),
-            (OrientationSumConstraint::Zero, ParityConstraint::None),
-        ],
-    )
-    .unwrap()
-}
-
 #[test_log::test]
-fn test_megaminx_max_prime_powers_below() {
-    let megaminx = megaminx();
-    let ccf = CycleCombinationFinder::from(megaminx);
-    let max_prime_powers = ccf.max_prime_powers_below(30);
-    assert_eq!(
-        max_prime_powers,
-        vec![
-            MaxPrimePower {
-                prime: 2,
-                exponent: 5
-            },
-            MaxPrimePower {
-                prime: 3,
-                exponent: 3
-            },
-            MaxPrimePower {
-                prime: 5,
-                exponent: 2
-            },
-            MaxPrimePower {
-                prime: 7,
-                exponent: 1
-            },
-            MaxPrimePower {
-                prime: 11,
-                exponent: 1
-            },
-            MaxPrimePower {
-                prime: 13,
-                exponent: 1
-            },
-            MaxPrimePower {
-                prime: 17,
-                exponent: 1
-            },
-            MaxPrimePower {
-                prime: 19,
-                exponent: 1
-            },
-            MaxPrimePower {
-                prime: 23,
-                exponent: 1
-            },
-            MaxPrimePower {
-                prime: 29,
-                exponent: 1
-            }
-        ]
-    );
-}
-
-#[test_log::test]
-fn test_megaminx_2_optimal() {
-    let megaminx = megaminx();
+fn test_2_optimal() {
+    let megaminx = MEGAMINX.clone();
     let ccf = CycleCombinationFinder::from(megaminx);
     let cycle_combinations = ccf.find(
         Optimality::Optimal,
@@ -108,8 +40,8 @@ fn test_megaminx_2_optimal() {
 }
 
 #[test_log::test]
-fn test_megaminx_3_optimal() {
-    let megaminx = megaminx();
+fn test_3_optimal() {
+    let megaminx = MEGAMINX.clone();
     let ccf = CycleCombinationFinder::from(megaminx);
     let cycle_combinations = ccf.find(
         Optimality::Optimal,
@@ -138,8 +70,8 @@ fn test_megaminx_3_optimal() {
 }
 
 #[test_log::test]
-fn test_megaminx_2_equivalent() {
-    let megaminx = megaminx();
+fn test_2_equivalent() {
+    let megaminx = MEGAMINX.clone();
     let ccf = CycleCombinationFinder::from(megaminx);
     let cycle_combinations = ccf.find(
         Optimality::Equivalent,
@@ -152,8 +84,8 @@ fn test_megaminx_2_equivalent() {
 }
 
 #[test_log::test]
-fn test_megaminx_3_equivalent() {
-    let megaminx = megaminx();
+fn test_3_equivalent() {
+    let megaminx = MEGAMINX.clone();
     let ccf = CycleCombinationFinder::from(megaminx);
     let cycle_combinations = ccf.find(
         Optimality::Equivalent,

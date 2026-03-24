@@ -1,5 +1,6 @@
 #![warn(clippy::pedantic)]
 #![allow(
+    non_snake_case,
     clippy::too_many_arguments,
     clippy::too_many_lines,
     clippy::bool_to_int_with_if,

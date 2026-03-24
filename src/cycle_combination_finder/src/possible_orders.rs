@@ -7,7 +7,7 @@ use std::{
 
 use dashmap::DashSet;
 use fxhash::{FxBuildHasher, FxHashSet};
-use ndarray::{Array2, Array3, ArrayView3, Axis, Zip};
+use ndarray::{Array2, Array3, ArrayViewMut3, Axis, Zip};
 use num_integer::gcd;
 use rayon::prelude::*;
 
@@ -38,6 +38,9 @@ impl OrbitDef {
 
         let piece_count = self.piece_count.get() as usize;
         let orientation_count = self.orientation_count() as usize;
+        // TODO: can we switch back to the original DP algorithm and then use 0/1
+        // knapsack adding prime powers only? Similar to how Asher's modified Landau
+        // works
         let cycles: Vec<Cycle<N>> = (1..=piece_count)
             .flat_map(|piece_count| {
                 (0..orientation_count).map(move |orient_sum| {
@@ -83,7 +86,7 @@ impl OrbitDef {
         // Identity
         dp[(0, 0, 0)].insert(OrderExps::one());
 
-        let solve_problem = |subproblems: ArrayView3<FxHashSet<OrderExps<N>>>,
+        let solve_problem = |subproblems: &ArrayViewMut3<FxHashSet<OrderExps<N>>>,
                              dst_piece_count,
                              dst_orient_sum,
                              dst_parity,
@@ -113,7 +116,7 @@ impl OrbitDef {
             Zip::indexed(problem).into_par_iter().for_each(
                 |((dst_orient_sum, dst_parity), dst)| {
                     solve_problem(
-                        subproblems.view(),
+                        &subproblems,
                         dst_piece_count,
                         dst_orient_sum,
                         dst_parity,
@@ -137,10 +140,11 @@ impl OrbitDef {
                 ParityConstraint::None => 2,
             },
         ));
+        let dp = dp.view_mut();
         Zip::indexed(possible_orders.view_mut())
             .into_par_iter()
             .for_each(|((dst_orient_sum, dst_parity), dst)| {
-                solve_problem(dp.view(), piece_count, dst_orient_sum, dst_parity, dst);
+                solve_problem(&dp, piece_count, dst_orient_sum, dst_parity, dst);
             });
         possible_orders
     }
@@ -148,7 +152,19 @@ impl OrbitDef {
 
 // struct E<'a>(&'a FxHashSet<OrderExps<N>>);
 // TODO: dynamic dispatch
-struct OrdWrapper(DashSet<OrderExps<N>, FxBuildHasher>);
+enum OrdWrapper {
+    A(DashSet<OrderExps<N>, FxBuildHasher>),
+    B(FxHashSet<OrderExps<N>>),
+}
+
+// impl IntoIterator for OrdWrapper {
+//     type IntoIter;
+//     type Item;
+
+//     fn into_iter(self) -> Self::IntoIter {
+//         todo!()
+//     }
+// }
 
 impl PartialOrd for OrdWrapper {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -158,13 +174,23 @@ impl PartialOrd for OrdWrapper {
 
 impl Ord for OrdWrapper {
     fn cmp(&self, other: &Self) -> Ordering {
-        other.0.len().cmp(&self.0.len())
+        match (self, other) {
+            (OrdWrapper::A(a), OrdWrapper::B(b)) => b.len().cmp(&a.len()),
+            (OrdWrapper::A(a), OrdWrapper::A(b)) => b.len().cmp(&a.len()),
+            (OrdWrapper::B(a), OrdWrapper::A(b)) => b.len().cmp(&a.len()),
+            (OrdWrapper::B(a), OrdWrapper::B(b)) => b.len().cmp(&a.len()),
+        }
     }
 }
 
 impl PartialEq for OrdWrapper {
     fn eq(&self, other: &Self) -> bool {
-        self.0.len() == other.0.len()
+        match (self, other) {
+            (OrdWrapper::A(a), OrdWrapper::B(b)) => a.len() == b.len(),
+            (OrdWrapper::A(a), OrdWrapper::A(b)) => a.len() == b.len(),
+            (OrdWrapper::B(a), OrdWrapper::A(b)) => a.len() == b.len(),
+            (OrdWrapper::B(a), OrdWrapper::B(b)) => a.len() == b.len(),
+        }
     }
 }
 
@@ -227,16 +253,6 @@ impl PuzzleDef {
         }
 
         let possible_orders = DashSet::<OrderExps<N>, FxBuildHasher>::default();
-        // let all_orbit_possible_orders_iter = all_orbit_possible_orders
-        //     .into_iter()
-        //     .map(|a| a.into_par_iter())
-        //     .collect::<Vec<_>>();
-        // orbit_possible_orders_combinations
-        //     .into_par_iter()
-        //     .zip(all_orbit_possible_orders_iter)
-        //     .for_each(|(orient_sum, par)| {
-        //         let things = vec![];
-        //     });
 
         // TODO: improve naming
         orbit_possible_orders_combinations.into_par_iter().for_each(
@@ -245,39 +261,65 @@ impl PuzzleDef {
                     .iter()
                     .zip(orbit_possible_orders_combination)
                     .map(|(orbit_possible_orders, (orient_sum, parity))| {
-                        // TODO: optimize by consuming
-                        OrdWrapper(
-                            orbit_possible_orders[(orient_sum, parity)]
-                                .iter()
-                                .cloned()
-                                .collect::<DashSet<_, FxBuildHasher>>(),
-                        )
+                        OrdWrapper::B(orbit_possible_orders[(orient_sum, parity)].clone())
                     })
                     .collect::<BinaryHeap<_>>();
                 while let Some(smallest) = orbit_possible_orders.pop() {
                     if let Some(smaller) = orbit_possible_orders.pop() {
                         let acc = DashSet::<OrderExps<N>, FxBuildHasher>::default();
                         let mut root = MaxOrderTrie::new(0);
-                        for y in smallest.0 {
-                            root.insert(y.clone());
-                        }
-                        smaller
-                            .0
-                            .into_par_iter()
-                            .fold(FxHashSet::default, |mut local_acc, order| {
-                                let mut acc = [0u8; N];
-                                root.collect_distinct_orders(&order, &mut acc, &mut local_acc);
-                                local_acc
-                            })
-                            .for_each(|local_acc| {
-                                for order in local_acc {
-                                    acc.insert(order);
+                        match smallest {
+                            OrdWrapper::A(a) => {
+                                for y in a {
+                                    root.insert(y.clone());
                                 }
-                            });
-                        orbit_possible_orders.push(OrdWrapper(acc));
+                            }
+                            OrdWrapper::B(b) => {
+                                for y in b {
+                                    root.insert(y.clone());
+                                }
+                            }
+                        }
+                        match smaller {
+                            OrdWrapper::A(a) => a
+                                .into_par_iter()
+                                .fold(FxHashSet::default, |mut local_acc, order| {
+                                    let mut acc = [0u8; N];
+                                    root.collect_distinct_orders(&order, &mut acc, &mut local_acc);
+                                    local_acc
+                                })
+                                .for_each(|local_acc| {
+                                    for order in local_acc {
+                                        acc.insert(order);
+                                    }
+                                }),
+                            OrdWrapper::B(b) => b
+                                .into_par_iter()
+                                .fold(FxHashSet::default, |mut local_acc, order| {
+                                    let mut acc = [0u8; N];
+                                    root.collect_distinct_orders(&order, &mut acc, &mut local_acc);
+                                    local_acc
+                                })
+                                .for_each(|local_acc| {
+                                    for order in local_acc {
+                                        acc.insert(order);
+                                    }
+                                }),
+                        }
+
+                        orbit_possible_orders.push(OrdWrapper::A(acc));
                     } else {
-                        for order in smallest.0 {
-                            possible_orders.insert(order);
+                        match smallest {
+                            OrdWrapper::A(a) => {
+                                for order in a {
+                                    possible_orders.insert(order);
+                                }
+                            }
+                            OrdWrapper::B(b) => {
+                                for order in b {
+                                    possible_orders.insert(order);
+                                }
+                            }
                         }
                         break;
                     }
@@ -293,12 +335,12 @@ mod tests {
     use std::time::Instant;
 
     use humanize_duration::{Truncate, prelude::DurationExt};
-    use log::debug;
+    use log::info;
     use puzzle_theory::numbers::{Int, U};
 
     use crate::puzzle::{
-        EvenParityConstraints, OrbitDef, OrientationStatus, OrientationSumConstraint,
-        ParityConstraint, PuzzleDef,
+        cubeN::{CUBE3, CUBE4, CUBE5},
+        minxN::MEGAMINX,
     };
 
     fn bigint(n: &'static [u64]) -> Vec<Int<U>> {
@@ -306,35 +348,34 @@ mod tests {
     }
 
     #[test_log::test]
-    fn cube4_possible_orders() {
-        let puzzle_def = PuzzleDef::from_orbit_defs_naive(
-            vec![
-                OrbitDef {
-                    piece_count: 8.try_into().unwrap(),
-                    parity_constraint: ParityConstraint::None,
-                    orientation: OrientationStatus::CanOrient {
-                        count: 3,
-                        sum_constraint: OrientationSumConstraint::Zero,
-                    },
-                },
-                OrbitDef {
-                    piece_count: 24.try_into().unwrap(),
-                    parity_constraint: ParityConstraint::None,
-                    orientation: OrientationStatus::CannotOrient,
-                },
-                OrbitDef {
-                    piece_count: 24.try_into().unwrap(),
-                    parity_constraint: ParityConstraint::None,
-                    orientation: OrientationStatus::CannotOrient,
-                },
-            ],
-            OrientationSumConstraint::Zero,
-            EvenParityConstraints(vec![vec![0, 1]]),
-        )
-        .unwrap();
+    fn cube3_possible_orders() {
+        let cube3 = &*CUBE3;
         let start = Instant::now();
-        let possible_orders = puzzle_def.possible_orders();
-        debug!(
+        let possible_orders = cube3.possible_orders();
+        info!(
+            "Possible orders in {}",
+            start.elapsed().human(Truncate::Micro)
+        );
+
+        assert_eq!(possible_orders.len(), 73);
+
+        let mut possible_orders = possible_orders
+            .into_iter()
+            .map(|f| f.as_bigint())
+            .collect::<Vec<_>>();
+        possible_orders.sort_unstable();
+        assert_eq!(
+            possible_orders.rchunks(10).next().unwrap(),
+            bigint(&[360, 420, 462, 495, 504, 630, 720, 840, 990, 1260])
+        );
+    }
+
+    #[test_log::test]
+    fn cube4_possible_orders() {
+        let cube4 = &*CUBE4;
+        let start = Instant::now();
+        let possible_orders = cube4.possible_orders();
+        info!(
             "Possible orders in {}",
             start.elapsed().human(Truncate::Micro)
         );
@@ -356,47 +397,10 @@ mod tests {
 
     #[test_log::test]
     fn cube5_possible_orders() {
-        let puzzle_def = PuzzleDef::from_orbit_defs_naive(
-            vec![
-                OrbitDef {
-                    piece_count: 8.try_into().unwrap(),
-                    parity_constraint: ParityConstraint::None,
-                    orientation: OrientationStatus::CanOrient {
-                        count: 3,
-                        sum_constraint: OrientationSumConstraint::Zero,
-                    },
-                },
-                OrbitDef {
-                    piece_count: 12.try_into().unwrap(),
-                    parity_constraint: ParityConstraint::None,
-                    orientation: OrientationStatus::CanOrient {
-                        count: 2,
-                        sum_constraint: OrientationSumConstraint::Zero,
-                    },
-                },
-                OrbitDef {
-                    piece_count: 24.try_into().unwrap(),
-                    parity_constraint: ParityConstraint::None,
-                    orientation: OrientationStatus::CannotOrient,
-                },
-                OrbitDef {
-                    piece_count: 24.try_into().unwrap(),
-                    parity_constraint: ParityConstraint::None,
-                    orientation: OrientationStatus::CannotOrient,
-                },
-                OrbitDef {
-                    piece_count: 24.try_into().unwrap(),
-                    parity_constraint: ParityConstraint::None,
-                    orientation: OrientationStatus::CannotOrient,
-                },
-            ],
-            OrientationSumConstraint::Zero,
-            EvenParityConstraints(vec![vec![0, 1], vec![0, 2, 3], vec![0, 4]]),
-        )
-        .unwrap();
+        let cube5 = &*CUBE5;
         let start = Instant::now();
-        let possible_orders = puzzle_def.possible_orders();
-        debug!(
+        let possible_orders = cube5.possible_orders();
+        info!(
             "Possible orders in {}",
             start.elapsed().human(Truncate::Micro)
         );
@@ -415,5 +419,31 @@ mod tests {
                 232792560, 281801520
             ])
         );
+    }
+
+    #[test_log::test]
+    fn megaminx_possible_orders() {
+        let megaminx = &*MEGAMINX;
+        let start = Instant::now();
+        let possible_orders = megaminx.possible_orders();
+        info!(
+            "Possible orders in {}",
+            start.elapsed().human(Truncate::Micro)
+        );
+
+        assert_eq!(possible_orders.len(), 1278);
+
+        let mut possible_orders = possible_orders
+            .into_iter()
+            .map(|f| f.as_bigint())
+            .collect::<Vec<_>>();
+        possible_orders.sort_unstable();
+        assert_eq!(
+            possible_orders.rchunks(10).next().unwrap(),
+            bigint(&[
+                278460, 282744, 308880, 332640, 353430, 360360, 432432, 471240, 540540, 720720,
+            ])
+        );
+        panic!();
     }
 }

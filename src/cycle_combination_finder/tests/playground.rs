@@ -10,7 +10,7 @@ use cycle_combination_finder::{
 
 #[test_log::test]
 fn playground() {
-    let puzzle = PuzzleDef::from_orbit_defs_naive(
+    let puzzle = PuzzleDef::new(
         vec![
             OrbitDef {
                 piece_count: 150.try_into().unwrap(),

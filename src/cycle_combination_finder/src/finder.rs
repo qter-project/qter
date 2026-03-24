@@ -1,5 +1,3 @@
-// TOOD: nonzero for everything
-
 use std::{fmt, num::NonZeroU16, time::Instant};
 
 use humanize_duration::{Truncate, prelude::DurationExt};
@@ -66,8 +64,8 @@ pub struct CycleCombination {
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct MaxPrimePower {
-    pub prime: u16,
-    pub exponent: u16,
+    prime: u16,
+    exponent: u16,
 }
 
 #[derive(Clone, Copy)]
@@ -778,5 +776,185 @@ impl CycleCombinationFinder {
         };
         info!("Finished in {}", now.elapsed().human(Truncate::Millis));
         ret
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        finder::{CycleCombinationFinder, MaxPrimePower},
+        puzzle::{cubeN::CUBE3, minxN::MEGAMINX, misc::SLOW},
+    };
+
+    #[test_log::test]
+    fn test_max_prime_powers_below_edge_cases() {
+        let cube3 = CUBE3.clone();
+        let ccf = CycleCombinationFinder::from(cube3);
+        assert!(ccf.max_prime_powers_below(0).is_empty());
+        assert!(ccf.max_prime_powers_below(1).is_empty());
+    }
+
+    #[test_log::test]
+    fn test_cube3_max_prime_powers_below() {
+        let cube3 = CUBE3.clone();
+        let ccf = CycleCombinationFinder::from(cube3);
+        let max_prime_powers = ccf.max_prime_powers_below(12);
+        assert_eq!(
+            max_prime_powers,
+            vec![
+                MaxPrimePower {
+                    prime: 2,
+                    exponent: 4,
+                },
+                MaxPrimePower {
+                    prime: 3,
+                    exponent: 2,
+                },
+                MaxPrimePower {
+                    prime: 5,
+                    exponent: 1,
+                },
+                MaxPrimePower {
+                    prime: 7,
+                    exponent: 1,
+                },
+                MaxPrimePower {
+                    prime: 11,
+                    exponent: 1,
+                },
+            ]
+        );
+    }
+
+    #[test_log::test]
+    fn test_megaminx_max_prime_powers_below() {
+        let megaminx = MEGAMINX.clone();
+        let ccf = CycleCombinationFinder::from(megaminx);
+        let max_prime_powers = ccf.max_prime_powers_below(30);
+        assert_eq!(
+            max_prime_powers,
+            vec![
+                MaxPrimePower {
+                    prime: 2,
+                    exponent: 5
+                },
+                MaxPrimePower {
+                    prime: 3,
+                    exponent: 3
+                },
+                MaxPrimePower {
+                    prime: 5,
+                    exponent: 2
+                },
+                MaxPrimePower {
+                    prime: 7,
+                    exponent: 1
+                },
+                MaxPrimePower {
+                    prime: 11,
+                    exponent: 1
+                },
+                MaxPrimePower {
+                    prime: 13,
+                    exponent: 1
+                },
+                MaxPrimePower {
+                    prime: 17,
+                    exponent: 1
+                },
+                MaxPrimePower {
+                    prime: 19,
+                    exponent: 1
+                },
+                MaxPrimePower {
+                    prime: 23,
+                    exponent: 1
+                },
+                MaxPrimePower {
+                    prime: 29,
+                    exponent: 1
+                }
+            ]
+        );
+    }
+    
+    #[test_log::test]
+    fn test_slow_max_prime_powers_below() {
+        let slow = SLOW.clone();
+        let ccf = CycleCombinationFinder::from(slow);
+        let max_prime_powers = ccf.max_prime_powers_below(60);
+        assert_eq!(
+            max_prime_powers,
+            vec![
+                MaxPrimePower {
+                    prime: 2,
+                    exponent: 6,
+                },
+                MaxPrimePower {
+                    prime: 3,
+                    exponent: 4,
+                },
+                MaxPrimePower {
+                    prime: 5,
+                    exponent: 2,
+                },
+                MaxPrimePower {
+                    prime: 7,
+                    exponent: 2,
+                },
+                MaxPrimePower {
+                    prime: 11,
+                    exponent: 1,
+                },
+                MaxPrimePower {
+                    prime: 13,
+                    exponent: 1,
+                },
+                MaxPrimePower {
+                    prime: 17,
+                    exponent: 1,
+                },
+                MaxPrimePower {
+                    prime: 19,
+                    exponent: 1,
+                },
+                MaxPrimePower {
+                    prime: 23,
+                    exponent: 1,
+                },
+                MaxPrimePower {
+                    prime: 29,
+                    exponent: 1,
+                },
+                MaxPrimePower {
+                    prime: 31,
+                    exponent: 1,
+                },
+                MaxPrimePower {
+                    prime: 37,
+                    exponent: 1,
+                },
+                MaxPrimePower {
+                    prime: 41,
+                    exponent: 1,
+                },
+                MaxPrimePower {
+                    prime: 43,
+                    exponent: 1,
+                },
+                MaxPrimePower {
+                    prime: 47,
+                    exponent: 1,
+                },
+                MaxPrimePower {
+                    prime: 53,
+                    exponent: 1,
+                },
+                MaxPrimePower {
+                    prime: 59,
+                    exponent: 1,
+                },
+            ]
+        );
     }
 }

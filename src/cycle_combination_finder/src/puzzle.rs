@@ -3,6 +3,10 @@ use std::{collections::HashSet, num::NonZeroU16};
 use puzzle_theory::ksolve::KSolve;
 use thiserror::Error;
 
+pub mod cubeN;
+pub mod minxN;
+pub mod misc;
+
 #[derive(Error, Debug)]
 pub enum PuzzleDefCreationError {
     #[error(
@@ -28,6 +32,7 @@ pub enum PuzzleDefCreationError {
     SingleParityConstraint,
 }
 
+#[derive(Clone)]
 pub struct PuzzleDef {
     orbit_defs: Vec<OrbitDef>,
     orientation_sum_constraint: OrientationSumConstraint,
@@ -58,6 +63,7 @@ pub enum OrientationSumConstraint {
     None,
 }
 
+#[derive(Clone)]
 pub struct EvenParityConstraints(pub Vec<Vec<usize>>);
 
 #[derive(Clone, Copy, Debug)]
@@ -120,22 +126,18 @@ impl PuzzleDef {
                 },
             )
             .collect::<Vec<_>>();
-        Self::from_orbit_defs_naive(
+        Self::new(
             orbit_defs,
             orientation_sum_constraint,
             even_parity_constraints,
         )
     }
 
-    /// "Naively" make a [`PuzzleDef`] from a [`Vec<OrbitDef>`]. It is naive in
-    /// the sense that the fields for orientation and parity constraints are
-    /// stubbed in because they are not implemented.
-    ///
     /// # Errors
     ///
     /// Returns a [`PuzzleDefCreationError`] if any of its variants are
     /// applicable.
-    pub fn from_orbit_defs_naive(
+    pub fn new(
         orbit_defs: Vec<OrbitDef>,
         orientation_sum_constraint: OrientationSumConstraint,
         even_parity_constraints: EvenParityConstraints,

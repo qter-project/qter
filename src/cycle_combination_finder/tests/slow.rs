@@ -1,126 +1,17 @@
 use std::num::NonZeroU16;
 
 use cycle_combination_finder::{
-    finder::{CycleCombinationFinder, MaxPrimePower, Optimality, RegisterCount},
-    puzzle::{
-        EvenParityConstraints, OrbitDef, OrientationStatus, OrientationSumConstraint,
-        ParityConstraint, PuzzleDef,
-    },
+    finder::{CycleCombinationFinder, Optimality, RegisterCount},
+    puzzle::misc::SLOW,
 };
 
 use crate::common::cycles;
 
 mod common;
 
-fn slow() -> PuzzleDef {
-    PuzzleDef::from_orbit_defs_naive(
-        vec![
-            OrbitDef {
-                piece_count: 60.try_into().unwrap(),
-                orientation: OrientationStatus::CanOrient {
-                    count: 2,
-                    sum_constraint: OrientationSumConstraint::Zero,
-                },
-                parity_constraint: ParityConstraint::None,
-            },
-            OrbitDef {
-                piece_count: 40.try_into().unwrap(),
-                orientation: OrientationStatus::CanOrient {
-                    count: 3,
-                    sum_constraint: OrientationSumConstraint::Zero,
-                },
-                parity_constraint: ParityConstraint::None,
-            },
-        ],
-        OrientationSumConstraint::Zero,
-        EvenParityConstraints(vec![vec![0, 1]]),
-    )
-    .unwrap()
-}
-
 #[test_log::test]
-fn test_slow_max_prime_powers_below() {
-    let slow = slow();
-    let ccf = CycleCombinationFinder::from(slow);
-    let max_prime_powers = ccf.max_prime_powers_below(60);
-    assert_eq!(
-        max_prime_powers,
-        vec![
-            MaxPrimePower {
-                prime: 2,
-                exponent: 6,
-            },
-            MaxPrimePower {
-                prime: 3,
-                exponent: 4,
-            },
-            MaxPrimePower {
-                prime: 5,
-                exponent: 2,
-            },
-            MaxPrimePower {
-                prime: 7,
-                exponent: 2,
-            },
-            MaxPrimePower {
-                prime: 11,
-                exponent: 1,
-            },
-            MaxPrimePower {
-                prime: 13,
-                exponent: 1,
-            },
-            MaxPrimePower {
-                prime: 17,
-                exponent: 1,
-            },
-            MaxPrimePower {
-                prime: 19,
-                exponent: 1,
-            },
-            MaxPrimePower {
-                prime: 23,
-                exponent: 1,
-            },
-            MaxPrimePower {
-                prime: 29,
-                exponent: 1,
-            },
-            MaxPrimePower {
-                prime: 31,
-                exponent: 1,
-            },
-            MaxPrimePower {
-                prime: 37,
-                exponent: 1,
-            },
-            MaxPrimePower {
-                prime: 41,
-                exponent: 1,
-            },
-            MaxPrimePower {
-                prime: 43,
-                exponent: 1,
-            },
-            MaxPrimePower {
-                prime: 47,
-                exponent: 1,
-            },
-            MaxPrimePower {
-                prime: 53,
-                exponent: 1,
-            },
-            MaxPrimePower {
-                prime: 59,
-                exponent: 1,
-            },
-        ]
-    );
-}
-
-#[test_log::test]
-fn test_slow_2_optimal() {
-    let slow = slow();
+fn test_2_optimal() {
+    let slow = SLOW.clone();
     let ccf = CycleCombinationFinder::from(slow);
     let cycle_combinations = ccf.find(
         Optimality::Optimal,

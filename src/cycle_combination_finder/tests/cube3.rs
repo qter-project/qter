@@ -1,74 +1,18 @@
 use std::num::NonZeroU16;
 
 use cycle_combination_finder::{
-    finder::{CycleCombinationFinder, MaxPrimePower, Optimality, RegisterCount},
-    puzzle::{EvenParityConstraints, OrientationSumConstraint, ParityConstraint, PuzzleDef},
+    finder::{CycleCombinationFinder, Optimality, RegisterCount},
+    puzzle::cubeN::CUBE3,
 };
-use puzzle_theory::{
-    numbers::{Int, U},
-    puzzle_geometry::parsing::puzzle,
-};
+use puzzle_theory::numbers::{Int, U};
 
 use crate::common::cycles;
 
 mod common;
 
-pub fn cube3() -> PuzzleDef {
-    PuzzleDef::from_ksolve_naive(
-        &puzzle("3x3").ksolve(),
-        OrientationSumConstraint::Zero,
-        EvenParityConstraints(vec![vec![0, 1]]),
-        vec![
-            (OrientationSumConstraint::Zero, ParityConstraint::None),
-            (OrientationSumConstraint::Zero, ParityConstraint::None),
-        ],
-    )
-    .unwrap()
-}
-
 #[test_log::test]
-fn test_max_prime_powers_below_edge_cases() {
-    let cube3 = cube3();
-    let ccf = CycleCombinationFinder::from(cube3);
-    assert!(ccf.max_prime_powers_below(0).is_empty());
-    assert!(ccf.max_prime_powers_below(1).is_empty());
-}
-
-#[test_log::test]
-fn test_cube3_max_prime_powers_below() {
-    let cube3 = cube3();
-    let ccf = CycleCombinationFinder::from(cube3);
-    let max_prime_powers = ccf.max_prime_powers_below(12);
-    assert_eq!(
-        max_prime_powers,
-        vec![
-            MaxPrimePower {
-                prime: 2,
-                exponent: 4,
-            },
-            MaxPrimePower {
-                prime: 3,
-                exponent: 2,
-            },
-            MaxPrimePower {
-                prime: 5,
-                exponent: 1,
-            },
-            MaxPrimePower {
-                prime: 7,
-                exponent: 1,
-            },
-            MaxPrimePower {
-                prime: 11,
-                exponent: 1,
-            },
-        ]
-    );
-}
-
-#[test_log::test]
-fn test_cube3_2_optimal() {
-    let cube3 = cube3();
+fn test_2_optimal() {
+    let cube3 = CUBE3.clone();
     let ccf = CycleCombinationFinder::from(cube3);
     let cycle_combinations = ccf.find(
         Optimality::Optimal,
@@ -90,8 +34,8 @@ fn test_cube3_2_optimal() {
 }
 
 #[test_log::test]
-fn test_cube3_3_optimal() {
-    let cube3 = cube3();
+fn test_3_optimal() {
+    let cube3 = CUBE3.clone();
     let ccf = CycleCombinationFinder::from(cube3);
     let cycle_combinations = ccf.find(
         Optimality::Optimal,
@@ -114,8 +58,8 @@ fn test_cube3_3_optimal() {
 }
 
 #[test_log::test]
-fn test_cube3_2_equivalent() {
-    let cube3 = cube3();
+fn test_2_equivalent() {
+    let cube3 = CUBE3.clone();
     let ccf = CycleCombinationFinder::from(cube3);
     let cycle_combinations = ccf.find(
         Optimality::Equivalent,
@@ -128,8 +72,8 @@ fn test_cube3_2_equivalent() {
 }
 
 #[test_log::test]
-fn test_cube3_3_equivalent() {
-    let cube3 = cube3();
+fn test_3_equivalent() {
+    let cube3 = CUBE3.clone();
     let ccf = CycleCombinationFinder::from(cube3);
     let cycle_combinations = ccf.find(
         Optimality::Equivalent,
