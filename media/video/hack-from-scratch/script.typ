@@ -8,9 +8,20 @@ Tentative "who's saying what?"
 
 = Intro / Hook
 
-Hi Hack from Scratch! My name is Arhan... my name is Henry... and my name is Asher. It's almost time for hack night, but before that, we're going to tell you about the project that we've been working on for the past year and a half called Qter. Our end goal is to turn a Rubik's cube into a computer.
+Hello Hack from Scratch! Check out this Rubik's Cube. It's running a program. These aren't just random moves - the cube is turning according to this code. It began with an input of 6, and it finishes with an output of 13, because 13 is the 6th Fibonacci number. 
 
-Me, Henry are members of Purdue Hackers... and I run a youtube channel called TheGrayCuber; I'm collaborating with them to make a series on my youtube channel about the project.
+This program uses the cube to calculate Fibonacci numbers, and it is part of our project Qter - the cube computer.
+
+
+My name is Arhan... 
+my name is Henry... 
+and my name is Asher, also known online as TheGrayCuber where I make content about math and cubing. 
+
+*cut this line?* It's almost time for hack night, but before that, we're going to tell you about the project that we've been working on for the past year and a half called Qter. Our end goal is to turn a Rubik's cube into a computer.
+
+*move this into the initial introductions? ^* Me, Henry are members of Purdue Hackers... and I run a youtube channel called TheGrayCuber; I'm collaborating with them to make a series on my youtube channel about the project.
+
+*consider moving the robot until later - i recall someone mentioning frustration that people at G4G were primarily interested in the robot. to help avoid that, we can try to generate excitment and understanding about Qter itself before even showing the robot
 
 What we're going to talk about is how a Rubik's cube could possibly be a computer, then we will talk about the mathematics underlying it, then we'll do a Q&A. But first, we'll give a demonstration our project using this Rubik's cube solving robot that we built to run Qter programs. We'll have Arhan and the robot race to compute (???)!
 
@@ -169,11 +180,11 @@ Now that's all of the instructions! You can put these together to compute fibona
 
 == Cycles
 
-- Delegate writing to Arhan
+- Delegate writing to Asher
 
 == CCF
 
-- Delegate writing to Arhan
+- Delegate writing to Asher
 
 == CCS
 
