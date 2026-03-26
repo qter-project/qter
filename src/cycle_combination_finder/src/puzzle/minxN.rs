@@ -7,12 +7,11 @@ use crate::puzzle::{EvenParityConstraints, OrientationSumConstraint, ParityConst
 pub static MEGAMINX: LazyLock<PuzzleDef> = LazyLock::new(|| {
     PuzzleDef::from_ksolve_naive(
         &puzzle("megaminx").ksolve(),
-        OrientationSumConstraint::Zero,
-        EvenParityConstraints(vec![vec![0, 1]]),
         vec![
             (OrientationSumConstraint::Zero, ParityConstraint::Even),
             (OrientationSumConstraint::Zero, ParityConstraint::Even),
         ],
+        EvenParityConstraints(vec![vec![0, 1]]),
     )
     .unwrap()
 });

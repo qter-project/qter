@@ -1,6 +1,9 @@
 use std::sync::LazyLock;
 
-use crate::puzzle::{EvenParityConstraints, OrbitDef, OrientationStatus, OrientationSumConstraint, ParityConstraint, PuzzleDef};
+use crate::puzzle::{
+    EvenParityConstraints, OrbitDef, OrientationStatus, OrientationSumConstraint, ParityConstraint,
+    PuzzleDef,
+};
 
 pub static SLOW1: LazyLock<PuzzleDef> = LazyLock::new(|| {
     PuzzleDef::new(
@@ -22,7 +25,6 @@ pub static SLOW1: LazyLock<PuzzleDef> = LazyLock::new(|| {
                 parity_constraint: ParityConstraint::None,
             },
         ],
-        OrientationSumConstraint::Zero,
         EvenParityConstraints(vec![vec![0, 1]]),
     )
     .unwrap()
@@ -48,7 +50,6 @@ pub static SLOW2: LazyLock<PuzzleDef> = LazyLock::new(|| {
                 parity_constraint: ParityConstraint::None,
             },
         ],
-        OrientationSumConstraint::Zero,
         EvenParityConstraints(vec![vec![0, 1]]),
     )
     .unwrap()

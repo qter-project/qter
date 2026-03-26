@@ -7,7 +7,7 @@ use std::{
 
 use dashmap::DashSet;
 use fxhash::{FxBuildHasher, FxHashSet};
-use ndarray::{Array2, Array3, ArrayViewMut3, Axis, Zip};
+use ndarray::{Array2, Array3, ArrayRef3, Axis, Zip};
 use num_integer::gcd;
 use rayon::prelude::*;
 
@@ -86,7 +86,7 @@ impl OrbitDef {
         // Identity
         dp[(0, 0, 0)].insert(OrderExps::one());
 
-        let solve_problem = |subproblems: &ArrayViewMut3<FxHashSet<OrderExps<N>>>,
+        let solve_problem = |subproblems: &ArrayRef3<FxHashSet<OrderExps<N>>>,
                              dst_piece_count,
                              dst_orient_sum,
                              dst_parity,
@@ -113,17 +113,15 @@ impl OrbitDef {
 
             // TODO: we shouldn't have to loop over every single orient_sum because
             // of GCD magic
-            Zip::indexed(problem).into_par_iter().for_each(
-                |((dst_orient_sum, dst_parity), dst)| {
-                    solve_problem(
-                        &subproblems,
-                        dst_piece_count,
-                        dst_orient_sum,
-                        dst_parity,
-                        dst,
-                    );
-                },
-            );
+            Zip::indexed(problem).par_for_each(|(dst_orient_sum, dst_parity), dst| {
+                solve_problem(
+                    &subproblems,
+                    dst_piece_count,
+                    dst_orient_sum,
+                    dst_parity,
+                    dst,
+                );
+            });
         }
 
         let mut possible_orders: Array2<FxHashSet<OrderExps<N>>> = Array2::default((
@@ -140,12 +138,11 @@ impl OrbitDef {
                 ParityConstraint::None => 2,
             },
         ));
-        let dp = dp.view_mut();
-        Zip::indexed(possible_orders.view_mut())
-            .into_par_iter()
-            .for_each(|((dst_orient_sum, dst_parity), dst)| {
+        Zip::indexed(possible_orders.view_mut()).par_for_each(
+            |(dst_orient_sum, dst_parity), dst| {
                 solve_problem(&dp, piece_count, dst_orient_sum, dst_parity, dst);
-            });
+            },
+        );
         possible_orders
     }
 }
@@ -205,14 +202,7 @@ impl PuzzleDef {
                             .sum::<usize>()
                             .is_multiple_of(2)
                     });
-            let valid_orient_sum = match self.orientation_sum_constraint() {
-                OrientationSumConstraint::Zero if curr.iter().map(|&i| i.0).sum::<usize>() == 0 => {
-                    true
-                }
-                OrientationSumConstraint::None => true,
-                OrientationSumConstraint::Zero => false,
-            };
-            if valid_orient_sum && valid_parity {
+            if valid_parity {
                 orbit_orders_cart_product.push(curr.clone());
             }
             for ((orient_sum, parity), (max_orient_sum, max_parity)) in curr
@@ -324,13 +314,36 @@ mod tests {
     use puzzle_theory::numbers::{Int, U};
 
     use crate::puzzle::{
-        cubeN::{CUBE3, CUBE4, CUBE5},
+        cubeN::{CUBE2, CUBE3, CUBE4, CUBE5},
         minxN::MEGAMINX,
         misc::SLOW2,
     };
 
     fn bigint(n: &'static [u64]) -> Vec<Int<U>> {
         n.iter().map(|&i| Int::<U>::from(i)).collect()
+    }
+
+    #[test_log::test]
+    fn cube2_possible_orders() {
+        let cube2 = &*CUBE2;
+        let start = Instant::now();
+        let possible_orders = cube2.possible_orders();
+        info!(
+            "Possible orders in {}",
+            start.elapsed().human(Truncate::Micro)
+        );
+
+        assert_eq!(possible_orders.len(), 17);
+
+        let mut possible_orders = possible_orders
+            .into_iter()
+            .map(|f| f.as_bigint())
+            .collect::<Vec<_>>();
+        possible_orders.sort_unstable();
+        assert_eq!(
+            possible_orders.rchunks(10).next().unwrap(),
+            bigint(&[8, 9, 10, 12, 15, 18, 21, 30, 36, 45])
+        );
     }
 
     #[test_log::test]

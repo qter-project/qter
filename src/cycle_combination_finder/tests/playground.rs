@@ -29,7 +29,6 @@ fn playground() {
                 parity_constraint: ParityConstraint::None,
             },
         ],
-        OrientationSumConstraint::Zero,
         EvenParityConstraints(vec![vec![0, 1]]),
     )
     .unwrap();

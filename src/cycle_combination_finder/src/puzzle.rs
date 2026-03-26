@@ -35,7 +35,6 @@ pub enum PuzzleDefCreationError {
 #[derive(Clone)]
 pub struct PuzzleDef {
     orbit_defs: Vec<OrbitDef>,
-    orientation_sum_constraint: OrientationSumConstraint,
     even_parity_constraints: EvenParityConstraints,
 }
 
@@ -93,9 +92,8 @@ impl PuzzleDef {
     /// applicable.
     pub fn from_ksolve_naive(
         ksolve: &KSolve,
-        orientation_sum_constraint: OrientationSumConstraint,
-        even_parity_constraints: EvenParityConstraints,
         orbit_constraints: Vec<(OrientationSumConstraint, ParityConstraint)>,
+        even_parity_constraints: EvenParityConstraints,
     ) -> Result<Self, PuzzleDefCreationError> {
         if orbit_constraints.len() != ksolve.sets().len() {
             return Err(PuzzleDefCreationError::InvalidOrbitConstraintsLength {
@@ -128,7 +126,6 @@ impl PuzzleDef {
             .collect::<Vec<_>>();
         Self::new(
             orbit_defs,
-            orientation_sum_constraint,
             even_parity_constraints,
         )
     }
@@ -139,7 +136,6 @@ impl PuzzleDef {
     /// applicable.
     pub fn new(
         orbit_defs: Vec<OrbitDef>,
-        orientation_sum_constraint: OrientationSumConstraint,
         even_parity_constraints: EvenParityConstraints,
     ) -> Result<Self, PuzzleDefCreationError> {
         even_parity_constraints
@@ -173,7 +169,6 @@ impl PuzzleDef {
         } else {
             Ok(Self {
                 orbit_defs,
-                orientation_sum_constraint,
                 even_parity_constraints,
             })
         }
@@ -182,11 +177,6 @@ impl PuzzleDef {
     #[must_use]
     pub fn orbit_defs(&self) -> &[OrbitDef] {
         &self.orbit_defs
-    }
-
-    #[must_use]
-    pub fn orientation_sum_constraint(&self) -> OrientationSumConstraint {
-        self.orientation_sum_constraint
     }
 
     #[must_use]
