@@ -188,7 +188,39 @@ Now that's all of the instructions! You can put these together to compute fibona
 
 == CCS
 
-- Delegate writing to Arhan
+The Cycle Combination Finder finds the non-redundant cycle structures of each register in a Qter architecture. But we aren't done yet—the Cycle Combination Solver solves for the actual sequence of moves that creates that cycle structure on the Rubik's Cube. In other words, it solves for the register’s “add 1” operation. Once we have that, all other “add N”s can be derived by repeating the “add 1” operation N times and then shortening the algorithm using a Rubik’s Cube solver like Henry how explained.
+
+The Cycle Combination Solver additionally solves for optimal algorithm. The solution it returns will simultaneously be the shortest algorithm as well as the easiest to physically perform by hand. In order to understand how to optimally solve for a cycle structure, we briefly turn our attention to an adjacent problem: optimally solving the Rubik’s Cube.
+
+#cetz.canvas(length: 22pt, {
+    import cetz.draw: *
+
+    cube("rgywwrwry byowggwyr bggyrwywr", offset: (-5, 0), name: "f")
+    cube("wwwwwwwww ggggggggg rrrrrrrrr", offset: (5, 0), name: "s")
+
+    line(
+      (to: "f", rel: (2.5, 0)),
+      (to: "s", rel: (-2.5, 0)),
+      stroke: (thickness: 2pt),
+      mark: (end: ">", fill: black),
+      name: "l",
+    )
+    content(
+      ((to: "l.start", rel: (0, 0.5)), 50%, (to: "l.end", rel: (0, 0.5))),
+      anchor: "south",
+      "min",
+    )
+})
+
+In an optimal Rubik’s Cube solver, we are given a random position, and we must find the shortest algorithm that brings the Rubik’s Cube to the solved state.
+
+
+
+Analogously, the Cycle Combination Solver starts from the solved state and finds the shortest algorithm that brings the puzzle to a position with our specified cycle structure. The only things that have fundamentally changed are both trivial — the starting position and the goal condition. We bring up optimal solving because this allows us to reuse its techniques which have been studied for the past 30 years.
+
+You might expect there to be a known structural property of the Rubik’s Cube that makes optimally solving for a cycle structure easy. As it turns out, the only known way is to brute force all combinations of move sequences until the Rubik’s Cube is solved. Fortunately, we can significantly optimize the brute force approach. We will discuss a variety of improvements that can be made.
+
+(Insert visuals from here https://typst.app/project/rkXU6CFpEvKJvtoB6AJMWo )
 
 = Q&A in chat
 
