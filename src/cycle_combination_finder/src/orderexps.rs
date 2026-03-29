@@ -1,6 +1,9 @@
 use std::{
     fmt::{Debug, Formatter},
-    simd::{LaneCount, Simd, SupportedLaneCount, cmp::SimdOrd},
+    simd::{
+        LaneCount, Simd, SupportedLaneCount,
+        cmp::{SimdOrd, SimdPartialEq},
+    },
 };
 
 use puzzle_theory::numbers::{Int, U};
@@ -43,8 +46,17 @@ where
     }
 
     #[must_use]
-    pub fn disjoint_exps_multiply(&self, other: &Self) -> Self {
-        self.lcm(other)
+    pub fn multiply(&self, other: &Self) -> Option<Self> {
+        if (self.0.simd_eq(Simd::splat(0)) | other.0.simd_eq(Simd::splat(0))).all() {
+            Some(self.multiply_unchecked(other))
+        } else {
+            None
+        }
+    }
+
+    #[must_use]
+    pub fn multiply_unchecked(&self, other: &Self) -> Self {
+        Self(self.0 | other.0)
     }
 }
 
