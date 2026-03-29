@@ -13,41 +13,31 @@ Hello Hack from Scratch! Check out this Rubik's Cube. It's running a program. Th
 This program uses the cube to calculate Fibonacci numbers, and it is part of our project Qter - the cube computer.
 
 
-My name is Arhan... 
-my name is Henry... 
+My name is Arhan... intro
+my name is Henry... intro
 and my name is Asher, also known online as TheGrayCuber where I make content about math and cubing. 
+And we'd also like to mention collaboratos Daniel and Neel.
 
-*cut this line?* It's almost time for hack night, but before that, we're going to tell you about the project that we've been working on for the past year and a half called Qter. Our end goal is to turn a Rubik's cube into a computer.
-
-*move this into the initial introductions? ^* Me, Henry are members of Purdue Hackers... and I run a youtube channel called TheGrayCuber; I'm collaborating with them to make a series on my youtube channel about the project.
-
-*consider moving the robot until later - i recall someone mentioning frustration that people at G4G were primarily interested in the robot. to help avoid that, we can try to generate excitment and understanding about Qter itself before even showing the robot
-
-What we're going to talk about is how a Rubik's cube could possibly be a computer, then we will talk about the mathematics underlying it, then we'll do a Q&A. But first, we'll give a demonstration our project using this Rubik's cube solving robot that we built to run Qter programs. We'll have Arhan and the robot race to compute (???)!
-
-- Mention Daniel and Neel while running the robot
+We'll explain how Qter works in four stages: representing numbers, writing programs, finding structures, and implementing efficiently.
 
 = How Qter works
 
 == Numbers
 
-So now that we've given you a quick demo, we can explain how the project works.
-
 First, we need some way to represent numbers on a Rubik's cube. To do this, we will suppose that the solved cube represents the number zero. Next, we know that the most basic operation you can do to a Rubik's cube is to make turns, so perhaps we can suppose that doing turns performs addition. For example, lets say that turning the up face represents addition by one. Then this represents one, then two, then three, then it loops back around to zero. It's analagous to how the numbers on a clock loop around after reaching twelve.
 
-But what if we want to represent bigger numbers than just three? The trick is to use a more complicated sequence of moves to represent addition by one. For example, we can turn the right face, then the top face, and say that that represents addition by one. Then this represents one, and two, and three, and four (etc...), and this will wrap around after _105_ iterations, meaning we can represent numbers up to 104.
+But what if we want to represent bigger numbers than just three? The trick is to use a more complicated sequence of moves to represent addition by one. For example, adding one can be the algorithm R U, which means we turn the right face then the up face. This algorithm makes a 105 cycle, meaning we can represent numbers up to 104.
 
-Now it's not super useful to be able to represent only a single number on the Rubik's cube. Can we represent more than one? Sure! Let's go back to saying that turning the top face represents addition by one. You can see that we have all of this unused space at the bottom of the cube! What we can do is say that turning the _bottom_ face also represents addition by one, but of a separate number. We can represent (give a bunch of examples of numbers). We call these numbers _registers_, and say that they are both of _order four_ because they loop around after four repetitions.
+Now it's not super useful to be able to represent only a single number on the Rubik's cube. Can we represent more than one? Sure! You can see that there's a bunch of unused pieces in this block here (point to 2x2x3 block on DL). We can also define adding one as this algorithm, which means that we turn the down face twice, then the left face twice, and then repeat those. 
 
-If we go back to letting turning the right face then top face represent addition by one, you can see that there's a bunch of unused space in this block here (point to 2x2x3 block on DL). What we can do is use that extra space to fit another register. What we can do is a double turn on the bottom face, and a double turn on the left face, and then repeat both of those moves two more times. That whole sequence only affected that block, so we can use that sequence of six moves as a register, but it but it only has order two.
+Notice that this only affected pieces in the lower left. These two algorithms are disjoint, so they can store separate values. We'll say this is Register A and this is Register B. 
 
-Can we do better? We actually can! We chose that second move sequence to only affect a particular small part of the cube. What if we choose all of our registers in this way, such that we assign parts of the cube in advance to each register, and choose long sequences of moves that only affect those parts. With good choices of assignments, we can fit two registers both of order 90, three registers both of order 30, or four registers of orders 30, 18, 10, and 9. We're going to cover how we discovered these later.
 
 == Branching & Q
 
-So, we now know how to represent numbers, but we promised you a _computer_. How can you do computations using our setup? First, a program is represented as an external sequence of instructions that a person or a robot would follow. We have a special notation for a sequence of instructions, called "Q" code.
+So, we now know how to represent numbers, but we promised you a _computer_. How can you do computations using our setup? First, a program is represented as an external sequence of instructions that a person or a robot would follow. 
 
-(Perhaps since this is hack from scratch, our slideshow can show the equivalent blocks in scratch)
+We have a special notation for a sequence of instructions, called "Q" code, and since this is Hack from Scratch, we'll show the equivalent statements in Scratch.
 
 First, the simplest instruction is to perform a sequence of moves on a cube. This is logically equivalent to performing an addition on a register.
 
