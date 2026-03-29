@@ -34,23 +34,23 @@ pub static SLOW2: LazyLock<PuzzleDef> = LazyLock::new(|| {
     PuzzleDef::new(
         vec![
             OrbitDef {
-                piece_count: 120.try_into().unwrap(),
+                piece_count: 113.try_into().unwrap(),
                 orientation: OrientationStatus::CanOrient {
-                    count: 2,
+                    count: 20,
                     sum_constraint: OrientationSumConstraint::Zero,
                 },
                 parity_constraint: ParityConstraint::None,
             },
-            OrbitDef {
-                piece_count: 80.try_into().unwrap(),
-                orientation: OrientationStatus::CanOrient {
-                    count: 3,
-                    sum_constraint: OrientationSumConstraint::Zero,
-                },
-                parity_constraint: ParityConstraint::None,
-            },
+            // OrbitDef {
+            //     piece_count: 80.try_into().unwrap(),
+            //     orientation: OrientationStatus::CanOrient {
+            //         count: 3,
+            //         sum_constraint: OrientationSumConstraint::Zero,
+            //     },
+            //     parity_constraint: ParityConstraint::None,
+            // },
         ],
-        EvenParityConstraints(vec![vec![0, 1]]),
+        EvenParityConstraints(vec![]),
     )
     .unwrap()
 });
