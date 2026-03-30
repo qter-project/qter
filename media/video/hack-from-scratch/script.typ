@@ -164,17 +164,33 @@ The `halt` instruction contains a sequence of moves that represents a "subtract 
 
 For example, executing the given halt instruction on this cube state would give one, two, three, four, and five. You can see that the "Up Front Left" and "Up Front" pieces are both in their solved positions, so we finished doing the halt instruction. 
 
-Now that's all of the instructions! You can put these together to compute fibonacci or multiplication on a regular Rubik's cube. So now, lets talk about how we can find all of these magic move sequences that give us big registers.
+Now that's all of the instructions! You can put these together to compute fibonacci or multiplication on a regular Rubik's cube. But in order to run more complicated programs, we need to find a good structure within the cube.
 
 = QAS
 
-== Cycles
-
-- Delegate writing to Asher
-
 == CCF
 
-- Delegate writing to Asher
+Each register is defined by some cycle. In the earlier example, where we add 1 by turning the up face, we are cycling through 4 different positions. This is a 4 cycle. The length of the cycle determines how high our numbers can go.
+
+Let's say we have 8 pieces. We could move them in a big loop to get an 8 cycle, but there's a better option. Instead we can split them into a 3 cycle and a 5 cycle. The 3 cycle will repeat with period 3, and the 5 cycle with period 5, so together they make a 15 cycle! 
+
+And there's something special about this 3 and 5. If we instead split the pieces into 4 cycles, then they both repeat with period 4, so they're in sync. One of them is redundant. 3 and 5 are distinct prime powers, so there is no redundancy. We find optimal solutions by combining prime powers.
+
+Let's apply this idea to the cube! There are 8 corner pieces and 12 edge pieces. So we can make a 3 cycle and 5 cycle on the corners, and a 4 cycle and 7 cycle on the edges. These all multiply together to make a 420 cycle.
+
+But this setup only allows for one register. For most programs we'll need at least two. So, instead we could split the pieces like this, so that registers A and B each have a 2 cycle, 3 cycle, and 5 cycle, which combine to make a 30 cycle. 
+
+This is basic idea of of our Cycle Combination Finder. An algorithm that searches for the best sets of prime powers that fit within the cube. 
+
+Although, it's a little more complicated than just cycles. Let's say we have a 2 cycle of edges. Each edge has two stickers, so we can add more complexity by flipping one of them and then doing the cycle. 
+
+After two repetitions the edges are back in their locations, but they're both flipped. It takes another two repetitions to solve them. So flipping has made this into a 4 cycle. It doubled the length! 
+
+By adding this flipping into our Cycle Combination Finder, we can get a 1260 cycle for one register, or 90 cycles for two registers, or 30 cycles for 3 registers.
+
+And this algorithm can easily generalize to larger puzzles, like a 4x4, 5x5, 6x6 and so forth. If we apply it to the 11x11, we can get *not sure yet, need to run the numbers*
+
+But this is just the theoretical step. Once we find a cycle combination, we must then find a way to actually implement it on the cube.
 
 == CCS
 
