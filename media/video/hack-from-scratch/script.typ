@@ -188,7 +188,7 @@ After two repetitions the edges are back in their locations, but they're both fl
 
 By adding this flipping into our Cycle Combination Finder, we can get a 1260 cycle for one register, or 90 cycles for two registers, or 30 cycles for 3 registers.
 
-And this algorithm can easily generalize to larger puzzles, like a 4x4, 5x5, 6x6 and so forth. If we apply it to the 11x11, we can get *not sure yet, need to run the numbers*
+And this algorithm can easily generalize to larger puzzles, like a 4x4, 5x5, 6x6 and so forth. If we apply it to the 8x8, we can get 5 registers, each a 360360 cycle, which can allow for many useful computations.
 
 But this is just the theoretical step. Once we find a cycle combination, we must then find a way to actually implement it on the cube.
 
