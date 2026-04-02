@@ -11,7 +11,7 @@ use crate::common::cycles;
 mod common;
 
 #[test_log::test]
-fn test_2_optimal() {
+fn optimal_2() {
     let cube3 = CUBE3.clone();
     let ccf = CycleCombinationFinder::from(cube3);
     let cycle_combinations = ccf.find(
@@ -34,7 +34,7 @@ fn test_2_optimal() {
 }
 
 #[test_log::test]
-fn test_3_optimal() {
+fn optimal_3() {
     let cube3 = CUBE3.clone();
     let ccf = CycleCombinationFinder::from(cube3);
     let cycle_combinations = ccf.find(
@@ -58,7 +58,7 @@ fn test_3_optimal() {
 }
 
 #[test_log::test]
-fn test_2_equivalent() {
+fn equivalent_2() {
     let cube3 = CUBE3.clone();
     let ccf = CycleCombinationFinder::from(cube3);
     let cycle_combinations = ccf.find(
@@ -72,7 +72,7 @@ fn test_2_equivalent() {
 }
 
 #[test_log::test]
-fn test_3_equivalent() {
+fn equivalent_3() {
     let cube3 = CUBE3.clone();
     let ccf = CycleCombinationFinder::from(cube3);
     let cycle_combinations = ccf.find(

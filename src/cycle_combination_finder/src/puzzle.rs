@@ -32,7 +32,7 @@ pub enum PuzzleDefCreationError {
     SingleParityConstraint,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PuzzleDef {
     orbit_defs: Vec<OrbitDef>,
     even_parity_constraints: EvenParityConstraints,
@@ -62,7 +62,7 @@ pub enum OrientationSumConstraint {
     None,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct EvenParityConstraints(pub Vec<Vec<usize>>);
 
 #[derive(Clone, Copy, Debug)]

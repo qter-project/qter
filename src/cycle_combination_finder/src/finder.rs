@@ -4,7 +4,10 @@ use humanize_duration::{Truncate, prelude::DurationExt};
 use log::{debug, info};
 use puzzle_theory::numbers::{self, Int, U};
 
-use crate::puzzle::PuzzleDef;
+use crate::{
+    number_theory::{MaxPrimePower, max_prime_powers_below},
+    puzzle::PuzzleDef,
+};
 
 struct OrderIteration {
     index: usize,
@@ -50,12 +53,6 @@ pub struct CycleCombination {
 
 // ---------------
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct MaxPrimePower {
-    prime: u16,
-    exponent: u16,
-}
-
 #[derive(Clone, Copy)]
 pub enum Optimality {
     Equivalent,
@@ -93,70 +90,6 @@ impl From<PuzzleDef> for CycleCombinationFinder {
 }
 
 impl CycleCombinationFinder {
-    /// return a 2D list of prime powers below n. The first index is the prime,
-    /// the second is the power of that prime Return all
-    fn max_prime_powers_below(&self, n: u16) -> Vec<MaxPrimePower> {
-        #[derive(Copy, Clone, Debug, PartialEq)]
-        enum SieveNumberState {
-            Prime,
-            Other,
-        }
-
-        let n = usize::from(n);
-
-        let mut sieve = vec![SieveNumberState::Prime; n + 1];
-        sieve[0] = SieveNumberState::Other;
-        if let Some(v) = sieve.get_mut(1) {
-            *v = SieveNumberState::Other;
-        }
-
-        for i in 2..=n.isqrt() {
-            if sieve[i] != SieveNumberState::Prime {
-                continue;
-            }
-            let prime = i;
-
-            for multiple in (prime * prime..=n).step_by(prime) {
-                sieve[multiple] = SieveNumberState::Other;
-            }
-        }
-
-        let mut max_prime_powers = vec![];
-        for (i, &state) in sieve.iter().enumerate().take(n + 1).skip(2) {
-            if state != SieveNumberState::Prime {
-                continue;
-            }
-            let prime = i;
-
-            let mut exponent = 1;
-            let mut min_piece_count = prime;
-            loop {
-                let next = min_piece_count * prime;
-                if next > n {
-                    break;
-                }
-                min_piece_count = next;
-                exponent += 1;
-            }
-            if self
-                .puzzle_def
-                .orbit_defs()
-                .iter()
-                .find(|&&orbit_def| orbit_def.orientation_count() as usize == prime)
-                .is_some_and(|&orbit_def| min_piece_count as u16 <= orbit_def.piece_count.get())
-            {
-                exponent += 1;
-            }
-
-            max_prime_powers.push(MaxPrimePower {
-                prime: prime as u16,
-                exponent,
-            });
-        }
-        max_prime_powers.sort_by(|a, b| a.prime.cmp(&b.prime));
-        max_prime_powers
-    }
-
     /// get a list of all possible orders to fit within a given number of pieces
     /// and partitions
     fn possible_order_list(
@@ -606,7 +539,7 @@ impl CycleCombinationFinder {
             .min(pieces_per_register);
 
         // get list of prime powers that fit within the largest partition
-        let max_prime_powers = self.max_prime_powers_below(partition_max);
+        let max_prime_powers = max_prime_powers_below(self.puzzle_def.orbit_defs(), partition_max);
 
         // get a list of all orders that would fit within a pieces_per_register amount
         // of pieces
@@ -710,7 +643,7 @@ impl CycleCombinationFinder {
 
         let now2 = Instant::now();
         // get list of prime powers that fit within the largest partition
-        let max_prime_powers = self.max_prime_powers_below(partition_max);
+        let max_prime_powers = max_prime_powers_below(self.puzzle_def.orbit_defs(), partition_max);
 
         // get a list of all orders that would fit within a pieces_per_register amount
         // of pieces
@@ -758,185 +691,5 @@ impl CycleCombinationFinder {
         };
         info!("Finished in {}", now.elapsed().human(Truncate::Millis));
         ret
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::{
-        finder::{CycleCombinationFinder, MaxPrimePower},
-        puzzle::{cubeN::CUBE3, minxN::MEGAMINX, misc::SLOW1},
-    };
-
-    #[test_log::test]
-    fn test_max_prime_powers_below_edge_cases() {
-        let cube3 = CUBE3.clone();
-        let ccf = CycleCombinationFinder::from(cube3);
-        assert!(ccf.max_prime_powers_below(0).is_empty());
-        assert!(ccf.max_prime_powers_below(1).is_empty());
-    }
-
-    #[test_log::test]
-    fn test_cube3_max_prime_powers_below() {
-        let cube3 = CUBE3.clone();
-        let ccf = CycleCombinationFinder::from(cube3);
-        let max_prime_powers = ccf.max_prime_powers_below(12);
-        assert_eq!(
-            max_prime_powers,
-            vec![
-                MaxPrimePower {
-                    prime: 2,
-                    exponent: 4,
-                },
-                MaxPrimePower {
-                    prime: 3,
-                    exponent: 2,
-                },
-                MaxPrimePower {
-                    prime: 5,
-                    exponent: 1,
-                },
-                MaxPrimePower {
-                    prime: 7,
-                    exponent: 1,
-                },
-                MaxPrimePower {
-                    prime: 11,
-                    exponent: 1,
-                },
-            ]
-        );
-    }
-
-    #[test_log::test]
-    fn test_megaminx_max_prime_powers_below() {
-        let megaminx = MEGAMINX.clone();
-        let ccf = CycleCombinationFinder::from(megaminx);
-        let max_prime_powers = ccf.max_prime_powers_below(30);
-        assert_eq!(
-            max_prime_powers,
-            vec![
-                MaxPrimePower {
-                    prime: 2,
-                    exponent: 5
-                },
-                MaxPrimePower {
-                    prime: 3,
-                    exponent: 3
-                },
-                MaxPrimePower {
-                    prime: 5,
-                    exponent: 2
-                },
-                MaxPrimePower {
-                    prime: 7,
-                    exponent: 1
-                },
-                MaxPrimePower {
-                    prime: 11,
-                    exponent: 1
-                },
-                MaxPrimePower {
-                    prime: 13,
-                    exponent: 1
-                },
-                MaxPrimePower {
-                    prime: 17,
-                    exponent: 1
-                },
-                MaxPrimePower {
-                    prime: 19,
-                    exponent: 1
-                },
-                MaxPrimePower {
-                    prime: 23,
-                    exponent: 1
-                },
-                MaxPrimePower {
-                    prime: 29,
-                    exponent: 1
-                }
-            ]
-        );
-    }
-
-    #[test_log::test]
-    fn test_slow_max_prime_powers_below() {
-        let slow = SLOW1.clone();
-        let ccf = CycleCombinationFinder::from(slow);
-        let max_prime_powers = ccf.max_prime_powers_below(60);
-        assert_eq!(
-            max_prime_powers,
-            vec![
-                MaxPrimePower {
-                    prime: 2,
-                    exponent: 6,
-                },
-                MaxPrimePower {
-                    prime: 3,
-                    exponent: 4,
-                },
-                MaxPrimePower {
-                    prime: 5,
-                    exponent: 2,
-                },
-                MaxPrimePower {
-                    prime: 7,
-                    exponent: 2,
-                },
-                MaxPrimePower {
-                    prime: 11,
-                    exponent: 1,
-                },
-                MaxPrimePower {
-                    prime: 13,
-                    exponent: 1,
-                },
-                MaxPrimePower {
-                    prime: 17,
-                    exponent: 1,
-                },
-                MaxPrimePower {
-                    prime: 19,
-                    exponent: 1,
-                },
-                MaxPrimePower {
-                    prime: 23,
-                    exponent: 1,
-                },
-                MaxPrimePower {
-                    prime: 29,
-                    exponent: 1,
-                },
-                MaxPrimePower {
-                    prime: 31,
-                    exponent: 1,
-                },
-                MaxPrimePower {
-                    prime: 37,
-                    exponent: 1,
-                },
-                MaxPrimePower {
-                    prime: 41,
-                    exponent: 1,
-                },
-                MaxPrimePower {
-                    prime: 43,
-                    exponent: 1,
-                },
-                MaxPrimePower {
-                    prime: 47,
-                    exponent: 1,
-                },
-                MaxPrimePower {
-                    prime: 53,
-                    exponent: 1,
-                },
-                MaxPrimePower {
-                    prime: 59,
-                    exponent: 1,
-                },
-            ]
-        );
     }
 }

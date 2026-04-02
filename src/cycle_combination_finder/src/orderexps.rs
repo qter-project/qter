@@ -1,19 +1,12 @@
 use std::{
     fmt::{Debug, Formatter},
-    simd::{
-        LaneCount, Simd, SupportedLaneCount,
-        cmp::{SimdOrd, SimdPartialEq},
-    },
+    ops::Mul,
+    simd::{LaneCount, Simd, SupportedLaneCount, cmp::SimdOrd},
 };
 
 use puzzle_theory::numbers::{Int, U};
 
-use crate::N;
-
-pub const PRIMES: [u8; N] = [
-    2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97,
-    101, 103, 107, 109, 113, 127, 131,
-];
+use crate::PRIMES;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct OrderExps<const N: usize>(pub Simd<u8, N>)
@@ -44,19 +37,17 @@ where
     pub fn lcm(&self, other: &Self) -> Self {
         Self(self.0.simd_max(other.0))
     }
+}
 
-    #[must_use]
-    pub fn multiply(&self, other: &Self) -> Option<Self> {
-        if (self.0.simd_eq(Simd::splat(0)) | other.0.simd_eq(Simd::splat(0))).all() {
-            Some(self.multiply_unchecked(other))
-        } else {
-            None
-        }
-    }
+impl<const N: usize> Mul for OrderExps<N>
+where
+    LaneCount<N>: SupportedLaneCount,
+{
+    type Output = Self;
 
-    #[must_use]
-    pub fn multiply_unchecked(&self, other: &Self) -> Self {
-        Self(self.0 | other.0)
+    fn mul(self, rhs: Self) -> Self::Output {
+        #[allow(clippy::suspicious_arithmetic_impl)]
+        Self(self.0 + rhs.0)
     }
 }
 
