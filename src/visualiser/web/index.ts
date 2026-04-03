@@ -171,10 +171,14 @@ class Editor extends EventTarget {
         }
 
         this.#highlight();
-        this.dispatchEvent(new CustomEvent<string>("input", { detail: this.#text.textContent }));
+        this.dispatchEvent(new CustomEvent<string>("input", { detail: this.#text.innerText }));
     }
 
     #onKeyDown(ev: KeyboardEvent) {
+        if (this.#disabled) {
+            return;
+        }
+
         // TODO: better editor
         if (ev.key == "Tab") {
             let selection = getSelection()!;
@@ -186,10 +190,13 @@ class Editor extends EventTarget {
                 range.collapse(false);
             }
         }
+
+        this.#highlight();
+        this.dispatchEvent(new CustomEvent<string>("input", { detail: this.#text.innerText }));
     }
 
     get text(): string {
-        return this.#text.textContent;
+        return this.#text.innerText;
     }
 
     set text(value: string) {
