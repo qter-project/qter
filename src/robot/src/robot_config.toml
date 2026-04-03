@@ -8,7 +8,7 @@ float = true
 stealthchop = false
 await_moves_delay = 200
 corner_cut_help = 1
-mismatch = { behavior = "Fix", retry_count = 1 }
+mismatch = { behavior = "ReturnSimulation" }
 
 # org order is UBRDFL
 
