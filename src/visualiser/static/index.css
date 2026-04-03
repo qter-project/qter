@@ -28,14 +28,17 @@ main {
         "nav      nav      info" min-content
         "editor   output   info" minmax(0, 1fr)
         "messages messages info" min-content
-        / 5fr 5fr 4fr;
-    
+        / 5fr     5fr      4fr;
+    /* beautify ignore:end */
+
     #nav {
         grid-area: nav;
+        border-bottom: 1px solid white;
     }
 
     #editor {
         grid-area: editor;
+        border-right: 1px solid white;
     }
 
     #output {
@@ -44,10 +47,38 @@ main {
 
     #messages {
         grid-area: messages;
+        border-top: 1px solid white;
     }
 
     #info {
         grid-area: info;
+        border-left: 1px solid white;
+    }
+
+    @media (aspect-ratio <=1.0) {
+        /* beautify ignore:start */
+        grid:
+            "nav      nav     " min-content
+            "editor   output  " minmax(0, 1fr)
+            "messages messages" min-content
+            "info     info    " 30%
+            / 1fr     1fr;
+        /* beautify ignore:end */
+
+        #info {
+            border-left: none;
+            border-top: 1px solid white;
+
+            flex-flow: row nowrap;
+        }
+
+        #cubes {
+            aspect-ratio: 1;
+        }
+
+        #registers {
+            flex-flow: column wrap;
+        }
     }
 }
 
@@ -56,7 +87,6 @@ main {
     flex-wrap: row nowrap;
     padding: 0.5em;
     gap: 0.7em;
-    border-bottom: 1px solid white;
 }
 
 #editor,
@@ -72,16 +102,11 @@ main {
     }
 }
 
-#editor {
-    border-right: 1px solid white;
-}
-
 #messages {
     padding: 0.5em;
-    border-top: 1px solid white;
 
     box-sizing: content-box;
-    height: 15lh;
+    height: 8lh;
     overflow-y: auto;
 
     .error-msg {
@@ -90,8 +115,6 @@ main {
 }
 
 #info {
-    border-left: 1px solid white;
-
     display: flex;
     flex-flow: column nowrap;
     justify-content: space-between;
