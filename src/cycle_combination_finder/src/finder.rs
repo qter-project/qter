@@ -162,7 +162,7 @@ impl CycleCombinationFinder {
                         // improvement
                         let ideal = prime_power_iter
                             // .checked_exact_div(max_prime_power.prime.pow(exponent_value_from_orbit))
-                            .checked_exact_div(max_prime_power.prime)
+                            .checked_div_exact(max_prime_power.prime)
                             .unwrap();
                         // if the power exceeds the size of orientable orbit, remove the multiplier
                         if ideal > orbit_def.piece_count.get() {

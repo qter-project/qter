@@ -1,4 +1,6 @@
-use std::simd::{LaneCount, SupportedLaneCount};
+use std::num::NonZeroU16;
+
+use thiserror::Error;
 
 use crate::{PRIMES, orderexps::OrderExps, puzzle::OrbitDef};
 
@@ -72,14 +74,11 @@ pub fn max_prime_powers_below(orbit_defs: &[OrbitDef], n: u16) -> Vec<MaxPrimePo
             orienting_exponent,
         });
     }
-    max_prime_powers.sort_by(|a, b| a.prime.cmp(&b.prime));
+    max_prime_powers.sort_by_key(|a| a.prime);
     max_prime_powers
 }
 
-pub fn divisors<const N: usize>(n: u8) -> Vec<OrderExps<N>>
-where
-    LaneCount<N>: SupportedLaneCount,
-{
+pub fn divisors<const N: usize>(n: u8) -> Vec<OrderExps<N>> {
     let mut divisors = vec![];
     if n == 0 {
         return divisors;
@@ -120,6 +119,40 @@ where
     }
 
     divisors
+}
+
+#[derive(Error, Debug)]
+pub enum OrderExpsConversionError {
+    #[error("We cannot represent numbers too large")]
+    PrimeTooLarge,
+    #[error("Prime exponent is too large")]
+    ExponentTooLarge,
+}
+
+impl<const N: usize> TryFrom<NonZeroU16> for OrderExps<N> {
+    type Error = OrderExpsConversionError;
+
+    fn try_from(n: NonZeroU16) -> Result<Self, Self::Error> {
+        let mut exps = Self::one();
+        let mut primes_and_exps = PRIMES.into_iter().zip(exps.0.as_mut_array());
+        let (mut prime, mut exp) = primes_and_exps
+            .next()
+            .ok_or(OrderExpsConversionError::PrimeTooLarge)?;
+        let mut remainder = n.get();
+        while remainder > 1 {
+            if remainder.is_multiple_of(u16::from(prime)) {
+                *exp = exp
+                    .checked_add(1)
+                    .ok_or(OrderExpsConversionError::ExponentTooLarge)?;
+                remainder /= u16::from(prime);
+            } else if remainder > 1 {
+                (prime, exp) = primes_and_exps
+                    .next()
+                    .ok_or(OrderExpsConversionError::PrimeTooLarge)?;
+            }
+        }
+        Ok(exps)
+    }
 }
 
 #[cfg(test)]
@@ -389,5 +422,33 @@ mod divisors {
     #[should_panic(expected = "We cannot represent numbers too large")]
     fn too_big_prime_panicks() {
         divisors::<N>(PRIME_AFTER_LAST);
+    }
+}
+
+#[cfg(test)]
+mod orderexps {
+    use std::num::NonZeroU16;
+
+    use crate::{N, PRIME_AFTER_LAST, orderexps::OrderExps};
+
+    #[test_log::test]
+    fn basic() {
+        for i in 1..PRIME_AFTER_LAST {
+            assert_eq!(
+                u8::try_from(
+                    OrderExps::<N>::try_from(NonZeroU16::new(u16::from(i)).unwrap())
+                        .unwrap()
+                        .as_bigint()
+                )
+                .unwrap(),
+                i
+            );
+        }
+    }
+
+    #[test_log::test]
+    #[should_panic(expected = "PrimeTooLarge")]
+    fn prime_too_large() {
+        OrderExps::<N>::try_from(NonZeroU16::new(u16::from(PRIME_AFTER_LAST)).unwrap()).unwrap();
     }
 }

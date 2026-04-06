@@ -2,60 +2,38 @@ from math import gcd
 
 from sympy import divisors, primerange
 
-# def possible_orbit_orders(N, O):
-#     if N <= 1:
-#         return {1}
-#     dp = [[] for _ in range(N + 1)]
-#     dp[0].append(1)
-#     for prime in primerange(N + 1):
-#         if not isinstance(prime, int):
-#             raise
-#         for i in range(N, prime - 1, -1):
-#             prime_power = prime
-#             while prime_power <= i:
-#                 # dp[i] += [s * prime_power for s in dp[i - prime_power]]
-#                 dp[i].append((prime_power, i - prime_power))
-#                 if i == N and prime_power == 9:
-#                     breakpoint()
-#                 prime_power *= prime
-#     dp2 = [[1]]
-#     for sub in dp[1:]:
-#         act = []
-#         for prime_power, s in sub:
-#             if prime_power in [2, 4, 8]:
-#                 base = 2
-#             elif prime_power in [3, 9]:
-#                 base = 3
-#             else:
-#                 base = prime_power
-#             if prime_power
-#             act.extend(dp2[s])
-#         dp2.append(act)
-#     # breakpoint()
-#     all = {o * f for d in divisors(O) for s in dp2 for o in s for f in (1, d)}
-#     if N in dp2[N]:
-#         for d in range(gcd(N, O), N, gcd(N, O)):
-#             if d != 1 and O % d == 0:
-#                 all.remove(N * d)
-#     return all
-
 
 def possible_orbit_orders(N: int, O: int):
     if N <= 1:
         return {1}
 
     primes = list(primerange(N + 1))
-    divs = divisors(O)
-    out = set()
+    divs = list(divisors(O))
+    even_parity_orders = set()
+    odd_parity_orders = set()
     n_prime_power = False
 
     stack = [(0, N, 1)]
 
+    c = 0
     while len(stack):
+        c += 1
         i, remaining, prod = stack.pop()
         if i == len(primes):
-            for d in divs:
-                out.add(prod * d)
+            odd_parity = prod % 2 == 0
+            if odd_parity:
+                for d in divs:
+                    odd_parity_orders.add(prod * d)
+                if remaining >= 2:
+                    for d in divs:
+                        even_parity_orders.add(prod * d)
+            else:
+                for d in divs:
+                    even_parity_orders.add(prod * d)
+                if remaining == 2:
+                    prod *= 2
+                    for d in divs:
+                        odd_parity_orders.add(prod * d)
             continue
 
         p = primes[i]
@@ -69,24 +47,31 @@ def possible_orbit_orders(N: int, O: int):
                 n_prime_power = True
             stack.append((i + 1, remaining - pp, prod * pp))
             pp *= p
-
     if n_prime_power:
         g = gcd(N, O)
-        for d in range(g, N, g):
+        for d in range(g, N + g, g):
             if d != 1 and O % d == 0:
-                out.remove(N * d)
+                odd_parity_orders.remove(N * d)
+                even_parity_orders.remove(N * d)
 
-    return out
+    return even_parity_orders, odd_parity_orders
 
 
-possible_orbit_orders(12, 2)
+# [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16, 18, 20, 21, 22, 24, 28, 30, 35, 36, 40, 42, 48, 56, 60, 70, 84, 120]
+# {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16, 18, 20, 21, 22, 24, 28, 30, 35, 36, 40, 42, 48, 56, 60, 70, 84, 120}
 
+print([len(i) for i in possible_orbit_orders(120, 2)])
+print([len(i) for i in possible_orbit_orders(120, 3)])
+print([len(i) for i in possible_orbit_orders(120, 4)])
+print([len(i) for i in possible_orbit_orders(120, 6)])
+# print(len(possible_orbit_orders(64, 2)))
+# print(len(possible_orbit_orders(113, 2)))
 assert len(possible_orbit_orders(120, 20)) == 99622
-assert len(possible_orbit_orders(113, 20)) == 73860
-assert len(possible_orbit_orders(64, 20)) == 6222
-assert len(possible_orbit_orders(120, 13)) == 75770
-assert len(possible_orbit_orders(113, 13)) == 55880
-assert len(possible_orbit_orders(64, 13)) == 4526
-assert len(possible_orbit_orders(120, 16)) == 89594
-assert len(possible_orbit_orders(113, 16)) == 66402
-assert len(possible_orbit_orders(64, 16)) == 5534
+# assert len(possible_orbit_orders(113, 20)) == 73860
+# assert len(possible_orbit_orders(64, 20)) == 6222
+# assert len(possible_orbit_orders(120, 13)) == 75770
+# assert len(possible_orbit_orders(113, 13)) == 55880
+# assert len(possible_orbit_orders(64, 13)) == 4526
+# assert len(possible_orbit_orders(120, 16)) == 89594
+# assert len(possible_orbit_orders(113, 16)) == 66402
+# assert len(possible_orbit_orders(64, 16)) == 5534

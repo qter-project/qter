@@ -18,8 +18,8 @@ pub const PRIMES: [u8; N] = [
 pub const PRIME_AFTER_LAST: u8 = 137;
 
 pub mod finder;
+pub mod number_theory;
 pub mod orderexps;
+mod possible_orders;
 pub mod puzzle;
 pub mod trie;
-pub mod number_theory;
-mod possible_orders;

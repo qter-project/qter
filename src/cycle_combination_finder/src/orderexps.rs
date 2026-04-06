@@ -1,7 +1,7 @@
 use std::{
     fmt::{Debug, Formatter},
     ops::Mul,
-    simd::{LaneCount, Simd, SupportedLaneCount, cmp::SimdOrd},
+    simd::{Simd, cmp::SimdOrd},
 };
 
 use puzzle_theory::numbers::{Int, U};
@@ -9,14 +9,9 @@ use puzzle_theory::numbers::{Int, U};
 use crate::PRIMES;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub struct OrderExps<const N: usize>(pub Simd<u8, N>)
-where
-    LaneCount<N>: SupportedLaneCount;
+pub struct OrderExps<const N: usize>(pub Simd<u8, N>);
 
-impl<const N: usize> OrderExps<N>
-where
-    LaneCount<N>: SupportedLaneCount,
-{
+impl<const N: usize> OrderExps<N> {
     #[must_use]
     pub fn one() -> Self {
         Self(Simd::splat(0))
@@ -39,10 +34,7 @@ where
     }
 }
 
-impl<const N: usize> Mul for OrderExps<N>
-where
-    LaneCount<N>: SupportedLaneCount,
-{
+impl<const N: usize> Mul for OrderExps<N> {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
@@ -51,10 +43,7 @@ where
     }
 }
 
-impl<const N: usize> Debug for OrderExps<N>
-where
-    LaneCount<N>: SupportedLaneCount,
-{
+impl<const N: usize> Debug for OrderExps<N> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "OF({})", self.as_bigint())
     }

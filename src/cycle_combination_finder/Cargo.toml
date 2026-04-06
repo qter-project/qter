@@ -15,6 +15,8 @@ dashmap = { version = "6.1.0", features = ["rayon"] }
 ndarray = { version = "0.17.2", features = ["rayon"] }
 thiserror.workspace = true
 env_logger = "0.11.9"
+bitgauss = { git = "https://github.com/qter-project/bitgauss" }
+union-find = { git = "https://github.com/qter-project/union-find-rs" }
 
 [dev-dependencies]
 test-log.workspace = true

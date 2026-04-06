@@ -1,23 +1,17 @@
-use std::simd::{LaneCount, Simd, SupportedLaneCount, cmp::SimdPartialOrd};
+use std::simd::{Simd, cmp::SimdPartialOrd};
 
 use fxhash::{FxHashMap, FxHashSet};
 
 use crate::orderexps::OrderExps;
 
 #[derive(Debug)]
-pub struct MaxOrderTrie<const N: usize>
-where
-    LaneCount<N>: SupportedLaneCount,
-{
+pub struct MaxOrderTrie<const N: usize> {
     level: usize,
     children: FxHashMap<u8, MaxOrderTrie<N>>,
     subtree_max_order: OrderExps<N>,
 }
 
-impl<const N: usize> MaxOrderTrie<N>
-where
-    LaneCount<N>: SupportedLaneCount,
-{
+impl<const N: usize> MaxOrderTrie<N> {
     #[must_use]
     pub fn new(level: usize) -> Self {
         Self {
