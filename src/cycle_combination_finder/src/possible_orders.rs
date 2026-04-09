@@ -16,17 +16,17 @@ use crate::{
 
 pub type OrdersSet<const N: usize> = FxHashSet<OrderExps<N>>;
 
-enum OrbitPossibleOrders<const N: usize> {
-    AllOrders(OrdersSet<N>),
+pub enum OrbitPossibleOrders<const N: usize> {
+    CombinedOrders(OrdersSet<N>),
     ParityOrders {
-        even_orders: OrdersSet<N>,
-        odd_orders: Option<OrdersSet<N>>,
+        even_parity_orders: OrdersSet<N>,
+        maybe_odd_parity_orders: Option<OrdersSet<N>>,
     },
 }
 
 impl OrbitDef {
     #[must_use]
-    pub fn possible_orders<const N: usize>(self) -> Array2<OrdersSet<N>> {
+    pub fn possible_orders2<const N: usize>(self) -> Array2<OrdersSet<N>> {
         #[allow(clippy::struct_field_names)]
         #[derive(Clone, Debug)]
         struct Cycle<const N: usize> {
@@ -145,7 +145,10 @@ impl OrbitDef {
         possible_orders
     }
 
-    pub fn possible_orders2<const N: usize>(self) -> OrdersSet<N> {
+    pub fn possible_orders<const N: usize>(
+        self,
+        combine_parity_orders: bool,
+    ) -> OrbitPossibleOrders<N> {
         assert!(
             self.piece_count.get() < u16::from(PRIME_AFTER_LAST),
             "Piece count too large"
@@ -154,26 +157,68 @@ impl OrbitDef {
         let orientation_count = self.orientation_count();
 
         let invalid_prime_index = PRIMES.partition_point(|&prime| u16::from(prime) <= piece_count);
-        let mut possible_orders = FxHashSet::default();
         if piece_count == 1 {
-            possible_orders.insert(OrderExps::one());
-            todo!();
-            // return possible_orders;
+            let mut combined_orders = FxHashSet::default();
+            combined_orders.insert(OrderExps::one());
+            return OrbitPossibleOrders::CombinedOrders(combined_orders);
         }
+        let mut orbit_possible_orders = if combine_parity_orders {
+            OrbitPossibleOrders::CombinedOrders(FxHashSet::default())
+        } else {
+            OrbitPossibleOrders::ParityOrders {
+                even_parity_orders: FxHashSet::default(),
+                maybe_odd_parity_orders: match self.parity_constraint {
+                    ParityConstraint::Even => None,
+                    ParityConstraint::None => Some(FxHashSet::default()),
+                },
+            }
+        };
 
-        let cycle_order_factors = divisors(orientation_count);
+        let extend_orientation_order_factors = {
+            let orientation_order_factors = divisors(orientation_count);
+            move |order: &OrderExps<N>, orders_set: &mut OrdersSet<N>| {
+                orders_set.extend(orientation_order_factors.iter().map(
+                    |orientation_order_factor| order.clone() * orientation_order_factor.clone(),
+                ));
+            }
+        };
         let mut piece_count_prime_power_base = None;
 
         let mut stack = vec![(0, piece_count, OrderExps::one())];
-        while let Some((prime_index, remaining_pieces_count, acc_order)) = stack.pop() {
+        while let Some((prime_index, remaining_pieces_count, mut acc_order)) = stack.pop() {
             if prime_index == invalid_prime_index {
-                possible_orders.extend(
-                    cycle_order_factors
-                        .iter()
-                        .map(|cycle_order_factor| acc_order.clone() * cycle_order_factor.clone()),
-                );
+                match &mut orbit_possible_orders {
+                    OrbitPossibleOrders::CombinedOrders(combined_orders) => {
+                        extend_orientation_order_factors(&acc_order, combined_orders);
+                    }
+                    OrbitPossibleOrders::ParityOrders {
+                        even_parity_orders,
+                        maybe_odd_parity_orders,
+                    } => {
+                        // Do we have the two prime power (is it even)?
+                        let odd_parity = acc_order.0[0] != 0;
+
+                        if odd_parity {
+                            if let Some(odd_parity_orders) = maybe_odd_parity_orders {
+                                extend_orientation_order_factors(&acc_order, odd_parity_orders);
+                            }
+                            if remaining_pieces_count >= 2 {
+                                extend_orientation_order_factors(&acc_order, even_parity_orders);
+                            }
+                        } else {
+                            extend_orientation_order_factors(&acc_order, even_parity_orders);
+                            if remaining_pieces_count == 2
+                                && let Some(odd_parity_orders) = maybe_odd_parity_orders
+                            {
+                                acc_order.0[0] = acc_order.0[0].checked_add(1).unwrap();
+                                extend_orientation_order_factors(&acc_order, odd_parity_orders);
+                            }
+                        }
+                    }
+                }
                 continue;
             }
+
             // skip the prime
             stack.push((prime_index + 1, remaining_pieces_count, acc_order.clone()));
 
@@ -206,16 +251,52 @@ impl OrbitDef {
             while !u16::from(orientation_count).is_multiple_of(gcd) {
                 gcd = gcd.div_exact(u16::from(base_prime)).unwrap();
             }
-            for divisor in (gcd..=piece_count).step_by(usize::from(gcd)) {
-                let divisor = NonZeroU16::new(divisor).unwrap();
-                if divisor.get() != 1 {
-                    let impossible = OrderExps::<N>::try_from(self.piece_count).unwrap()
-                        * OrderExps::<N>::try_from(divisor).unwrap();
-                    possible_orders.remove(&impossible);
+            for multiple in (gcd..=piece_count).step_by(usize::from(gcd)) {
+                let multiple = NonZeroU16::new(multiple).unwrap();
+                if multiple.get() == 1 {
+                    continue;
+                }
+
+                let impossible = OrderExps::<N>::try_from(self.piece_count).unwrap()
+                    * OrderExps::<N>::try_from(multiple).unwrap();
+                match &mut orbit_possible_orders {
+                    OrbitPossibleOrders::CombinedOrders(combined_orders) => {
+                        combined_orders.remove(&impossible);
+                    }
+                    OrbitPossibleOrders::ParityOrders {
+                        even_parity_orders,
+                        maybe_odd_parity_orders,
+                    } => {
+                        even_parity_orders.remove(&impossible);
+                        if let Some(odd_parity_orders) = maybe_odd_parity_orders {
+                            odd_parity_orders.remove(&impossible);
+                        }
+                    }
                 }
             }
         }
-        possible_orders
+        orbit_possible_orders
+    }
+
+    pub fn combined_parity_possible_orders<const N: usize>(self) -> OrdersSet<N> {
+        let OrbitPossibleOrders::CombinedOrders(combined_orders) = self.possible_orders(true)
+        else {
+            panic!();
+        };
+        combined_orders
+    }
+
+    pub fn uncombined_parity_possible_orders<const N: usize>(
+        self,
+    ) -> (OrdersSet<N>, Option<OrdersSet<N>>) {
+        let OrbitPossibleOrders::ParityOrders {
+            even_parity_orders,
+            maybe_odd_parity_orders,
+        } = self.possible_orders(false)
+        else {
+            panic!();
+        };
+        (even_parity_orders, maybe_odd_parity_orders)
     }
 }
 
@@ -256,7 +337,7 @@ impl PuzzleDef {
             .orbit_defs()
             .par_iter()
             .copied()
-            .map(OrbitDef::possible_orders::<N>)
+            .map(OrbitDef::possible_orders2::<N>)
             .collect::<Vec<_>>();
 
         let mut orbit_orders_cart_product = vec![];
@@ -402,7 +483,7 @@ mod orbit {
         expected_highest: u64,
     ) {
         let start = Instant::now();
-        let possible_orders = orbit_def.possible_orders2::<N>();
+        let possible_orders = orbit_def.combined_parity_possible_orders::<N>();
         info!(
             "Possible orbit orders for {orbit_def:?} in {}",
             start.elapsed().human(Truncate::Micro)
@@ -447,7 +528,7 @@ mod orbit {
         };
 
         let start = Instant::now();
-        let possible_orders = orbit_def.possible_orders::<N>();
+        let possible_orders = orbit_def.possible_orders2::<N>();
         info!(
             "Possible orbit orders for {orbit_def:?} in {}",
             start.elapsed().human(Truncate::Micro)
