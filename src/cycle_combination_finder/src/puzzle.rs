@@ -1,5 +1,6 @@
-use std::{collections::HashSet, num::NonZeroU16};
+use std::num::NonZeroU16;
 
+use bitgauss::BitMatrix;
 use puzzle_theory::ksolve::KSolve;
 use thiserror::Error;
 
@@ -35,16 +36,20 @@ pub enum PuzzleDefCreationError {
 #[derive(Clone, Debug)]
 pub struct PuzzleDef {
     orbit_defs: Vec<OrbitDef>,
-    even_parity_constraints: EvenParityConstraints,
+    even_parity_constraints: BitMatrix,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct OrbitDef {
     pub piece_count: NonZeroU16,
-    // pub orientation_count: NonZeroU8,
-    // pub orientation_sum_constraint: OrientationSumConstraint,
     pub orientation: OrientationStatus,
     pub parity_constraint: ParityConstraint,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct PartialOrbitDef {
+    pub piece_count: NonZeroU16,
+    pub orientation: OrientationStatus,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -124,10 +129,7 @@ impl PuzzleDef {
                 },
             )
             .collect::<Vec<_>>();
-        Self::new(
-            orbit_defs,
-            even_parity_constraints,
-        )
+        Self::new(orbit_defs, even_parity_constraints)
     }
 
     /// # Errors
@@ -135,27 +137,13 @@ impl PuzzleDef {
     /// Returns a [`PuzzleDefCreationError`] if any of its variants are
     /// applicable.
     pub fn new(
+        // orbit_defs: Vec<PartialOrbitDef>,
         orbit_defs: Vec<OrbitDef>,
-        even_parity_constraints: EvenParityConstraints,
+        EvenParityConstraints(raw_even_parity_constraints): EvenParityConstraints,
     ) -> Result<Self, PuzzleDefCreationError> {
-        even_parity_constraints
-            .0
-            .iter()
-            .try_for_each(|even_parity_constraint| {
-                let mut map = HashSet::new();
-                for &i in even_parity_constraint {
-                    if orbit_defs.get(i).is_none() {
-                        return Err(PuzzleDefCreationError::OutOfBounds {
-                            length: orbit_defs.len(),
-                            actual: i,
-                        });
-                    }
-                    if !map.insert(i) {
-                        return Err(PuzzleDefCreationError::DuplicateIndicies(i));
-                    }
-                }
-                Ok(())
-            })?;
+        if orbit_defs.is_empty() {
+            return Err(PuzzleDefCreationError::NoOrbits);
+        }
         orbit_defs
             .iter()
             .try_for_each(|&orbit_def| match orbit_def.orientation {
@@ -164,14 +152,41 @@ impl PuzzleDef {
                 }
                 _ => Ok(()),
             })?;
-        if orbit_defs.is_empty() {
-            Err(PuzzleDefCreationError::NoOrbits)
-        } else {
-            Ok(Self {
-                orbit_defs,
-                even_parity_constraints,
-            })
+        // let even_parity_constraints = if let Some(cols) = raw_even_parity_constraints
+        //     .iter()
+        //     .flatten()
+        //     .copied()
+        //     .max()
+        //     .map(|orbit_index| orbit_index + 1)
+        // {
+        let cols = orbit_defs.len();
+        let rows = raw_even_parity_constraints.len();
+        let mut even_parity_constraints = BitMatrix::zeros(rows, cols);
+        for (i, even_parity_constraint) in raw_even_parity_constraints.into_iter().enumerate() {
+            for j in even_parity_constraint {
+                if j >= cols {
+                    return Err(PuzzleDefCreationError::OutOfBounds {
+                        length: cols,
+                        actual: i,
+                    });
+                }
+                if even_parity_constraints.bit(i, j) {
+                    return Err(PuzzleDefCreationError::DuplicateIndicies(j));
+                }
+                even_parity_constraints.set_bit(i, j, true);
+            }
         }
+        let pivot_cols = even_parity_constraints.gauss(true);
+        let rank = pivot_cols.len();
+        let even_parity_constraints = if rank == rows {
+            even_parity_constraints
+        } else {
+            BitMatrix::build(rank, cols, |i, j| even_parity_constraints[(i, j)])
+        };
+        Ok(Self {
+            orbit_defs,
+            even_parity_constraints,
+        })
     }
 
     #[must_use]
@@ -180,7 +195,7 @@ impl PuzzleDef {
     }
 
     #[must_use]
-    pub fn even_parity_constraints(&self) -> &EvenParityConstraints {
+    pub fn even_parity_constraints(&self) -> &BitMatrix {
         &self.even_parity_constraints
     }
 }

@@ -17,6 +17,7 @@ pub const PRIMES: [u8; N] = [
 ];
 pub const PRIME_AFTER_LAST: u8 = 137;
 
+mod ac3;
 pub mod finder;
 pub mod number_theory;
 pub mod orderexps;

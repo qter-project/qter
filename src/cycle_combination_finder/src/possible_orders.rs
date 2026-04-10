@@ -145,6 +145,7 @@ impl OrbitDef {
         possible_orders
     }
 
+    #[must_use]
     pub fn possible_orders<const N: usize>(
         self,
         combine_parity_orders: bool,
@@ -278,6 +279,7 @@ impl OrbitDef {
         orbit_possible_orders
     }
 
+    #[must_use]
     pub fn combined_parity_possible_orders<const N: usize>(self) -> OrdersSet<N> {
         let OrbitPossibleOrders::CombinedOrders(combined_orders) = self.possible_orders(true)
         else {
@@ -286,6 +288,7 @@ impl OrbitDef {
         combined_orders
     }
 
+    #[must_use]
     pub fn uncombined_parity_possible_orders<const N: usize>(
         self,
     ) -> (OrdersSet<N>, Option<OrdersSet<N>>) {
@@ -342,20 +345,21 @@ impl PuzzleDef {
 
         let mut orbit_orders_cart_product = vec![];
         let mut curr = vec![(0, 0); all_orbit_orders.len()];
+        let even_parity_constraints = self.even_parity_constraints();
         loop {
             let mut end = true;
-            let valid_parity =
-                self.even_parity_constraints()
-                    .0
-                    .iter()
-                    .all(|even_parity_constraint| {
-                        even_parity_constraint
-                            .iter()
-                            .map(|&i| curr[i].1)
-                            .sum::<usize>()
-                            .is_multiple_of(2)
-                    });
-            if valid_parity {
+            let invalid_parity = (0..even_parity_constraints.rows()).any(|i| {
+                let row = even_parity_constraints.row(i);
+                row.iter()
+                    .zip(curr.iter())
+                    .fold(
+                        false,
+                        |parity, (use_it, &(_, c))| {
+                            if use_it { parity ^ (c != 0) } else { parity }
+                        },
+                    )
+            });
+            if !invalid_parity {
                 orbit_orders_cart_product.push(curr.clone());
             }
             for ((orient_sum, parity), (max_orient_sum, max_parity)) in curr
@@ -522,8 +526,11 @@ mod orbit {
         // two orientation count is an edge case since it is the only number
         // where the number of cycles cannot simply be greater than 1
         let orbit_def = OrbitDef {
-            piece_count: 10.try_into().unwrap(),
-            orientation: OrientationStatus::CannotOrient,
+            piece_count: 12.try_into().unwrap(),
+            orientation: OrientationStatus::CanOrient {
+                count: 2,
+                sum_constraint: OrientationSumConstraint::Zero,
+            },
             parity_constraint: ParityConstraint::None,
         };
 

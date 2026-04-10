@@ -43,7 +43,7 @@ fn playground() {
             for row in (0..rows).filter_map(|row| {
                 let constraints_row = constraints.row(row);
                 // there must be exactly two parity constraints
-                if constraints_row.bit(free_col) && constraints_row.count_ones() == 2 {
+                if constraints_row.bit(free_col) {
                     Some(constraints_row)
                 } else {
                     None
@@ -67,6 +67,8 @@ fn playground() {
         println!("{:?}", sizes);
         println!("{:?}", uf);
         println!("{}", constraints);
+    } else {
+        let a = BitMatrix::identity(0);
     }
     panic!();
     // let puzzle = PuzzleDef::new(
