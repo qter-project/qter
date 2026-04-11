@@ -1,7 +1,7 @@
 use std::{num::NonZeroU16, time::Instant};
 
 use humanize_duration::{Truncate, prelude::DurationExt};
-use log::{debug, info};
+use log::info;
 use puzzle_theory::numbers::{self, Int, U};
 
 use crate::{
@@ -97,7 +97,7 @@ impl CycleCombinationFinder {
         total_pieces: u16,
         max_prime_powers: &[MaxPrimePower],
     ) -> Vec<PossibleOrder> {
-        debug!("{total_pieces:?} {max_prime_powers:?}");
+        // debug!("{total_pieces:?} {max_prime_powers:?}");
         let mut paths = vec![];
         let mut log_path = |s: OrderIteration| {
             let prime_powers = if s.product == Int::<U>::from(1_u16) {
@@ -151,7 +151,7 @@ impl CycleCombinationFinder {
 
             // try adding all powers of the current prime
             let mut prime_power_iter = 1u16;
-            for i in 0..=max_prime_power.exponent {
+            for i in 0..=max_prime_power.orienting_exponent {
                 let min_piece_count = if i == 0 {
                     0
                 } else if let Some(&orbit_def) = maybe_orbit_def {
@@ -201,7 +201,7 @@ impl CycleCombinationFinder {
                     }
                     stack.push(order_iteraton);
                 }
-                if i != max_prime_power.exponent {
+                if i != max_prime_power.orienting_exponent {
                     prime_power_iter *= max_prime_power.prime;
                 }
             }
@@ -209,7 +209,7 @@ impl CycleCombinationFinder {
 
         paths.sort_by(|a, b| b.order.partial_cmp(&a.order).unwrap());
 
-        debug!("{paths:#?}");
+        // debug!("{paths:#?}");
         // println!("{:?}", paths.len());
         paths
     }
@@ -548,7 +548,7 @@ impl CycleCombinationFinder {
 
         // check the possible orders, descending, until one is found that fits
         for possible_order in possible_orders {
-            debug!("Testing Order {}", possible_order.order);
+            // debug!("Testing Order {}", possible_order.order);
 
             // by default, prime_combo.piece_counts assumes all orientation efficiencies can
             // be made here we check if they can actually fit, or if
@@ -641,15 +641,15 @@ impl CycleCombinationFinder {
             .max()
             .unwrap();
 
-        let now2 = Instant::now();
         // get list of prime powers that fit within the largest partition
         let max_prime_powers = max_prime_powers_below(self.puzzle_def.orbit_defs(), partition_max);
 
         // get a list of all orders that would fit within a pieces_per_register amount
         // of pieces
         let possible_orders = self.possible_order_list(total_pieces, &max_prime_powers);
-        println!("{}", now2.elapsed().human(Truncate::Millis));
-        println!("a {:?}", possible_orders.len());
+        for possible_order in &possible_orders {
+            println!("{:?}", u64::try_from(possible_order.order).unwrap());
+        }
 
         // debug!("Possible Orders: {possible_orders:?}");
 

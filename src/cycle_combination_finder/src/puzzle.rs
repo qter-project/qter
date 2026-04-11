@@ -1,8 +1,10 @@
 use std::num::NonZeroU16;
 
 use bitgauss::BitMatrix;
+use fxhash::FxHashMap;
 use puzzle_theory::ksolve::KSolve;
 use thiserror::Error;
+use union_find::{QuickUnionUf, UnionBySize, UnionFind};
 
 pub mod cubeN;
 pub mod minxN;
@@ -26,20 +28,17 @@ pub enum PuzzleDefCreationError {
     OutOfBounds { length: usize, actual: usize },
     #[error("Orientation count of {0} cannot be 0 or 1")]
     InvalidOrientationCount(u8),
-    #[error(
-        "You should not supply one orbit as an even constraint. Instead, set the \
-         `parity_constraint` field to even on that orbit"
-    )]
-    SingleParityConstraint,
 }
 
 #[derive(Clone, Debug)]
 pub struct PuzzleDef {
     orbit_defs: Vec<OrbitDef>,
     even_parity_constraints: BitMatrix,
+    connected_components: Vec<Vec<usize>>,
 }
 
 #[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
 pub struct OrbitDef {
     pub piece_count: NonZeroU16,
     pub orientation: OrientationStatus,
@@ -97,7 +96,7 @@ impl PuzzleDef {
     /// applicable.
     pub fn from_ksolve_naive(
         ksolve: &KSolve,
-        orbit_constraints: Vec<(OrientationSumConstraint, ParityConstraint)>,
+        orbit_constraints: Vec<OrientationSumConstraint>,
         even_parity_constraints: EvenParityConstraints,
     ) -> Result<Self, PuzzleDefCreationError> {
         if orbit_constraints.len() != ksolve.sets().len() {
@@ -106,30 +105,27 @@ impl PuzzleDef {
                 actual: orbit_constraints.len(),
             });
         }
-        let orbit_defs = ksolve
+        let parial_orbit_defs = ksolve
             .sets()
             .iter()
             .zip(orbit_constraints)
-            .map(
-                |(ksolveset, (orbit_orientation_sum_constraint, orbit_parity_constraint))| {
-                    let piece_count = ksolveset.piece_count();
-                    let orientation = if ksolveset.orientation_count().get() == 1 {
-                        OrientationStatus::CannotOrient
-                    } else {
-                        OrientationStatus::CanOrient {
-                            count: ksolveset.orientation_count().get(),
-                            sum_constraint: orbit_orientation_sum_constraint,
-                        }
-                    };
-                    OrbitDef {
-                        piece_count,
-                        orientation,
-                        parity_constraint: orbit_parity_constraint,
+            .map(|(ksolveset, orbit_orientation_sum_constraint)| {
+                let piece_count = ksolveset.piece_count();
+                let orientation = if ksolveset.orientation_count().get() == 1 {
+                    OrientationStatus::CannotOrient
+                } else {
+                    OrientationStatus::CanOrient {
+                        count: ksolveset.orientation_count().get(),
+                        sum_constraint: orbit_orientation_sum_constraint,
                     }
-                },
-            )
+                };
+                PartialOrbitDef {
+                    piece_count,
+                    orientation,
+                }
+            })
             .collect::<Vec<_>>();
-        Self::new(orbit_defs, even_parity_constraints)
+        Self::new(parial_orbit_defs, even_parity_constraints)
     }
 
     /// # Errors
@@ -137,14 +133,13 @@ impl PuzzleDef {
     /// Returns a [`PuzzleDefCreationError`] if any of its variants are
     /// applicable.
     pub fn new(
-        // orbit_defs: Vec<PartialOrbitDef>,
-        orbit_defs: Vec<OrbitDef>,
+        partial_orbit_defs: Vec<PartialOrbitDef>,
         EvenParityConstraints(raw_even_parity_constraints): EvenParityConstraints,
     ) -> Result<Self, PuzzleDefCreationError> {
-        if orbit_defs.is_empty() {
+        if partial_orbit_defs.is_empty() {
             return Err(PuzzleDefCreationError::NoOrbits);
         }
-        orbit_defs
+        partial_orbit_defs
             .iter()
             .try_for_each(|&orbit_def| match orbit_def.orientation {
                 OrientationStatus::CanOrient { count, .. } if count == 0 || count == 1 => {
@@ -159,7 +154,7 @@ impl PuzzleDef {
         //     .max()
         //     .map(|orbit_index| orbit_index + 1)
         // {
-        let cols = orbit_defs.len();
+        let cols = partial_orbit_defs.len();
         let rows = raw_even_parity_constraints.len();
         let mut even_parity_constraints = BitMatrix::zeros(rows, cols);
         for (i, even_parity_constraint) in raw_even_parity_constraints.into_iter().enumerate() {
@@ -178,14 +173,81 @@ impl PuzzleDef {
         }
         let pivot_cols = even_parity_constraints.gauss(true);
         let rank = pivot_cols.len();
-        let even_parity_constraints = if rank == rows {
-            even_parity_constraints
-        } else {
-            BitMatrix::build(rank, cols, |i, j| even_parity_constraints[(i, j)])
-        };
+        if rank != rows {
+            even_parity_constraints =
+                BitMatrix::build(rank, cols, |i, j| even_parity_constraints[(i, j)]);
+        }
+
+        let cols = even_parity_constraints.cols();
+        let rows = even_parity_constraints.rows();
+        let pivot_cols = even_parity_constraints.gauss(true);
+        let mut uf = QuickUnionUf::<UnionBySize>::new(cols);
+        for free_col in (0..cols).filter(|col| !pivot_cols.contains(col)) {
+            for row in (0..rows).filter_map(|row| {
+                let constraints_row = even_parity_constraints.row(row);
+                if constraints_row.bit(free_col) {
+                    Some(constraints_row)
+                } else {
+                    None
+                }
+            }) {
+                for equal_orbit_index in row
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, bit)| if bit { Some(i) } else { None })
+                {
+                    uf.union(free_col, equal_orbit_index);
+                }
+            }
+        }
+        let mut connected_components = FxHashMap::<usize, Vec<usize>>::default();
+        for (orbit_index, &root) in uf.link_parent().iter().enumerate() {
+            connected_components
+                .entry(root)
+                .or_default()
+                .push(orbit_index);
+        }
+        let connected_components = connected_components.into_values().collect::<Vec<_>>();
+
+        let mut orbit_defs = partial_orbit_defs
+            .iter()
+            .map(
+                |&PartialOrbitDef {
+                     piece_count,
+                     orientation,
+                 }| {
+                    OrbitDef {
+                        piece_count,
+                        orientation,
+                        parity_constraint: ParityConstraint::None,
+                    }
+                },
+            )
+            .collect::<Vec<_>>();
+        for singular_component in connected_components
+            .iter()
+            .filter_map(|connected_component| {
+                let [singular_component] = *connected_component.as_slice() else {
+                    return None;
+                };
+                Some(singular_component)
+            })
+        {
+            match (0..rows)
+                .filter(|&row| even_parity_constraints[(row, singular_component)])
+                .count()
+            {
+                0 => (),
+                1 => {
+                    orbit_defs[singular_component].parity_constraint = ParityConstraint::Even;
+                }
+                2.. => panic!(),
+            }
+        }
         Ok(Self {
             orbit_defs,
             even_parity_constraints,
+            connected_components,
         })
     }
 
@@ -197,6 +259,11 @@ impl PuzzleDef {
     #[must_use]
     pub fn even_parity_constraints(&self) -> &BitMatrix {
         &self.even_parity_constraints
+    }
+
+    #[must_use]
+    pub fn connected_components(&self) -> &[Vec<usize>] {
+        &self.connected_components
     }
 }
 

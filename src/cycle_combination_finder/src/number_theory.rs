@@ -41,6 +41,7 @@ pub fn max_prime_powers_below(orbit_defs: &[OrbitDef], n: u16) -> Vec<MaxPrimePo
     }
 
     let mut max_prime_powers = vec![];
+    println!("n: {n}");
     for (i, &state) in sieve.iter().enumerate().take(n + 1).skip(2) {
         if state != SieveNumberState::Prime {
             continue;
@@ -57,16 +58,38 @@ pub fn max_prime_powers_below(orbit_defs: &[OrbitDef], n: u16) -> Vec<MaxPrimePo
             min_piece_count = next;
             exponent += 1;
         }
-        let orienting_exponent = exponent
-            + if orbit_defs
-                .iter()
-                .find(|&&orbit_def| orbit_def.orientation_count() as usize == prime)
-                .is_some_and(|&orbit_def| min_piece_count as u16 <= orbit_def.piece_count.get())
-            {
-                1
-            } else {
-                0
-            };
+        // println!("prime: {i}\nexponent: {exponent}");
+        // let o =
+        // let local_n = match o {
+        //     Some(o) => usize::from(o.piece_count.get()),
+        //     None => n,
+        // };
+        // let orienting_exponent = exponent
+        //     + if o.is_some_and(|&orbit_def| min_piece_count as u16 <=
+        //       orbit_def.piece_count.get()) { 1
+        //     } else {
+        //         0
+        //     };
+        let orienting_exponent = match orbit_defs
+            .iter()
+            .filter(|&&orbit_def| orbit_def.orientation_count() as usize == prime)
+            .max_by_key(|&&orbit_def| orbit_def.piece_count)
+        {
+            Some(o) => {
+                let mut exponent = 2;
+                let mut min_piece_count = prime;
+                loop {
+                    let next = min_piece_count * prime;
+                    if next > usize::from(o.piece_count.get()) {
+                        break;
+                    }
+                    min_piece_count = next;
+                    exponent += 1;
+                }
+                exponent
+            }
+            None => exponent,
+        };
 
         max_prime_powers.push(MaxPrimePower {
             prime: prime as u16,
@@ -195,7 +218,7 @@ mod max_prime_powers_below {
                 },
                 MaxPrimePower {
                     prime: 3,
-                    exponent: 1,
+                    exponent: 2,
                     orienting_exponent: 2,
                 },
                 MaxPrimePower {

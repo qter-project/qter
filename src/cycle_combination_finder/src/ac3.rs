@@ -14,28 +14,31 @@ fn apply_constriants(
     i: usize,
     v: bool,
 ) -> Option<Vec<ParityAssignment>> {
-    for j in 0..constraints.rows() {
+    for constraint in (0..constraints.rows()).filter_map(|j| {
         let constraint = constraints.row(j);
-        if !constraint.bit(i) {
-            continue;
+        if constraint.bit(i) {
+            Some(constraint)
+        } else {
+            None
         }
+    }) {
         match constraint
             .iter()
             .enumerate()
             .skip(i)
-            .filter(|&(k, c)| c && matches!(curr_assignment[k], ParityAssignment::Unassigned))
+            .filter(|&(j, c)| c && matches!(curr_assignment[j], ParityAssignment::Unassigned))
             .count()
         {
             0 => panic!(),
             1 => {
-                assert!(matches!(curr_assignment[j], ParityAssignment::Unassigned));
+                assert!(matches!(curr_assignment[i], ParityAssignment::Unassigned));
                 let expected_v = constraint
                     .iter()
                     .take(curr_assignment.len())
                     .zip(curr_assignment.iter())
                     .enumerate()
-                    .fold(false, |parity, (k, (c, &a))| {
-                        if c && k != i {
+                    .fold(false, |parity, (j, (c, &a))| {
+                        if c && j != i {
                             let ParityAssignment::Assigned(other_v) = a else {
                                 panic!();
                             };
@@ -49,10 +52,10 @@ fn apply_constriants(
                 }
             }
             2 => {
-                assert!(matches!(curr_assignment[j], ParityAssignment::Unassigned));
+                assert!(matches!(curr_assignment[i], ParityAssignment::Unassigned));
                 let mut parity = false;
                 let mut other: Option<&mut ParityAssignment> = None;
-                for (k, (c, a)) in constraint
+                for (j, (c, a)) in constraint
                     .iter()
                     .take(curr_assignment.len())
                     .zip(curr_assignment.to_mut())
@@ -62,7 +65,7 @@ fn apply_constriants(
                         continue;
                     }
                     match a {
-                        ParityAssignment::Unassigned if k != i => match other {
+                        ParityAssignment::Unassigned if j != i => match other {
                             Some(_) => {
                                 panic!();
                             }
@@ -82,7 +85,7 @@ fn apply_constriants(
                     ParityAssignment::Unassigned => {
                         *other = expected_other;
                     }
-                    other @ ParityAssignment::Assigned(_) if *other != expected_other => {
+                    ParityAssignment::Assigned(_) if *other != expected_other => {
                         return None;
                     }
                     ParityAssignment::Assigned(_) => (),
@@ -96,19 +99,35 @@ fn apply_constriants(
     Some(curr_assignment)
 }
 
-pub fn backtrack_ac3(constraints: &BitMatrix) -> Vec<Vec<ParityAssignment>> {
-    assert_ne!(constraints.cols(), 1);
+/// Enumerate all possible parity assignments for a connected component of
+/// orbits.
+///
+/// # Panics
+///
+/// The constraints matrix *must* be in row-reduced echelon form. This function
+/// is otherwise allowed to panic or produce nonsensical results.
+///
+/// This function also panics if the constraints matrix has one or less columns;
+/// this singular orbit can have all of the possible orders evaluated more
+/// efficiently.
+#[must_use]
+pub fn backtrack_ac3(constraints: &BitMatrix) -> Vec<Vec<bool>> {
+    assert!(constraints.cols() > 1);
     let mut ret = vec![];
 
     let mut stack = vec![(0, vec![ParityAssignment::Unassigned; constraints.cols()])];
     while let Some((i, curr_assignment)) = stack.pop() {
         match curr_assignment[i] {
             ParityAssignment::Assigned(_) => {
-                if curr_assignment
-                    .iter()
-                    .all(|a| matches!(a, ParityAssignment::Assigned(_)))
+                if let Some(assignment) = curr_assignment
+                    .into_iter()
+                    .map(|a| match a {
+                        ParityAssignment::Unassigned => None,
+                        ParityAssignment::Assigned(v) => Some(v),
+                    })
+                    .collect::<Option<Vec<bool>>>()
                 {
-                    ret.push(curr_assignment);
+                    ret.push(assignment);
                 }
             }
             ParityAssignment::Unassigned => {
@@ -132,103 +151,86 @@ pub fn backtrack_ac3(constraints: &BitMatrix) -> Vec<Vec<ParityAssignment>> {
 #[cfg(test)]
 mod tests {
     use bitgauss::BitMatrix;
-    use fxhash::FxHashMap;
-    use union_find::{QuickUnionUf, UnionBySize, UnionFind};
 
-    use crate::{
-        ac3::backtrack_ac3,
-        puzzle::{EvenParityConstraints, OrbitDef, OrientationStatus, ParityConstraint, PuzzleDef},
-    };
+    use crate::ac3::backtrack_ac3;
 
     #[test]
-    fn foo() {
-        let a = PuzzleDef::new(
+    fn simple() {
+        let constraints = BitMatrix::from_bool_vec(&[vec![true, true]]);
+        assert_eq!(
+            backtrack_ac3(&constraints),
+            vec![vec![true, true], vec![false, false]]
+        );
+    }
+
+    #[test]
+    fn complex() {
+        let constraints = BitMatrix::from_bool_vec(&[
+            vec![true, false, false, false, true],
+            vec![false, false, true, false, true],
+            vec![false, false, false, true, true],
+        ]);
+        assert_eq!(
+            backtrack_ac3(&constraints),
             vec![
-                OrbitDef {
-                    piece_count: 1.try_into().unwrap(),
-                    orientation: OrientationStatus::CannotOrient,
-                    parity_constraint: ParityConstraint::None,
-                };
-                2
+                vec![true, true, true, true, true],
+                vec![true, false, true, true, true],
+                vec![false, true, false, false, false],
+                vec![false, false, false, false, false]
             ],
-            EvenParityConstraints(vec![vec![0, 1], vec![0]])
-        )
-        .unwrap();
+        );
 
-        let mut even_parity_constraints = a.even_parity_constraints().clone();
+        let constraints = BitMatrix::from_bool_vec(&[
+            vec![true, false, false, false, true],
+            vec![false, true, false, false, true],
+            vec![false, false, true, true, true],
+        ]);
+        assert_eq!(
+            backtrack_ac3(&constraints),
+            vec![
+                vec![true, true, true, false, true],
+                vec![true, true, false, true, true],
+                vec![false, false, true, true, false],
+                vec![false, false, false, false, false]
+            ],
+        );
 
-        // let mut rows = even_parity_constraints.rows();
-        // let mut constraints =
-        //     BitMatrix::build(rows, cols, |i, j|
-        // even_parity_constraints[i].contains(&j)); let pivot_cols =
-        // constraints.gauss(true); let rank = pivot_cols.len();
-        // if rank != rows {
-        //     rows = rank;
-        //     constraints = BitMatrix::build(rows, cols, |i, j| constraints[(i, j)]);
-        // }
+        let constraints = BitMatrix::from_bool_vec(&[
+            vec![true, false, false, false, false, true],
+            vec![false, true, false, false, false, true],
+            vec![false, false, true, true, true, true],
+        ]);
+        assert_eq!(
+            backtrack_ac3(&constraints),
+            vec![
+                vec![true, true, true, true, true, true],
+                vec![true, true, true, false, false, true],
+                vec![true, true, false, true, false, true],
+                vec![true, true, false, false, true, true],
+                vec![false, false, true, true, false, false],
+                vec![false, false, true, false, true, false],
+                vec![false, false, false, true, true, false],
+                vec![false, false, false, false, false, false],
+            ],
+        );
 
-        let cols = even_parity_constraints.cols();
-        let rows = even_parity_constraints.rows();
-        let pivot_cols = even_parity_constraints.gauss(true);
-        println!("{}", even_parity_constraints);
-        let mut uf = QuickUnionUf::<UnionBySize>::new(cols);
-        for free_col in (0..cols).filter(|col| !pivot_cols.contains(col)) {
-            for row in (0..rows).filter_map(|row| {
-                let constraints_row = even_parity_constraints.row(row);
-                if constraints_row.bit(free_col) {
-                    Some(constraints_row)
-                } else {
-                    None
-                }
-            }) {
-                for equal_orbit_index in row
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(i, bit)| if bit { Some(i) } else { None })
-                {
-                    uf.union(free_col, equal_orbit_index);
-                }
-            }
-        }
-        let mut connected_components = FxHashMap::<usize, Vec<usize>>::default();
-        for (orbit_index, &root) in uf.link_parent().iter().enumerate() {
-            connected_components.entry(root).or_default().push(orbit_index);
-        }
-        for connected_component in connected_components.into_values() {
-            let mut connected_component_parity_constraints = BitMatrix::build(
-                even_parity_constraints.rows(),
-                connected_component.len(),
-                |i, j| even_parity_constraints[(i, j + connected_component[0])],
-            );
-            let pivot_cols = connected_component_parity_constraints.gauss(true);
-            let rank = pivot_cols.len();
-            if even_parity_constraints.rows() != rank {
-                connected_component_parity_constraints =
-                    BitMatrix::build(rank, connected_component.len(), |i, j| {
-                        connected_component_parity_constraints[(i, j)]
-                    });
-            }
-            println!("{:?}", connected_component);
-            println!(
-                "{}: {}",
-                connected_component_parity_constraints.rows(),
-                connected_component_parity_constraints
-            );
-            if connected_component.len() == 1 {
-                continue;
-            }
-            println!(
-                "{:#?}",
-                backtrack_ac3(&connected_component_parity_constraints)
-            );
-        }
-        // let mut sizes = sizes.into_values().collect::<Vec<_>>();
-        // sizes.sort_by_key(|size| Reverse(size.len()));
-        // println!("{:?}", sizes);
-        // println!("{:?}", uf);
-        // println!("{}", constraints);
-        // println!("{}", b);
-        // backtrack_ac3(b, &[0, 1, 2, 3]);
-        panic!();
+        let constraints = BitMatrix::from_bool_vec(&[
+            vec![true, false, false, false, false, true],
+            vec![false, true, false, false, true, true],
+            vec![false, false, true, true, true, false],
+        ]);
+        assert_eq!(
+            backtrack_ac3(&constraints),
+            vec![
+                vec![true, true, true, true, false, true],
+                vec![true, true, false, false, false, true],
+                vec![true, false, true, false, true, true],
+                vec![true, false, false, true, true, true],
+                vec![false, true, true, false, true, false],
+                vec![false, true, false, true, true, false],
+                vec![false, false, true, true, false, false],
+                vec![false, false, false, false, false, false],
+            ],
+        );
     }
 }
