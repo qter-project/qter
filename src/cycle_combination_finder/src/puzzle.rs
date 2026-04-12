@@ -210,9 +210,9 @@ impl PuzzleDef {
         let connected_components = connected_components.into_values().collect::<Vec<_>>();
 
         let mut orbit_defs = partial_orbit_defs
-            .iter()
+            .into_iter()
             .map(
-                |&PartialOrbitDef {
+                |PartialOrbitDef {
                      piece_count,
                      orientation,
                  }| {

@@ -1,10 +1,8 @@
-use std::{cmp::Ordering, collections::BinaryHeap, fmt::Debug, num::NonZeroU16, simd::Simd};
+use std::num::NonZeroU16;
 
 use bitgauss::BitMatrix;
 use dashmap::DashSet;
 use fxhash::{FxBuildHasher, FxHashSet};
-use ndarray::{Array2, Array3, ArrayRef3, Axis, Zip};
-use num_integer::gcd;
 use rayon::prelude::*;
 
 use crate::{
@@ -12,7 +10,6 @@ use crate::{
     number_theory::divisors,
     orderexps::OrderExps,
     puzzle::{OrbitDef, OrientationStatus, OrientationSumConstraint, ParityConstraint, PuzzleDef},
-    trie::MaxOrderTrie,
 };
 
 pub type OrdersSet<const N: usize> = FxHashSet<OrderExps<N>>;
@@ -28,126 +25,6 @@ pub enum OrbitPossibleOrders<const N: usize> {
 
 impl OrbitDef {
     #[must_use]
-    pub fn possible_orders2<const N: usize>(self) -> Array2<OrdersSet<N>> {
-        #[allow(clippy::struct_field_names)]
-        #[derive(Clone, Debug)]
-        struct Cycle<const N: usize> {
-            piece_count: usize,
-            parity: usize,
-            orient_sum: usize,
-            order: OrderExps<N>,
-        }
-
-        let piece_count = self.piece_count.get() as usize;
-        let orientation_count = self.orientation_count() as usize;
-        // TODO: can we switch back to the original DP algorithm and then use 0/1
-        // knapsack adding prime powers only? Similar to how Asher's modified Landau
-        // works
-        let cycles: Vec<Cycle<N>> = (1..=piece_count)
-            .flat_map(|piece_count| {
-                (0..orientation_count).map(move |orient_sum| {
-                    let cycle_order = if orient_sum == 0 {
-                        piece_count as u64
-                    } else {
-                        (piece_count as u64 * orientation_count as u64)
-                            / gcd(orientation_count as u64, orient_sum as u64)
-                    };
-
-                    let mut exps = [0u8; N];
-                    let mut n = cycle_order;
-
-                    for (i, p) in PRIMES.into_iter().enumerate() {
-                        let p = u64::from(p);
-                        if p * p > n && n > 1 {
-                            break;
-                        }
-                        while n.is_multiple_of(p) {
-                            exps[i] += 1;
-                            n /= p;
-                        }
-                    }
-
-                    if n > 1 {
-                        let idx = PRIMES.into_iter().position(|p| u64::from(p) == n).unwrap();
-                        exps[idx] += 1;
-                    }
-
-                    Cycle {
-                        piece_count,
-                        parity: (piece_count - 1) % 2,
-                        orient_sum,
-                        order: OrderExps(Simd::from_array(exps)),
-                    }
-                })
-            })
-            .collect();
-
-        let mut dp: Array3<OrdersSet<N>> = Array3::default((piece_count, orientation_count, 2));
-
-        // Identity
-        dp[(0, 0, 0)].insert(OrderExps::one());
-
-        let solve_problem = |subproblems: &ArrayRef3<OrdersSet<N>>,
-                             dst_piece_count,
-                             dst_orient_sum,
-                             dst_parity,
-                             dst: &mut OrdersSet<N>| {
-            for cycle in cycles
-                .iter()
-                .take_while(|&c| c.piece_count <= dst_piece_count)
-            {
-                let src_piece_count = dst_piece_count - cycle.piece_count;
-                let src_parity = dst_parity ^ cycle.parity;
-                let src_orient_sum =
-                    (dst_orient_sum + orientation_count - cycle.orient_sum) % orientation_count;
-
-                let src = &subproblems[(src_piece_count, src_orient_sum, src_parity)];
-                if !src.is_empty() {
-                    dst.extend(src.iter().map(|order| order.lcm(&cycle.order)));
-                }
-            }
-        };
-
-        for dst_piece_count in 1..piece_count {
-            let (subproblems, mut problems) = dp.view_mut().split_at(Axis(0), dst_piece_count);
-            let problem = problems.index_axis_mut(Axis(0), 0);
-
-            // TODO: we shouldn't have to loop over every single orient_sum because
-            // of GCD magic
-            Zip::indexed(problem).par_for_each(|(dst_orient_sum, dst_parity), dst| {
-                solve_problem(
-                    &subproblems,
-                    dst_piece_count,
-                    dst_orient_sum,
-                    dst_parity,
-                    dst,
-                );
-            });
-        }
-
-        let mut possible_orders: Array2<OrdersSet<N>> = Array2::default((
-            match self.orientation {
-                OrientationStatus::CanOrient {
-                    sum_constraint: OrientationSumConstraint::Zero,
-                    ..
-                }
-                | OrientationStatus::CannotOrient => 1,
-                OrientationStatus::CanOrient { count, .. } => count as usize,
-            },
-            match self.parity_constraint {
-                ParityConstraint::Even => 1,
-                ParityConstraint::None => 2,
-            },
-        ));
-        Zip::indexed(possible_orders.view_mut()).par_for_each(
-            |(dst_orient_sum, dst_parity), dst| {
-                solve_problem(&dp, piece_count, dst_orient_sum, dst_parity, dst);
-            },
-        );
-        possible_orders
-    }
-
-    #[must_use]
     pub fn possible_orders<const N: usize>(
         self,
         combine_parity_orders: bool,
@@ -160,22 +37,28 @@ impl OrbitDef {
         let orientation_count = self.orientation_count();
 
         let invalid_prime_index = PRIMES.partition_point(|&prime| u16::from(prime) <= piece_count);
-        if piece_count == 1 {
-            let mut combined_orders = FxHashSet::default();
-            combined_orders.insert(OrderExps::one());
-            return OrbitPossibleOrders::CombinedOrders(combined_orders);
-        }
         let mut orbit_possible_orders = if combine_parity_orders {
-            OrbitPossibleOrders::CombinedOrders(FxHashSet::default())
+            let mut combined_orders = FxHashSet::default();
+            if piece_count == 1 {
+                combined_orders.insert(OrderExps::one());
+            }
+            OrbitPossibleOrders::CombinedOrders(combined_orders)
         } else {
+            let mut even_parity_orders = FxHashSet::default();
+            if piece_count == 1 {
+                even_parity_orders.insert(OrderExps::one());
+            }
             OrbitPossibleOrders::ParityOrders {
-                even_parity_orders: FxHashSet::default(),
+                even_parity_orders,
                 maybe_odd_parity_orders: match self.parity_constraint {
                     ParityConstraint::Even => None,
                     ParityConstraint::None => Some(FxHashSet::default()),
                 },
             }
         };
+        if piece_count == 1 {
+            return orbit_possible_orders;
+        }
 
         let extend_orientation_order_factors = {
             let orientation_order_factors = divisors(orientation_count);
@@ -305,37 +188,6 @@ impl OrbitDef {
     }
 }
 
-enum LcmOrders<'a> {
-    CombinedOrders(DashSet<OrderExps<N>, FxBuildHasher>),
-    OrbitOrders(&'a OrdersSet<N>),
-}
-
-impl PartialOrd for LcmOrders<'_> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for LcmOrders<'_> {
-    fn cmp(&self, other: &Self) -> Ordering {
-        match (self, other) {
-            (LcmOrders::CombinedOrders(a), LcmOrders::OrbitOrders(b)) => a.len().cmp(&b.len()),
-            (LcmOrders::CombinedOrders(a), LcmOrders::CombinedOrders(b)) => a.len().cmp(&b.len()),
-            (LcmOrders::OrbitOrders(a), LcmOrders::CombinedOrders(b)) => a.len().cmp(&b.len()),
-            (LcmOrders::OrbitOrders(a), LcmOrders::OrbitOrders(b)) => a.len().cmp(&b.len()),
-        }
-        .reverse()
-    }
-}
-
-impl PartialEq for LcmOrders<'_> {
-    fn eq(&self, other: &Self) -> bool {
-        self.cmp(other) == Ordering::Equal
-    }
-}
-
-impl Eq for LcmOrders<'_> {}
-
 impl PuzzleDef {
     pub fn possible_orders(&self) -> OrdersDashSet<N> {
         let even_parity_constraints = self.even_parity_constraints();
@@ -370,137 +222,12 @@ impl PuzzleDef {
                             connected_component_parity_constraints[(i, j)]
                         });
                 }
+                println!("{}", connected_component_parity_constraints);
                 todo!()
             })
             .for_each(|component_possible_orders| {
                 for component_possible_order in component_possible_orders {
                     possible_orders.insert(component_possible_order);
-                }
-            });
-        possible_orders
-    }
-
-    pub fn possible_orders2(&self) -> DashSet<OrderExps<N>, FxBuildHasher> {
-        let all_orbit_orders = self
-            .orbit_defs()
-            .par_iter()
-            .copied()
-            .map(OrbitDef::possible_orders2::<N>)
-            .collect::<Vec<_>>();
-
-        let mut orbit_orders_cart_product = vec![];
-        let mut curr = vec![(0, 0); all_orbit_orders.len()];
-        let even_parity_constraints = self.even_parity_constraints();
-        loop {
-            let mut end = true;
-            let invalid_parity = (0..even_parity_constraints.rows()).any(|i| {
-                let row = even_parity_constraints.row(i);
-                row.iter()
-                    .zip(curr.iter())
-                    .fold(
-                        false,
-                        |parity, (use_it, &(_, c))| {
-                            if use_it { parity ^ (c != 0) } else { parity }
-                        },
-                    )
-            });
-            if !invalid_parity {
-                orbit_orders_cart_product.push(curr.clone());
-            }
-            for ((orient_sum, parity), (max_orient_sum, max_parity)) in curr
-                .iter_mut()
-                .zip(all_orbit_orders.iter().map(Array2::dim))
-            {
-                *orient_sum += 1;
-                if *orient_sum < max_orient_sum {
-                    end = false;
-                    break;
-                }
-                *orient_sum = 0;
-                *parity += 1;
-                if *parity < max_parity {
-                    end = false;
-                    break;
-                }
-                *parity = 0;
-            }
-            if end {
-                break;
-            }
-        }
-
-        let possible_orders = DashSet::<OrderExps<N>, FxBuildHasher>::default();
-
-        orbit_orders_cart_product
-            .into_par_iter()
-            .for_each(|orbit_orders_combination| {
-                let mut smallest_len_orders = all_orbit_orders
-                    .iter()
-                    .zip(orbit_orders_combination)
-                    .map(|(orbit_orders, (orient_sum, parity))| {
-                        LcmOrders::OrbitOrders(&orbit_orders[(orient_sum, parity)])
-                    })
-                    .collect::<BinaryHeap<_>>();
-                while let Some(smallest_len) = smallest_len_orders.pop() {
-                    if let Some(smaller_len) = smallest_len_orders.pop() {
-                        let combined = DashSet::<OrderExps<N>, FxBuildHasher>::default();
-                        let mut root = MaxOrderTrie::new(0);
-                        match smallest_len {
-                            LcmOrders::CombinedOrders(smallest_len) => {
-                                for y in smallest_len {
-                                    root.insert(y);
-                                }
-                            }
-                            LcmOrders::OrbitOrders(smallest_len) => {
-                                for y in smallest_len {
-                                    root.insert(y.clone());
-                                }
-                            }
-                        }
-                        match smaller_len {
-                            LcmOrders::CombinedOrders(smaller_len) => smaller_len
-                                .into_par_iter()
-                                .fold(FxHashSet::default, |mut local_acc, order| {
-                                    let mut acc = [0u8; N];
-                                    root.collect_distinct_orders(&order, &mut acc, &mut local_acc);
-                                    local_acc
-                                })
-                                .for_each(|local_acc| {
-                                    for order in local_acc {
-                                        combined.insert(order);
-                                    }
-                                }),
-                            LcmOrders::OrbitOrders(smaller_len) => smaller_len
-                                .into_par_iter()
-                                .fold(FxHashSet::default, |mut local_acc, order| {
-                                    let mut acc = [0u8; N];
-                                    root.collect_distinct_orders(order, &mut acc, &mut local_acc);
-                                    local_acc
-                                })
-                                .for_each(|local_acc| {
-                                    for order in local_acc {
-                                        combined.insert(order);
-                                    }
-                                }),
-                        }
-
-                        smallest_len_orders.push(LcmOrders::CombinedOrders(combined));
-                    } else {
-                        let all_combined = smallest_len;
-                        match all_combined {
-                            LcmOrders::CombinedOrders(all_combined) => {
-                                for order in all_combined {
-                                    possible_orders.insert(order);
-                                }
-                            }
-                            LcmOrders::OrbitOrders(all_combined) => {
-                                for order in all_combined {
-                                    possible_orders.insert(order.clone());
-                                }
-                            }
-                        }
-                        break;
-                    }
                 }
             });
         possible_orders
@@ -511,6 +238,7 @@ impl PuzzleDef {
 mod orbit {
     use std::{num::NonZeroU16, time::Instant};
 
+    use fxhash::FxHashSet;
     use humanize_duration::{Truncate, prelude::DurationExt};
     use log::info;
 
@@ -526,150 +254,118 @@ mod orbit {
     const PRIME_ORIENTATION: u8 = 13;
     const PRIME_POWER_ORIENTATION: u8 = 16;
 
-    struct ExpectedPossibleOrders {
-        len: usize,
+    #[derive(Clone, Copy)]
+    struct Expected {
         highest: u64,
+        combined_len: usize,
+        uncombined_lens: (usize, Option<usize>),
     }
 
-    enum Combine {
-        Combined(ExpectedPossibleOrders),
-        Uncombined {
-            even_parity: ExpectedPossibleOrders,
-            maybe_odd_parity: Option<ExpectedPossibleOrders>,
-        },
-    }
+    const DEBUG: bool = false;
 
-    fn test_possible_orders(orbit_def: OrbitDef, combine: Combine) {
-        let start = Instant::now();
-        match combine {
-            Combine::Combined(ExpectedPossibleOrders {
-                len: expected_len,
-                highest: expected_highest,
-            }) => {
-                let possible_orders = orbit_def.combined_parity_possible_orders::<N>();
-                info!(
-                    "Possible orbit orders for {orbit_def:?} in {}",
-                    start.elapsed().human(Truncate::Micro)
+    fn test_possible_orders(orbit_def: OrbitDef, expected: Expected) {
+        let mut start = Instant::now();
+        let possible_orders = orbit_def.combined_parity_possible_orders::<N>();
+        info!(
+            "Combined orbit orders for {orbit_def:#?} in {}",
+            start.elapsed().human(Truncate::Micro)
+        );
+        if DEBUG {
+            if possible_orders.len() != expected.combined_len {
+                println!(
+                    "Expected: {} (actual: {})",
+                    expected.combined_len,
+                    possible_orders.len(),
                 );
-
-                assert_eq!(possible_orders.len(), expected_len);
-                let actual_highest = possible_orders
-                    .iter()
-                    .map(|possible_order| u64::try_from(possible_order.as_bigint()).unwrap())
-                    .max()
-                    .unwrap();
-                assert_eq!(expected_highest, actual_highest);
             }
-            Combine::Uncombined {
-                even_parity,
-                maybe_odd_parity,
-            } => {
-                let (even_parity_possible_orders, maybe_odd_parity_possible_orders) =
-                    orbit_def.uncombined_parity_possible_orders::<N>();
-                info!(
-                    "Possible orbit orders for {orbit_def:?} in {}",
-                    start.elapsed().human(Truncate::Micro)
+        } else {
+            assert_eq!(possible_orders.len(), expected.combined_len);
+        }
+        let actual_highest = possible_orders
+            .iter()
+            .map(|possible_order| u64::try_from(possible_order.as_bigint()).unwrap())
+            .max()
+            .unwrap();
+        if DEBUG {
+            if expected.highest != actual_highest {
+                println!("Expected: {} (actual: {actual_highest})", expected.highest);
+            }
+        } else {
+            assert_eq!(expected.highest, actual_highest);
+        }
+
+        start = Instant::now();
+        let (even_parity_possible_orders, maybe_odd_parity_possible_orders) =
+            orbit_def.uncombined_parity_possible_orders::<N>();
+        info!(
+            "Uncombined orbit orders for {orbit_def:#?} in {}",
+            start.elapsed().human(Truncate::Micro)
+        );
+        if DEBUG {
+            if even_parity_possible_orders.len() != expected.uncombined_lens.0 {
+                println!(
+                    "Expected: {} (actual: {})",
+                    expected.uncombined_lens.0,
+                    even_parity_possible_orders.len()
                 );
-
-                assert_eq!(even_parity_possible_orders.len(), even_parity.len);
-                let actual_highest = even_parity_possible_orders
-                    .iter()
-                    .map(|possible_order| u64::try_from(possible_order.as_bigint()).unwrap())
-                    .max()
-                    .unwrap();
-                assert_eq!(even_parity.highest, actual_highest);
-                let (odd_parity_possible_orders, odd_parity) =
-                    match (maybe_odd_parity_possible_orders, maybe_odd_parity) {
-                        (None, None) => return,
-                        (Some(odd_parity_possible_orders), Some(odd_parity)) => {
-                            (odd_parity_possible_orders, odd_parity)
-                        }
-                        _ => panic!(),
-                    };
-                assert_eq!(odd_parity_possible_orders.len(), odd_parity.len);
-                let actual_highest = odd_parity_possible_orders
-                    .iter()
-                    .map(|possible_order| u64::try_from(possible_order.as_bigint()).unwrap())
-                    .max()
-                    .unwrap();
-                assert_eq!(odd_parity.highest, actual_highest);
             }
+        } else {
+            assert_eq!(
+                even_parity_possible_orders.len(),
+                expected.uncombined_lens.0
+            );
+        }
+        match (maybe_odd_parity_possible_orders, expected.uncombined_lens.1) {
+            (None, None) => (),
+            (Some(odd_parity_possible_orders), Some(expected_len)) => {
+                if DEBUG {
+                    if odd_parity_possible_orders.len() != expected_len {
+                        println!(
+                            "Expected: {expected_len} (actual: {})",
+                            odd_parity_possible_orders.len()
+                        );
+                    }
+                } else {
+                    assert_eq!(odd_parity_possible_orders.len(), expected_len);
+                }
+                let mut possible_orders2 = even_parity_possible_orders;
+                possible_orders2.extend(odd_parity_possible_orders);
+                assert!(
+                    possible_orders2 == possible_orders,
+                    "possible_order2 != possible_orders"
+                );
+            }
+            _ => panic!(),
         }
     }
 
-    // #[test_log::test]
-    // fn foo() {
-    //     let start = Instant::now();
-    //     let orbit_def = OrbitDef {
-    //         piece_count: PRIME_POWER_PIECE_COUNT,
-    //         orientation: OrientationStatus::CanOrient {
-    //             count: PRIME_POWER_PIECE_COUNT.get().try_into().unwrap(),
-    //             sum_constraint: OrientationSumConstraint::Zero,
-    //         },
-    //         parity_constraint: ParityConstraint::None,
-    //     };
-    //     let possible_orders = orbit_def.possible_orders2::<N>();
-    //     info!(
-    //         "Possible orbit orders for {orbit_def:?} in {}",
-    //         start.elapsed().human(Truncate::Micro)
-    //     );
-    //     panic!();
-    // }
-
     #[test_log::test]
-    fn edge_cases() {
-        // two orientation count is an edge case since it is the only number
-        // where the number of cycles cannot simply be greater than 1
-        let orbit_def = OrbitDef {
-            piece_count: 12.try_into().unwrap(),
-            orientation: OrientationStatus::CanOrient {
-                count: 2,
-                sum_constraint: OrientationSumConstraint::Zero,
-            },
-            parity_constraint: ParityConstraint::None,
-        };
-
-        let start = Instant::now();
-        let possible_orders = orbit_def.possible_orders2::<N>();
-        info!(
-            "Possible orbit orders for {orbit_def:?} in {}",
-            start.elapsed().human(Truncate::Micro)
-        );
-
-        println!("{:?}", {
-            let mut a = possible_orders[(0, 0)]
-                .iter()
-                .map(|a| u16::try_from(a.as_bigint()).unwrap())
-                .collect::<Vec<_>>();
-            a.sort_unstable();
-            a
-        });
-        println!("{:?}", {
-            let mut a = possible_orders[(0, 1)]
-                .iter()
-                .map(|a| u16::try_from(a.as_bigint()).unwrap())
-                .collect::<Vec<_>>();
-            a.sort_unstable();
-            a
-        });
-        // println!("{:?}", possible_orders[(0, 0)].len());
-        // println!("{:?}", possible_orders[(0, 1)].len());
-        let mut possible_orders = possible_orders
-            .into_iter()
-            .flat_map(|f| f.into_iter().map(|a| a.as_bigint()))
-            .collect::<Vec<_>>();
-        possible_orders.sort_unstable();
-        possible_orders.dedup();
-
-        assert_eq!(possible_orders.len(), 0);
-    }
-
-    #[test_log::test]
-    fn all_composite_piece_counts() {
-        for (orientation_count, expected_len, expected_highest) in [
-            (COMPOSITE_ORIENTATION, 99622, 107084577600),
-            (PRIME_ORIENTATION, 75770, 69604975440),
-            (PRIME_POWER_ORIENTATION, 89594, 85667662080),
+    fn composite_piece_counts() {
+        for (orientation_count, mut expected) in [
+            (
+                COMPOSITE_ORIENTATION,
+                Expected {
+                    highest: 107084577600,
+                    combined_len: 99622,
+                    uncombined_lens: (95101, Some(81435)),
+                },
+            ),
+            (
+                PRIME_ORIENTATION,
+                Expected {
+                    highest: 69604975440,
+                    combined_len: 75770,
+                    uncombined_lens: (70713, Some(58098)),
+                },
+            ),
+            (
+                PRIME_POWER_ORIENTATION,
+                Expected {
+                    highest: 85667662080,
+                    combined_len: 89594,
+                    uncombined_lens: (86485, Some(75583)),
+                },
+            ),
         ] {
             test_possible_orders(
                 OrbitDef {
@@ -680,20 +376,72 @@ mod orbit {
                     },
                     parity_constraint: ParityConstraint::None,
                 },
-                Combine::Combined(ExpectedPossibleOrders {
-                    len: expected_len,
-                    highest: expected_highest,
-                }),
+                expected,
+            );
+            test_possible_orders(
+                OrbitDef {
+                    piece_count: COMPOSITE_PIECE_COUNT,
+                    orientation: OrientationStatus::CanOrient {
+                        count: orientation_count,
+                        sum_constraint: OrientationSumConstraint::None,
+                    },
+                    parity_constraint: ParityConstraint::None,
+                },
+                expected,
+            );
+            expected.uncombined_lens.1 = None;
+            test_possible_orders(
+                OrbitDef {
+                    piece_count: COMPOSITE_PIECE_COUNT,
+                    orientation: OrientationStatus::CanOrient {
+                        count: orientation_count,
+                        sum_constraint: OrientationSumConstraint::Zero,
+                    },
+                    parity_constraint: ParityConstraint::Even,
+                },
+                expected,
+            );
+            test_possible_orders(
+                OrbitDef {
+                    piece_count: COMPOSITE_PIECE_COUNT,
+                    orientation: OrientationStatus::CanOrient {
+                        count: orientation_count,
+                        sum_constraint: OrientationSumConstraint::None,
+                    },
+                    parity_constraint: ParityConstraint::Even,
+                },
+                expected,
             );
         }
     }
 
     #[test_log::test]
-    fn all_prime_piece_counts() {
-        for (orientation_count, expected_len, expected_highest) in [
-            (COMPOSITE_ORIENTATION, 73860, 53542288800),
-            (PRIME_ORIENTATION, 55880, 34802487720),
-            (PRIME_POWER_ORIENTATION, 66402, 42833831040),
+    fn prime_piece_counts_zero_orientation_sum_constraint() {
+        for (orientation_count, mut expected) in [
+            (
+                COMPOSITE_ORIENTATION,
+                Expected {
+                    highest: 53542288800,
+                    combined_len: 73860,
+                    uncombined_lens: (70528, Some(60037)),
+                },
+            ),
+            (
+                PRIME_ORIENTATION,
+                Expected {
+                    highest: 34802487720,
+                    combined_len: 55880,
+                    uncombined_lens: (52127, Some(42638)),
+                },
+            ),
+            (
+                PRIME_POWER_ORIENTATION,
+                Expected {
+                    highest: 42833831040,
+                    combined_len: 66402,
+                    uncombined_lens: (64114, Some(55663)),
+                },
+            ),
         ] {
             test_possible_orders(
                 OrbitDef {
@@ -704,20 +452,104 @@ mod orbit {
                     },
                     parity_constraint: ParityConstraint::None,
                 },
-                Combine::Combined(ExpectedPossibleOrders {
-                    len: expected_len,
-                    highest: expected_highest,
-                }),
+                expected,
+            );
+            expected.uncombined_lens.1 = None;
+            test_possible_orders(
+                OrbitDef {
+                    piece_count: PRIME_PIECE_COUNT,
+                    orientation: OrientationStatus::CanOrient {
+                        count: orientation_count,
+                        sum_constraint: OrientationSumConstraint::Zero,
+                    },
+                    parity_constraint: ParityConstraint::Even,
+                },
+                expected,
             );
         }
     }
 
     #[test_log::test]
-    fn all_prime_power_piece_counts() {
-        for (orientation_count, expected_len, expected_highest) in [
-            (COMPOSITE_ORIENTATION, 6222, 40840800),
-            (PRIME_ORIENTATION, 4526, 26546520),
-            (PRIME_POWER_ORIENTATION, 5534, 32672640),
+    fn prime_piece_counts_no_orientation_sum_constraint() {
+        for (orientation_count, mut expected) in [
+            (
+                COMPOSITE_ORIENTATION,
+                Expected {
+                    highest: 53542288800,
+                    combined_len: 73865,
+                    uncombined_lens: (70533, Some(60037)),
+                },
+            ),
+            (
+                PRIME_ORIENTATION,
+                Expected {
+                    highest: 34802487720,
+                    combined_len: 55881,
+                    uncombined_lens: (52128, Some(42638)),
+                },
+            ),
+            (
+                PRIME_POWER_ORIENTATION,
+                Expected {
+                    highest: 42833831040,
+                    combined_len: 66406,
+                    uncombined_lens: (64118, Some(55663)),
+                },
+            ),
+        ] {
+            test_possible_orders(
+                OrbitDef {
+                    piece_count: PRIME_PIECE_COUNT,
+                    orientation: OrientationStatus::CanOrient {
+                        count: orientation_count,
+                        sum_constraint: OrientationSumConstraint::None,
+                    },
+                    parity_constraint: ParityConstraint::None,
+                },
+                expected,
+            );
+            expected.uncombined_lens.1 = None;
+            test_possible_orders(
+                OrbitDef {
+                    piece_count: PRIME_PIECE_COUNT,
+                    orientation: OrientationStatus::CanOrient {
+                        count: orientation_count,
+                        sum_constraint: OrientationSumConstraint::None,
+                    },
+                    parity_constraint: ParityConstraint::Even,
+                },
+                expected,
+            );
+        }
+    }
+
+    #[test_log::test]
+    fn prime_power_piece_counts_zero_orientation_sum_constraint() {
+        for (orientation_count, mut expected) in [
+            (
+                COMPOSITE_ORIENTATION,
+                Expected {
+                    highest: 40840800,
+                    combined_len: 6222,
+                    uncombined_lens: (5889, Some(4868)),
+                },
+            ),
+            (
+                PRIME_ORIENTATION,
+                Expected {
+                    highest: 26546520,
+                    combined_len: 4526,
+                    uncombined_lens: (4145, Some(3319)),
+                },
+            ),
+            (
+                PRIME_POWER_ORIENTATION,
+                Expected {
+                    highest: 32672640,
+                    combined_len: 5534,
+                    uncombined_lens: (5308, Some(4466)),
+                },
+            ),
         ] {
             test_possible_orders(
                 OrbitDef {
@@ -728,20 +560,104 @@ mod orbit {
                     },
                     parity_constraint: ParityConstraint::None,
                 },
-                Combine::Combined(ExpectedPossibleOrders {
-                    len: expected_len,
-                    highest: expected_highest,
-                }),
+                expected,
+            );
+            expected.uncombined_lens.1 = None;
+            test_possible_orders(
+                OrbitDef {
+                    piece_count: PRIME_POWER_PIECE_COUNT,
+                    orientation: OrientationStatus::CanOrient {
+                        count: orientation_count,
+                        sum_constraint: OrientationSumConstraint::Zero,
+                    },
+                    parity_constraint: ParityConstraint::Even,
+                },
+                expected,
             );
         }
     }
 
     #[test_log::test]
-    fn same_piece_count_and_orientation_count() {
-        for (same_count, expected_len, expected_highest) in [
-            (COMPOSITE_PIECE_COUNT, 155425, 642507465600),
-            (PRIME_PIECE_COUNT, 68050, 302513931720),
-            (PRIME_POWER_PIECE_COUNT, 6966, 130690560),
+    fn prime_power_piece_counts_no_orientation_sum_constraint() {
+        for (orientation_count, mut expected) in [
+            (
+                COMPOSITE_ORIENTATION,
+                Expected {
+                    highest: 40840800,
+                    combined_len: 6224,
+                    uncombined_lens: (5889, Some(4870)),
+                },
+            ),
+            (
+                PRIME_ORIENTATION,
+                Expected {
+                    highest: 26546520,
+                    combined_len: 4527,
+                    uncombined_lens: (4145, Some(3320)),
+                },
+            ),
+            (
+                PRIME_POWER_ORIENTATION,
+                Expected {
+                    highest: 32672640,
+                    combined_len: 5535,
+                    uncombined_lens: (5308, Some(4467)),
+                },
+            ),
+        ] {
+            test_possible_orders(
+                OrbitDef {
+                    piece_count: PRIME_POWER_PIECE_COUNT,
+                    orientation: OrientationStatus::CanOrient {
+                        count: orientation_count,
+                        sum_constraint: OrientationSumConstraint::None,
+                    },
+                    parity_constraint: ParityConstraint::None,
+                },
+                expected,
+            );
+            expected.uncombined_lens.1 = None;
+            test_possible_orders(
+                OrbitDef {
+                    piece_count: PRIME_POWER_PIECE_COUNT,
+                    orientation: OrientationStatus::CanOrient {
+                        count: orientation_count,
+                        sum_constraint: OrientationSumConstraint::None,
+                    },
+                    parity_constraint: ParityConstraint::Even,
+                },
+                expected,
+            );
+        }
+    }
+
+    #[test_log::test]
+    fn same_piece_count_and_orientation_count_zero_orientation_sum_constraint() {
+        for (same_count, mut expected) in [
+            (
+                COMPOSITE_PIECE_COUNT,
+                Expected {
+                    highest: 642507465600,
+                    combined_len: 155425,
+                    uncombined_lens: (149639, Some(129050)),
+                },
+            ),
+            (
+                PRIME_PIECE_COUNT,
+                Expected {
+                    highest: 302513931720,
+                    combined_len: 68050,
+                    uncombined_lens: (63474, Some(51862)),
+                },
+            ),
+            (
+                PRIME_POWER_PIECE_COUNT,
+                Expected {
+                    highest: 130690560,
+                    combined_len: 6966,
+                    uncombined_lens: (6740, Some(5722)),
+                },
+            ),
         ] {
             test_possible_orders(
                 OrbitDef {
@@ -752,22 +668,75 @@ mod orbit {
                     },
                     parity_constraint: ParityConstraint::None,
                 },
-                Combine::Combined(ExpectedPossibleOrders {
-                    len: expected_len,
-                    highest: expected_highest,
-                }),
+                expected,
+            );
+            expected.uncombined_lens.1 = None;
+            test_possible_orders(
+                OrbitDef {
+                    piece_count: same_count,
+                    orientation: OrientationStatus::CanOrient {
+                        count: same_count.get().try_into().unwrap(),
+                        sum_constraint: OrientationSumConstraint::Zero,
+                    },
+                    parity_constraint: ParityConstraint::Even,
+                },
+                expected,
             );
         }
     }
 
     #[test_log::test]
-    fn all_parities() {
-        panic!()
-    }
-
-    #[test_log::test]
-    fn all_orientation_sums() {
-        panic!();
+    fn same_piece_count_and_orientation_count_no_orientation_sum_constraint() {
+        for (same_count, mut expected) in [
+            (
+                COMPOSITE_PIECE_COUNT,
+                Expected {
+                    highest: 642507465600,
+                    combined_len: 155425,
+                    uncombined_lens: (149639, Some(129050)),
+                },
+            ),
+            (
+                PRIME_PIECE_COUNT,
+                Expected {
+                    highest: 302513931720,
+                    combined_len: 68051,
+                    uncombined_lens: (63475, Some(51862)),
+                },
+            ),
+            (
+                PRIME_POWER_PIECE_COUNT,
+                Expected {
+                    highest: 130690560,
+                    combined_len: 6967,
+                    uncombined_lens: (6740, Some(5723)),
+                },
+            ),
+        ] {
+            test_possible_orders(
+                OrbitDef {
+                    piece_count: same_count,
+                    orientation: OrientationStatus::CanOrient {
+                        count: same_count.get().try_into().unwrap(),
+                        sum_constraint: OrientationSumConstraint::None,
+                    },
+                    parity_constraint: ParityConstraint::None,
+                },
+                expected,
+            );
+            expected.uncombined_lens.1 = None;
+            test_possible_orders(
+                OrbitDef {
+                    piece_count: same_count,
+                    orientation: OrientationStatus::CanOrient {
+                        count: same_count.get().try_into().unwrap(),
+                        sum_constraint: OrientationSumConstraint::None,
+                    },
+                    parity_constraint: ParityConstraint::Even,
+                },
+                expected,
+            );
+        }
     }
 }
 
@@ -797,7 +766,7 @@ mod puzzle {
         expected_highest_ten: [u64; 10],
     ) {
         let start = Instant::now();
-        let possible_orders = puzzle_def.possible_orders2();
+        let possible_orders = puzzle_def.possible_orders();
         info!(
             "Possible puzzle orders for {puzzle_def:?} in {}",
             start.elapsed().human(Truncate::Micro)
