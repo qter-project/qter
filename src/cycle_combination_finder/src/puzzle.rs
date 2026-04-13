@@ -6,6 +6,8 @@ use puzzle_theory::ksolve::KSolve;
 use thiserror::Error;
 use union_find::{QuickUnionUf, UnionBySize, UnionFind};
 
+use crate::gauss_jordan_without_zero_rows;
+
 pub mod cubeN;
 pub mod minxN;
 pub mod misc;
@@ -147,13 +149,7 @@ impl PuzzleDef {
                 }
                 _ => Ok(()),
             })?;
-        // let even_parity_constraints = if let Some(cols) = raw_even_parity_constraints
-        //     .iter()
-        //     .flatten()
-        //     .copied()
-        //     .max()
-        //     .map(|orbit_index| orbit_index + 1)
-        // {
+
         let cols = partial_orbit_defs.len();
         let rows = raw_even_parity_constraints.len();
         let mut even_parity_constraints = BitMatrix::zeros(rows, cols);
@@ -171,16 +167,10 @@ impl PuzzleDef {
                 even_parity_constraints.set_bit(i, j, true);
             }
         }
-        let pivot_cols = even_parity_constraints.gauss(true);
-        let rank = pivot_cols.len();
-        if rank != rows {
-            even_parity_constraints =
-                BitMatrix::build(rank, cols, |i, j| even_parity_constraints[(i, j)]);
-        }
 
+        let pivot_cols = gauss_jordan_without_zero_rows(&mut even_parity_constraints, rows);
         let cols = even_parity_constraints.cols();
         let rows = even_parity_constraints.rows();
-        let pivot_cols = even_parity_constraints.gauss(true);
         let mut uf = QuickUnionUf::<UnionBySize>::new(cols);
         for free_col in (0..cols).filter(|col| !pivot_cols.contains(col)) {
             for row in (0..rows).filter_map(|row| {

@@ -87,15 +87,15 @@ impl Display for Status {
             Status::TimeUntilEnabled(time_delta) => {
                 write!(f, "Time until talks end: ")?;
                 format_duration(f, *time_delta)
-            },
+            }
             Status::TimeUntilDisabled(time_delta) => {
                 write!(f, "Time until talks start: ")?;
                 format_duration(f, *time_delta)
-            },
+            }
             Status::TimeUntilOfficialClose(time_delta) => {
                 write!(f, "Time until exhibit tables officially close: ")?;
                 format_duration(f, *time_delta)
-            },
+            }
             Status::ConferenceOver => write!(f, "Conference is over!"),
         }
     }
@@ -140,14 +140,14 @@ pub fn status<Tz: TimeZone>(now: DateTime<Tz>) -> Status {
 #[cfg(test)]
 mod tests {
     use chrono::{Duration, TimeZone, Utc};
-    use chrono_tz::US::{Pacific, Eastern};
+    use chrono_tz::US::{Eastern, Pacific};
 
     use crate::{Status, status};
 
     #[test]
     fn test_status() {
         // Thursday
-        
+
         // Before talks
         assert_eq!(
             status(Pacific.with_ymd_and_hms(2026, 2, 19, 7, 30, 0).unwrap()),
@@ -162,7 +162,12 @@ mod tests {
 
         // During talks + UTC conv
         assert_eq!(
-            status(Eastern.with_ymd_and_hms(2026, 2, 19, 12, 30, 0).unwrap().with_timezone(&Utc)),
+            status(
+                Eastern
+                    .with_ymd_and_hms(2026, 2, 19, 12, 30, 0)
+                    .unwrap()
+                    .with_timezone(&Utc)
+            ),
             Status::TimeUntilEnabled(Duration::minutes(30)),
         );
 
@@ -189,7 +194,7 @@ mod tests {
         // After talks
         assert_eq!(
             status(Pacific.with_ymd_and_hms(2026, 2, 21, 12, 30, 0).unwrap()),
-            Status::TimeUntilOfficialClose(Duration::minutes(30 + 60*7)),
+            Status::TimeUntilOfficialClose(Duration::minutes(30 + 60 * 7)),
         );
 
         // During talks

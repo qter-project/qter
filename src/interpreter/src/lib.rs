@@ -807,8 +807,7 @@ mod tests {
             include_str!("../../compiler/tests/modulus/modulus.qat"),
             include_str!("../../compiler/tests/modulus/modulus.q"),
             [209],
-            (0..210)
-                .map(|a| ([a], format!("The modulus is {}", a % 13))),
+            (0..210).map(|a| ([a], format!("The modulus is {}", a % 13))),
         )
         .await;
     }

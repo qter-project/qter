@@ -11,4 +11,3 @@ pub mod table_encoding;
 
 mod runtime;
 pub use runtime::*;
-

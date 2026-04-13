@@ -53,7 +53,9 @@ pub fn compile(
 }
 
 #[expect(clippy::manual_try_fold)] // We are not reimplementing it
-pub fn collect_flat_err<C, I, IE>(iter: impl Iterator<Item = Result<I, IE>>) -> Result<C, Vec<IE::Item>>
+pub fn collect_flat_err<C, I, IE>(
+    iter: impl Iterator<Item = Result<I, IE>>,
+) -> Result<C, Vec<IE::Item>>
 where
     C: Default + Extend<I::Item>,
     I: IntoIterator,

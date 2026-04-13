@@ -5,10 +5,13 @@
     clippy::too_many_lines,
     clippy::bool_to_int_with_if,
     clippy::unreadable_literal,
+    clippy::similar_names,
     // TODO
     clippy::cast_possible_truncation
 )]
 #![feature(portable_simd, exact_div)]
+
+use bitgauss::BitMatrix;
 
 pub const N: usize = 32;
 pub const PRIMES: [u8; N] = [
@@ -17,10 +20,18 @@ pub const PRIMES: [u8; N] = [
 ];
 pub const PRIME_AFTER_LAST: u8 = 137;
 
+fn gauss_jordan_without_zero_rows(m: &mut BitMatrix, expected_rows: usize) -> Vec<usize> {
+    let pivot_cols = m.gauss(true);
+    if expected_rows != pivot_cols.len() {
+        *m = BitMatrix::build(pivot_cols.len(), m.cols(), |i, j| m[(i, j)]);
+    }
+    pivot_cols
+}
+
 pub mod ac3;
 pub mod finder;
 pub mod number_theory;
 pub mod orderexps;
-mod possible_orders;
+pub mod possible_orders;
 pub mod puzzle;
 pub mod trie;

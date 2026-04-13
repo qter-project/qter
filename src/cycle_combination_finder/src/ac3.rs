@@ -104,8 +104,9 @@ fn apply_constriants(
 ///
 /// # Panics
 ///
-/// The constraints matrix *must* be in row-reduced echelon form. This function
-/// is otherwise allowed to panic or produce nonsensical results.
+/// The constraints matrix *must* be in row-reduced echelon form, with zero rows
+/// removed. This function is otherwise allowed to panic or produce nonsensical
+/// results.
 ///
 /// This function also panics if the constraints matrix has one or less columns;
 /// this singular orbit can have all of the possible orders evaluated more

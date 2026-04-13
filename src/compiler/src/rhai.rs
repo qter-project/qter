@@ -10,7 +10,8 @@ use puzzle_theory::{
 use rhai::{AST, Array, CustomType, Dynamic, Engine, ImmutableString, ParseError, Scope};
 
 use crate::{
-    Block, Code, ExpansionInfo, Instruction, MacroBranchKey, MacroCall, RegisterInfo, ResolvedValue, Value
+    Block, Code, ExpansionInfo, Instruction, MacroBranchKey, MacroCall, RegisterInfo,
+    ResolvedValue, Value,
 };
 
 thread_local! {
@@ -152,7 +153,11 @@ fn into_rhai(arg: ResolvedValue, info: &ExpansionInfo) -> Dynamic {
     }
 }
 
-fn from_rhai(value: Dynamic, span: Span, branch_key: MacroBranchKey) -> Result<ResolvedValue, String> {
+fn from_rhai(
+    value: Dynamic,
+    span: Span,
+    branch_key: MacroBranchKey,
+) -> Result<ResolvedValue, String> {
     if let Ok(int) = value.as_int() {
         let Ok(v) = u64::try_from(int) else {
             return Err(format!("Integer values must be positive. Found {int}"));
@@ -196,13 +201,20 @@ fn from_rhai(value: Dynamic, span: Span, branch_key: MacroBranchKey) -> Result<R
 
     try_decode_block(value, &span, branch_key).map(|v| {
         ResolvedValue::Block(Block {
-            code: v.into_iter().map(|v| v.map(|v| (v, None, Some(branch_key)))).collect_vec(),
+            code: v
+                .into_iter()
+                .map(|v| v.map(|v| (v, None, Some(branch_key))))
+                .collect_vec(),
         })
     })
 }
 
 /// Returns `None` if there are no instructions in the block (an empty array)
-fn try_decode_block(value: Dynamic, span: &Span, branch_key: MacroBranchKey) -> Result<Option<WithSpan<Instruction>>, String> {
+fn try_decode_block(
+    value: Dynamic,
+    span: &Span,
+    branch_key: MacroBranchKey,
+) -> Result<Option<WithSpan<Instruction>>, String> {
     let value = match value.try_cast_result::<Array>() {
         Ok(v) => v,
         Err(value) => {
@@ -222,7 +234,10 @@ fn try_decode_block(value: Dynamic, span: &Span, branch_key: MacroBranchKey) -> 
         let name = values.next().unwrap().into_string().unwrap();
 
         let args = values
-            .map(|v| from_rhai(v, span.clone(), branch_key).map(|v| span.clone().with(Value::Resolved(v))))
+            .map(|v| {
+                from_rhai(v, span.clone(), branch_key)
+                    .map(|v| span.clone().with(Value::Resolved(v)))
+            })
             .try_collect::<_, Vec<_>, _>()?;
 
         Ok(Some(span.clone().with(Instruction::Code(Code::Macro(

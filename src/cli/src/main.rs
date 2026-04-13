@@ -4,7 +4,10 @@
 #![allow(clippy::needless_pass_by_value)]
 
 use std::{
-    error::Error, fs, io, path::{Path, PathBuf}, sync::Arc
+    error::Error,
+    fs, io,
+    path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use ariadne::{Color, Label, Report, ReportKind, Source};
@@ -75,13 +78,10 @@ enum Commands {
     },
 }
 
-fn process_errors(
-    errs: Vec<Rich<'static, char, Span>>,
-    file: &Path,
-) -> color_eyre::Report {
+fn process_errors(errs: Vec<Rich<'static, char, Span>>, file: &Path) -> color_eyre::Report {
     for err in &errs {
         let source = err.span().source();
-        
+
         Report::build(ReportKind::Error, err.span().clone())
             .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
             .with_message(err.to_string())
@@ -105,7 +105,7 @@ fn process_errors(
 
 fn compile_qat(file: &Path) -> color_eyre::Result<(Program, File)> {
     let path = ArcIntern::from(format!("{}", file.display()));
-    
+
     let qat = File::new(path, ArcIntern::from(fs::read_to_string(file)?));
 
     match compile(&qat, |name| {

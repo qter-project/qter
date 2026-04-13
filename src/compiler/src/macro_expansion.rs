@@ -308,11 +308,13 @@ fn expand_code(
 
                 let (block_id, _) = expansion_info.block_info.new_block(block_id);
 
-                return collect_err::<Vec<_>, _, Vec<_>>(branch.code.iter().cloned().map(|mut v| {
-                    v.1 = Some(block_id);
-                    resolve_just_these_defines(&mut v, &defines)?;
-                    Ok(v)
-                }));
+                return collect_err::<Vec<_>, _, Vec<_>>(branch.code.iter().cloned().map(
+                    |mut v| {
+                        v.1 = Some(block_id);
+                        resolve_just_these_defines(&mut v, &defines)?;
+                        Ok(v)
+                    },
+                ));
             }
 
             Err(vec![Rich::custom(

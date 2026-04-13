@@ -21,8 +21,8 @@ fn playground() {
     // let even_parity_constraints = vec![vec![0, 1], vec![0, 1], vec![0, 2, 3],
     // vec![0, 4]];
     // let even_parity_constraints = vec![vec![0, 5], vec![1, 5], vec![2, 3]];
-    // let even_parity_constraints = vec![vec![0, 1], vec![0, 2, 3], vec![0, 4]];
-    // let puzzle = PuzzleDef::new(
+    // let even_parity_constraints = vec![vec![0, 1], vec![0, 2, 3], vec![0,
+    // 4]]; let puzzle = PuzzleDef::new(
     //     vec![
     //         OrbitDef {
     //             piece_count: 150.try_into().unwrap(),

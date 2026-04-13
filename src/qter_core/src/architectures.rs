@@ -525,47 +525,47 @@ pub fn with_presets(group: Arc<PermutationGroup>) -> PuzzleDefinition {
 
 static THREE_BY_THREE_PRESETS: LazyLock<[Arc<Architecture>; 6]> = LazyLock::new(|| {
     let group = puzzle("3x3").permutation_group();
-    
+
     [
-            (&["R U2 D' B D'"] as &[&str], None),
-            (&["U", "D"], Some(4)),
-            (
-                &["R' F' L U' L U L F U' R", "U F R' D' R2 F R' U' D"],
-                Some(3),
-            ),
-            (&["U R U' D2 B", "B U2 B' L' U2 B U L' B L B2 L"], Some(0)),
-            (
-                &[
-                    "U L2 B' L U' B' U2 R B' R' B L",
-                    "R2 L U' R' L2 F' D R' D L B2 D2",
-                    "L2 F2 U L' F D' F' U' L' F U D L' U'",
-                ],
-                Some(1),
-            ),
-            (
-                &[
-                    "U L B' L B' U R' D U2 L2 F2",
-                    "D L' F L2 B L' F' L B' D' L'",
-                    "R' U' L' F2 L F U F R L U'",
-                    "B2 U2 L F' R B L2 D2 B R' F L",
-                ],
-                Some(2),
-            ),
-        ]
-        .map(|(algs, maybe_index): (&[&str], Option<usize>)| {
-            let mut arch = Architecture::new(
-                Arc::clone(&group),
-                algs.iter()
-                    .map(|alg| Algorithm::parse_from_string(Arc::clone(&group), alg).unwrap())
-                    .collect(),
-            );
+        (&["R U2 D' B D'"] as &[&str], None),
+        (&["U", "D"], Some(4)),
+        (
+            &["R' F' L U' L U L F U' R", "U F R' D' R2 F R' U' D"],
+            Some(3),
+        ),
+        (&["U R U' D2 B", "B U2 B' L' U2 B U L' B L B2 L"], Some(0)),
+        (
+            &[
+                "U L2 B' L U' B' U2 R B' R' B L",
+                "R2 L U' R' L2 F' D R' D L B2 D2",
+                "L2 F2 U L' F D' F' U' L' F U D L' U'",
+            ],
+            Some(1),
+        ),
+        (
+            &[
+                "U L B' L B' U R' D U2 L2 F2",
+                "D L' F L2 B L' F' L B' D' L'",
+                "R' U' L' F2 L F U F R L U'",
+                "B2 U2 L F' R B L2 D2 B R' F L",
+            ],
+            Some(2),
+        ),
+    ]
+    .map(|(algs, maybe_index): (&[&str], Option<usize>)| {
+        let mut arch = Architecture::new(
+            Arc::clone(&group),
+            algs.iter()
+                .map(|alg| Algorithm::parse_from_string(Arc::clone(&group), alg).unwrap())
+                .collect(),
+        );
 
-            if let Some(index) = maybe_index {
-                arch.set_optimized_table(Cow::Borrowed(OPTIMIZED_TABLES[index]));
-            }
+        if let Some(index) = maybe_index {
+            arch.set_optimized_table(Cow::Borrowed(OPTIMIZED_TABLES[index]));
+        }
 
-            Arc::new(arch)
-        })
+        Arc::new(arch)
+    })
 });
 
 /// This function does what it says on the tin.

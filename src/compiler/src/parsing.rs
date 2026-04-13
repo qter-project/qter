@@ -1,5 +1,7 @@
 use crate::{
-    Block, BlockInfo, BlockInfoTracker, Code, Define, DefineValue, ExpansionInfo, Label, MacroArgTy, MacroBranch, MacroPattern, MacroPatternComponent, ResolvedValue, RhaiCall, Value, builtin_macros::builtin_macros, rhai::RhaiMacros
+    Block, BlockInfo, BlockInfoTracker, Code, Define, DefineValue, ExpansionInfo, Label,
+    MacroArgTy, MacroBranch, MacroPattern, MacroPatternComponent, ResolvedValue, RhaiCall, Value,
+    builtin_macros::builtin_macros, rhai::RhaiMacros,
 };
 use std::{
     collections::HashMap,
@@ -451,10 +453,10 @@ fn register_decl_unswitchable() -> impl Parser<'static, File, MaybeErr<Puzzle>, 
                 } => {
                     let span = architecture.span().clone();
                     let (arch, swizzle) = architecture.into_inner();
-                    
+
                     if arch.registers().len() == names.len() {
                         swizzle.apply(&mut names);
-                        
+
                         MaybeErr::Some(Puzzle::Real {
                             architectures: vec![(names, span.with(arch), def_span)],
                         })
@@ -793,14 +795,16 @@ fn instruction(
 }
 
 fn label() -> impl Parser<'static, File, WithSpan<Instruction>, Extra> {
-    group((tag_ident().with_state(()), whitespace(), just(':'))).map_with(|((public, name), (), _), data| {
-        data.span().with(Instruction::Label(Label {
-            name: name.value,
-            public,
-            maybe_block_id: None,
-            branch_key: None,
-        }))
-    })
+    group((tag_ident().with_state(()), whitespace(), just(':'))).map_with(
+        |((public, name), (), _), data| {
+            data.span().with(Instruction::Label(Label {
+                name: name.value,
+                public,
+                maybe_block_id: None,
+                branch_key: None,
+            }))
+        },
+    )
 }
 
 fn code(

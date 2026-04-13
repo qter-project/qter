@@ -9,11 +9,19 @@ use puzzle_theory::span::WithSpan;
 
 /// The facelets needed for `solved-goto`
 #[derive(Debug, Clone)]
-pub struct Facelets { facelets: Vec<usize>, pieces: Vec<ArcIntern<str>>, order: Int<U>, }
+pub struct Facelets {
+    facelets: Vec<usize>,
+    pieces: Vec<ArcIntern<str>>,
+    order: Int<U>,
+}
 
 impl Facelets {
     pub fn new(facelets: Vec<usize>, pieces: Vec<ArcIntern<str>>, order: Int<U>) -> Self {
-        Self { facelets, pieces, order }
+        Self {
+            facelets,
+            pieces,
+            order,
+        }
     }
 
     pub fn facelets(&self) -> &[usize] {
@@ -66,7 +74,9 @@ pub enum ByPuzzleType<'a, T: SeparatesByPuzzleType> {
 impl<'a, T: SeparatesByPuzzleType> ByPuzzleType<'a, T> {
     pub fn unwrap_puzzle(&self) -> &T::Puzzle<'a> {
         match self {
-            ByPuzzleType::Theoretical(_) => panic!("Found theoretical instruction when a puzzle one was expected"),
+            ByPuzzleType::Theoretical(_) => {
+                panic!("Found theoretical instruction when a puzzle one was expected")
+            }
             ByPuzzleType::Puzzle(v) => v,
         }
     }

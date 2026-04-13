@@ -13,7 +13,7 @@ use crate::{
         global::DeadLabelRemover,
         local::{
             CoalesceAdds, RemoveUnreachableCode, RemoveUselessJumps, RepeatUntil1, RepeatUntil2,
-            RepeatUntil3, VectorizeRepeatUntil, TransformSolve,
+            RepeatUntil3, TransformSolve, VectorizeRepeatUntil,
         },
     },
     strip_expanded::GlobalRegs,

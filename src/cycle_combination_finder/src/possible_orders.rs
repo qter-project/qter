@@ -1,15 +1,18 @@
-use std::num::NonZeroU16;
+use std::{borrow::Cow, cmp::Ordering, collections::BinaryHeap, num::NonZeroU16};
 
 use bitgauss::BitMatrix;
 use dashmap::DashSet;
-use fxhash::{FxBuildHasher, FxHashSet};
+use fxhash::{FxBuildHasher, FxHashMap, FxHashSet};
 use rayon::prelude::*;
 
 use crate::{
-    N, PRIME_AFTER_LAST, PRIMES,
+    PRIME_AFTER_LAST, PRIMES,
+    ac3::backtrack_ac3,
+    gauss_jordan_without_zero_rows,
     number_theory::divisors,
     orderexps::OrderExps,
     puzzle::{OrbitDef, OrientationStatus, OrientationSumConstraint, ParityConstraint, PuzzleDef},
+    trie::MaxOrderTrie,
 };
 
 pub type OrdersSet<const N: usize> = FxHashSet<OrderExps<N>>;
@@ -38,13 +41,13 @@ impl OrbitDef {
 
         let invalid_prime_index = PRIMES.partition_point(|&prime| u16::from(prime) <= piece_count);
         let mut orbit_possible_orders = if combine_parity_orders {
-            let mut combined_orders = FxHashSet::default();
+            let mut combined_orders = OrdersSet::default();
             if piece_count == 1 {
                 combined_orders.insert(OrderExps::one());
             }
             OrbitPossibleOrders::CombinedOrders(combined_orders)
         } else {
-            let mut even_parity_orders = FxHashSet::default();
+            let mut even_parity_orders = OrdersSet::default();
             if piece_count == 1 {
                 even_parity_orders.insert(OrderExps::one());
             }
@@ -52,7 +55,7 @@ impl OrbitDef {
                 even_parity_orders,
                 maybe_odd_parity_orders: match self.parity_constraint {
                     ParityConstraint::Even => None,
-                    ParityConstraint::None => Some(FxHashSet::default()),
+                    ParityConstraint::None => Some(OrdersSet::default()),
                 },
             }
         };
@@ -137,11 +140,11 @@ impl OrbitDef {
             while !u16::from(orientation_count).is_multiple_of(gcd) {
                 gcd = gcd.div_exact(u16::from(base_prime)).unwrap();
             }
-            for multiple in (gcd..=piece_count).step_by(usize::from(gcd)) {
+            for multiple in (gcd..=piece_count)
+                .step_by(usize::from(gcd))
+                .skip(if gcd == 1 { 1 } else { 0 })
+            {
                 let multiple = NonZeroU16::new(multiple).unwrap();
-                if multiple.get() == 1 {
-                    continue;
-                }
 
                 let impossible = OrderExps::<N>::try_from(self.piece_count).unwrap()
                     * OrderExps::<N>::try_from(multiple).unwrap();
@@ -188,49 +191,334 @@ impl OrbitDef {
     }
 }
 
+#[derive(Debug, Clone)]
+enum LcmOrders<const N: usize> {
+    CombinedOrders(OrdersDashSet<N>),
+    OrbitOrders(OrdersSet<N>),
+}
+
+impl<const N: usize> PartialOrd for LcmOrders<N> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<const N: usize> Ord for LcmOrders<N> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            (LcmOrders::CombinedOrders(a), LcmOrders::OrbitOrders(b)) => a.len().cmp(&b.len()),
+            (LcmOrders::CombinedOrders(a), LcmOrders::CombinedOrders(b)) => a.len().cmp(&b.len()),
+            (LcmOrders::OrbitOrders(a), LcmOrders::CombinedOrders(b)) => a.len().cmp(&b.len()),
+            (LcmOrders::OrbitOrders(a), LcmOrders::OrbitOrders(b)) => a.len().cmp(&b.len()),
+        }
+        .reverse()
+    }
+}
+
+impl<const N: usize> PartialEq for LcmOrders<N> {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl<const N: usize> Eq for LcmOrders<N> {}
+
 impl PuzzleDef {
-    pub fn possible_orders(&self) -> OrdersDashSet<N> {
+    fn connected_component_possible_orders<const N: usize>(
+        &self,
+        connected_component: &[usize],
+    ) -> LcmOrders<N> {
         let even_parity_constraints = self.even_parity_constraints();
+
+        if let [singular_component] = *connected_component {
+            let orbit_def = self.orbit_defs()[singular_component];
+            return LcmOrders::OrbitOrders(match orbit_def.parity_constraint {
+                ParityConstraint::Even => {
+                    let (component_possible_orders, None) =
+                        orbit_def.uncombined_parity_possible_orders()
+                    else {
+                        panic!();
+                    };
+                    component_possible_orders
+                }
+                ParityConstraint::None => orbit_def.combined_parity_possible_orders(),
+            });
+        }
+
+        let mut connected_component_parity_constraints = BitMatrix::build(
+            even_parity_constraints.rows(),
+            connected_component.len(),
+            |i, j| even_parity_constraints[(i, j + connected_component[0])],
+        );
+
+        gauss_jordan_without_zero_rows(
+            &mut connected_component_parity_constraints,
+            even_parity_constraints.rows(),
+        );
+        let possible_assignments = backtrack_ac3(&connected_component_parity_constraints);
+
+        let mut possible_assignments_symbols = vec![];
+        for possible_assignment in &possible_assignments {
+            let mut possible_assignment_symbols = FxHashSet::default();
+            for (i, &parity) in possible_assignment.iter().enumerate() {
+                let symbol = i * 2 + usize::from(parity);
+                assert!(possible_assignment_symbols.insert(symbol));
+            }
+            possible_assignments_symbols.push(possible_assignment_symbols);
+        }
+
+        let mut work = connected_component
+            .iter()
+            .enumerate()
+            .flat_map(|(symbol, &orbit_index)| {
+                let (even_parity_orders, Some(odd_parity_orders)) =
+                    self.orbit_defs()[orbit_index].uncombined_parity_possible_orders()
+                else {
+                    panic!();
+                };
+                [
+                    (symbol * 2, LcmOrders::OrbitOrders(even_parity_orders)),
+                    (symbol * 2 + 1, LcmOrders::OrbitOrders(odd_parity_orders)),
+                ]
+                .into_iter()
+            })
+            .collect::<FxHashMap<usize, LcmOrders<N>>>();
+        loop {
+            let (symbol_pair, max_count) = work
+                .keys()
+                .enumerate()
+                .flat_map(|(i, &a)| {
+                    let possible_assignments_symbols = &possible_assignments_symbols;
+                    work.keys().skip(i + 1).map(move |&b| {
+                        let count = possible_assignments_symbols
+                            .iter()
+                            .filter(|s| s.contains(&a) && s.contains(&b))
+                            .count();
+                        ([a, b], count)
+                    })
+                })
+                .max_by_key(|(_, count)| *count)
+                // we can unwrap because it's not a zero matrix
+                .unwrap();
+            if max_count <= 1 {
+                break;
+            }
+
+            if max_count == 0 {
+                break;
+            }
+
+            for possible_assignment_symbols in &mut possible_assignments_symbols {
+                assert_eq!(
+                    possible_assignment_symbols.contains(&symbol_pair[1]),
+                    possible_assignment_symbols.remove(&symbol_pair[1])
+                );
+            }
+
+            let mut smallest = work.remove(&symbol_pair[0]).unwrap();
+            let mut smaller = work.remove(&symbol_pair[1]).unwrap();
+
+            let smaller_len = match &smaller {
+                LcmOrders::CombinedOrders(smaller) => smaller.len(),
+                LcmOrders::OrbitOrders(smaller) => smaller.len(),
+            };
+            let smallest_len = match &smallest {
+                LcmOrders::CombinedOrders(smallest) => smallest.len(),
+                LcmOrders::OrbitOrders(smallest) => smallest.len(),
+            };
+            if smaller_len < smallest_len {
+                std::mem::swap(&mut smallest, &mut smaller);
+            }
+
+            let mut root = MaxOrderTrie::new(0);
+
+            match &smallest {
+                LcmOrders::CombinedOrders(smallest) => {
+                    for order in smallest.iter() {
+                        root.insert(order.clone());
+                    }
+                }
+                LcmOrders::OrbitOrders(smallest) => {
+                    for order in smallest {
+                        root.insert(order.clone());
+                    }
+                }
+            }
+            let combined_orders = OrdersDashSet::default();
+            match smaller {
+                LcmOrders::CombinedOrders(smaller) => smaller
+                    .into_par_iter()
+                    .fold(OrdersSet::default, |mut local_acc, order| {
+                        let mut acc = [0u8; N];
+                        root.collect_distinct_orders(&order, &mut acc, &mut local_acc);
+                        local_acc
+                    })
+                    .for_each(|local_acc| {
+                        for order in local_acc {
+                            combined_orders.insert(order);
+                        }
+                    }),
+                LcmOrders::OrbitOrders(smaller) => {
+                    smaller
+                        .into_par_iter()
+                        .fold(OrdersSet::default, |mut local_acc, order| {
+                            let mut acc = [0u8; N];
+                            root.collect_distinct_orders(&order, &mut acc, &mut local_acc);
+                            local_acc
+                        })
+                        .for_each(|local_acc| {
+                            for order in local_acc {
+                                combined_orders.insert(order);
+                            }
+                        });
+                }
+            }
+
+            work.insert(symbol_pair[0], LcmOrders::CombinedOrders(combined_orders));
+        }
+        // TODO: return this raw if work.len() == 1
         let possible_orders = OrdersDashSet::default();
+        possible_assignments_symbols
+            .into_par_iter()
+            .for_each(|possible_assignment_symbols| {
+                let mut smallest_len_orders = possible_assignment_symbols
+                    .into_iter()
+                    .map(|possible_assignment_symbol| {
+                        Cow::Borrowed(work.get(&possible_assignment_symbol).unwrap())
+                    })
+                    .collect::<BinaryHeap<_>>();
+
+                while let Some(smallest_len) = smallest_len_orders.pop() {
+                    if let Some(smaller_len) = smallest_len_orders.pop() {
+                        let combined = DashSet::<OrderExps<N>, FxBuildHasher>::default();
+                        let mut root = MaxOrderTrie::new(0);
+                        match &*smallest_len {
+                            LcmOrders::CombinedOrders(smallest_len) => {
+                                for y in smallest_len.iter() {
+                                    root.insert(y.clone());
+                                }
+                            }
+                            LcmOrders::OrbitOrders(smallest_len) => {
+                                for y in smallest_len {
+                                    root.insert(y.clone());
+                                }
+                            }
+                        }
+                        match &*smaller_len {
+                            LcmOrders::CombinedOrders(smaller_len) => smaller_len
+                                .into_par_iter()
+                                .fold(FxHashSet::default, |mut local_acc, order| {
+                                    let mut acc = [0u8; N];
+                                    root.collect_distinct_orders(&order, &mut acc, &mut local_acc);
+                                    local_acc
+                                })
+                                .for_each(|local_acc| {
+                                    for order in local_acc {
+                                        combined.insert(order);
+                                    }
+                                }),
+                            LcmOrders::OrbitOrders(smaller_len) => smaller_len
+                                .into_par_iter()
+                                .fold(FxHashSet::default, |mut local_acc, order| {
+                                    let mut acc = [0u8; N];
+                                    root.collect_distinct_orders(order, &mut acc, &mut local_acc);
+                                    local_acc
+                                })
+                                .for_each(|local_acc| {
+                                    for order in local_acc {
+                                        combined.insert(order);
+                                    }
+                                }),
+                        }
+
+                        smallest_len_orders.push(Cow::Owned(LcmOrders::CombinedOrders(combined)));
+                    } else {
+                        let all_combined = smallest_len;
+                        match &*all_combined {
+                            LcmOrders::CombinedOrders(all_combined) => {
+                                for order in all_combined.iter() {
+                                    possible_orders.insert(order.clone());
+                                }
+                            }
+                            LcmOrders::OrbitOrders(all_combined) => {
+                                for order in all_combined {
+                                    possible_orders.insert(order.clone());
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+            });
+
+        LcmOrders::CombinedOrders(possible_orders)
+    }
+
+    pub fn possible_orders<const N: usize>(&self) -> OrdersDashSet<N> {
         self.connected_components()
             .par_iter()
             .map(|connected_component| {
-                if let [singular_component] = *connected_component.as_slice() {
-                    let orbit_def = self.orbit_defs()[singular_component];
-                    return match orbit_def.parity_constraint {
-                        ParityConstraint::Even => {
-                            let (component_possible_orders, None) =
-                                orbit_def.uncombined_parity_possible_orders()
-                            else {
-                                panic!();
-                            };
-                            component_possible_orders
-                        }
-                        ParityConstraint::None => orbit_def.combined_parity_possible_orders(),
-                    };
-                }
-                let mut connected_component_parity_constraints = BitMatrix::build(
-                    even_parity_constraints.rows(),
-                    connected_component.len(),
-                    |i, j| even_parity_constraints[(i, j + connected_component[0])],
-                );
-                let pivot_cols = connected_component_parity_constraints.gauss(true);
-                let rank = pivot_cols.len();
-                if even_parity_constraints.rows() != rank {
-                    connected_component_parity_constraints =
-                        BitMatrix::build(rank, connected_component.len(), |i, j| {
-                            connected_component_parity_constraints[(i, j)]
-                        });
-                }
-                println!("{}", connected_component_parity_constraints);
-                todo!()
+                self.connected_component_possible_orders(connected_component)
             })
-            .for_each(|component_possible_orders| {
-                for component_possible_order in component_possible_orders {
-                    possible_orders.insert(component_possible_order);
+            .fold(OrdersDashSet::default, |acc, component_possible_orders| {
+                let mut root = MaxOrderTrie::new(0);
+                // TODO: is the other order faster?
+                for order in acc.iter() {
+                    root.insert(order.clone());
                 }
-            });
-        possible_orders
+                match component_possible_orders {
+                    LcmOrders::CombinedOrders(component_possible_orders) => {
+                        component_possible_orders
+                            .into_par_iter()
+                            .fold(OrdersSet::default, |mut local_acc, order| {
+                                let mut acc = [0u8; N];
+                                root.collect_distinct_orders(&order, &mut acc, &mut local_acc);
+                                local_acc
+                            })
+                            .for_each(|local_acc| {
+                                for order in local_acc {
+                                    acc.insert(order);
+                                }
+                            });
+                    }
+                    LcmOrders::OrbitOrders(component_possible_orders) => component_possible_orders
+                        .into_par_iter()
+                        .fold(OrdersSet::default, |mut local_acc, order| {
+                            let mut acc = [0u8; N];
+                            root.collect_distinct_orders(&order, &mut acc, &mut local_acc);
+                            local_acc
+                        })
+                        .for_each(|local_acc| {
+                            for order in local_acc {
+                                acc.insert(order);
+                            }
+                        }),
+                }
+                acc
+            })
+            .reduce(OrdersDashSet::default, |mut smallest, mut smaller| {
+                if smaller.len() < smallest.len() {
+                    std::mem::swap(&mut smallest, &mut smaller);
+                }
+
+                let mut root = MaxOrderTrie::new(0);
+                for order in smallest.iter() {
+                    root.insert(order.clone());
+                }
+                smaller
+                    .into_par_iter()
+                    .fold(OrdersSet::default, |mut local_acc, order| {
+                        let mut acc = [0u8; N];
+                        root.collect_distinct_orders(&order, &mut acc, &mut local_acc);
+                        local_acc
+                    })
+                    .for_each(|local_acc| {
+                        for order in local_acc {
+                            smallest.insert(order);
+                        }
+                    });
+                smallest
+            })
     }
 }
 
@@ -238,7 +526,6 @@ impl PuzzleDef {
 mod orbit {
     use std::{num::NonZeroU16, time::Instant};
 
-    use fxhash::FxHashSet;
     use humanize_duration::{Truncate, prelude::DurationExt};
     use log::info;
 
@@ -748,12 +1035,15 @@ mod puzzle {
     use log::info;
     use puzzle_theory::numbers::{Int, U};
 
-    use crate::puzzle::{
-        EvenParityConstraints, OrientationStatus, OrientationSumConstraint, PartialOrbitDef,
-        PuzzleDef,
-        cubeN::{CUBE2, CUBE3, CUBE4, CUBE5},
-        minxN::MEGAMINX,
-        misc::SLOW,
+    use crate::{
+        N,
+        puzzle::{
+            EvenParityConstraints, OrientationStatus, OrientationSumConstraint, PartialOrbitDef,
+            PuzzleDef,
+            cubeN::{CUBE2, CUBE3, CUBE4, CUBE5},
+            minxN::MEGAMINX,
+            misc::SLOW,
+        },
     };
 
     fn bigints(n: &[u64]) -> Vec<Int<U>> {
@@ -766,7 +1056,7 @@ mod puzzle {
         expected_highest_ten: [u64; 10],
     ) {
         let start = Instant::now();
-        let possible_orders = puzzle_def.possible_orders();
+        let possible_orders = puzzle_def.possible_orders::<N>();
         info!(
             "Possible puzzle orders for {puzzle_def:?} in {}",
             start.elapsed().human(Truncate::Micro)
@@ -831,10 +1121,11 @@ mod puzzle {
                 278460, 282744, 308880, 332640, 353430, 360360, 432432, 471240, 540540, 720720,
             ],
         );
+        panic!();
     }
 
     #[test_log::test]
-    fn slow() {
+    fn slow1() {
         test_possible_orders(
             &SLOW,
             24820,
@@ -846,9 +1137,9 @@ mod puzzle {
     }
 
     #[test_log::test]
-    fn misc() {
-        let tests = vec![(
-            PuzzleDef::new(
+    fn slow2() {
+        test_possible_orders(
+            &PuzzleDef::new(
                 vec![
                     PartialOrbitDef {
                         piece_count: 120.try_into().unwrap(),
@@ -881,10 +1172,91 @@ mod puzzle {
                 86176313823600,
                 86642131736160,
             ],
-        )];
+        );
+    }
 
-        for (puzzle_def, expected_len, expected_highest_len) in tests {
-            test_possible_orders(&puzzle_def, expected_len, expected_highest_len);
-        }
+    #[test_log::test]
+    fn slow3() {
+        test_possible_orders(
+            &PuzzleDef::new(
+                vec![
+                    PartialOrbitDef {
+                        piece_count: 120.try_into().unwrap(),
+                        orientation: OrientationStatus::CanOrient {
+                            count: 20,
+                            sum_constraint: OrientationSumConstraint::Zero,
+                        },
+                    },
+                    PartialOrbitDef {
+                        piece_count: 80.try_into().unwrap(),
+                        orientation: OrientationStatus::CanOrient {
+                            count: 30,
+                            sum_constraint: OrientationSumConstraint::Zero,
+                        },
+                    },
+                ],
+                EvenParityConstraints(vec![vec![0, 1]]),
+            )
+            .unwrap(),
+            1234189,
+            [
+                48572104155120,
+                48734191265760,
+                51483005814240,
+                51705788294160,
+                55271704728240,
+                56241383758560,
+                57761421157440,
+                72201776446800,
+                86176313823600,
+                86642131736160,
+            ],
+        );
+    }
+
+    #[test_log::test]
+    fn slow4() {
+        test_possible_orders(
+            &PuzzleDef::new(
+                vec![
+                    PartialOrbitDef {
+                        piece_count: 80.try_into().unwrap(),
+                        orientation: OrientationStatus::CanOrient {
+                            count: 3,
+                            sum_constraint: OrientationSumConstraint::Zero,
+                        },
+                    },
+                    PartialOrbitDef {
+                        piece_count: 120.try_into().unwrap(),
+                        orientation: OrientationStatus::CanOrient {
+                            count: 2,
+                            sum_constraint: OrientationSumConstraint::Zero,
+                        },
+                    },
+                    PartialOrbitDef {
+                        piece_count: 40.try_into().unwrap(),
+                        orientation: OrientationStatus::CanOrient {
+                            count: 6,
+                            sum_constraint: OrientationSumConstraint::Zero,
+                        },
+                    },
+                ],
+                EvenParityConstraints(vec![vec![0, 1, 2]]),
+            )
+            .unwrap(),
+            3631922,
+            [
+                2036090095799760,
+                2069784258141600,
+                2119937320060560,
+                2137172582825280,
+                2368218267455040,
+                2671465728531600,
+                2960272834318800,
+                3104676387212400,
+                3205758874237920,
+                5342931457063200,
+            ],
+        );
     }
 }

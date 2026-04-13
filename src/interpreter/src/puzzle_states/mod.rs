@@ -362,8 +362,7 @@ pub struct WrapSimulatedPuzzle<R: RobotLike> {
 }
 
 /// What to do if the simulated puzzle and result of `take_picture` mismatch
-#[derive(Clone, Copy, Debug)]
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(tag = "behavior")]
 pub enum MismatchBehavior {
     /// Return the simulated state. `R::take_picture` will never be invoked.
