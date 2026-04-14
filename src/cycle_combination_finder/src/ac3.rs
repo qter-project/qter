@@ -121,14 +121,16 @@ pub fn backtrack_ac3(constraints: &BitMatrix) -> Vec<Vec<bool>> {
         match curr_assignment[i] {
             ParityAssignment::Assigned(_) => {
                 if let Some(assignment) = curr_assignment
-                    .into_iter()
-                    .map(|a| match a {
+                    .iter()
+                    .map(|&a| match a {
                         ParityAssignment::Unassigned => None,
                         ParityAssignment::Assigned(v) => Some(v),
                     })
                     .collect::<Option<Vec<bool>>>()
                 {
                     ret.push(assignment);
+                } else {
+                    stack.push((i + 1, curr_assignment));
                 }
             }
             ParityAssignment::Unassigned => {
@@ -232,6 +234,81 @@ mod tests {
                 vec![false, false, true, true, false, false],
                 vec![false, false, false, false, false, false],
             ],
+        );
+    }
+
+    #[test_log::test]
+    fn cube7() {
+        let constraints = BitMatrix::from_bool_vec(&[
+            vec![
+                true, false, false, false, false, false, false, false, false, true,
+            ],
+            vec![
+                false, true, false, false, false, false, false, false, false, true,
+            ],
+            vec![
+                false, false, true, false, false, true, false, false, true, false,
+            ],
+            vec![
+                false, false, false, true, false, true, false, false, false, true,
+            ],
+            vec![
+                false, false, false, false, true, true, false, false, true, true,
+            ],
+            vec![
+                false, false, false, false, false, false, true, false, false, true,
+            ],
+            vec![
+                false, false, false, false, false, false, false, true, true, false,
+            ],
+        ]);
+
+        assert_eq!(
+            backtrack_ac3(&constraints),
+            vec![
+                vec![
+                    true, true, true, true, true, false, true, false, false, true
+                ],
+                vec![true, true, true, true, false, false, true, true, true, true],
+                vec![true, true, true, false, true, true, true, true, true, true],
+                vec![
+                    true, true, true, false, false, true, true, false, false, true
+                ],
+                vec![
+                    true, true, false, true, true, false, true, false, false, true
+                ],
+                vec![
+                    true, true, false, true, false, false, true, true, true, true
+                ],
+                vec![true, true, false, false, true, true, true, true, true, true],
+                vec![
+                    true, true, false, false, false, true, true, false, false, true
+                ],
+                vec![
+                    false, false, true, true, true, true, false, false, false, false
+                ],
+                vec![
+                    false, false, true, true, false, true, false, true, true, false
+                ],
+                vec![
+                    false, false, true, false, true, false, false, true, true, false
+                ],
+                vec![
+                    false, false, true, false, false, false, false, false, false, false
+                ],
+                vec![
+                    false, false, false, true, true, true, false, false, false, false
+                ],
+                vec![
+                    false, false, false, true, false, true, false, true, true, false
+                ],
+                vec![
+                    false, false, false, false, true, false, false, true, true, false
+                ],
+                vec![
+                    false, false, false, false, false, false, false, false, false, false
+                ]
+            ]
         );
     }
 }
