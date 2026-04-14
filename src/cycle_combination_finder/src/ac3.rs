@@ -118,22 +118,14 @@ pub fn backtrack_ac3(constraints: &BitMatrix) -> Vec<Vec<bool>> {
 
     let mut stack = vec![(0, vec![ParityAssignment::Unassigned; constraints.cols()])];
     while let Some((i, curr_assignment)) = stack.pop() {
-        match curr_assignment[i] {
-            ParityAssignment::Assigned(_) => {
-                if let Some(assignment) = curr_assignment
-                    .iter()
-                    .map(|&a| match a {
-                        ParityAssignment::Unassigned => None,
-                        ParityAssignment::Assigned(v) => Some(v),
-                    })
-                    .collect::<Option<Vec<bool>>>()
-                {
-                    ret.push(assignment);
-                } else {
-                    stack.push((i + 1, curr_assignment));
-                }
+        match curr_assignment.get(i) {
+            None => {
+                ret.push(curr_assignment);
             }
-            ParityAssignment::Unassigned => {
+            Some(ParityAssignment::Assigned(_)) => {
+                stack.push((i + 1, curr_assignment));
+            }
+            Some(ParityAssignment::Unassigned) => {
                 if let Some(applied_false) =
                     apply_constriants(constraints, Cow::Borrowed(&curr_assignment), i, false)
                 {
