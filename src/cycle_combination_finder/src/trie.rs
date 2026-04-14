@@ -39,7 +39,7 @@ impl<const N: usize> MaxOrderTrie<N> {
         }
     }
 
-    pub fn collect_distinct_orders(
+    fn collect_distinct_orders(
         &self,
         order: &OrderExps<N>,
         acc: &mut [u8; N],

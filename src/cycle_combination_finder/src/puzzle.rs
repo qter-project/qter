@@ -1,4 +1,4 @@
-use std::num::NonZeroU16;
+use std::{fmt::Debug, num::NonZeroU16};
 
 use bitgauss::BitMatrix;
 use fxhash::FxHashMap;
@@ -32,7 +32,7 @@ pub enum PuzzleDefCreationError {
     InvalidOrientationCount(u8),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct PuzzleDef {
     orbit_defs: Vec<OrbitDef>,
     even_parity_constraints: BitMatrix,
@@ -86,6 +86,14 @@ pub enum ParityConstraint {
 //         }
 //     }
 // }
+
+impl Debug for PuzzleDef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PuzzleDef")
+            .field("orbit_defs", &self.orbit_defs)
+            .finish_non_exhaustive()
+    }
+}
 
 impl PuzzleDef {
     /// "Naively" make a [`PuzzleDef`] from a [`KSolve`]. It is naive in the

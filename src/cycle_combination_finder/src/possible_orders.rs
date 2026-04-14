@@ -473,18 +473,7 @@ impl PuzzleDef {
                 for order in smallest.iter() {
                     root.insert(order.clone());
                 }
-                smaller
-                    .into_par_iter()
-                    .fold(OrdersSet::default, |mut local_acc, order| {
-                        let mut acc = [0u8; N];
-                        root.collect_distinct_orders(&order, &mut acc, &mut local_acc);
-                        local_acc
-                    })
-                    .for_each(|local_acc| {
-                        for order in local_acc {
-                            smallest.insert(order);
-                        }
-                    });
+                root.par_collect_distinct_orders(&smaller, &smallest);
                 smallest
             })
     }
