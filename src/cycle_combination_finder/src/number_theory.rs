@@ -182,7 +182,7 @@ impl<const N: usize> TryFrom<NonZeroU16> for OrderExps<N> {
 mod max_prime_powers_below {
     use crate::{
         number_theory::{MaxPrimePower, max_prime_powers_below},
-        puzzle::{cubeN::CUBE3, minxN::MEGAMINX, misc::SLOW},
+        puzzle::{cubeN::CUBE3, minxN::MINX3, misc::SLOW1},
     };
 
     #[test_log::test]
@@ -241,9 +241,9 @@ mod max_prime_powers_below {
     }
 
     #[test_log::test]
-    fn megaminx() {
-        let megaminx = MEGAMINX.orbit_defs();
-        let max_prime_powers = max_prime_powers_below(megaminx, 30);
+    fn minx3() {
+        let minx3 = MINX3.orbit_defs();
+        let max_prime_powers = max_prime_powers_below(minx3, 30);
         assert_eq!(
             max_prime_powers,
             vec![
@@ -303,7 +303,7 @@ mod max_prime_powers_below {
 
     #[test_log::test]
     fn slow() {
-        let slow = SLOW.orbit_defs();
+        let slow = SLOW1.orbit_defs();
         let max_prime_powers = max_prime_powers_below(slow, 60);
         assert_eq!(
             max_prime_powers,

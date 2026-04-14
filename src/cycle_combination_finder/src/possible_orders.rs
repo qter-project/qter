@@ -283,6 +283,7 @@ impl PuzzleDef {
                 .into_iter()
             })
             .collect::<FxHashMap<usize, LcmOrders<N>>>();
+        let mut next_symbol = connected_component.len() * 2;
         loop {
             let (symbol_pair, max_count) = work
                 .keys()
@@ -297,32 +298,56 @@ impl PuzzleDef {
                         ([a, b], count)
                     })
                 })
-                .max_by_key(|(_, count)| *count)
+                .max_by_key(|&(_, count)| count)
                 // we can unwrap because it's not a zero matrix
                 .unwrap();
             if max_count <= 1 {
                 break;
             }
 
-            if max_count == 0 {
-                break;
-            }
-
+            let mut keep = [false, false];
             for possible_assignment_symbols in &mut possible_assignments_symbols {
-                assert_eq!(
+                match (
+                    possible_assignment_symbols.contains(&symbol_pair[0]),
                     possible_assignment_symbols.contains(&symbol_pair[1]),
-                    possible_assignment_symbols.remove(&symbol_pair[1])
-                );
+                ) {
+                    (true, true) => {
+                        possible_assignment_symbols.remove(&symbol_pair[0]);
+                        possible_assignment_symbols.remove(&symbol_pair[1]);
+                        possible_assignment_symbols.insert(next_symbol);
+                    }
+                    (true, false) => {
+                        keep[0] = true;
+                    }
+                    (false, true) => {
+                        keep[1] = true;
+                    }
+                    (false, false) => (),
+                }
             }
 
-            let mut smallest = work.remove(&symbol_pair[0]).unwrap();
-            let mut smaller = work.remove(&symbol_pair[1]).unwrap();
+            let tmp = if keep[1] {
+                None
+            } else {
+                Some(work.remove(&symbol_pair[1]).unwrap())
+            };
 
-            let smaller_len = match &smaller {
+            let mut smallest = if keep[0] {
+                Cow::Borrowed(work.get(&symbol_pair[0]).unwrap())
+            } else {
+                Cow::Owned(work.remove(&symbol_pair[0]).unwrap())
+            };
+
+            let mut smaller = match tmp {
+                Some(v) => Cow::Owned(v),
+                None => Cow::Borrowed(work.get(&symbol_pair[1]).unwrap()),
+            };
+
+            let smaller_len = match &*smaller {
                 LcmOrders::CombinedOrders(smaller) => smaller.len(),
                 LcmOrders::OrbitOrders(smaller) => smaller.len(),
             };
-            let smallest_len = match &smallest {
+            let smallest_len = match &*smallest {
                 LcmOrders::CombinedOrders(smallest) => smallest.len(),
                 LcmOrders::OrbitOrders(smallest) => smallest.len(),
             };
@@ -332,7 +357,7 @@ impl PuzzleDef {
 
             let mut root = MaxOrderTrie::new(0);
 
-            match &smallest {
+            match &*smallest {
                 LcmOrders::CombinedOrders(smallest) => {
                     for order in smallest.iter() {
                         root.insert(order.clone());
@@ -345,7 +370,7 @@ impl PuzzleDef {
                 }
             }
             let combined_orders = OrdersDashSet::default();
-            match smaller {
+            match &*smaller {
                 LcmOrders::CombinedOrders(smaller) => smaller
                     .into_par_iter()
                     .fold(OrdersSet::default, |mut local_acc, order| {
@@ -363,7 +388,7 @@ impl PuzzleDef {
                         .into_par_iter()
                         .fold(OrdersSet::default, |mut local_acc, order| {
                             let mut acc = [0u8; N];
-                            root.collect_distinct_orders(&order, &mut acc, &mut local_acc);
+                            root.collect_distinct_orders(order, &mut acc, &mut local_acc);
                             local_acc
                         })
                         .for_each(|local_acc| {
@@ -374,7 +399,8 @@ impl PuzzleDef {
                 }
             }
 
-            work.insert(symbol_pair[0], LcmOrders::CombinedOrders(combined_orders));
+            work.insert(next_symbol, LcmOrders::CombinedOrders(combined_orders));
+            next_symbol += 1;
         }
         // TODO: return this raw if work.len() == 1
         let possible_orders = OrdersDashSet::default();
@@ -1038,11 +1064,10 @@ mod puzzle {
     use crate::{
         N,
         puzzle::{
-            EvenParityConstraints, OrientationStatus, OrientationSumConstraint, PartialOrbitDef,
             PuzzleDef,
-            cubeN::{CUBE2, CUBE3, CUBE4, CUBE5},
-            minxN::MEGAMINX,
-            misc::SLOW,
+            cubeN::{CUBE2, CUBE3, CUBE4, CUBE5, CUBE6, CUBE7, CUBE8},
+            minxN::{MINX3, MINX4, MINX5},
+            misc::{SLOW1, SLOW2, SLOW3, SLOW4},
         },
     };
 
@@ -1113,21 +1138,74 @@ mod puzzle {
     }
 
     #[test_log::test]
-    fn megaminx() {
+    fn cubemax() {
+        for cubemax in [&CUBE6, &CUBE7, &CUBE8] {
+            test_possible_orders(
+                cubemax,
+                1920,
+                [
+                    535422888, 594914320, 669278610, 764889840, 892371480, 1070845776, 1338557220,
+                    1784742960, 2677114440, 5354228880,
+                ],
+            );
+        }
+    }
+
+    #[test_log::test]
+    fn minx3() {
         test_possible_orders(
-            &MEGAMINX,
+            &MINX3,
             1278,
             [
                 278460, 282744, 308880, 332640, 353430, 360360, 432432, 471240, 540540, 720720,
             ],
         );
-        panic!();
+    }
+
+    #[test_log::test]
+    fn minx4() {
+        test_possible_orders(
+            &MINX4,
+            74304,
+            [
+                38818159380,
+                40156716600,
+                41495273820,
+                46581791256,
+                49794328584,
+                58227239070,
+                62242910730,
+                77636318760,
+                82990547640,
+                116454478140,
+            ],
+        );
+    }
+
+    #[test_log::test]
+    fn minx5() {
+        test_possible_orders(
+            &MINX5,
+            531653,
+            [
+                877874012935920,
+                890488576177200,
+                952435607563440,
+                986757611439600,
+                1068586291412640,
+                1184109133727520,
+                1241870554884960,
+                1335732864265800,
+                1357393397199840,
+                1413291546707040,
+            ],
+        );
     }
 
     #[test_log::test]
     fn slow1() {
         test_possible_orders(
-            &SLOW,
+            &SLOW1,
             24820,
             [
                 569729160, 595675080, 617795640, 629909280, 669278610, 698377680, 730122120,
@@ -1139,26 +1217,7 @@ mod puzzle {
     #[test_log::test]
     fn slow2() {
         test_possible_orders(
-            &PuzzleDef::new(
-                vec![
-                    PartialOrbitDef {
-                        piece_count: 120.try_into().unwrap(),
-                        orientation: OrientationStatus::CanOrient {
-                            count: 2,
-                            sum_constraint: OrientationSumConstraint::Zero,
-                        },
-                    },
-                    PartialOrbitDef {
-                        piece_count: 80.try_into().unwrap(),
-                        orientation: OrientationStatus::CanOrient {
-                            count: 3,
-                            sum_constraint: OrientationSumConstraint::Zero,
-                        },
-                    },
-                ],
-                EvenParityConstraints(vec![vec![0, 1]]),
-            )
-            .unwrap(),
+            &SLOW2,
             1234189,
             [
                 48572104155120,
@@ -1178,38 +1237,19 @@ mod puzzle {
     #[test_log::test]
     fn slow3() {
         test_possible_orders(
-            &PuzzleDef::new(
-                vec![
-                    PartialOrbitDef {
-                        piece_count: 120.try_into().unwrap(),
-                        orientation: OrientationStatus::CanOrient {
-                            count: 20,
-                            sum_constraint: OrientationSumConstraint::Zero,
-                        },
-                    },
-                    PartialOrbitDef {
-                        piece_count: 80.try_into().unwrap(),
-                        orientation: OrientationStatus::CanOrient {
-                            count: 30,
-                            sum_constraint: OrientationSumConstraint::Zero,
-                        },
-                    },
-                ],
-                EvenParityConstraints(vec![vec![0, 1]]),
-            )
-            .unwrap(),
-            1234189,
+            &SLOW3,
+            2079018,
             [
-                48572104155120,
-                48734191265760,
-                51483005814240,
-                51705788294160,
-                55271704728240,
-                56241383758560,
-                57761421157440,
-                72201776446800,
-                86176313823600,
-                86642131736160,
+                485721041551200,
+                487341912657600,
+                514830058142400,
+                517057882941600,
+                552717047282400,
+                562413837585600,
+                577614211574400,
+                722017764468000,
+                861763138236000,
+                866421317361600,
             ],
         );
     }
@@ -1217,33 +1257,7 @@ mod puzzle {
     #[test_log::test]
     fn slow4() {
         test_possible_orders(
-            &PuzzleDef::new(
-                vec![
-                    PartialOrbitDef {
-                        piece_count: 80.try_into().unwrap(),
-                        orientation: OrientationStatus::CanOrient {
-                            count: 3,
-                            sum_constraint: OrientationSumConstraint::Zero,
-                        },
-                    },
-                    PartialOrbitDef {
-                        piece_count: 120.try_into().unwrap(),
-                        orientation: OrientationStatus::CanOrient {
-                            count: 2,
-                            sum_constraint: OrientationSumConstraint::Zero,
-                        },
-                    },
-                    PartialOrbitDef {
-                        piece_count: 40.try_into().unwrap(),
-                        orientation: OrientationStatus::CanOrient {
-                            count: 6,
-                            sum_constraint: OrientationSumConstraint::Zero,
-                        },
-                    },
-                ],
-                EvenParityConstraints(vec![vec![0, 1, 2]]),
-            )
-            .unwrap(),
+            &SLOW4,
             3631922,
             [
                 2036090095799760,

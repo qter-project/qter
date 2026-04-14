@@ -2,7 +2,7 @@ use std::num::NonZeroU16;
 
 use cycle_combination_finder::{
     finder::{CycleCombinationFinder, Optimality, RegisterCount},
-    puzzle::minxN::MEGAMINX,
+    puzzle::minxN::MINX3,
 };
 use puzzle_theory::numbers::{Int, U};
 
@@ -12,7 +12,7 @@ mod common;
 
 #[test_log::test]
 fn optimal_2() {
-    let megaminx = MEGAMINX.clone();
+    let megaminx = MINX3.clone();
     let ccf = CycleCombinationFinder::from(megaminx);
     let cycle_combinations = ccf.find(
         Optimality::Optimal,
@@ -41,7 +41,7 @@ fn optimal_2() {
 
 #[test_log::test]
 fn optimal_3() {
-    let megaminx = MEGAMINX.clone();
+    let megaminx = MINX3.clone();
     let ccf = CycleCombinationFinder::from(megaminx);
     let cycle_combinations = ccf.find(
         Optimality::Optimal,
@@ -71,7 +71,7 @@ fn optimal_3() {
 
 #[test_log::test]
 fn equivalent_2() {
-    let megaminx = MEGAMINX.clone();
+    let megaminx = MINX3.clone();
     let ccf = CycleCombinationFinder::from(megaminx);
     let cycle_combinations = ccf.find(
         Optimality::Equivalent,
@@ -85,7 +85,7 @@ fn equivalent_2() {
 
 #[test_log::test]
 fn equivalent_3() {
-    let megaminx = MEGAMINX.clone();
+    let megaminx = MINX3.clone();
     let ccf = CycleCombinationFinder::from(megaminx);
     let cycle_combinations = ccf.find(
         Optimality::Equivalent,
