@@ -60,67 +60,6 @@ CalculateOrbits[l_List]:=Fold[AddOrbit,{{}},l]
 CalculateOrders[l_List]:=CombineOrbitMultiTallies[CalculateOrbits[l]]
 
 
-WeightedMean[l_List]:=(WeightedData@@Transpose[l])//Mean//N
-
-
-tally3x3x3=CalculateOrders[{
-{8,3}, (* corners*)
-{12,2,{1}} (* edges *)
-}];
-
-
-tally3x3x3[[All,2]]//Total
-WeightedMean@tally3x3x3
-
-
-Export["cube3.csv",tally3x3x3]
-
-
-tallyMegaminx=CalculateOrders[{
-{20,3,0}, (* corners*)
-{30,2,0} (* edges *)
-}];
-
-
-tallyMegaminx[[All,2]]//Total
-(WeightedData@@Transpose[tallyMegaminx])//Mean//N
-
-
-Export["megaminx.csv",tallyMegaminx]
-
-
-tallySuper4x4x4=CalculateOrders[{
-{8,3}, (* corners*)
-{24,1,{1}}, (* X-centers *)
-{24,1} (* wings *)
-}];
-
-
-tallySuper4x4x4[[All,2]]//Total
-24!*8!/2*3^7*24!
-WeightedMean@tallySuper4x4x4
-
-
-Export["cube4.csv",tallySuper4x4x4]
-
-
-tallySuper5x5x5=CalculateOrders[{
-{8,3}, (* corners*)
-{12,2,{1}}, (* midges *)
-{24,1,{1}}, (* X-centers *)
-{24,1}, (* wings *)
-{24,1,{1,2,3,4}} (* T-centers *)
-}];
-
-
-tallySuper5x5x5[[All,2]]//Total
-24!*12!*2^11*24!*24!*8!*3^7/8
-WeightedMean@tallySuper5x5x5
-
-
-Export["cube5.csv",tallySuper5x5x5]
-
-
 orbitsNxNxN[n_]:=Module[{l={},numWings=Floor[n/2-1],cornerIdx},
 	l=Catenate[{l,
 		Table[{24,1},{numWings}] (* wings *)
@@ -148,11 +87,38 @@ orbitsNxNxN[n_]:=Module[{l={},numWings=Floor[n/2-1],cornerIdx},
 ]
 
 
-CalculateOrders[orbitsNxNxN[3]]==tally3x3x3
-CalculateOrders[orbitsNxNxN[4]]==tallySuper4x4x4
-CalculateOrders[orbitsNxNxN[5]]==tallySuper5x5x5
+Do[
+  Export["cube" <> ToString[n] <> ".csv", CalculateOrders[orbitsNxNxN[n]]],
+  {n, 2, 7}
+]
 
 
-Table[
-WeightedMean@CalculateOrders[orbitsNxNxN[n]]
-,{n,2,7}]
+tallyMegaminx=CalculateOrders[{
+{20,3,0}, (* corners*)
+{30,2,0} (* edges *)
+}];
+
+
+Export["minx3.csv",tallyMegaminx]
+
+
+tallyMasterKilominx = CalculateOrders[{
+  {20, 3, 0},  (* corners *)
+  {60, 1, 0},  (* orbit 1 *)
+  {60, 1, 0}   (* orbit 2 *)
+}];
+
+
+Export["minx4.csv", tallyMasterKilominx]
+
+
+(*tallyGigaminx = CalculateOrders[{*)
+(*  {20, 3, 0},  (* corners *)*)
+(*  {30, 2, 0},  (* edges *)*)
+(*  {60, 1, 0},  (* orbit 1 *)*)
+(*  {60, 1, 0},  (* orbit 2 *)*)
+(*  {60, 1, 0}   (* orbit 3 *)*)
+(*}];*)
+
+
+(*Export["minx5.csv", tallyGigaminx]*)
