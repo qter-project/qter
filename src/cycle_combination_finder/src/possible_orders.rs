@@ -371,31 +371,11 @@ impl PuzzleDef {
             }
             let combined_orders = OrdersDashSet::default();
             match &*smaller {
-                LcmOrders::CombinedOrders(smaller) => smaller
-                    .into_par_iter()
-                    .fold(OrdersSet::default, |mut local_acc, order| {
-                        let mut acc = [0u8; N];
-                        root.collect_distinct_orders(&order, &mut acc, &mut local_acc);
-                        local_acc
-                    })
-                    .for_each(|local_acc| {
-                        for order in local_acc {
-                            combined_orders.insert(order);
-                        }
-                    }),
+                LcmOrders::CombinedOrders(smaller) => {
+                    root.par_collect_distinct_orders(smaller, &combined_orders);
+                }
                 LcmOrders::OrbitOrders(smaller) => {
-                    smaller
-                        .into_par_iter()
-                        .fold(OrdersSet::default, |mut local_acc, order| {
-                            let mut acc = [0u8; N];
-                            root.collect_distinct_orders(order, &mut acc, &mut local_acc);
-                            local_acc
-                        })
-                        .for_each(|local_acc| {
-                            for order in local_acc {
-                                combined_orders.insert(order);
-                            }
-                        });
+                    root.par_collect_distinct_orders(smaller, &combined_orders);
                 }
             }
 
@@ -431,30 +411,12 @@ impl PuzzleDef {
                             }
                         }
                         match &*smaller_len {
-                            LcmOrders::CombinedOrders(smaller_len) => smaller_len
-                                .into_par_iter()
-                                .fold(FxHashSet::default, |mut local_acc, order| {
-                                    let mut acc = [0u8; N];
-                                    root.collect_distinct_orders(&order, &mut acc, &mut local_acc);
-                                    local_acc
-                                })
-                                .for_each(|local_acc| {
-                                    for order in local_acc {
-                                        combined.insert(order);
-                                    }
-                                }),
-                            LcmOrders::OrbitOrders(smaller_len) => smaller_len
-                                .into_par_iter()
-                                .fold(FxHashSet::default, |mut local_acc, order| {
-                                    let mut acc = [0u8; N];
-                                    root.collect_distinct_orders(order, &mut acc, &mut local_acc);
-                                    local_acc
-                                })
-                                .for_each(|local_acc| {
-                                    for order in local_acc {
-                                        combined.insert(order);
-                                    }
-                                }),
+                            LcmOrders::CombinedOrders(smaller_len) => {
+                                root.par_collect_distinct_orders(smaller_len, &combined);
+                            }
+                            LcmOrders::OrbitOrders(smaller_len) => {
+                                root.par_collect_distinct_orders(smaller_len, &combined);
+                            }
                         }
 
                         smallest_len_orders.push(Cow::Owned(LcmOrders::CombinedOrders(combined)));
@@ -494,31 +456,11 @@ impl PuzzleDef {
                 }
                 match component_possible_orders {
                     LcmOrders::CombinedOrders(component_possible_orders) => {
-                        component_possible_orders
-                            .into_par_iter()
-                            .fold(OrdersSet::default, |mut local_acc, order| {
-                                let mut acc = [0u8; N];
-                                root.collect_distinct_orders(&order, &mut acc, &mut local_acc);
-                                local_acc
-                            })
-                            .for_each(|local_acc| {
-                                for order in local_acc {
-                                    acc.insert(order);
-                                }
-                            });
+                        root.par_collect_distinct_orders(&component_possible_orders, &acc);
                     }
-                    LcmOrders::OrbitOrders(component_possible_orders) => component_possible_orders
-                        .into_par_iter()
-                        .fold(OrdersSet::default, |mut local_acc, order| {
-                            let mut acc = [0u8; N];
-                            root.collect_distinct_orders(&order, &mut acc, &mut local_acc);
-                            local_acc
-                        })
-                        .for_each(|local_acc| {
-                            for order in local_acc {
-                                acc.insert(order);
-                            }
-                        }),
+                    LcmOrders::OrbitOrders(component_possible_orders) => {
+                        root.par_collect_distinct_orders(&component_possible_orders, &acc);
+                    }
                 }
                 acc
             })

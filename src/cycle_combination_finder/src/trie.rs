@@ -1,8 +1,15 @@
-use std::simd::{Simd, cmp::SimdPartialOrd};
+use std::{
+    ops::Deref,
+    simd::{Simd, cmp::SimdPartialOrd},
+};
 
-use fxhash::{FxHashMap, FxHashSet};
+use fxhash::FxHashMap;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
-use crate::orderexps::OrderExps;
+use crate::{
+    orderexps::OrderExps,
+    possible_orders::{OrdersDashSet, OrdersSet},
+};
 
 #[derive(Debug)]
 pub struct MaxOrderTrie<const N: usize> {
@@ -36,7 +43,7 @@ impl<const N: usize> MaxOrderTrie<N> {
         &self,
         order: &OrderExps<N>,
         acc: &mut [u8; N],
-        out: &mut FxHashSet<OrderExps<N>>,
+        out: &mut OrdersSet<N>,
     ) {
         if self.level == N {
             out.insert(OrderExps(Simd::from_array(*acc)));
@@ -53,5 +60,24 @@ impl<const N: usize> MaxOrderTrie<N> {
                 acc[self.level] = old;
             }
         }
+    }
+
+    pub fn par_collect_distinct_orders<W>(&self, walker: W, out: &OrdersDashSet<N>)
+    where
+        W: IntoParallelIterator,
+        W::Item: Deref<Target = OrderExps<N>>,
+    {
+        walker
+            .into_par_iter()
+            .fold(OrdersSet::default, |mut local_acc, order| {
+                let mut acc = [0u8; N];
+                self.collect_distinct_orders(&order, &mut acc, &mut local_acc);
+                local_acc
+            })
+            .for_each(|local_acc| {
+                for order in local_acc {
+                    out.insert(order);
+                }
+            });
     }
 }
