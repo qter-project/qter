@@ -27,7 +27,7 @@ pub enum PuzzleDefCreationError {
         "Even parity constraint index is out of bounds. Expected a maximum of {length} but found \
          {actual}"
     )]
-    OutOfBounds { length: usize, actual: usize },
+    ConstraintIndexOutOfBounds { length: usize, actual: usize },
     #[error("Orientation count of {0} cannot be 0 or 1")]
     InvalidOrientationCount(u8),
 }
@@ -164,7 +164,7 @@ impl PuzzleDef {
         for (i, even_parity_constraint) in raw_even_parity_constraints.into_iter().enumerate() {
             for j in even_parity_constraint {
                 if j >= cols {
-                    return Err(PuzzleDefCreationError::OutOfBounds {
+                    return Err(PuzzleDefCreationError::ConstraintIndexOutOfBounds {
                         length: cols,
                         actual: i,
                     });

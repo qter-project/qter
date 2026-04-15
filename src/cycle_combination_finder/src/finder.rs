@@ -647,9 +647,9 @@ impl CycleCombinationFinder {
         // get a list of all orders that would fit within a pieces_per_register amount
         // of pieces
         let possible_orders = self.possible_order_list(total_pieces, &max_prime_powers);
-        for possible_order in &possible_orders {
-            println!("{:?}", u64::try_from(possible_order.order).unwrap());
-        }
+        // for possible_order in &possible_orders {
+        //     println!("{:?}", u64::try_from(possible_order.order).unwrap());
+        // }
 
         // debug!("Possible Orders: {possible_orders:?}");
 

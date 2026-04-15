@@ -10,7 +10,7 @@ pub enum ParityAssignment {
 
 fn apply_constriants(
     constraints: &BitMatrix,
-    mut curr_assignment: Cow<'_, [ParityAssignment]>,
+    mut curr_assignment: Cow<[ParityAssignment]>,
     i: usize,
     v: bool,
 ) -> Option<Vec<ParityAssignment>> {
@@ -65,7 +65,8 @@ fn apply_constriants(
                         continue;
                     }
                     match a {
-                        ParityAssignment::Unassigned if j != i => match other {
+                        ParityAssignment::Unassigned if j == i => (),
+                        ParityAssignment::Unassigned => match other {
                             Some(_) => {
                                 panic!();
                             }
@@ -73,7 +74,6 @@ fn apply_constriants(
                                 other = Some(a);
                             }
                         },
-                        ParityAssignment::Unassigned => (),
                         ParityAssignment::Assigned(v) => {
                             parity ^= *v;
                         }
@@ -85,10 +85,10 @@ fn apply_constriants(
                     ParityAssignment::Unassigned => {
                         *other = expected_other;
                     }
-                    ParityAssignment::Assigned(_) if *other != expected_other => {
+                    ParityAssignment::Assigned(_) if *other == expected_other => (),
+                    ParityAssignment::Assigned(_) => {
                         return None;
                     }
-                    ParityAssignment::Assigned(_) => (),
                 }
             }
             3.. => (),
@@ -120,7 +120,15 @@ pub fn backtrack_ac3(constraints: &BitMatrix) -> Vec<Vec<bool>> {
     while let Some((i, curr_assignment)) = stack.pop() {
         match curr_assignment.get(i) {
             None => {
-                ret.push(curr_assignment);
+                ret.push(
+                    curr_assignment
+                        .into_iter()
+                        .map(|a| match a {
+                            ParityAssignment::Unassigned => panic!(),
+                            ParityAssignment::Assigned(v) => v,
+                        })
+                        .collect::<Vec<_>>(),
+                );
             }
             Some(ParityAssignment::Assigned(_)) => {
                 stack.push((i + 1, curr_assignment));

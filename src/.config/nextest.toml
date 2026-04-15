@@ -1,3 +1,12 @@
-[[profile.default.overrides]]
+experimental = ["benchmarks"]
+
+[[profile.ccs.overrides]]
 filter = "binary_id(cycle_combination_solver::cube3) or binary_id(cycle_combination_solver::cube4) or binary_id(cycle_combination_solver::megaminx)"
 # placeholder for later; I will need to config these to have threads
+
+[profile.ccf]
+default-filter = "not test(possible_orders::puzzle::slow)"
+
+[[profile.ccf.overrides]]
+filter = 'test(possible_orders)'
+threads-required = "num-cpus"

@@ -41,7 +41,6 @@ pub fn max_prime_powers_below(orbit_defs: &[OrbitDef], n: u16) -> Vec<MaxPrimePo
     }
 
     let mut max_prime_powers = vec![];
-    println!("n: {n}");
     for (i, &state) in sieve.iter().enumerate().take(n + 1).skip(2) {
         if state != SieveNumberState::Prime {
             continue;
