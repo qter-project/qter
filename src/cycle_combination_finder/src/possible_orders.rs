@@ -1,9 +1,4 @@
-use std::{
-    borrow::Cow,
-    cmp::{Ordering, max},
-    collections::BinaryHeap,
-    num::NonZeroU16,
-};
+use std::{borrow::Cow, num::NonZeroU16};
 
 use bitgauss::BitMatrix;
 use dashmap::DashSet;
@@ -23,6 +18,7 @@ use crate::{
 pub type OrdersSet<const N: usize> = FxHashSet<OrderExps<N>>;
 pub type OrdersDashSet<const N: usize> = DashSet<OrderExps<N>, FxBuildHasher>;
 
+#[derive(Debug)]
 pub enum OrbitPossibleOrders<const N: usize> {
     CombinedOrders(OrdersSet<N>),
     ParityOrders {
@@ -211,71 +207,60 @@ impl<const N: usize> LcmOrders<N> {
     }
 }
 
-impl<const N: usize> PartialOrd for LcmOrders<N> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<const N: usize> Ord for LcmOrders<N> {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.len().cmp(&other.len()).reverse()
-    }
-}
-
-impl<const N: usize> PartialEq for LcmOrders<N> {
-    fn eq(&self, other: &Self) -> bool {
-        self.cmp(other) == Ordering::Equal
-    }
-}
-
-impl<const N: usize> Eq for LcmOrders<N> {}
-
-fn combine_heap<const N: usize>(
-    mut smallest_len_orders: BinaryHeap<Cow<LcmOrders<N>>>,
-) -> Cow<LcmOrders<N>> {
-    while let Some(smallest_len) = smallest_len_orders.pop() {
-        if let Some(smaller_len) = smallest_len_orders.pop() {
-            let combined = OrdersDashSet::default();
-            let mut root = MaxOrderTrie::new(0);
-            match smallest_len {
-                Cow::Borrowed(LcmOrders::CombinedOrders(smallest_len)) => {
-                    for y in smallest_len.iter() {
-                        root.insert(y.clone());
-                    }
-                }
-                Cow::Owned(LcmOrders::CombinedOrders(smallest_len)) => {
-                    for y in smallest_len {
-                        root.insert(y);
-                    }
-                }
-                Cow::Borrowed(LcmOrders::OrbitOrders(smallest_len)) => {
-                    for y in smallest_len {
-                        root.insert(y.clone());
-                    }
-                }
-                Cow::Owned(LcmOrders::OrbitOrders(smallest_len)) => {
-                    for y in smallest_len {
-                        root.insert(y);
-                    }
+impl<const N: usize> From<Cow<'_, LcmOrders<N>>> for MaxOrderTrie<N> {
+    fn from(lcm_orders: Cow<LcmOrders<N>>) -> Self {
+        let mut root = MaxOrderTrie::new(0);
+        match lcm_orders {
+            Cow::Borrowed(LcmOrders::CombinedOrders(lcm_orders)) => {
+                for y in lcm_orders.iter() {
+                    root.insert(y.clone());
                 }
             }
-
-            match &*smaller_len {
-                LcmOrders::CombinedOrders(smaller_len) => {
-                    root.par_collect_distinct_orders(smaller_len, &combined);
-                }
-                LcmOrders::OrbitOrders(smaller_len) => {
-                    root.par_collect_distinct_orders(smaller_len, &combined);
+            Cow::Owned(LcmOrders::CombinedOrders(lcm_orders)) => {
+                for y in lcm_orders {
+                    root.insert(y);
                 }
             }
-
-            smallest_len_orders.push(Cow::Owned(LcmOrders::CombinedOrders(combined)));
-        } else {
-            return smallest_len;
+            Cow::Borrowed(LcmOrders::OrbitOrders(lcm_orders)) => {
+                for y in lcm_orders {
+                    root.insert(y.clone());
+                }
+            }
+            Cow::Owned(LcmOrders::OrbitOrders(lcm_orders)) => {
+                for y in lcm_orders {
+                    root.insert(y);
+                }
+            }
         }
+        root
     }
-    Cow::Owned(LcmOrders::OrbitOrders(OrdersSet::default()))
+}
+
+fn combine_heap<'a, I, const N: usize>(smallest_len_orders: I) -> Cow<'a, LcmOrders<N>>
+where
+    I: IntoParallelIterator<Item = Cow<'a, LcmOrders<N>>>,
+{
+    smallest_len_orders.into_par_iter().reduce(
+        || Cow::Owned(LcmOrders::OrbitOrders(OrdersSet::default())),
+        |mut smallest, mut smaller| {
+            if smaller.len() < smallest.len() && smallest.len() != 0 {
+                std::mem::swap(&mut smallest, &mut smaller);
+            }
+
+            let root = MaxOrderTrie::from(smallest);
+            let combined = OrdersDashSet::default();
+            match &*smaller {
+                LcmOrders::CombinedOrders(smaller) => {
+                    root.par_collect_distinct_orders(smaller, &combined);
+                }
+                LcmOrders::OrbitOrders(smaller) => {
+                    root.par_collect_distinct_orders(smaller, &combined);
+                }
+            }
+
+            Cow::Owned(LcmOrders::CombinedOrders(combined))
+        },
+    )
 }
 
 impl PuzzleDef {
@@ -341,94 +326,94 @@ impl PuzzleDef {
 
         let mut next_symbol = connected_component.len() * 2;
         loop {
-            let (symbol_pair, max_count) = work
+            // println!("{:?}", possible_assignments_symbols);
+            let ([smallest_symbol, smaller_symbol], max_count, _) = work
                 .keys()
                 .enumerate()
-                .flat_map(|(i, &a)| {
+                .flat_map(|(i, &(mut smallest_symbol))| {
                     let possible_assignments_symbols = &possible_assignments_symbols;
-                    work.keys().skip(i + 1).map(move |&b| {
+                    let work = &work;
+                    work.keys().skip(i + 1).map(move |&(mut smaller_symbol)| {
+                        let mut smallest_len = work.get(&smallest_symbol).unwrap().len();
+                        let mut smaller_len = work.get(&smaller_symbol).unwrap().len();
+                        if smaller_len < smallest_len {
+                            std::mem::swap(&mut smaller_symbol, &mut smallest_symbol);
+                            std::mem::swap(&mut smaller_len, &mut smallest_len);
+                        }
+
                         let count = possible_assignments_symbols
                             .iter()
-                            .filter(|s| s.contains(&a) && s.contains(&b))
+                            .filter(|s| s.contains(&smallest_symbol) && s.contains(&smaller_symbol))
                             .count();
-                        ([a, b], count)
+
+                        let cost = usize::max(smaller_len, smallest_len);
+
+                        #[allow(clippy::cast_precision_loss)]
+                        let count_cost_product_ln = if count > 0 && cost > 0 {
+                            ((count as f64).ln() + (cost as f64).ln()) as i32
+                        } else {
+                            0
+                        };
+
+                        (
+                            [smallest_symbol, smaller_symbol],
+                            count,
+                            count_cost_product_ln,
+                        )
                     })
                 })
-                .max_by_key(|&(_, count)| count)
+                .max_by_key(|&(_, _, weight)| weight)
                 .unwrap();
+            // println!("{:?}", symbol_pair);
             match max_count {
                 0 => panic!(),
                 1 => break,
                 2.. => (),
             }
 
-            let mut keep = [false, false];
+            let mut keep_smallest = false;
+            let mut keep_smaller = false;
             for possible_assignment_symbols in &mut possible_assignments_symbols {
                 match (
-                    possible_assignment_symbols.contains(&symbol_pair[0]),
-                    possible_assignment_symbols.contains(&symbol_pair[1]),
+                    possible_assignment_symbols.contains(&smallest_symbol),
+                    possible_assignment_symbols.contains(&smaller_symbol),
                 ) {
                     (true, true) => {
-                        possible_assignment_symbols.remove(&symbol_pair[0]);
-                        possible_assignment_symbols.remove(&symbol_pair[1]);
+                        possible_assignment_symbols.remove(&smallest_symbol);
+                        possible_assignment_symbols.remove(&smaller_symbol);
                         possible_assignment_symbols.insert(next_symbol);
                     }
                     (true, false) => {
-                        keep[0] = true;
+                        keep_smallest = true;
                     }
                     (false, true) => {
-                        keep[1] = true;
+                        keep_smaller = true;
                     }
                     (false, false) => (),
                 }
             }
 
-            let tmp = if keep[1] {
+            let tmp = if keep_smaller {
                 None
             } else {
-                Some(work.remove(&symbol_pair[1]).unwrap())
+                Some(work.remove(&smaller_symbol).unwrap())
             };
 
-            let mut smallest = if keep[0] {
-                Cow::Borrowed(work.get(&symbol_pair[0]).unwrap())
+            let smallest = if keep_smallest {
+                Cow::Borrowed(work.get(&smallest_symbol).unwrap())
             } else {
-                Cow::Owned(work.remove(&symbol_pair[0]).unwrap())
+                Cow::Owned(work.remove(&smallest_symbol).unwrap())
             };
 
-            let mut smaller = match tmp {
+            let smaller = match tmp {
                 Some(v) => Cow::Owned(v),
-                None => Cow::Borrowed(work.get(&symbol_pair[1]).unwrap()),
+                None => Cow::Borrowed(work.get(&smaller_symbol).unwrap()),
             };
 
-            if smaller.len() < smallest.len() {
-                std::mem::swap(&mut smallest, &mut smaller);
-            }
+            assert!(smallest.len() <= smaller.len());
 
             let combined_orders = OrdersDashSet::default();
-            let mut root = MaxOrderTrie::new(0);
-
-            match smallest {
-                Cow::Borrowed(LcmOrders::CombinedOrders(smallest)) => {
-                    for order in smallest.iter() {
-                        root.insert(order.clone());
-                    }
-                }
-                Cow::Owned(LcmOrders::CombinedOrders(smallest)) => {
-                    for order in smallest {
-                        root.insert(order);
-                    }
-                }
-                Cow::Borrowed(LcmOrders::OrbitOrders(smallest)) => {
-                    for order in smallest {
-                        root.insert(order.clone());
-                    }
-                }
-                Cow::Owned(LcmOrders::OrbitOrders(smallest)) => {
-                    for order in smallest {
-                        root.insert(order);
-                    }
-                }
-            }
+            let root = MaxOrderTrie::from(smallest);
             match &*smaller {
                 LcmOrders::CombinedOrders(smaller) => {
                     root.par_collect_distinct_orders(smaller, &combined_orders);
@@ -449,14 +434,11 @@ impl PuzzleDef {
         possible_assignments_symbols
             .into_par_iter()
             .for_each(|possible_assignment_symbols| {
-                let smallest_len_orders = possible_assignment_symbols
-                    .into_iter()
-                    .map(|possible_assignment_symbol| {
+                let all_combined = combine_heap(possible_assignment_symbols.into_par_iter().map(
+                    |possible_assignment_symbol| {
                         Cow::Borrowed(work.get(&possible_assignment_symbol).unwrap())
-                    })
-                    .collect::<BinaryHeap<_>>();
-
-                let all_combined = combine_heap(smallest_len_orders);
+                    },
+                ));
                 match all_combined {
                     Cow::Borrowed(LcmOrders::CombinedOrders(all_combined)) => {
                         for order in all_combined.iter() {
@@ -484,35 +466,13 @@ impl PuzzleDef {
         LcmOrders::CombinedOrders(possible_orders)
     }
 
+    #[must_use]
     pub fn possible_orders<const N: usize>(&self) -> OrdersDashSet<N> {
-        let smallest_len_orders = self
-            .connected_components()
-            .par_iter()
-            .map(|connected_component| {
-                self.connected_component_possible_orders::<N>(connected_component)
-            })
-            .fold(OrdersDashSet::default, |acc, component_possible_orders| {
-                let mut root = MaxOrderTrie::new(0);
-                // TODO: is the other order faster?
-                for order in acc.iter() {
-                    root.insert(order.clone());
-                }
-                match component_possible_orders {
-                    LcmOrders::CombinedOrders(component_possible_orders) => {
-                        root.par_collect_distinct_orders(&component_possible_orders, &acc);
-                    }
-                    LcmOrders::OrbitOrders(component_possible_orders) => {
-                        root.par_collect_distinct_orders(&component_possible_orders, &acc);
-                    }
-                }
-                acc
-            })
-            .map(|component_possible_orders| {
-                Cow::Owned(LcmOrders::CombinedOrders(component_possible_orders))
-            })
-            .collect::<BinaryHeap<_>>();
-
-        let all_combined = combine_heap(smallest_len_orders);
+        let all_combined = combine_heap(self.connected_components().par_iter().map(
+            |connected_component| {
+                Cow::Owned(self.connected_component_possible_orders::<N>(connected_component))
+            },
+        ));
         match all_combined.into_owned() {
             LcmOrders::CombinedOrders(all_combined) => all_combined,
             LcmOrders::OrbitOrders(all_combined) => all_combined.into_iter().collect(),
@@ -525,7 +485,7 @@ mod orbit {
     use std::{num::NonZeroU16, time::Instant};
 
     use humanize_duration::{Truncate, prelude::DurationExt};
-    use log::info;
+    use log::trace;
 
     use crate::{
         N,
@@ -554,7 +514,7 @@ mod orbit {
     fn test_possible_orders(orbit_def: OrbitDef, expected: Expected) {
         let mut start = Instant::now();
         let possible_orders = orbit_def.combined_parity_possible_orders::<N>();
-        info!(
+        trace!(
             "Combined orbit orders for {orbit_def:#?} in {}",
             start.elapsed().human(Truncate::Micro)
         );
@@ -585,7 +545,7 @@ mod orbit {
         start = Instant::now();
         let (even_parity_possible_orders, maybe_odd_parity_possible_orders) =
             orbit_def.uncombined_parity_possible_orders::<N>();
-        info!(
+        trace!(
             "Uncombined orbit orders for {orbit_def:#?} in {}",
             start.elapsed().human(Truncate::Micro)
         );
@@ -687,6 +647,36 @@ mod orbit {
             },
         ]) {
             test_possible_orders(orbit_def, expected);
+        }
+    }
+
+    #[test_log::test]
+    fn landau() {
+        for (piece_count, landau) in [
+            1, 1, 2, 3, 4, 6, 6, 12, 15, 20, 30, 30, 60, 60, 84, 105, 140, 210, 210, 420, 420, 420,
+            420, 840, 840, 1260, 1260, 1540, 2310, 2520, 4620, 4620, 5460, 5460, 9240, 9240, 13860,
+            13860, 16380, 16380, 27720, 30030, 32760, 60060, 60060, 60060, 60060, 120120, 120120,
+            180180, 180180, 180180, 180180, 360360, 360360, 360360, 360360, 471240, 510510, 556920,
+            1021020,
+        ]
+        .into_iter()
+        .enumerate()
+        .skip(1)
+        {
+            let orbit_def = OrbitDef {
+                piece_count: NonZeroU16::new(u16::try_from(piece_count).unwrap()).unwrap(),
+                orientation: OrientationStatus::CannotOrient,
+                parity_constraint: ParityConstraint::None,
+            };
+            assert_eq!(
+                orbit_def
+                    .combined_parity_possible_orders::<N>()
+                    .into_iter()
+                    .map(|possible_order| u64::try_from(possible_order.as_bigint()).unwrap())
+                    .max()
+                    .unwrap(),
+                landau
+            );
         }
     }
 

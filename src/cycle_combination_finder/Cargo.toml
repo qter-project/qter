@@ -19,6 +19,7 @@ union-find = { git = "https://github.com/qter-project/union-find-rs" }
 
 [dev-dependencies]
 test-log.workspace = true
+fastrand = "2.4.1"
 
 [lints]
 workspace = true

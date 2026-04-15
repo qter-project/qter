@@ -157,7 +157,7 @@ mod tests {
 
     use crate::ac3::backtrack_ac3;
 
-    #[test]
+    #[test_log::test]
     fn simple() {
         let constraints = BitMatrix::from_bool_vec(&[vec![true, true]]);
         assert_eq!(
@@ -166,7 +166,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[test_log::test]
     fn complex() {
         let constraints = BitMatrix::from_bool_vec(&[
             vec![true, false, false, false, true],
