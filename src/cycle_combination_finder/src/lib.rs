@@ -9,7 +9,7 @@
     // TODO
     clippy::cast_possible_truncation
 )]
-#![feature(portable_simd, exact_div)]
+#![feature(portable_simd, exact_div, gen_blocks)]
 
 use bitgauss::BitMatrix;
 

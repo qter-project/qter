@@ -6,7 +6,7 @@ use puzzle_theory::ksolve::KSolve;
 use thiserror::Error;
 use union_find::{QuickUnionUf, UnionBySize, UnionFind};
 
-use crate::gauss_jordan_without_zero_rows;
+use crate::{PRIME_AFTER_LAST, gauss_jordan_without_zero_rows};
 
 pub mod cubeN;
 pub mod minxN;
@@ -30,6 +30,8 @@ pub enum PuzzleDefCreationError {
     ConstraintIndexOutOfBounds { length: usize, actual: usize },
     #[error("Orientation count of {0} cannot be 0 or 1")]
     InvalidOrientationCount(u8),
+    #[error("Orbit has too many pieces. Expected a maximum of {max} but found {0}", max = PRIME_AFTER_LAST - 1)]
+    OrbitTooManyPieces(u16),
 }
 
 #[derive(Clone)]
@@ -42,7 +44,8 @@ pub struct PuzzleDef {
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 pub struct OrbitDef {
-    pub piece_count: NonZeroU16,
+    // We need to uphold the invariant that piece_count < PRIME_AFTER_LAST
+    pub(crate) piece_count: NonZeroU16,
     pub orientation: OrientationStatus,
     pub parity_constraint: ParityConstraint,
 }
@@ -149,16 +152,36 @@ impl PuzzleDef {
         if partial_orbit_defs.is_empty() {
             return Err(PuzzleDefCreationError::NoOrbits);
         }
-        partial_orbit_defs
-            .iter()
-            .try_for_each(|&orbit_def| match orbit_def.orientation {
-                OrientationStatus::CanOrient { count, .. } if count == 0 || count == 1 => {
-                    Err(PuzzleDefCreationError::InvalidOrientationCount(count))
-                }
-                _ => Ok(()),
-            })?;
 
-        let cols = partial_orbit_defs.len();
+        let mut orbit_defs = partial_orbit_defs
+            .into_iter()
+            .map(
+                |PartialOrbitDef {
+                     piece_count,
+                     orientation,
+                 }| {
+                    match orientation {
+                        OrientationStatus::CanOrient { count, .. } if count == 0 || count == 1 => {
+                            return Err(PuzzleDefCreationError::InvalidOrientationCount(count));
+                        }
+                        _ => (),
+                    }
+                    if piece_count.get() < u16::from(PRIME_AFTER_LAST) {
+                        Ok(OrbitDef {
+                            piece_count,
+                            orientation,
+                            parity_constraint: ParityConstraint::None,
+                        })
+                    } else {
+                        Err(PuzzleDefCreationError::OrbitTooManyPieces(
+                            piece_count.get(),
+                        ))
+                    }
+                },
+            )
+            .collect::<Result<Vec<_>, PuzzleDefCreationError>>()?;
+
+        let cols = orbit_defs.len();
         let rows = raw_even_parity_constraints.len();
         let mut even_parity_constraints = BitMatrix::zeros(rows, cols);
         for (i, even_parity_constraint) in raw_even_parity_constraints.into_iter().enumerate() {
@@ -207,21 +230,6 @@ impl PuzzleDef {
         }
         let connected_components = connected_components.into_values().collect::<Vec<_>>();
 
-        let mut orbit_defs = partial_orbit_defs
-            .into_iter()
-            .map(
-                |PartialOrbitDef {
-                     piece_count,
-                     orientation,
-                 }| {
-                    OrbitDef {
-                        piece_count,
-                        orientation,
-                        parity_constraint: ParityConstraint::None,
-                    }
-                },
-            )
-            .collect::<Vec<_>>();
         for singular_component in connected_components
             .iter()
             .filter_map(|connected_component| {
@@ -235,11 +243,17 @@ impl PuzzleDef {
                 .filter(|&row| even_parity_constraints[(row, singular_component)])
                 .count()
             {
+                // This case is handled in possible_orders
                 0 => (),
                 1 => {
                     orbit_defs[singular_component].parity_constraint = ParityConstraint::Even;
                 }
-                2.. => panic!(),
+                // It should never be the case that two or more 1s exist in a singular component
+                // because:
+                // - They must be pivot columns because or they would not be a singular component;
+                //   and
+                // - You can row-reduce it to either exactly zero or one 1s
+                2.. => unreachable!(),
             }
         }
         Ok(Self {
@@ -273,4 +287,10 @@ impl OrbitDef {
             OrientationStatus::CannotOrient => 1,
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test_log::test]
+    fn edge_cases() {}
 }

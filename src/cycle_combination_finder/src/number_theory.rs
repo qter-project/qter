@@ -100,6 +100,14 @@ pub fn max_prime_powers_below(orbit_defs: &[OrbitDef], n: u16) -> Vec<MaxPrimePo
     max_prime_powers
 }
 
+/// Compute all divisors of a number, with every divisor represented as a
+/// [`OrdersExps`].
+///
+/// # Panics
+///
+/// This function panics if a number cannot be represented by the first
+/// [`N`] primes or if a prime exponent is greater than or equal to 256.
+#[must_use]
 pub fn divisors<const N: usize>(n: u8) -> Vec<OrderExps<N>> {
     let mut divisors = vec![];
     if n == 0 {
@@ -110,14 +118,16 @@ pub fn divisors<const N: usize>(n: u8) -> Vec<OrderExps<N>> {
 
     let mut primes_and_index = PRIMES.into_iter().enumerate();
     let mut remainder = n;
-    let mut max_exp = 0;
+    let mut max_exp: u8 = 0;
 
     let (mut prime_index, mut prime) = primes_and_index
         .next()
         .expect("We cannot represent numbers too large");
     while remainder > 1 || max_exp > 0 {
         if remainder.is_multiple_of(prime) {
-            max_exp += 1;
+            max_exp = max_exp
+                .checked_add(1)
+                .expect("We cannot represent an exponent this large");
             remainder /= prime;
         } else {
             divisors.reserve(divisors.len() * usize::from(max_exp));
@@ -128,7 +138,7 @@ pub fn divisors<const N: usize>(n: u8) -> Vec<OrderExps<N>> {
                 for i in 0..org_len {
                     divisors.push(divisors[i].clone() * divisor.clone());
                 }
-                divisor.0[prime_index] += 1;
+                divisor.0[prime_index] = divisor.0[prime_index].checked_add(1).unwrap();
             }
             divisor.0[prime_index] = 0;
             max_exp = 0;
@@ -181,7 +191,7 @@ impl<const N: usize> TryFrom<NonZeroU16> for OrderExps<N> {
 mod max_prime_powers_below {
     use crate::{
         number_theory::{MaxPrimePower, max_prime_powers_below},
-        puzzle::{cubeN::CUBE3, minxN::MINX3, misc::SLOW1},
+        puzzle::{cubeN::CUBE3, minxN::MINX3, misc::BIG1},
     };
 
     #[test_log::test]
@@ -301,9 +311,9 @@ mod max_prime_powers_below {
     }
 
     #[test_log::test]
-    fn slow() {
-        let slow = SLOW1.orbit_defs();
-        let max_prime_powers = max_prime_powers_below(slow, 60);
+    fn big() {
+        let big = BIG1.orbit_defs();
+        let max_prime_powers = max_prime_powers_below(big, 60);
         assert_eq!(
             max_prime_powers,
             vec![
@@ -443,7 +453,7 @@ mod divisors {
     #[test_log::test]
     #[should_panic(expected = "We cannot represent numbers too large")]
     fn too_big_prime_panicks() {
-        divisors::<N>(PRIME_AFTER_LAST);
+        let _ = divisors::<N>(PRIME_AFTER_LAST);
     }
 }
 

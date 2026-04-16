@@ -1,14 +1,14 @@
 use std::{
-    ops::Deref,
+    borrow::Cow,
     simd::{Simd, cmp::SimdPartialOrd},
 };
 
 use fxhash::FxHashMap;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
     orderexps::OrderExps,
-    possible_orders::{OrdersDashSet, OrdersSet},
+    possible_orders::{LcmOrders, OrdersDashSet, OrdersSet},
 };
 
 #[derive(Debug)]
@@ -62,33 +62,72 @@ impl<const N: usize> MaxOrderTrie<N> {
         }
     }
 
-    pub fn par_collect_distinct_orders<W>(&self, walker: W, out: &OrdersDashSet<N>)
-    where
-        W: IntoParallelIterator,
-        W::Item: Deref<Target = OrderExps<N>>,
-    {
-        walker
-            .into_par_iter()
-            .fold(OrdersSet::default, |mut local_acc, order| {
-                let mut acc = [0u8; N];
-                self.collect_distinct_orders(&order, &mut acc, &mut local_acc);
-                local_acc
-            })
-            .for_each(|local_acc| {
-                for order in local_acc {
-                    out.insert(order);
-                }
-            });
+    pub fn par_collect_distinct_orders(&self, walker: Cow<LcmOrders<N>>, out: &OrdersDashSet<N>) {
+        match walker {
+            Cow::Borrowed(LcmOrders::CombinedOrders(walker)) => walker
+                .par_iter()
+                .fold(OrdersSet::default, |mut local_acc, order| {
+                    let mut acc = [0u8; N];
+                    self.collect_distinct_orders(&order, &mut acc, &mut local_acc);
+                    local_acc
+                })
+                .for_each(|local_acc| {
+                    for order in local_acc {
+                        out.insert(order);
+                    }
+                }),
+            Cow::Owned(LcmOrders::CombinedOrders(walker)) => walker
+                .into_par_iter()
+                .fold(OrdersSet::default, |mut local_acc, order| {
+                    let mut acc = [0u8; N];
+                    self.collect_distinct_orders(&order, &mut acc, &mut local_acc);
+                    local_acc
+                })
+                .for_each(|local_acc| {
+                    for order in local_acc {
+                        out.insert(order);
+                    }
+                }),
+            Cow::Borrowed(LcmOrders::OrbitOrders(walker)) => walker
+                .par_iter()
+                .fold(OrdersSet::default, |mut local_acc, order| {
+                    let mut acc = [0u8; N];
+                    self.collect_distinct_orders(order, &mut acc, &mut local_acc);
+                    local_acc
+                })
+                .for_each(|local_acc| {
+                    for order in local_acc {
+                        out.insert(order);
+                    }
+                }),
+            Cow::Owned(LcmOrders::OrbitOrders(walker)) => walker
+                .into_par_iter()
+                .fold(OrdersSet::default, |mut local_acc, order| {
+                    let mut acc = [0u8; N];
+                    self.collect_distinct_orders(&order, &mut acc, &mut local_acc);
+                    local_acc
+                })
+                .for_each(|local_acc| {
+                    for order in local_acc {
+                        out.insert(order);
+                    }
+                }),
+        }
     }
 }
 
 #[cfg(test)]
 mod benches {
-    use std::{iter::repeat_with, num::NonZeroU16, time::Instant};
+    use std::{borrow::Cow, iter::repeat_with, num::NonZeroU16, time::Instant};
 
     use log::info;
 
-    use crate::{N, orderexps::OrderExps, possible_orders::OrdersDashSet, trie::MaxOrderTrie};
+    use crate::{
+        N,
+        orderexps::OrderExps,
+        possible_orders::{LcmOrders, OrdersDashSet, OrdersSet},
+        trie::MaxOrderTrie,
+    };
 
     fn mk_data(count: usize) -> Vec<OrderExps<N>> {
         repeat_with(|| fastrand::u16(..))
@@ -104,9 +143,11 @@ mod benches {
         for order in producer {
             root.insert(order);
         }
-        root.par_collect_distinct_orders(&walker, &out);
+        root.par_collect_distinct_orders(
+            Cow::Owned(LcmOrders::OrbitOrders(OrdersSet::from_iter(walker))),
+            &out,
+        );
         info!("Finished in {:?}", now.elapsed());
-        drop(walker);
     }
 
     const SMALL: usize = 10usize.pow(2);
