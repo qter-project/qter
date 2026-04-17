@@ -35,7 +35,9 @@ impl OrbitDef {
         combine_parity_orders: bool,
     ) -> OrbitPossibleOrders<N> {
         #[allow(clippy::missing_panics_doc)]
-        assert!(self.piece_count.get() < u16::from(PRIME_AFTER_LAST));
+        {
+            assert!(self.piece_count.get() < u16::from(PRIME_AFTER_LAST));
+        }
         let piece_count = self.piece_count.get();
         let orientation_count = self.orientation_count();
 
@@ -99,7 +101,8 @@ impl OrbitDef {
                             if remaining_pieces_count == 2
                                 && let Some(odd_parity_orders) = maybe_odd_parity_orders
                             {
-                                acc_order.0[0] = acc_order.0[0].checked_add(1).unwrap();
+                                // TODO: does this panic? does Mul panic?
+                                acc_order.0[0] += 1;
                                 extend_orientation_order_factors(&acc_order, odd_parity_orders);
                             }
                         }
@@ -137,15 +140,25 @@ impl OrbitDef {
             } = self.orientation
         {
             let mut gcd = piece_count;
+            #[allow(clippy::missing_panics_doc)]
             while !u16::from(orientation_count).is_multiple_of(gcd) {
+                // We know that `piece_count` must be a prime power with base prime
+                // `base_prime`.
                 gcd = gcd.div_exact(u16::from(base_prime)).unwrap();
             }
             for multiple in (gcd..=piece_count)
                 .step_by(usize::from(gcd))
                 .skip(if gcd == 1 { 1 } else { 0 })
             {
+                // `gcd` cannot be zero, since `piece_count` is not zero, and
+                // <nonzero>.exact_div(x) is nonzero
+                #[allow(clippy::missing_panics_doc)]
                 let multiple = NonZeroU16::new(multiple).unwrap();
 
+                // We know `piece_count` is less than `PRIME_AFTER_LAST` by the assertion so
+                // this has no possibility of failing. We also know `multiple` is less than or
+                // equal to `piece_count`
+                #[allow(clippy::missing_panics_doc)]
                 let impossible = OrderExps::<N>::try_from(self.piece_count).unwrap()
                     * OrderExps::<N>::try_from(multiple).unwrap();
                 match &mut orbit_possible_orders {
@@ -261,27 +274,32 @@ fn combine<'a, const N: usize>(
 }
 
 impl PuzzleDef {
-    pub fn connected_component_possible_orders<const N: usize>(
+    /// Compute all possible orders for a connected component of orbits.
+    fn connected_component_possible_orders<const N: usize>(
         &self,
         connected_component: &[usize],
     ) -> LcmOrders<N> {
         let even_parity_constraints = self.even_parity_constraints();
 
-        if let [singular_component] = *connected_component {
-            let orbit_def = self.orbit_defs()[singular_component];
-            return LcmOrders::OrbitOrders(match orbit_def.parity_constraint {
-                ParityConstraint::Even => {
-                    let (component_possible_orders, None) =
-                        orbit_def.uncombined_parity_possible_orders()
-                    else {
-                        // When this orbit is set to "must be even," `OrbitDef::possible_orders`
-                        // does not record odd parity orders.
-                        unreachable!();
-                    };
-                    component_possible_orders
-                }
-                ParityConstraint::None => orbit_def.combined_parity_possible_orders(),
-            });
+        match *connected_component {
+            [] => panic!("it is a logic error for a connected component to have no orbits"),
+            [singular_component] => {
+                let orbit_def = self.orbit_defs()[singular_component];
+                return LcmOrders::OrbitOrders(match orbit_def.parity_constraint {
+                    ParityConstraint::Even => {
+                        let (component_possible_orders, None) =
+                            orbit_def.uncombined_parity_possible_orders()
+                        else {
+                            // When this orbit is set to "must be even," `OrbitDef::possible_orders`
+                            // does not record odd parity orders.
+                            unreachable!();
+                        };
+                        component_possible_orders
+                    }
+                    ParityConstraint::None => orbit_def.combined_parity_possible_orders(),
+                });
+            }
+            _ => (),
         }
 
         let mut connected_component_parity_constraints = BitMatrix::build(
@@ -302,6 +320,8 @@ impl PuzzleDef {
             for (i, parity) in possible_assignment.enumerate() {
                 let symbol = i * 2 + usize::from(parity);
                 if !possible_assignment_symbols.insert(symbol) {
+                    // The same symbol cannot be in the same assignment. I.e. one orbit cannot have
+                    // two possible assignments
                     unreachable!();
                 }
             }
@@ -361,6 +381,7 @@ impl PuzzleDef {
                     })
                 })
                 .max_by_key(|&(_, _, weight)| weight)
+                // `work` must not be empty because we asserted `connected_component` must not be empty earlier
                 .unwrap();
             match max_count {
                 0 => panic!(),
@@ -415,9 +436,6 @@ impl PuzzleDef {
             work.insert(next_symbol, combine(smallest, smaller).into_owned());
             next_symbol += 1;
         }
-
-        // This would be have caught at the guard clause
-        assert_ne!(work.len(), 1);
 
         let possible_orders = OrdersDashSet::default();
         possible_assignments_symbols

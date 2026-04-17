@@ -13,6 +13,9 @@
 
 use bitgauss::BitMatrix;
 
+// pub const N: usize = 16;
+// pub const PRIMES: [u8; N] = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41,
+// 43, 47, 53]; pub const PRIME_AFTER_LAST: u8 = 59;
 pub const N: usize = 32;
 pub const PRIMES: [u8; N] = [
     2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97,
