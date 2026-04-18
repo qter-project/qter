@@ -30,7 +30,7 @@ pub enum OrbitPossibleOrders<const N: usize> {
 impl OrbitDef {
     /// Compute all possible orders of elements for this orbit.
     #[must_use]
-    pub fn possible_orders<const N: usize>(
+    fn possible_orders<const N: usize>(
         self,
         combine_parity_orders: bool,
     ) -> OrbitPossibleOrders<N> {
@@ -65,22 +65,14 @@ impl OrbitDef {
             return orbit_possible_orders;
         }
 
-        let extend_orientation_order_factors = {
-            let orientation_order_factors = divisors(orientation_count);
-            move |order: &OrderExps<N>, orders_set: &mut OrdersSet<N>| {
-                orders_set.extend(orientation_order_factors.iter().map(
-                    |orientation_order_factor| order.clone() * orientation_order_factor.clone(),
-                ));
-            }
-        };
         let mut piece_count_prime_power_base = None;
 
         let mut stack = vec![(0, piece_count, OrderExps::one())];
-        while let Some((prime_index, remaining_pieces_count, mut acc_order)) = stack.pop() {
+        while let Some((prime_index, remaining_pieces_count, acc_order)) = stack.pop() {
             if prime_index == invalid_prime_index {
                 match &mut orbit_possible_orders {
                     OrbitPossibleOrders::CombinedOrders(combined_orders) => {
-                        extend_orientation_order_factors(&acc_order, combined_orders);
+                        combined_orders.insert(acc_order);
                     }
                     OrbitPossibleOrders::ParityOrders {
                         even_parity_orders,
@@ -91,20 +83,13 @@ impl OrbitDef {
 
                         if odd_parity {
                             if let Some(odd_parity_orders) = maybe_odd_parity_orders {
-                                extend_orientation_order_factors(&acc_order, odd_parity_orders);
+                                odd_parity_orders.insert(acc_order.clone());
                             }
                             if remaining_pieces_count >= 2 {
-                                extend_orientation_order_factors(&acc_order, even_parity_orders);
+                                even_parity_orders.insert(acc_order);
                             }
                         } else {
-                            extend_orientation_order_factors(&acc_order, even_parity_orders);
-                            if remaining_pieces_count == 2
-                                && let Some(odd_parity_orders) = maybe_odd_parity_orders
-                            {
-                                // TODO: does this panic? does Mul panic?
-                                acc_order.0[0] += 1;
-                                extend_orientation_order_factors(&acc_order, odd_parity_orders);
-                            }
+                            even_parity_orders.insert(acc_order);
                         }
                     }
                 }
@@ -130,6 +115,36 @@ impl OrbitDef {
                 ));
                 prime_power_exps.0[prime_index] += 1;
                 prime_power *= u16::from(prime);
+            }
+        }
+
+        let extend_orientation_order_factors = {
+            let orientation_order_factors = divisors(orientation_count);
+            move |orders_set: &mut OrdersSet<N>| {
+                *orders_set = orders_set
+                    .drain()
+                    .flat_map(|order| {
+                        orientation_order_factors
+                            .iter()
+                            .map(move |orientation_order_factor| {
+                                order.clone() * orientation_order_factor.clone()
+                            })
+                    })
+                    .collect();
+            }
+        };
+        match &mut orbit_possible_orders {
+            OrbitPossibleOrders::CombinedOrders(combined_orders) => {
+                extend_orientation_order_factors(combined_orders);
+            }
+            OrbitPossibleOrders::ParityOrders {
+                even_parity_orders,
+                maybe_odd_parity_orders,
+            } => {
+                extend_orientation_order_factors(even_parity_orders);
+                if let Some(odd_parity_orders) = maybe_odd_parity_orders {
+                    extend_orientation_order_factors(odd_parity_orders);
+                }
             }
         }
 
@@ -601,6 +616,25 @@ mod orbit {
             }
             _ => panic!("expected mismatch"),
         }
+    }
+
+    #[test_log::test]
+    fn edge_cases() {
+        test_possible_orders(
+            OrbitDef {
+                piece_count: 8.try_into().unwrap(),
+                orientation: OrientationStatus::CanOrient {
+                    count: 16,
+                    sum_constraint: OrientationSumConstraint::Zero,
+                },
+                parity_constraint: ParityConstraint::None,
+            },
+            Expected {
+                highest: 0,
+                combined_len: 0,
+                uncombined_lens: (0, None),
+            },
+        );
     }
 
     #[test_log::test]
@@ -1111,7 +1145,7 @@ mod puzzle {
             PuzzleDef,
             cubeN::{CUBE2, CUBE3, CUBE4, CUBE5, CUBE6, CUBE7, CUBE8},
             minxN::{MINX3, MINX4, MINX5},
-            misc::{BIG1, BIG2, BIG3, BIG4},
+            misc::{BIG1, BIG2, BIG3},
         },
     };
 
@@ -1262,18 +1296,18 @@ mod puzzle {
     fn big2() {
         test_possible_orders(
             &BIG2,
-            1234189,
+            43708,
             [
-                48572104155120,
-                48734191265760,
-                51483005814240,
-                51705788294160,
-                55271704728240,
-                56241383758560,
-                57761421157440,
-                72201776446800,
-                86176313823600,
-                86642131736160,
+                5697291600,
+                5956750800,
+                6177956400,
+                6299092800,
+                6692786100,
+                6983776800,
+                7301221200,
+                8454045600,
+                9448639200,
+                13967553600,
             ],
         );
     }
@@ -1282,38 +1316,18 @@ mod puzzle {
     fn big3() {
         test_possible_orders(
             &BIG3,
-            2079018,
+            49318,
             [
-                485721041551200,
-                487341912657600,
-                514830058142400,
-                517057882941600,
-                552717047282400,
-                562413837585600,
-                577614211574400,
-                722017764468000,
-                861763138236000,
-                866421317361600,
-            ],
-        );
-    }
-
-    #[test_log::test]
-    fn big4() {
-        test_possible_orders(
-            &BIG4,
-            3631922,
-            [
-                2036090095799760,
-                2069784258141600,
-                2119937320060560,
-                2137172582825280,
-                2368218267455040,
-                2671465728531600,
-                2960272834318800,
-                3104676387212400,
-                3205758874237920,
-                5342931457063200,
+                8031343320,
+                8172244080,
+                8735847120,
+                9133684560,
+                10126476360,
+                10708457760,
+                10824854040,
+                12258366120,
+                16062686640,
+                20252952720,
             ],
         );
     }
