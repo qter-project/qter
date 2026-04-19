@@ -157,8 +157,6 @@ pub fn divisors<const N: usize>(n: u8) -> Vec<OrderExps<N>> {
 pub enum OrderExpsConversionError {
     #[error("We cannot represent numbers too large")]
     PrimeTooLarge,
-    #[error("Prime exponent is too large")]
-    ExponentTooLarge,
 }
 
 impl<const N: usize> TryFrom<NonZeroU16> for OrderExps<N> {
@@ -169,13 +167,11 @@ impl<const N: usize> TryFrom<NonZeroU16> for OrderExps<N> {
         let mut primes_and_exps = PRIMES.into_iter().zip(exps.0.as_mut_array());
         let (mut prime, mut exp) = primes_and_exps
             .next()
-            .ok_or(OrderExpsConversionError::PrimeTooLarge)?;
+            .unwrap();
         let mut remainder = n.get();
         while remainder > 1 {
             if remainder.is_multiple_of(u16::from(prime)) {
-                *exp = exp
-                    .checked_add(1)
-                    .ok_or(OrderExpsConversionError::ExponentTooLarge)?;
+                *exp += 1;
                 remainder /= u16::from(prime);
             } else if remainder > 1 {
                 (prime, exp) = primes_and_exps

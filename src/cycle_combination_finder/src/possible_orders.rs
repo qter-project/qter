@@ -1,4 +1,4 @@
-use std::{borrow::Cow, num::NonZeroU16};
+use std::borrow::Cow;
 
 use bitgauss::BitMatrix;
 use dashmap::DashSet;
@@ -65,8 +65,6 @@ impl OrbitDef {
             return orbit_possible_orders;
         }
 
-        let mut piece_count_prime_power_base = None;
-
         let mut stack = vec![(0, piece_count, OrderExps::one())];
         while let Some((prime_index, remaining_pieces_count, acc_order)) = stack.pop() {
             if prime_index == invalid_prime_index {
@@ -105,9 +103,6 @@ impl OrbitDef {
             prime_power_exps.0[prime_index] = 1;
             let mut prime_power = u16::from(prime);
             while prime_power <= remaining_pieces_count {
-                if prime_power == piece_count {
-                    piece_count_prime_power_base = Some(prime);
-                }
                 stack.push((
                     prime_index + 1,
                     remaining_pieces_count - prime_power,
@@ -120,19 +115,47 @@ impl OrbitDef {
 
         let extend_orientation_order_factors = {
             let orientation_order_factors = divisors(orientation_count);
+            let maybe_prime_power_piece_count = if matches!(
+                self.orientation,
+                OrientationStatus::CanOrient {
+                    count: _,
+                    sum_constraint: OrientationSumConstraint::Zero,
+                }
+            ) {
+                let piece_count_orderexps = OrderExps::try_from(self.piece_count).unwrap();
+                if piece_count_orderexps.is_prime_power() {
+                    Some(piece_count_orderexps)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
             move |orders_set: &mut OrdersSet<N>| {
                 *orders_set = orders_set
                     .drain()
                     .flat_map(|order| {
+                        let n = if let Some(prime_power_piece_count) =
+                            maybe_prime_power_piece_count.clone()
+                            && order == prime_power_piece_count
+                        {
+                            1
+                        } else {
+                            orientation_order_factors.len()
+                        };
+
                         orientation_order_factors
                             .iter()
                             .map(move |orientation_order_factor| {
                                 order.clone() * orientation_order_factor.clone()
                             })
+                            .take(n)
                     })
                     .collect();
             }
         };
+
         match &mut orbit_possible_orders {
             OrbitPossibleOrders::CombinedOrders(combined_orders) => {
                 extend_orientation_order_factors(combined_orders);
@@ -148,50 +171,6 @@ impl OrbitDef {
             }
         }
 
-        if let Some(base_prime) = piece_count_prime_power_base
-            && let OrientationStatus::CanOrient {
-                count: _,
-                sum_constraint: OrientationSumConstraint::Zero,
-            } = self.orientation
-        {
-            let mut gcd = piece_count;
-            #[allow(clippy::missing_panics_doc)]
-            while !u16::from(orientation_count).is_multiple_of(gcd) {
-                // We know that `piece_count` must be a prime power with base prime
-                // `base_prime`.
-                gcd = gcd.div_exact(u16::from(base_prime)).unwrap();
-            }
-            for multiple in (gcd..=piece_count)
-                .step_by(usize::from(gcd))
-                .skip(if gcd == 1 { 1 } else { 0 })
-            {
-                // `gcd` cannot be zero, since `piece_count` is not zero, and
-                // <nonzero>.exact_div(x) is nonzero
-                #[allow(clippy::missing_panics_doc)]
-                let multiple = NonZeroU16::new(multiple).unwrap();
-
-                // We know `piece_count` is less than `PRIME_AFTER_LAST` by the assertion so
-                // this has no possibility of failing. We also know `multiple` is less than or
-                // equal to `piece_count`
-                #[allow(clippy::missing_panics_doc)]
-                let impossible = OrderExps::<N>::try_from(self.piece_count).unwrap()
-                    * OrderExps::<N>::try_from(multiple).unwrap();
-                match &mut orbit_possible_orders {
-                    OrbitPossibleOrders::CombinedOrders(combined_orders) => {
-                        combined_orders.remove(&impossible);
-                    }
-                    OrbitPossibleOrders::ParityOrders {
-                        even_parity_orders,
-                        maybe_odd_parity_orders,
-                    } => {
-                        even_parity_orders.remove(&impossible);
-                        if let Some(odd_parity_orders) = maybe_odd_parity_orders {
-                            odd_parity_orders.remove(&impossible);
-                        }
-                    }
-                }
-            }
-        }
         orbit_possible_orders
     }
 
@@ -545,6 +524,7 @@ mod orbit {
     fn test_possible_orders(orbit_def: OrbitDef, expected: Expected) {
         let mut start = Instant::now();
         let possible_orders = orbit_def.combined_parity_possible_orders::<N>();
+        println!("{:?}", possible_orders);
         trace!(
             "Combined orbit orders for {orbit_def:#?} in {}",
             start.elapsed().human(Truncate::Micro)

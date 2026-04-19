@@ -1,7 +1,10 @@
 use std::{
     fmt::{Debug, Formatter},
     ops::Mul,
-    simd::{Simd, cmp::SimdOrd},
+    simd::{
+        Simd,
+        cmp::{SimdOrd, SimdPartialEq},
+    },
 };
 
 use puzzle_theory::numbers::{Int, U};
@@ -31,6 +34,14 @@ impl<const N: usize> OrderExps<N> {
     #[must_use]
     pub fn lcm(&self, other: &Self) -> Self {
         Self(self.0.simd_max(other.0))
+    }
+
+    #[must_use]
+    pub fn is_prime_power(&self) -> bool {
+        self.0
+            .simd_ne(Simd::splat(0))
+            .to_bitmask()
+            .is_power_of_two()
     }
 }
 
