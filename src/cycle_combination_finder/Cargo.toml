@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-qter_core.workspace = true
 puzzle_theory.workspace = true
 log.workspace = true
 humanize-duration.workspace = true

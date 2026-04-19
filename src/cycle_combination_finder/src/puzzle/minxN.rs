@@ -1,24 +1,42 @@
 use std::sync::LazyLock;
 
-use puzzle_theory::puzzle_geometry::parsing::puzzle;
-
 use crate::puzzle::{
     EvenParityConstraints, OrientationStatus, OrientationSumConstraint, PartialOrbitDef, PuzzleDef,
 };
 
-pub static MINX3: LazyLock<PuzzleDef> = LazyLock::new(|| {
-    PuzzleDef::from_ksolve_naive(
-        &puzzle("megaminx").ksolve(),
+pub static MINX3: LazyLock<PuzzleDef<16>> = LazyLock::new(|| {
+    // PuzzleDef::from_ksolve_naive(
+    //     &puzzle("megaminx").ksolve(),
+    //     vec![
+    //         OrientationSumConstraint::Zero,
+    //         OrientationSumConstraint::Zero,
+    //     ],
+    //     EvenParityConstraints(vec![vec![0], vec![1]]),
+    // )
+    // .unwrap()
+    PuzzleDef::new(
         vec![
-            OrientationSumConstraint::Zero,
-            OrientationSumConstraint::Zero,
+            PartialOrbitDef {
+                piece_count: 20.try_into().unwrap(),
+                orientation: OrientationStatus::CanOrient {
+                    count: 3,
+                    sum_constraint: OrientationSumConstraint::Zero,
+                },
+            },
+            PartialOrbitDef {
+                piece_count: 30.try_into().unwrap(),
+                orientation: OrientationStatus::CanOrient {
+                    count: 2,
+                    sum_constraint: OrientationSumConstraint::Zero,
+                },
+            },
         ],
         EvenParityConstraints(vec![vec![0], vec![1]]),
     )
     .unwrap()
 });
 
-pub static MINX4: LazyLock<PuzzleDef> = LazyLock::new(|| {
+pub static MINX4: LazyLock<PuzzleDef<32>> = LazyLock::new(|| {
     PuzzleDef::new(
         vec![
             PartialOrbitDef {
@@ -42,7 +60,7 @@ pub static MINX4: LazyLock<PuzzleDef> = LazyLock::new(|| {
     .unwrap()
 });
 
-pub static MINX5: LazyLock<PuzzleDef> = LazyLock::new(|| {
+pub static MINX5: LazyLock<PuzzleDef<32>> = LazyLock::new(|| {
     PuzzleDef::new(
         vec![
             PartialOrbitDef {

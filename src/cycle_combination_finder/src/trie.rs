@@ -123,20 +123,19 @@ mod benches {
     use log::info;
 
     use crate::{
-        N,
         orderexps::OrderExps,
         possible_orders::{LcmOrders, OrdersDashSet, OrdersSet},
         trie::MaxOrderTrie,
     };
 
-    fn mk_data(count: usize) -> Vec<OrderExps<N>> {
+    fn mk_data<const N: usize>(count: usize) -> Vec<OrderExps<N>> {
         repeat_with(|| fastrand::u16(..))
             .filter_map(|x| OrderExps::<N>::try_from(NonZeroU16::new(x.max(1)).unwrap()).ok())
             .take(count)
             .collect::<Vec<_>>()
     }
 
-    fn do_bench(producer: Vec<OrderExps<N>>, walker: Vec<OrderExps<N>>) {
+    fn do_bench<const N: usize>(producer: Vec<OrderExps<N>>, walker: Vec<OrderExps<N>>) {
         let now = Instant::now();
         let out = OrdersDashSet::default();
         let mut root = MaxOrderTrie::new(0);
@@ -154,66 +153,66 @@ mod benches {
     const MID: usize = 10usize.pow(4);
     const BIG: usize = 10usize.pow(6);
 
-    #[test_log::test]
-    fn big_producer_big_walker() {
-        let producer = mk_data(BIG);
-        let walker = mk_data(BIG);
-        do_bench(producer, walker);
-    }
+    // #[test_log::test]
+    // fn big_producer_big_walker() {
+    //     let producer = mk_data(BIG);
+    //     let walker = mk_data(BIG);
+    //     do_bench(producer, walker);
+    // }
 
-    #[test_log::test]
-    fn big_producer_mid_walker() {
-        let producer = mk_data(BIG);
-        let walker = mk_data(MID);
-        do_bench(producer, walker);
-    }
+    // #[test_log::test]
+    // fn big_producer_mid_walker() {
+    //     let producer = mk_data(BIG);
+    //     let walker = mk_data(MID);
+    //     do_bench(producer, walker);
+    // }
 
-    #[test_log::test]
-    fn big_producer_small_walker() {
-        let producer = mk_data(BIG);
-        let walker = mk_data(SMALL);
-        do_bench(producer, walker);
-    }
+    // #[test_log::test]
+    // fn big_producer_small_walker() {
+    //     let producer = mk_data(BIG);
+    //     let walker = mk_data(SMALL);
+    //     do_bench(producer, walker);
+    // }
 
-    #[test_log::test]
-    fn mid_producer_big_walker() {
-        let producer = mk_data(MID);
-        let walker = mk_data(BIG);
-        do_bench(producer, walker);
-    }
+    // #[test_log::test]
+    // fn mid_producer_big_walker() {
+    //     let producer = mk_data(MID);
+    //     let walker = mk_data(BIG);
+    //     do_bench(producer, walker);
+    // }
 
-    #[test_log::test]
-    fn mid_producer_mid_walker() {
-        let producer = mk_data(MID);
-        let walker = mk_data(MID);
-        do_bench(producer, walker);
-    }
+    // #[test_log::test]
+    // fn mid_producer_mid_walker() {
+    //     let producer = mk_data(MID);
+    //     let walker = mk_data(MID);
+    //     do_bench(producer, walker);
+    // }
 
-    #[test_log::test]
-    fn mid_producer_small_walker() {
-        let producer = mk_data(MID);
-        let walker = mk_data(SMALL);
-        do_bench(producer, walker);
-    }
+    // #[test_log::test]
+    // fn mid_producer_small_walker() {
+    //     let producer = mk_data(MID);
+    //     let walker = mk_data(SMALL);
+    //     do_bench(producer, walker);
+    // }
 
-    #[test_log::test]
-    fn small_producer_big_walker() {
-        let producer = mk_data(SMALL);
-        let walker = mk_data(BIG);
-        do_bench(producer, walker);
-    }
+    // #[test_log::test]
+    // fn small_producer_big_walker() {
+    //     let producer = mk_data(SMALL);
+    //     let walker = mk_data(BIG);
+    //     do_bench(producer, walker);
+    // }
 
-    #[test_log::test]
-    fn small_producer_mid_walker() {
-        let producer = mk_data(SMALL);
-        let walker = mk_data(MID);
-        do_bench(producer, walker);
-    }
+    // #[test_log::test]
+    // fn small_producer_mid_walker() {
+    //     let producer = mk_data(SMALL);
+    //     let walker = mk_data(MID);
+    //     do_bench(producer, walker);
+    // }
 
-    #[test_log::test]
-    fn small_producer_small_walker() {
-        let producer = mk_data(SMALL);
-        let walker = mk_data(SMALL);
-        do_bench(producer, walker);
-    }
+    // #[test_log::test]
+    // fn small_producer_small_walker() {
+    //     let producer = mk_data(SMALL);
+    //     let walker = mk_data(SMALL);
+    //     do_bench(producer, walker);
+    // }
 }

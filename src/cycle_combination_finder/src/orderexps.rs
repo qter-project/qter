@@ -9,7 +9,7 @@ use std::{
 
 use puzzle_theory::numbers::{Int, U};
 
-use crate::PRIMES;
+use crate::FIRST_133_PRIMES;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct OrderExps<const N: usize>(pub Simd<u8, N>);
@@ -23,7 +23,7 @@ impl<const N: usize> OrderExps<N> {
     #[must_use]
     pub fn as_bigint(&self) -> Int<U> {
         let mut result = Int::one();
-        for (i, p) in PRIMES.into_iter().enumerate() {
+        for (i, p) in FIRST_133_PRIMES.into_iter().enumerate().take(N) {
             for _ in 0..self.0[i] {
                 result *= Int::<U>::from(p);
             }
@@ -49,6 +49,7 @@ impl<const N: usize> Mul for OrderExps<N> {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
+        // We should generally not overflow because 2^256 is way too big.
         #[allow(clippy::suspicious_arithmetic_impl)]
         Self(self.0 + rhs.0)
     }

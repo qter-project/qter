@@ -9,13 +9,14 @@
 
 ## CCF
 
-- test case for in between the max prime
+- when does orientation count fit?
 - can we remove constraints?
 - right now it's not sufficient to assume either 1 or [# of orientations] if the factor to multiply by when a cycle orientations
   - <https://discord.com/channels/772576325897945119/1326029986578038784/1422286972357050438>
 
 ## CCS
 
+- https://sebastiano.tronto.net/blog/2026-01-28-prefetch/
 - solver.rs
   - 😎figure out move ordering dependence
   - F B cycle type is NOT checked!!

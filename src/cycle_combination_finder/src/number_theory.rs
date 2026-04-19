@@ -2,7 +2,7 @@ use std::num::NonZeroU16;
 
 use thiserror::Error;
 
-use crate::{PRIMES, orderexps::OrderExps, puzzle::OrbitDef};
+use crate::{FIRST_133_PRIMES, orderexps::OrderExps, puzzle::OrbitDef};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct MaxPrimePower {
@@ -91,7 +91,8 @@ pub fn max_prime_powers_below(orbit_defs: &[OrbitDef], n: u16) -> Vec<MaxPrimePo
         };
 
         max_prime_powers.push(MaxPrimePower {
-            prime: prime as u16,
+            #[allow(clippy::missing_panics_doc)]
+            prime: u16::try_from(prime).unwrap(),
             exponent,
             orienting_exponent,
         });
@@ -105,10 +106,14 @@ pub fn max_prime_powers_below(orbit_defs: &[OrbitDef], n: u16) -> Vec<MaxPrimePo
 ///
 /// # Panics
 ///
-/// This function panics if a number cannot be represented by the first
-/// [`N`] primes or if a prime exponent is greater than or equal to 256.
+/// This function panics if a divisor cannot be represented by the first `N`
+/// primes.
 #[must_use]
 pub fn divisors<const N: usize>(n: u8) -> Vec<OrderExps<N>> {
+    #[allow(clippy::missing_panics_doc)]
+    {
+        assert!(u16::from(n) < FIRST_133_PRIMES[N]);
+    }
     let mut divisors = vec![];
     if n == 0 {
         return divisors;
@@ -116,18 +121,18 @@ pub fn divisors<const N: usize>(n: u8) -> Vec<OrderExps<N>> {
     let mut divisor = OrderExps::one();
     divisors.push(divisor.clone());
 
-    let mut primes_and_index = PRIMES.into_iter().enumerate();
+    let mut primes_and_index = FIRST_133_PRIMES
+        .into_iter()
+        .map_while(|p| u8::try_from(p).ok())
+        .enumerate();
     let mut remainder = n;
     let mut max_exp: u8 = 0;
 
-    let (mut prime_index, mut prime) = primes_and_index
-        .next()
-        .expect("We cannot represent numbers too large");
+    let (mut prime_index, mut prime) = primes_and_index.next().unwrap();
     while remainder > 1 || max_exp > 0 {
         if remainder.is_multiple_of(prime) {
-            max_exp = max_exp
-                .checked_add(1)
-                .expect("We cannot represent an exponent this large");
+            // We don't care about overflow since it happens at prime^256
+            max_exp += 1;
             remainder /= prime;
         } else {
             divisors.reserve(divisors.len() * usize::from(max_exp));
@@ -138,7 +143,7 @@ pub fn divisors<const N: usize>(n: u8) -> Vec<OrderExps<N>> {
                 for i in 0..org_len {
                     divisors.push(divisors[i].clone() * divisor.clone());
                 }
-                divisor.0[prime_index] = divisor.0[prime_index].checked_add(1).unwrap();
+                divisor.0[prime_index] += 1;
             }
             divisor.0[prime_index] = 0;
             max_exp = 0;
@@ -164,15 +169,13 @@ impl<const N: usize> TryFrom<NonZeroU16> for OrderExps<N> {
 
     fn try_from(n: NonZeroU16) -> Result<Self, Self::Error> {
         let mut exps = Self::one();
-        let mut primes_and_exps = PRIMES.into_iter().zip(exps.0.as_mut_array());
-        let (mut prime, mut exp) = primes_and_exps
-            .next()
-            .unwrap();
+        let mut primes_and_exps = FIRST_133_PRIMES.into_iter().zip(exps.0.as_mut_array());
+        let (mut prime, mut exp) = primes_and_exps.next().unwrap();
         let mut remainder = n.get();
         while remainder > 1 {
-            if remainder.is_multiple_of(u16::from(prime)) {
+            if remainder.is_multiple_of(prime) {
                 *exp += 1;
-                remainder /= u16::from(prime);
+                remainder /= prime;
             } else if remainder > 1 {
                 (prime, exp) = primes_and_exps
                     .next()
@@ -405,9 +408,9 @@ mod max_prime_powers_below {
 
 #[cfg(test)]
 mod divisors {
-    use crate::{N, PRIME_AFTER_LAST, PRIMES, number_theory::divisors, orderexps::OrderExps};
+    use crate::{number_theory::divisors, orderexps::OrderExps};
 
-    fn as_u64s(n: Vec<OrderExps<N>>) -> Vec<u8> {
+    fn as_u64s<const N: usize>(n: Vec<OrderExps<N>>) -> Vec<u8> {
         n.into_iter()
             .map(|x| x.as_bigint().try_into().unwrap())
             .collect()
@@ -415,41 +418,62 @@ mod divisors {
 
     #[test_log::test]
     fn edge_cases() {
-        assert!(divisors::<N>(0).is_empty());
-        assert_eq!(as_u64s(divisors::<N>(1)), vec![1]);
-        assert_eq!(as_u64s(divisors::<N>(2)), vec![1, 2]);
+        assert!(divisors::<8>(0).is_empty());
+        assert_eq!(as_u64s(divisors::<8>(1)), vec![1]);
+        assert_eq!(as_u64s(divisors::<8>(2)), vec![1, 2]);
     }
 
     #[test_log::test]
     fn composites() {
         assert_eq!(
-            as_u64s(divisors::<N>(255)),
+            as_u64s(divisors::<64>(255)),
             vec![1, 3, 5, 15, 17, 51, 85, 255]
         );
     }
 
     #[test_log::test]
     fn primes() {
-        assert_eq!(as_u64s(divisors::<N>(3)), vec![1, 3]);
-        assert_eq!(as_u64s(divisors::<N>(17)), vec![1, 17]);
-        assert_eq!(
-            as_u64s(divisors::<N>(PRIMES[N - 1])),
-            vec![1, PRIMES[N - 1]]
-        );
+        assert_eq!(as_u64s(divisors::<8>(3)), vec![1, 3]);
+        assert_eq!(as_u64s(divisors::<8>(17)), vec![1, 17]);
+        assert_eq!(as_u64s(divisors::<32>(131)), vec![1, 131]);
     }
 
     #[test_log::test]
     fn prime_powers() {
-        assert_eq!(as_u64s(divisors::<N>(4)), vec![1, 2, 4]);
-        assert_eq!(as_u64s(divisors::<N>(9)), vec![1, 3, 9]);
-        assert_eq!(as_u64s(divisors::<N>(125)), vec![1, 5, 25, 125]);
-        assert_eq!(as_u64s(divisors::<N>(243)), vec![1, 3, 9, 27, 81, 243]);
+        assert_eq!(as_u64s(divisors::<8>(4)), vec![1, 2, 4]);
+        assert_eq!(as_u64s(divisors::<8>(9)), vec![1, 3, 9]);
+        assert_eq!(as_u64s(divisors::<32>(125)), vec![1, 5, 25, 125]);
+        assert_eq!(as_u64s(divisors::<64>(243)), vec![1, 3, 9, 27, 81, 243]);
     }
 
     #[test_log::test]
-    #[should_panic(expected = "We cannot represent numbers too large")]
-    fn too_big_prime_panicks() {
-        let _ = divisors::<N>(PRIME_AFTER_LAST);
+    fn between_max_prime() {
+        assert_eq!(
+            as_u64s(divisors::<32>(132)),
+            vec![1, 2, 4, 3, 6, 12, 11, 22, 44, 33, 66, 132]
+        );
+        assert_eq!(as_u64s(divisors::<32>(133)), vec![1, 7, 19, 133]);
+        assert_eq!(as_u64s(divisors::<32>(134)), vec![1, 2, 67, 134]);
+        assert_eq!(
+            as_u64s(divisors::<32>(135)),
+            vec![1, 3, 9, 27, 5, 15, 45, 135]
+        );
+        assert_eq!(
+            as_u64s(divisors::<32>(136)),
+            vec![1, 2, 4, 8, 17, 34, 68, 136]
+        );
+    }
+
+    #[test_log::test]
+    #[should_panic(expected = "assertion failed: u16::from(n) < FIRST_65_PRIMES[N]")]
+    fn too_big_prime_panics1() {
+        let _ = divisors::<32>(251);
+    }
+
+    #[test_log::test]
+    #[should_panic(expected = "assertion failed: u16::from(n) < FIRST_65_PRIMES[N]")]
+    fn too_big_prime_panics2() {
+        let _ = divisors::<32>(137);
     }
 }
 
@@ -457,14 +481,14 @@ mod divisors {
 mod orderexps {
     use std::num::NonZeroU16;
 
-    use crate::{N, PRIME_AFTER_LAST, orderexps::OrderExps};
+    use crate::{FIRST_133_PRIMES, orderexps::OrderExps};
 
     #[test_log::test]
     fn basic() {
-        for i in 1..PRIME_AFTER_LAST {
+        for i in 1..FIRST_133_PRIMES[FIRST_133_PRIMES.len() - 1] {
             assert_eq!(
-                u8::try_from(
-                    OrderExps::<N>::try_from(NonZeroU16::new(u16::from(i)).unwrap())
+                u16::try_from(
+                    OrderExps::<64>::try_from(NonZeroU16::new(i).unwrap())
                         .unwrap()
                         .as_bigint()
                 )
@@ -477,6 +501,9 @@ mod orderexps {
     #[test_log::test]
     #[should_panic(expected = "PrimeTooLarge")]
     fn prime_too_large() {
-        OrderExps::<N>::try_from(NonZeroU16::new(u16::from(PRIME_AFTER_LAST)).unwrap()).unwrap();
+        OrderExps::<64>::try_from(
+            NonZeroU16::new(FIRST_133_PRIMES.last().copied().unwrap()).unwrap(),
+        )
+        .unwrap();
     }
 }

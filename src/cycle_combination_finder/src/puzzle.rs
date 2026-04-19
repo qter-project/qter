@@ -1,4 +1,7 @@
-use std::{fmt::Debug, num::NonZeroU16};
+use std::{
+    fmt::{self, Debug, Formatter},
+    num::NonZeroU16,
+};
 
 use bitgauss::BitMatrix;
 use fxhash::FxHashMap;
@@ -6,7 +9,7 @@ use puzzle_theory::ksolve::KSolve;
 use thiserror::Error;
 use union_find::{QuickUnionUf, UnionBySize, UnionFind};
 
-use crate::{PRIME_AFTER_LAST, gauss_jordan_without_zero_rows};
+use crate::{FIRST_133_PRIMES, gauss_jordan_without_zero_rows};
 
 pub mod cubeN;
 pub mod minxN;
@@ -30,12 +33,14 @@ pub enum PuzzleDefCreationError {
     ConstraintIndexOutOfBounds { length: usize, actual: usize },
     #[error("Orientation count of {0} cannot be 0 or 1")]
     InvalidOrientationCount(u8),
-    #[error("Orbit has too many pieces. Expected a maximum of {max} but found {0}", max = PRIME_AFTER_LAST - 1)]
-    OrbitTooManyPieces(u16),
+    #[error("Orbit has too many pieces. Expected a maximum of {max} but found {actual}")]
+    OrbitTooManyPieces { actual: u16, max: u16 },
+    #[error("Orbit has too much orientation. Expected a maximum of {max} but found {actual}")]
+    OrbitTooMuchOrientation { actual: u8, max: u16 },
 }
 
 #[derive(Clone)]
-pub struct PuzzleDef {
+pub struct PuzzleDef<const N: usize> {
     orbit_defs: Vec<OrbitDef>,
     even_parity_constraints: BitMatrix,
     connected_components: Vec<Vec<usize>>,
@@ -90,15 +95,15 @@ pub enum ParityConstraint {
 //     }
 // }
 
-impl Debug for PuzzleDef {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<const N: usize> Debug for PuzzleDef<N> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("PuzzleDef")
             .field("orbit_defs", &self.orbit_defs)
             .finish_non_exhaustive()
     }
 }
 
-impl PuzzleDef {
+impl<const N: usize> PuzzleDef<N> {
     /// "Naively" make a [`PuzzleDef`] from a [`KSolve`]. It is naive in the
     /// sense that the fields for orientation and parity constraints are stubbed
     /// in because they are not implemented.
@@ -166,17 +171,24 @@ impl PuzzleDef {
                         }
                         _ => (),
                     }
-                    if piece_count.get() < u16::from(PRIME_AFTER_LAST) {
-                        Ok(OrbitDef {
-                            piece_count,
-                            orientation,
-                            parity_constraint: ParityConstraint::None,
-                        })
-                    } else {
-                        Err(PuzzleDefCreationError::OrbitTooManyPieces(
-                            piece_count.get(),
-                        ))
+                    if piece_count.get() >= FIRST_133_PRIMES[N] {
+                        return Err(PuzzleDefCreationError::OrbitTooManyPieces {
+                            max: FIRST_133_PRIMES[N],
+                            actual: piece_count.get(),
+                        });
                     }
+                    let ret = OrbitDef {
+                        piece_count,
+                        orientation,
+                        parity_constraint: ParityConstraint::None,
+                    };
+                    if u16::from(ret.orientation_count()) >= FIRST_133_PRIMES[N] {
+                        return Err(PuzzleDefCreationError::OrbitTooMuchOrientation {
+                            max: FIRST_133_PRIMES[N],
+                            actual: ret.orientation_count(),
+                        });
+                    }
+                    Ok(ret)
                 },
             )
             .collect::<Result<Vec<_>, PuzzleDefCreationError>>()?;

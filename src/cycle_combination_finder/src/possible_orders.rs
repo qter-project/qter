@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, cmp::Ordering};
 
 use bitgauss::BitMatrix;
 use dashmap::DashSet;
@@ -6,7 +6,7 @@ use fxhash::{FxBuildHasher, FxHashMap, FxHashSet};
 use rayon::prelude::*;
 
 use crate::{
-    PRIME_AFTER_LAST, PRIMES,
+    FIRST_133_PRIMES,
     ac3::backtrack_ac3,
     gauss_jordan_without_zero_rows,
     number_theory::divisors,
@@ -34,14 +34,15 @@ impl OrbitDef {
         self,
         combine_parity_orders: bool,
     ) -> OrbitPossibleOrders<N> {
-        #[allow(clippy::missing_panics_doc)]
-        {
-            assert!(self.piece_count.get() < u16::from(PRIME_AFTER_LAST));
-        }
         let piece_count = self.piece_count.get();
         let orientation_count = self.orientation_count();
+        #[allow(clippy::missing_panics_doc)]
+        {
+            assert!(self.piece_count.get() < FIRST_133_PRIMES[N]);
+            assert!(u16::from(orientation_count) < FIRST_133_PRIMES[N]);
+        }
 
-        let invalid_prime_index = PRIMES.partition_point(|&prime| u16::from(prime) <= piece_count);
+        let invalid_prime_index = FIRST_133_PRIMES.partition_point(|&prime| prime <= piece_count);
         let mut orbit_possible_orders = if combine_parity_orders {
             let mut combined_orders = OrdersSet::default();
             if piece_count == 1 {
@@ -98,10 +99,10 @@ impl OrbitDef {
             stack.push((prime_index + 1, remaining_pieces_count, acc_order.clone()));
 
             // or add all powers of prime
-            let prime = PRIMES[prime_index];
+            let prime = FIRST_133_PRIMES[prime_index];
             let mut prime_power_exps = OrderExps::one();
             prime_power_exps.0[prime_index] = 1;
-            let mut prime_power = u16::from(prime);
+            let mut prime_power = prime;
             while prime_power <= remaining_pieces_count {
                 stack.push((
                     prime_index + 1,
@@ -109,19 +110,17 @@ impl OrbitDef {
                     acc_order.clone() * prime_power_exps.clone(),
                 ));
                 prime_power_exps.0[prime_index] += 1;
-                prime_power *= u16::from(prime);
+                prime_power *= prime;
             }
         }
 
         let extend_orientation_order_factors = {
             let orientation_order_factors = divisors(orientation_count);
-            let maybe_prime_power_piece_count = if matches!(
-                self.orientation,
-                OrientationStatus::CanOrient {
-                    count: _,
-                    sum_constraint: OrientationSumConstraint::Zero,
-                }
-            ) {
+            let maybe_prime_power_piece_count = if let OrientationStatus::CanOrient {
+                count: _,
+                sum_constraint: OrientationSumConstraint::Zero,
+            } = self.orientation
+            {
                 let piece_count_orderexps = OrderExps::try_from(self.piece_count).unwrap();
                 if piece_count_orderexps.is_prime_power() {
                     Some(piece_count_orderexps)
@@ -267,12 +266,9 @@ fn combine<'a, const N: usize>(
     Cow::Owned(LcmOrders::CombinedOrders(combined))
 }
 
-impl PuzzleDef {
+impl<const N: usize> PuzzleDef<N> {
     /// Compute all possible orders for a connected component of orbits.
-    fn connected_component_possible_orders<const N: usize>(
-        &self,
-        connected_component: &[usize],
-    ) -> LcmOrders<N> {
+    fn connected_component_possible_orders(&self, connected_component: &[usize]) -> LcmOrders<N> {
         let even_parity_constraints = self.even_parity_constraints();
 
         match *connected_component {
@@ -360,12 +356,8 @@ impl PuzzleDef {
                             work.get(&smallest_symbol).unwrap(),
                         );
 
-                        #[allow(clippy::cast_precision_loss)]
-                        let count_cost_product_ln = if count > 0 && cost > 0 {
-                            ((count as f64).ln() + (cost as f64).ln()) as i32
-                        } else {
-                            0
-                        };
+                        #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+                        let count_cost_product_ln = (count as f64).ln() + (cost as f64).ln();
 
                         (
                             [smallest_symbol, smaller_symbol],
@@ -374,7 +366,7 @@ impl PuzzleDef {
                         )
                     })
                 })
-                .max_by_key(|&(_, _, weight)| weight)
+                .max_by(|&(_, _, a), &(_, _, b)| a.partial_cmp(&b).unwrap_or(Ordering::Equal))
                 // `work` must not be empty because we asserted `connected_component` must not be empty earlier
                 .unwrap();
             match max_count {
@@ -472,12 +464,12 @@ impl PuzzleDef {
     }
 
     #[must_use]
-    pub fn possible_orders<const N: usize>(&self) -> OrdersDashSet<N> {
+    pub fn possible_orders(&self) -> OrdersDashSet<N> {
         let all_combined = self
             .connected_components()
             .par_iter()
             .map(|connected_component| {
-                Cow::Owned(self.connected_component_possible_orders::<N>(connected_component))
+                Cow::Owned(self.connected_component_possible_orders(connected_component))
             })
             .reduce(
                 || Cow::Owned(LcmOrders::OrbitOrders(OrdersSet::default())),
@@ -497,12 +489,9 @@ mod orbit {
     use humanize_duration::{Truncate, prelude::DurationExt};
     use log::trace;
 
-    use crate::{
-        N,
-        puzzle::{
-            OrbitDef, OrientationStatus, OrientationSumConstraint, ParityConstraint, cubeN::CUBE5,
-            minxN::MINX5,
-        },
+    use crate::puzzle::{
+        OrbitDef, OrientationStatus, OrientationSumConstraint, ParityConstraint, cubeN::CUBE5,
+        minxN::MINX5,
     };
 
     const COMPOSITE_PIECE_COUNT: NonZeroU16 = NonZeroU16::new(120).unwrap();
@@ -522,9 +511,18 @@ mod orbit {
     const DEBUG: bool = false;
 
     fn test_possible_orders(orbit_def: OrbitDef, expected: Expected) {
+        match orbit_def.piece_count.get() {
+            1..23 => test_possible_orders_n::<8>(orbit_def, expected),
+            23..59 => test_possible_orders_n::<16>(orbit_def, expected),
+            59..137 => test_possible_orders_n::<32>(orbit_def, expected),
+            137..313 => test_possible_orders_n::<64>(orbit_def, expected),
+            _ => panic!("piece count too big"),
+        }
+    }
+
+    fn test_possible_orders_n<const N: usize>(orbit_def: OrbitDef, expected: Expected) {
         let mut start = Instant::now();
         let possible_orders = orbit_def.combined_parity_possible_orders::<N>();
-        println!("{:?}", possible_orders);
         trace!(
             "Combined orbit orders for {orbit_def:#?} in {}",
             start.elapsed().human(Truncate::Micro)
@@ -600,6 +598,7 @@ mod orbit {
 
     #[test_log::test]
     fn edge_cases() {
+        // caused the old CCF to fail
         test_possible_orders(
             OrbitDef {
                 piece_count: 8.try_into().unwrap(),
@@ -610,9 +609,9 @@ mod orbit {
                 parity_constraint: ParityConstraint::None,
             },
             Expected {
-                highest: 0,
-                combined_len: 0,
-                uncombined_lens: (0, None),
+                highest: 240,
+                combined_len: 30,
+                uncombined_lens: (28, Some(17)),
             },
         );
     }
@@ -700,7 +699,7 @@ mod orbit {
             };
             assert_eq!(
                 orbit_def
-                    .combined_parity_possible_orders::<N>()
+                    .combined_parity_possible_orders::<64>()
                     .into_iter()
                     .map(|possible_order| u64::try_from(possible_order.as_bigint()).unwrap())
                     .max()
@@ -1119,27 +1118,24 @@ mod puzzle {
     use log::info;
     use puzzle_theory::numbers::{Int, U};
 
-    use crate::{
-        N,
-        puzzle::{
-            PuzzleDef,
-            cubeN::{CUBE2, CUBE3, CUBE4, CUBE5, CUBE6, CUBE7, CUBE8},
-            minxN::{MINX3, MINX4, MINX5},
-            misc::{BIG1, BIG2, BIG3},
-        },
+    use crate::puzzle::{
+        PuzzleDef,
+        cubeN::{CUBE2, CUBE3, CUBE4, CUBE5, CUBE6, CUBE7, CUBE8},
+        minxN::{MINX3, MINX4, MINX5},
+        misc::{BIG1, BIG2, BIG3},
     };
 
     fn bigints(n: &[u64]) -> Vec<Int<U>> {
         n.iter().map(|&i| Int::<U>::from(i)).collect()
     }
 
-    fn test_possible_orders(
-        puzzle_def: &PuzzleDef,
+    fn test_possible_orders<const N: usize>(
+        puzzle_def: &PuzzleDef<N>,
         expected_len: usize,
         expected_highest_ten: [u64; 10],
     ) {
         let start = Instant::now();
-        let possible_orders = puzzle_def.possible_orders::<N>();
+        let possible_orders = puzzle_def.possible_orders();
         info!(
             "Possible puzzle orders for {puzzle_def:?} in {}",
             start.elapsed().human(Truncate::Micro)

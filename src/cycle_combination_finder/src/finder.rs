@@ -65,8 +65,8 @@ pub enum RegisterCount {
     All,
 }
 
-pub struct CycleCombinationFinder {
-    puzzle_def: PuzzleDef,
+pub struct CycleCombinationFinder<const N: usize> {
+    puzzle_def: PuzzleDef<N>,
 }
 
 impl Cycle {
@@ -83,13 +83,13 @@ impl CycleCombination {
     }
 }
 
-impl From<PuzzleDef> for CycleCombinationFinder {
-    fn from(puzzle_def: PuzzleDef) -> Self {
+impl<const N: usize> From<PuzzleDef<N>> for CycleCombinationFinder<N> {
+    fn from(puzzle_def: PuzzleDef<N>) -> Self {
         Self { puzzle_def }
     }
 }
 
-impl CycleCombinationFinder {
+impl<const N: usize> CycleCombinationFinder<N> {
     /// get a list of all possible orders to fit within a given number of pieces
     /// and partitions
     fn possible_order_list(
