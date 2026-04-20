@@ -15,11 +15,13 @@ use crate::FIRST_129_PRIMES;
 pub struct OrderExps<const N: usize>(pub Simd<u8, N>);
 
 impl<const N: usize> OrderExps<N> {
+    #[inline]
     #[must_use]
     pub fn one() -> Self {
         Self(Simd::splat(0))
     }
 
+    #[inline]
     #[must_use]
     pub fn as_bigint(&self) -> Int<U> {
         let mut result = Int::one();
@@ -31,11 +33,13 @@ impl<const N: usize> OrderExps<N> {
         result
     }
 
+    #[inline]
     #[must_use]
     pub fn lcm(&self, other: &Self) -> Self {
         Self(self.0.simd_max(other.0))
     }
 
+    #[inline]
     #[must_use]
     pub fn is_prime_power(&self) -> bool {
         self.0
@@ -48,6 +52,7 @@ impl<const N: usize> OrderExps<N> {
 impl<const N: usize> Mul for OrderExps<N> {
     type Output = Self;
 
+    #[inline]
     fn mul(self, rhs: Self) -> Self::Output {
         // We should generally not overflow because 2^256 is way too big.
         #[allow(clippy::suspicious_arithmetic_impl)]
