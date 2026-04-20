@@ -6,7 +6,7 @@ use fxhash::{FxBuildHasher, FxHashMap, FxHashSet};
 use rayon::prelude::*;
 
 use crate::{
-    FIRST_133_PRIMES,
+    FIRST_129_PRIMES,
     ac3::backtrack_ac3,
     gauss_jordan_without_zero_rows,
     number_theory::divisors,
@@ -38,11 +38,11 @@ impl OrbitDef {
         let orientation_count = self.orientation_count();
         #[allow(clippy::missing_panics_doc)]
         {
-            assert!(self.piece_count.get() < FIRST_133_PRIMES[N]);
-            assert!(u16::from(orientation_count) < FIRST_133_PRIMES[N]);
+            assert!(self.piece_count.get() < FIRST_129_PRIMES[N]);
+            assert!(u16::from(orientation_count) < FIRST_129_PRIMES[N]);
         }
 
-        let invalid_prime_index = FIRST_133_PRIMES.partition_point(|&prime| prime <= piece_count);
+        let invalid_prime_index = FIRST_129_PRIMES.partition_point(|&prime| prime <= piece_count);
         let mut orbit_possible_orders = if combine_parity_orders {
             let mut combined_orders = OrdersSet::default();
             if piece_count == 1 {
@@ -99,7 +99,7 @@ impl OrbitDef {
             stack.push((prime_index + 1, remaining_pieces_count, acc_order.clone()));
 
             // or add all powers of prime
-            let prime = FIRST_133_PRIMES[prime_index];
+            let prime = FIRST_129_PRIMES[prime_index];
             let mut prime_power_exps = OrderExps::one();
             prime_power_exps.0[prime_index] = 1;
             let mut prime_power = prime;
@@ -122,11 +122,9 @@ impl OrbitDef {
             } = self.orientation
             {
                 let piece_count_orderexps = OrderExps::try_from(self.piece_count).unwrap();
-                if piece_count_orderexps.is_prime_power() {
-                    Some(piece_count_orderexps)
-                } else {
-                    None
-                }
+                piece_count_orderexps
+                    .is_prime_power()
+                    .then_some(piece_count_orderexps)
             } else {
                 None
             };

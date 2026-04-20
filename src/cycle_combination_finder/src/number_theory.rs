@@ -2,7 +2,7 @@ use std::num::NonZeroU16;
 
 use thiserror::Error;
 
-use crate::{FIRST_133_PRIMES, orderexps::OrderExps, puzzle::OrbitDef};
+use crate::{FIRST_129_PRIMES, orderexps::OrderExps, puzzle::OrbitDef};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct MaxPrimePower {
@@ -49,46 +49,34 @@ pub fn max_prime_powers_below(orbit_defs: &[OrbitDef], n: u16) -> Vec<MaxPrimePo
 
         let mut exponent = 1;
         let mut min_piece_count = prime;
-        loop {
-            let next = min_piece_count * prime;
-            if next > n {
-                break;
-            }
-            min_piece_count = next;
-            exponent += 1;
-        }
-        // println!("prime: {i}\nexponent: {exponent}");
-        // let o =
-        // let local_n = match o {
-        //     Some(o) => usize::from(o.piece_count.get()),
-        //     None => n,
-        // };
-        // let orienting_exponent = exponent
-        //     + if o.is_some_and(|&orbit_def| min_piece_count as u16 <=
-        //       orbit_def.piece_count.get()) { 1
-        //     } else {
-        //         0
-        //     };
-        let orienting_exponent = match orbit_defs
+        let maybe_orienting_orbit = orbit_defs
             .iter()
             .filter(|&&orbit_def| orbit_def.orientation_count() as usize == prime)
             .max_by_key(|&&orbit_def| orbit_def.piece_count)
-        {
-            Some(o) => {
-                let mut exponent = 2;
-                let mut min_piece_count = prime;
-                loop {
-                    let next = min_piece_count * prime;
-                    if next > usize::from(o.piece_count.get()) {
-                        break;
-                    }
-                    min_piece_count = next;
-                    exponent += 1;
-                }
-                exponent
+            .copied();
+        let mut orienting_exponent = 2;
+        loop {
+            let next = min_piece_count * prime;
+            let mut changed = false;
+            if let Some(orienting_orbit) = maybe_orienting_orbit
+                && next <= usize::from(orienting_orbit.piece_count.get())
+            {
+                orienting_exponent += 1;
+                changed = true;
             }
-            None => exponent,
-        };
+            if next <= n {
+                exponent += 1;
+                changed = true;
+            }
+            if changed {
+                min_piece_count = next;
+            } else {
+                break;
+            }
+        }
+        if maybe_orienting_orbit.is_none() {
+            orienting_exponent = exponent;
+        }
 
         max_prime_powers.push(MaxPrimePower {
             #[allow(clippy::missing_panics_doc)]
@@ -112,7 +100,7 @@ pub fn max_prime_powers_below(orbit_defs: &[OrbitDef], n: u16) -> Vec<MaxPrimePo
 pub fn divisors<const N: usize>(n: u8) -> Vec<OrderExps<N>> {
     #[allow(clippy::missing_panics_doc)]
     {
-        assert!(u16::from(n) < FIRST_133_PRIMES[N]);
+        assert!(u16::from(n) < FIRST_129_PRIMES[N]);
     }
     let mut divisors = vec![];
     if n == 0 {
@@ -121,7 +109,7 @@ pub fn divisors<const N: usize>(n: u8) -> Vec<OrderExps<N>> {
     let mut divisor = OrderExps::one();
     divisors.push(divisor.clone());
 
-    let mut primes_and_index = FIRST_133_PRIMES
+    let mut primes_and_index = FIRST_129_PRIMES
         .into_iter()
         .map_while(|p| u8::try_from(p).ok())
         .enumerate();
@@ -169,7 +157,7 @@ impl<const N: usize> TryFrom<NonZeroU16> for OrderExps<N> {
 
     fn try_from(n: NonZeroU16) -> Result<Self, Self::Error> {
         let mut exps = Self::one();
-        let mut primes_and_exps = FIRST_133_PRIMES.into_iter().zip(exps.0.as_mut_array());
+        let mut primes_and_exps = FIRST_129_PRIMES.into_iter().zip(exps.0.as_mut_array());
         let (mut prime, mut exp) = primes_and_exps.next().unwrap();
         let mut remainder = n.get();
         while remainder > 1 {
@@ -465,13 +453,13 @@ mod divisors {
     }
 
     #[test_log::test]
-    #[should_panic(expected = "assertion failed: u16::from(n) < FIRST_65_PRIMES[N]")]
+    #[should_panic(expected = "assertion failed: u16::from(n) < FIRST_")]
     fn too_big_prime_panics1() {
         let _ = divisors::<32>(251);
     }
 
     #[test_log::test]
-    #[should_panic(expected = "assertion failed: u16::from(n) < FIRST_65_PRIMES[N]")]
+    #[should_panic(expected = "assertion failed: u16::from(n) < FIRST_")]
     fn too_big_prime_panics2() {
         let _ = divisors::<32>(137);
     }
@@ -481,11 +469,11 @@ mod divisors {
 mod orderexps {
     use std::num::NonZeroU16;
 
-    use crate::{FIRST_133_PRIMES, orderexps::OrderExps};
+    use crate::{FIRST_129_PRIMES, orderexps::OrderExps};
 
     #[test_log::test]
     fn basic() {
-        for i in 1..FIRST_133_PRIMES[FIRST_133_PRIMES.len() - 1] {
+        for i in 1..FIRST_129_PRIMES[64] {
             assert_eq!(
                 u16::try_from(
                     OrderExps::<64>::try_from(NonZeroU16::new(i).unwrap())
@@ -501,9 +489,6 @@ mod orderexps {
     #[test_log::test]
     #[should_panic(expected = "PrimeTooLarge")]
     fn prime_too_large() {
-        OrderExps::<64>::try_from(
-            NonZeroU16::new(FIRST_133_PRIMES.last().copied().unwrap()).unwrap(),
-        )
-        .unwrap();
+        OrderExps::<64>::try_from(NonZeroU16::new(FIRST_129_PRIMES[65]).unwrap()).unwrap();
     }
 }

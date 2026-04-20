@@ -9,7 +9,7 @@ use puzzle_theory::ksolve::KSolve;
 use thiserror::Error;
 use union_find::{QuickUnionUf, UnionBySize, UnionFind};
 
-use crate::{FIRST_133_PRIMES, gauss_jordan_without_zero_rows};
+use crate::{FIRST_129_PRIMES, gauss_jordan_without_zero_rows};
 
 pub mod cubeN;
 pub mod minxN;
@@ -171,9 +171,9 @@ impl<const N: usize> PuzzleDef<N> {
                         }
                         _ => (),
                     }
-                    if piece_count.get() >= FIRST_133_PRIMES[N] {
+                    if piece_count.get() >= FIRST_129_PRIMES[N] {
                         return Err(PuzzleDefCreationError::OrbitTooManyPieces {
-                            max: FIRST_133_PRIMES[N],
+                            max: FIRST_129_PRIMES[N],
                             actual: piece_count.get(),
                         });
                     }
@@ -182,9 +182,9 @@ impl<const N: usize> PuzzleDef<N> {
                         orientation,
                         parity_constraint: ParityConstraint::None,
                     };
-                    if u16::from(ret.orientation_count()) >= FIRST_133_PRIMES[N] {
+                    if u16::from(ret.orientation_count()) >= FIRST_129_PRIMES[N] {
                         return Err(PuzzleDefCreationError::OrbitTooMuchOrientation {
-                            max: FIRST_133_PRIMES[N],
+                            max: FIRST_129_PRIMES[N],
                             actual: ret.orientation_count(),
                         });
                     }
@@ -233,6 +233,7 @@ impl<const N: usize> PuzzleDef<N> {
                 }
             }
         }
+
         let mut connected_components = FxHashMap::<usize, Vec<usize>>::default();
         for (orbit_index, &root) in uf.link_parent().iter().enumerate() {
             connected_components

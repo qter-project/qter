@@ -9,7 +9,7 @@ use std::{
 
 use puzzle_theory::numbers::{Int, U};
 
-use crate::FIRST_133_PRIMES;
+use crate::FIRST_129_PRIMES;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct OrderExps<const N: usize>(pub Simd<u8, N>);
@@ -23,7 +23,7 @@ impl<const N: usize> OrderExps<N> {
     #[must_use]
     pub fn as_bigint(&self) -> Int<U> {
         let mut result = Int::one();
-        for (i, p) in FIRST_133_PRIMES.into_iter().enumerate().take(N) {
+        for (i, p) in FIRST_129_PRIMES.into_iter().enumerate().take(N) {
             for _ in 0..self.0[i] {
                 result *= Int::<U>::from(p);
             }
