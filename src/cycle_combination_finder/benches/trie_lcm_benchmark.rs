@@ -23,7 +23,7 @@ fn trie_lcm_benchmark(c: &mut Criterion) {
     const BIG: usize = 10usize.pow(4);
 
     ThreadPoolBuilder::new().build_global().unwrap();
-    
+
     group.measurement_time(Duration::from_secs(1));
     group.sample_size(10);
     for producer in [SMALL, MID, BIG] {

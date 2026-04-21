@@ -5,15 +5,6 @@ use crate::puzzle::{
 };
 
 pub static MINX3: LazyLock<PuzzleDef<16>> = LazyLock::new(|| {
-    // PuzzleDef::from_ksolve_naive(
-    //     &puzzle("megaminx").ksolve(),
-    //     vec![
-    //         OrientationSumConstraint::Zero,
-    //         OrientationSumConstraint::Zero,
-    //     ],
-    //     EvenParityConstraints(vec![vec![0], vec![1]]),
-    // )
-    // .unwrap()
     PuzzleDef::new(
         vec![
             PartialOrbitDef {

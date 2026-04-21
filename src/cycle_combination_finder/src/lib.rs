@@ -1,6 +1,5 @@
 #![warn(clippy::pedantic)]
 #![allow(
-    non_snake_case,
     clippy::too_many_arguments,
     clippy::too_many_lines,
     clippy::bool_to_int_with_if,
@@ -10,6 +9,12 @@
 #![feature(portable_simd, exact_div, gen_blocks)]
 
 use bitgauss::BitMatrix;
+
+pub const P9: u16 = FIRST_129_PRIMES[8];
+pub const P17: u16 = FIRST_129_PRIMES[16];
+pub const P33: u16 = FIRST_129_PRIMES[32];
+pub const P65: u16 = FIRST_129_PRIMES[64];
+pub const P129: u16 = FIRST_129_PRIMES[128];
 
 pub const FIRST_129_PRIMES: [u16; 129] = [
     2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97,

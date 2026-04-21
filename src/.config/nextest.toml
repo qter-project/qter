@@ -4,6 +4,9 @@ experimental = ["benchmarks"]
 filter = "binary_id(cycle_combination_solver::cube3) or binary_id(cycle_combination_solver::cube4) or binary_id(cycle_combination_solver::megaminx)"
 # placeholder for later; I will need to config these to have threads
 
+[profile.ccf]
+fail-fast = false
+
 [[profile.ccf.overrides]]
-filter = 'test(possible_orders) or test(trie::benches)'
+filter = 'test(possible_orders::puzzle)'
 threads-required = "num-cpus"

@@ -11,7 +11,9 @@ use union_find::{QuickUnionUf, UnionBySize, UnionFind};
 
 use crate::{FIRST_129_PRIMES, gauss_jordan_without_zero_rows};
 
+#[allow(non_snake_case)]
 pub mod cubeN;
+#[allow(non_snake_case)]
 pub mod minxN;
 pub mod misc;
 
@@ -27,10 +29,10 @@ pub enum PuzzleDefCreationError {
     #[error("Even parity constraint contains the duplicated index {0}")]
     DuplicateIndicies(usize),
     #[error(
-        "Even parity constraint index is out of bounds. Expected a maximum of {length} but found \
+        "Even parity constraint index is out of bounds. Expected a maximum of {max} but found \
          {actual}"
     )]
-    ConstraintIndexOutOfBounds { length: usize, actual: usize },
+    ConstraintIndexOutOfBounds { actual: usize, max: usize },
     #[error("Orientation count of {0} cannot be 0 or 1")]
     InvalidOrientationCount(u8),
     #[error("Orbit has too many pieces. Expected a maximum of {max} but found {actual}")]
@@ -173,7 +175,7 @@ impl<const N: usize> PuzzleDef<N> {
                     }
                     if piece_count.get() >= FIRST_129_PRIMES[N] {
                         return Err(PuzzleDefCreationError::OrbitTooManyPieces {
-                            max: FIRST_129_PRIMES[N],
+                            max: FIRST_129_PRIMES[N] - 1,
                             actual: piece_count.get(),
                         });
                     }
@@ -184,7 +186,7 @@ impl<const N: usize> PuzzleDef<N> {
                     };
                     if u16::from(ret.orientation_count()) >= FIRST_129_PRIMES[N] {
                         return Err(PuzzleDefCreationError::OrbitTooMuchOrientation {
-                            max: FIRST_129_PRIMES[N],
+                            max: FIRST_129_PRIMES[N] - 1,
                             actual: ret.orientation_count(),
                         });
                     }
@@ -200,8 +202,8 @@ impl<const N: usize> PuzzleDef<N> {
             for j in even_parity_constraint {
                 if j >= cols {
                     return Err(PuzzleDefCreationError::ConstraintIndexOutOfBounds {
-                        length: cols,
-                        actual: i,
+                        max: cols - 1,
+                        actual: j,
                     });
                 }
                 if even_parity_constraints.bit(i, j) {
@@ -304,6 +306,222 @@ impl OrbitDef {
 
 #[cfg(test)]
 mod tests {
+    use puzzle_theory::puzzle_geometry::parsing::puzzle;
+
+    use crate::{
+        FIRST_129_PRIMES,
+        puzzle::{
+            EvenParityConstraints, OrientationStatus, OrientationSumConstraint, PartialOrbitDef,
+            PuzzleDef, PuzzleDefCreationError,
+        },
+    };
+
     #[test_log::test]
-    fn edge_cases() {}
+    fn ksolve() {
+        PuzzleDef::<8>::from_ksolve_naive(
+            &puzzle("3x3").ksolve(),
+            vec![
+                OrientationSumConstraint::Zero,
+                OrientationSumConstraint::Zero,
+            ],
+            EvenParityConstraints(vec![vec![0, 1]]),
+        )
+        .unwrap();
+        PuzzleDef::<16>::from_ksolve_naive(
+            &puzzle("megaminx").ksolve(),
+            vec![
+                OrientationSumConstraint::Zero,
+                OrientationSumConstraint::Zero,
+            ],
+            EvenParityConstraints(vec![vec![0], vec![1]]),
+        )
+        .unwrap();
+    }
+
+    #[test_log::test]
+    fn no_orbits() {
+        assert!(matches!(
+            PuzzleDef::<8>::new(vec![], EvenParityConstraints(vec![])),
+            Err(PuzzleDefCreationError::NoOrbits),
+        ));
+        assert!(
+            PuzzleDef::<8>::new(
+                vec![PartialOrbitDef {
+                    piece_count: 1.try_into().unwrap(),
+                    orientation: OrientationStatus::CannotOrient
+                }],
+                EvenParityConstraints(vec![])
+            )
+            .is_ok()
+        );
+    }
+
+    #[test_log::test]
+    fn invalid_orientation_count() {
+        assert!(matches!(
+            PuzzleDef::<8>::new(
+                vec![PartialOrbitDef {
+                    piece_count: 1.try_into().unwrap(),
+                    orientation: OrientationStatus::CanOrient {
+                        count: 0,
+                        sum_constraint: OrientationSumConstraint::None
+                    },
+                }],
+                EvenParityConstraints(vec![])
+            ),
+            Err(PuzzleDefCreationError::InvalidOrientationCount(0)),
+        ));
+        assert!(matches!(
+            PuzzleDef::<8>::new(
+                vec![PartialOrbitDef {
+                    piece_count: 1.try_into().unwrap(),
+                    orientation: OrientationStatus::CanOrient {
+                        count: 1,
+                        sum_constraint: OrientationSumConstraint::None
+                    },
+                }],
+                EvenParityConstraints(vec![])
+            ),
+            Err(PuzzleDefCreationError::InvalidOrientationCount(1)),
+        ));
+        assert!(
+            PuzzleDef::<8>::new(
+                vec![PartialOrbitDef {
+                    piece_count: 1.try_into().unwrap(),
+                    orientation: OrientationStatus::CanOrient {
+                        count: 2,
+                        sum_constraint: OrientationSumConstraint::None
+                    },
+                }],
+                EvenParityConstraints(vec![])
+            )
+            .is_ok()
+        );
+    }
+
+    #[test_log::test]
+    fn orbit_too_many_pieces() {
+        assert!(matches!(
+            PuzzleDef::<8>::new(
+                vec![PartialOrbitDef {
+                    piece_count: 23.try_into().unwrap(),
+                    orientation: OrientationStatus::CanOrient {
+                        count: 2,
+                        sum_constraint: OrientationSumConstraint::None
+                    },
+                }],
+                EvenParityConstraints(vec![])
+            ),
+            Err(PuzzleDefCreationError::OrbitTooManyPieces {
+                actual: 23,
+                max: 22
+            })
+        ));
+        assert!(
+            PuzzleDef::<8>::new(
+                vec![PartialOrbitDef {
+                    piece_count: 22.try_into().unwrap(),
+                    orientation: OrientationStatus::CanOrient {
+                        count: 2,
+                        sum_constraint: OrientationSumConstraint::None
+                    },
+                }],
+                EvenParityConstraints(vec![])
+            )
+            .is_ok()
+        );
+    }
+
+    #[test_log::test]
+    fn orbit_too_much_orientation() {
+        assert!(matches!(
+            PuzzleDef::<8>::new(
+                vec![PartialOrbitDef {
+                    piece_count: 1.try_into().unwrap(),
+                    orientation: OrientationStatus::CanOrient {
+                        count: FIRST_129_PRIMES[8].try_into().unwrap(),
+                        sum_constraint: OrientationSumConstraint::None,
+                    },
+                }],
+                EvenParityConstraints(vec![]),
+            ),
+            Err(PuzzleDefCreationError::OrbitTooMuchOrientation {
+                actual: 23,
+                max: 22
+            })
+        ));
+        assert!(
+            PuzzleDef::<8>::new(
+                vec![PartialOrbitDef {
+                    piece_count: 1.try_into().unwrap(),
+                    orientation: OrientationStatus::CanOrient {
+                        count: u8::try_from(FIRST_129_PRIMES[8]).unwrap() - 1,
+                        sum_constraint: OrientationSumConstraint::None,
+                    },
+                }],
+                EvenParityConstraints(vec![]),
+            )
+            .is_ok()
+        );
+    }
+
+    #[test_log::test]
+    fn constraint_index_out_of_bounds() {
+        assert!(matches!(
+            PuzzleDef::<8>::new(
+                vec![PartialOrbitDef {
+                    piece_count: 1.try_into().unwrap(),
+                    orientation: OrientationStatus::CanOrient {
+                        count: 2,
+                        sum_constraint: OrientationSumConstraint::None,
+                    },
+                }],
+                EvenParityConstraints(vec![vec![1]]),
+            ),
+            Err(PuzzleDefCreationError::ConstraintIndexOutOfBounds { max: 0, actual: 1 })
+        ));
+        assert!(
+            PuzzleDef::<8>::new(
+                vec![PartialOrbitDef {
+                    piece_count: 1.try_into().unwrap(),
+                    orientation: OrientationStatus::CanOrient {
+                        count: 2,
+                        sum_constraint: OrientationSumConstraint::None,
+                    },
+                }],
+                EvenParityConstraints(vec![vec![0]]),
+            )
+            .is_ok()
+        );
+    }
+    
+    #[test_log::test]
+    fn duplicate_indicies() {
+        assert!(matches!(
+            PuzzleDef::<8>::new(
+                vec![PartialOrbitDef {
+                    piece_count: 1.try_into().unwrap(),
+                    orientation: OrientationStatus::CanOrient {
+                        count: 2,
+                        sum_constraint: OrientationSumConstraint::None,
+                    },
+                }],
+                EvenParityConstraints(vec![vec![0, 0]]),
+            ),
+            Err(PuzzleDefCreationError::DuplicateIndicies(0))
+        ));
+        assert!(
+            PuzzleDef::<8>::new(
+                vec![PartialOrbitDef {
+                    piece_count: 1.try_into().unwrap(),
+                    orientation: OrientationStatus::CanOrient {
+                        count: 2,
+                        sum_constraint: OrientationSumConstraint::None,
+                    },
+                }],
+                EvenParityConstraints(vec![vec![0]]),
+            )
+            .is_ok()
+        );
+    }
 }

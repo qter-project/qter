@@ -134,8 +134,8 @@ impl OrbitDef {
                     .drain()
                     .flat_map(|order| {
                         let n = if let Some(prime_power_piece_count) =
-                            maybe_prime_power_piece_count.clone()
-                            && order == prime_power_piece_count
+                            &maybe_prime_power_piece_count
+                            && order == prime_power_piece_count.clone()
                         {
                             1
                         } else {
@@ -487,9 +487,12 @@ mod orbit {
     use humanize_duration::{Truncate, prelude::DurationExt};
     use log::trace;
 
-    use crate::puzzle::{
-        OrbitDef, OrientationStatus, OrientationSumConstraint, ParityConstraint, cubeN::CUBE5,
-        minxN::MINX5,
+    use crate::{
+        P9, P17, P33, P65,
+        puzzle::{
+            OrbitDef, OrientationStatus, OrientationSumConstraint, ParityConstraint, cubeN::CUBE5,
+            minxN::MINX5,
+        },
     };
 
     const COMPOSITE_PIECE_COUNT: NonZeroU16 = NonZeroU16::new(120).unwrap();
@@ -510,10 +513,10 @@ mod orbit {
 
     fn test_possible_orders(orbit_def: OrbitDef, expected: Expected) {
         match orbit_def.piece_count.get() {
-            1..23 => test_possible_orders_n::<8>(orbit_def, expected),
-            23..59 => test_possible_orders_n::<16>(orbit_def, expected),
-            59..137 => test_possible_orders_n::<32>(orbit_def, expected),
-            137..313 => test_possible_orders_n::<64>(orbit_def, expected),
+            1..P9 => test_possible_orders_n::<8>(orbit_def, expected),
+            P9..P17 => test_possible_orders_n::<16>(orbit_def, expected),
+            P17..P33 => test_possible_orders_n::<32>(orbit_def, expected),
+            P33..P65 => test_possible_orders_n::<64>(orbit_def, expected),
             _ => panic!("piece count too big"),
         }
     }

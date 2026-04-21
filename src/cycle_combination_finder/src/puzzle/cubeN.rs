@@ -19,15 +19,6 @@ pub static CUBE2: LazyLock<PuzzleDef<8>> = LazyLock::new(|| {
 });
 
 pub static CUBE3: LazyLock<PuzzleDef<8>> = LazyLock::new(|| {
-    // PuzzleDef::from_ksolve_naive(
-    //     &puzzle("3x3").ksolve(),
-    //     vec![
-    //         OrientationSumConstraint::Zero,
-    //         OrientationSumConstraint::Zero,
-    //     ],
-    //     EvenParityConstraints(vec![vec![0, 1]]),
-    // )
-    // .unwrap()
     PuzzleDef::new(
         vec![
             PartialOrbitDef {
