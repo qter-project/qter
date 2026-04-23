@@ -447,13 +447,16 @@ impl<const N: usize> CycleCombinationFinder<N> {
         // debug!("new\n{cycle_combinations:#?}");
         let mut max_redundant = Int::<U>::from(0_u16);
         for combo in &*cycle_combinations {
+            let mut overshadows = true;
             for reg_from_last in 0..registers.len() {
                 if registers[last_reg as usize - reg_from_last].order
                     > combo.cycles[reg_from_last].order
                 {
+                    overshadows = true;
                     break;
                 }
-
+            }
+            if overshadows {
                 max_redundant = combo.cycles[(num_registers - 1) as usize]
                     .order
                     .max(max_redundant);
