@@ -1130,6 +1130,8 @@ mod puzzle {
         n.iter().map(|&i| Int::<U>::from(i)).collect()
     }
 
+    const DEBUG: bool = false;
+
     fn test_possible_orders<const N: usize>(
         puzzle_def: &PuzzleDef<N>,
         expected_len: usize,
@@ -1142,17 +1144,33 @@ mod puzzle {
             start.elapsed().human(Truncate::Micro)
         );
 
-        assert_eq!(possible_orders.len(), expected_len);
+        if DEBUG {
+            if possible_orders.len() != expected_len {
+                println!(
+                    "Expected: {} (actual: {})",
+                    expected_len,
+                    possible_orders.len(),
+                );
+            }
+        } else {
+            assert_eq!(possible_orders.len(), expected_len);
+        }
 
         let mut possible_orders = possible_orders
             .into_iter()
             .map(|f| f.as_bigint())
             .collect::<Vec<_>>();
         possible_orders.sort_unstable();
-        assert_eq!(
-            possible_orders.rchunks(10).next().unwrap(),
-            bigints(expected_highest_ten.as_slice())
-        );
+
+        let actual = possible_orders.rchunks(10).next().unwrap();
+        let expected = bigints(expected_highest_ten.as_slice());
+        if DEBUG {
+            if actual != expected {
+                println!("Expected: {expected:?} (actual: {actual:?})");
+            }
+        } else {
+            assert_eq!(actual, expected);
+        }
     }
 
     #[test_log::test]
