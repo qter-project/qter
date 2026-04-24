@@ -1113,7 +1113,7 @@ mod orbit {
 
 #[cfg(test)]
 mod puzzle {
-    use std::time::Instant;
+    use std::{str::FromStr, time::Instant};
 
     use humanize_duration::{Truncate, prelude::DurationExt};
     use log::info;
@@ -1122,20 +1122,16 @@ mod puzzle {
     use crate::puzzle::{
         PuzzleDef,
         cubeN::{CUBE2, CUBE3, CUBE4, CUBE5, CUBE6, CUBE7, CUBE8},
-        minxN::{MINX3, MINX4, MINX5},
+        minxN::{MINX3, MINX4, MINX5, MINX6},
         misc::{BIG1, BIG2, BIG3},
     };
 
-    fn bigints(n: &[u64]) -> Vec<Int<U>> {
-        n.iter().map(|&i| Int::<U>::from(i)).collect()
-    }
-
     const DEBUG: bool = false;
 
-    fn test_possible_orders<const N: usize>(
+    fn test_possible_orders_big<const N: usize>(
         puzzle_def: &PuzzleDef<N>,
         expected_len: usize,
-        expected_highest_ten: [u64; 10],
+        expected_highest_ten: [Int<U>; 10],
     ) {
         let start = Instant::now();
         let possible_orders = puzzle_def.possible_orders();
@@ -1163,14 +1159,22 @@ mod puzzle {
         possible_orders.sort_unstable();
 
         let actual = possible_orders.rchunks(10).next().unwrap();
-        let expected = bigints(expected_highest_ten.as_slice());
         if DEBUG {
-            if actual != expected {
-                println!("Expected: {expected:?} (actual: {actual:?})");
+            if actual != expected_highest_ten {
+                println!("Expected: {expected_highest_ten:?} (actual: {actual:?})");
             }
         } else {
-            assert_eq!(actual, expected);
+            assert_eq!(actual, expected_highest_ten);
         }
+    }
+
+    fn test_possible_orders<const N: usize>(
+        puzzle_def: &PuzzleDef<N>,
+        expected_len: usize,
+        expected_highest_ten: [u64; 10],
+    ) {
+        let expected_highest_ten = expected_highest_ten.map(Int::<U>::from);
+        test_possible_orders_big(puzzle_def, expected_len, expected_highest_ten);
     }
 
     #[test_log::test]
@@ -1271,6 +1275,27 @@ mod puzzle {
                 1335732864265800,
                 1357393397199840,
                 1413291546707040,
+            ],
+        );
+    }
+
+    #[test_log::test]
+    #[ignore = "takes too long"]
+    fn minx6() {
+        test_possible_orders_big(
+            &MINX6,
+            1624462,
+            [
+                Int::<U>::from_str("114459483432082108320").unwrap(),
+                Int::<U>::from_str("124809543104132086200").unwrap(),
+                Int::<U>::from_str("136419733160330419800").unwrap(),
+                Int::<U>::from_str("138938925342335718600").unwrap(),
+                Int::<U>::from_str("143074354290102635400").unwrap(),
+                Int::<U>::from_str("151863476536971599400").unwrap(),
+                Int::<U>::from_str("158541852051194812200").unwrap(),
+                Int::<U>::from_str("221360321731856907600").unwrap(),
+                Int::<U>::from_str("249619086208264172400").unwrap(),
+                Int::<U>::from_str("272839466320660839600").unwrap(),
             ],
         );
     }
