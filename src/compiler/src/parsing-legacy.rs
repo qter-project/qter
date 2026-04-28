@@ -1,7 +1,5 @@
 use crate::{
-    Block, BlockInfo, BlockInfoTracker, Code, Define, DefineValue, ExpansionInfo, Label,
-    MacroArgTy, MacroBranch, MacroPattern, MacroPatternComponent, ResolvedValue, RhaiCall, Value,
-    builtin_macros::builtin_macros, rhai::RhaiMacros,
+    Block, BlockInfo, BlockInfoTracker, Code, Define, DefineValue, ExpansionInfo, Label, MacroArgTy, MacroBranch, MacroPattern, MacroPatternComponent, ResolvedValue, RhaiCall, Value, builtin_macros::builtin_macros, rhai::RhaiMacros
 };
 use std::{
     collections::HashMap,
@@ -211,34 +209,6 @@ fn parser() -> impl Parser<'static, File, MaybeErr<ParsedSyntax>, ExtraAndSyntax
                     let find_import = Rc::clone(&state_ref.0);
                     let is_prelude = state_ref.1;
 
-                    let import = match (find_import)(filename.slice()) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            emitter.emit(Rich::custom(
-                                filename,
-                                format!("Unable to find import: {e}"),
-                            ));
-
-                            continue;
-                        }
-                    };
-
-                    let importee = match parse(
-                        &File::new(ArcIntern::from(filename.slice()), import),
-                        move |v| (find_import)(v),
-                        is_prelude,
-                    ) {
-                        Ok(v) => v,
-                        Err(errs) => {
-                            for err in errs {
-                                emitter.emit(err);
-                            }
-
-                            continue;
-                        }
-                    };
-
-                    merge_files(&mut parsed_syntax, &qat, importee, data.span(), emitter);
                 }
             }
         }
@@ -431,62 +401,9 @@ fn register_decl_unswitchable() -> impl Parser<'static, File, MaybeErr<Puzzle>, 
     ))
     .validate(|(mut names, (), archs), data, emitter| {
         archs
-            .map(|archs| match archs {
-                PuzzleUnnamed::Theoretical { order } => {
-                    if names.len() == 1 {
-                        MaybeErr::Some(Puzzle::Theoretical {
-                            name: names.pop().unwrap(),
-                            order,
-                        })
-                    } else {
-                        emitter.emit(Rich::custom(
-                            data.span(),
-                            format!("Expected one name whereas {} were provided.", names.len()),
-                        ));
-
-                        MaybeErr::None
-                    }
-                }
-                PuzzleUnnamed::Real {
-                    architecture,
-                    def_span,
-                } => {
-                    let span = architecture.span().clone();
-                    let (arch, swizzle) = architecture.into_inner();
-
-                    if arch.registers().len() == names.len() {
-                        swizzle.apply(&mut names);
-
-                        MaybeErr::Some(Puzzle::Real {
-                            architectures: vec![(names, span.with(arch), def_span)],
-                        })
-                    } else {
-                        emitter.emit(Rich::custom(
-                            data.span(),
-                            format!(
-                                "Expected {} names whereas {} were provided.",
-                                arch.registers().len(),
-                                names.len()
-                            ),
-                        ));
-
-                        MaybeErr::None
-                    }
-                }
-            })
+            .map(|archs| match archs )
             .flatten()
     })
-}
-
-#[derive(Clone, Debug)]
-enum PuzzleUnnamed {
-    Theoretical {
-        order: WithSpan<Int<U>>,
-    },
-    Real {
-        architecture: WithSpan<(Arc<Architecture>, Permutation)>,
-        def_span: Span,
-    },
 }
 
 fn algorithm() -> impl Parser<'static, File, Vec<Span>, Extra> {
@@ -795,16 +712,14 @@ fn instruction(
 }
 
 fn label() -> impl Parser<'static, File, WithSpan<Instruction>, Extra> {
-    group((tag_ident().with_state(()), whitespace(), just(':'))).map_with(
-        |((public, name), (), _), data| {
-            data.span().with(Instruction::Label(Label {
-                name: name.value,
-                public,
-                maybe_block_id: None,
-                branch_key: None,
-            }))
-        },
-    )
+    group((tag_ident().with_state(()), whitespace(), just(':'))).map_with(|((public, name), (), _), data| {
+        data.span().with(Instruction::Label(Label {
+            name: name.value,
+            public,
+            maybe_block_id: None,
+            branch_key: None,
+        }))
+    })
 }
 
 fn code(
@@ -920,201 +835,4 @@ fn block(block_rec: BlockParser) -> impl Parser<'static, File, MaybeErr<Block>, 
     )
 }
 
-fn merge_files(
-    importer: &mut ParsedSyntax,
-    importer_contents: &File,
-    mut importee: ParsedSyntax,
-    span: Span,
-    emitter: &mut Emitter<Rich<'static, char, Span>>,
-) {
-    match (
-        &importer.expansion_info.registers,
-        importee.expansion_info.registers,
-    ) {
-        (None, Some(regs)) => importer.expansion_info.registers = Some(regs),
-        (Some(_), Some(_)) => emitter.emit(Rich::custom(
-            span,
-            "Cannot merge files that both contain registers declarations.",
-        )),
-        (_, None) => {}
-    }
 
-    // Block numbers shouldn't be defined deeper than the root in this stage
-    let block_offset = importer.expansion_info.block_info.block_counter;
-
-    let mut max_block = 0;
-
-    for (block_id, block_info) in importee.expansion_info.block_info.blocks {
-        max_block = max_block.max(block_id.0);
-
-        importer
-            .expansion_info
-            .block_info
-            .blocks
-            .insert(BlockID(block_id.0 + block_offset), block_info);
-    }
-
-    importer
-        .expansion_info
-        .macros
-        .extend(importee.expansion_info.macros);
-    for (source_and_macro_name, macro_file) in importee.expansion_info.available_macros {
-        // Imports should not shadow existing macros
-        importer
-            .expansion_info
-            .available_macros
-            .entry((
-                importer_contents.clone(),
-                ArcIntern::clone(&source_and_macro_name.1),
-            ))
-            .or_insert_with(|| macro_file.clone());
-
-        importer
-            .expansion_info
-            .available_macros
-            .insert(source_and_macro_name, macro_file);
-    }
-    importer
-        .expansion_info
-        .rhai_macros
-        .extend(importee.expansion_info.rhai_macros);
-
-    importee.code.iter_mut().for_each(|tagged_instruction| {
-        if let Some(block_id) = &mut tagged_instruction.1 {
-            block_id.0 += block_offset;
-        }
-    });
-    importer.code.extend(importee.code);
-}
-
-#[cfg(test)]
-pub(crate) mod tests {
-    use chumsky::Parser;
-    use internment::ArcIntern;
-    use puzzle_theory::span::File;
-
-    use super::{ident, number, parse, registers};
-
-    pub(crate) fn file(str: &'static str) -> File {
-        File::new(ArcIntern::from("<static>"), ArcIntern::from(str))
-    }
-
-    #[test]
-    fn test_number() {
-        number::<()>().parse(file("123")).unwrap();
-        number::<()>().parse(file("12398263596868928956891896286935689869218695689689297479561963469856981968423679569173479159")).unwrap();
-
-        assert!(number::<()>().parse(file("")).has_errors());
-        assert!(number::<()>().parse(file("3x3")).has_errors());
-        assert!(number::<()>().parse(file("0.12")).has_errors());
-        assert!(number::<()>().parse(file("-11")).has_errors());
-        assert!(number::<()>().parse(file("-11")).has_errors());
-    }
-
-    #[test]
-    fn test_ident() {
-        ident::<()>().parse(file("a")).unwrap();
-        ident::<()>().parse(file("A")).unwrap();
-        ident::<()>().parse(file("3x3")).unwrap();
-        ident::<()>().parse(file("thingy")).unwrap();
-        ident::<()>().parse(file("prhaih")).unwrap();
-        ident::<()>().parse(file("->")).unwrap();
-        ident::<()>().parse(file("\"345\"")).unwrap();
-        ident::<()>().parse(file("\"rhai\"")).unwrap();
-
-        assert!(ident::<()>().parse(file("345")).has_errors());
-        assert!(ident::<()>().parse(file("rhai")).has_errors());
-        assert!(ident::<()>().parse(file("thing<-thing")).has_errors());
-        assert!(ident::<()>().parse(file("aa.aa")).has_errors());
-        assert!(ident::<()>().parse(file("!aaaa")).has_errors());
-        assert!(ident::<()>().parse(file("aaaa)")).has_errors());
-    }
-
-    #[test]
-    fn test_registers() {
-        let code = "
-            .registers {
-                a, b <- 3x3 builtin (90, 90)
-                (
-                    c, d ← 3x3 builtin (210, 24)
-                    d, e, f ← 3x3 builtin (30, 30, 30)
-                )
-                f ← theoretical 90
-                g, h ← 3x3 (U, D)
-            }
-        ";
-
-        let errs = registers().parse(file(code)).into_errors();
-
-        for err in &errs {
-            println!("{err}; {:?}", err.span().line_and_col());
-        }
-
-        assert!(errs.is_empty());
-    }
-
-    #[test]
-    fn bruh() {
-        let code = "
-            .registers {
-                a, b ← 3x3 builtin ( 90 , 90 )
-                (
-                    c, d ← 3x3 builtin (210, 24)
-                    d, e, f ← 3x3 builtin (30, 30, 30)
-                )
-                f ← theoretical 90
-                g, h ← 3x3 (U , D    )
-            }
-
-            .macro bruh {
-                ( lmao $a:reg) => add 1 $a
-                (oofy $a:reg ) => {
-                    bruh:
-                    add 1 $a
-                    goto bruh
-                }
-            }
-
-            .start-rhai
-                fn bruh() {
-                    print(\"skibidi\")
-                }
-            end-rhai
-
-            bruh :
-            bruhy:
-            add 1 a
-            goto bruh
-
-            rhai bruh( 1,2 , 3)
-
-            .define yeet rhai bruh(1, 2, 3)
-            .define pog 4
-
-            .import pog.qat
-            .import \"pog.qat\"
-        ";
-
-        match parse(
-            &file(code),
-            |name| {
-                assert_eq!(name, "pog.qat");
-                Ok(ArcIntern::from("add 1 a"))
-            },
-            false,
-        ) {
-            Ok(_) => {}
-            Err(errs) => {
-                for err in &errs {
-                    println!(
-                        "{err}; {:?}; `{}`",
-                        err.span().line_and_col(),
-                        err.span().slice()
-                    );
-                }
-
-                panic!();
-            }
-        }
-    }
-}
