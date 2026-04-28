@@ -68,6 +68,23 @@
   font-weight: 600;
   font-style: italic;
 }
+
+.diagram {
+    width: fit-content;
+    height: fit-content;
+    max-width: 100%;
+    max-height: 70vh;
+
+    margin-left: auto;
+    margin-right: auto;
+    margin-top: 1em;
+    margin-bottom: 1em;
+    display: block;
+}
+
+.diagram svg {
+    height: auto !important;
+}
 ```
 
 /// The project show rule that is used by all pages.
@@ -120,7 +137,7 @@
   )
 
   show: template-rules.with(
-    book-meta: include "/book.typ",
+    book-meta: include "/docs/book.typ",
     title: title,
     description: description,
     plain-body: plain-body,

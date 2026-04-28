@@ -85,26 +85,7 @@ loop {
 }
 ```
 
-# Installation
-
-First, install Rust through [rustup](https://rustup.rs) or your package manager. Second, run the following command to install Qter (TODO)
-
-<!-- ```bash -->
-<!-- ``` -->
-
-# Usage
-
-Our CLI tool will allow you to compile and execute programs written in QAT. You can compile a program by executing the following command.
-
-```bash
-qter compile program.qat
-# Will output the file `program.q` with the compiled code
-```
-
-To interpret and execute a program, you can run the following command.
-```bash
-qter interpret program.qat
-```
+If you're hooked and want to learn more, you can read the book at [https://qter.dev]!
 
 # How does Qter work?
 

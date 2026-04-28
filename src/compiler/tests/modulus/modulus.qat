@@ -6,6 +6,7 @@
 
 input "Number to modulus:" A
 
+// Calculate `B = -A mod 13`
 while not-solved A {
     if solved B {
         add B $MOD
@@ -16,11 +17,13 @@ while not-solved A {
 }
 
 if not-solved B {
+    // Calculate `A = -B`
     while not-solved B {
         dec A
         dec B
     }
 
+    // B is in the range -12 through -1, so add 13 to put it in the range 1 through 12
     add A $MOD
 }
 

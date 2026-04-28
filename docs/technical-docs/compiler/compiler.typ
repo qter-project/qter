@@ -1,4 +1,4 @@
-#import "../book.typ": book-page
+#import "../../book.typ": book-page
 
 #show: book-page.with(title: "Compiler")
 

@@ -1,4 +1,5 @@
 #import "@preview/shiroa:0.4.0": *
+#import "@preview/cetz:0.4.2"
 
 #show: book
 
@@ -11,36 +12,38 @@
 
     = Overview
 
-    - #chapter(none)[Rubik's cube theory]
-    - #chapter(none)[What is Qter?]
-    - #chapter(none)[Programming with Qter]
-      - #chapter(none)[Q language]
-      - #chapter(none)[QAT language]
-      - #chapter(none)[Example programs]
-      - #chapter(none)[Memory tapes]
+    - #chapter("./overview/rubiks-cube-theory.typ")[Rubik's Cube Theory]
+    - #chapter("./overview/what-is-qter.typ")[What is Qter?]
+    - #chapter("./overview/programming-with-qter.typ")[Getting Started]
+      - #chapter("./overview/q-language.typ")[Q Language]
+      - #chapter("./overview/qat-language.typ")[QAT language]
+      - #chapter("./overview/standard-library.typ")[Standard Library]
+      - #chapter("./overview/example-programs.typ")[Example Programs]
+      - #chapter("./overview/memory-tapes.typ")[Memory Tapes]
 
     = Theory
 
-    - #chapter(none)[Introduction]
-      - #chapter(none)[Group Theory]
-      - #chapter(none)[Permutation Groups]
-      - #chapter(none)[Parity and Orientation Sum]
-      - #chapter(none)[Cycle Structures]
-    - #chapter(none)[The Qter Architecture Solver]
-      - #chapter(none)[Cycle Combination Finder]
-      - #chapter(none)[Cycle Combination Solver]
-      - #chapter(none)[Movecount Coefficient Calculator]
+    - #chapter("./theory/introduction.typ")[Introduction]
+      - #chapter("./theory/group-theory.typ")[Group Theory]
+      - #chapter("./theory/permutation-groups.typ")[Permutation Groups]
+      - #chapter("./theory/parity-and-orientation-sum.typ")[Parity and Orientation Sum]
+      - #chapter("./theory/cycle-structures.typ")[Cycle Structures]
+    - #chapter("./theory/qas.typ")[The Qter Architecture Solver]
+      - #chapter("./theory/ccf.typ")[Cycle Combination Finder]
+      - #chapter("./theory/ccs.typ")[Cycle Combination Solver]
+      - #chapter("./theory/mcc.typ")[Movecount Coefficient Calculator]
 
     = Technical Documentation
 
     - #chapter("./technical-docs/cli.typ")[CLI]
-    - #chapter("./technical-docs/compiler.typ")[Compiler]
+    - #chapter("./technical-docs/compiler/compiler.typ")[Compiler]
+      - #chapter("./technical-docs/compiler/qat-grammar.typ")[QAT Grammar]
     - #chapter("./technical-docs/interpreter.typ")[Interpreter]
     - #chapter("./technical-docs/ccf.typ")[Cycle Combination Finder]
     - #chapter("./technical-docs/ccs.typ")[Cycle Combination Solver]
     - #chapter("./technical-docs/robot.typ")[Robot]
       - #chapter("./technical-docs/robot/setup-process.typ")[Setup Process]
-        - #chapter("./technical-docs/robot/install-qteros.typ")[QterOS and Software Setup]
+        - #chapter("./technical-docs/robot/software-setup.typ")[Software Setup]
         - #chapter("./technical-docs/robot/assemble-frame.typ")[Assembling the Frame]
         - #chapter("./technical-docs/robot/assemble-electronics.typ")[Assembling the Electronics]
         - #chapter("./technical-docs/robot/set-up-visualizer.typ")[Setting up Visualizer]
@@ -53,3 +56,11 @@
 // re-export page template
 #import "templates/page.typ": project
 #let book-page = project
+
+#let diagram(c) = context {
+    if target() == "html" {
+        html.div(html.frame(c), class: "diagram", style: "background: white; padding: 1em;")
+    } else { c }
+}
+
+#let canvas(..vals) = diagram(cetz.canvas(..vals))
