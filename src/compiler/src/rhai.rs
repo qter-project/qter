@@ -1,5 +1,6 @@
 use std::{fmt::Debug, sync::OnceLock};
 
+use ariadne::{Report, ReportKind};
 use chumsky::error::Rich;
 use internment::ArcIntern;
 use itertools::Itertools;
@@ -10,7 +11,7 @@ use puzzle_theory::{
 use rhai::{AST, Array, CustomType, Dynamic, Engine, ImmutableString, ParseError, Scope};
 
 use crate::{
-    Block, Code, ExpansionInfo, Instruction, MacroBranchKey, MacroCall, RegisterInfo,
+    Block, Code, ExpansionInfo, Instruction, MacroBranchKey, MacroCall, RegisterInfo, Reporter,
     ResolvedValue, Value,
 };
 
@@ -112,7 +113,8 @@ impl RhaiMacros {
         args: Vec<WithSpan<ResolvedValue>>,
         span: Span,
         info: &ExpansionInfo,
-    ) -> Result<ResolvedValue, Vec<Rich<'static, char, Span>>> {
+        r: &Reporter,
+    ) -> Option<ResolvedValue> {
         let args = args
             .into_iter()
             .map(|v| into_rhai(v.into_inner(), info))
@@ -125,12 +127,19 @@ impl RhaiMacros {
 
         let value = match result {
             Ok(v) => v,
-            Err(e) => return Err(vec![Rich::custom(span, e)]),
+            Err(e) => {
+                r.push(
+                    Report::build(ReportKind::Error, span)
+                        .with_message(e.to_string())
+                        .finish(),
+                );
+                return None;
+            }
         };
 
         let branch_key = info.fresh_branch_key()();
 
-        from_rhai(value, span.clone(), branch_key).map_err(|v| vec![Rich::custom(span, v)])
+        from_rhai(value, span.clone(), branch_key)
     }
 }
 
@@ -157,22 +166,33 @@ fn from_rhai(
     value: Dynamic,
     span: Span,
     branch_key: MacroBranchKey,
-) -> Result<ResolvedValue, String> {
+    r: &Reporter,
+) -> Option<ResolvedValue> {
     if let Ok(int) = value.as_int() {
         let Ok(v) = u64::try_from(int) else {
-            return Err(format!("Integer values must be positive. Found {int}"));
+            r.push(
+                Report::build(ReportKind::Error, span)
+                    .with_message(format!("Integer values must be positive. Found {int}"))
+                    .finish(),
+            );
+            return None;
         };
 
-        return Ok(ResolvedValue::Int(Int::<U>::from(v)));
+        return Some(ResolvedValue::Int(Int::<U>::from(v)));
     }
 
     let value = match value.try_cast_result::<WInt>() {
         Ok(WInt(int)) => {
             if int < Int::<I>::zero() {
-                return Err(format!("Integer values must be positive. Found {int}"));
+                r.push(
+                    Report::build(ReportKind::Error, span)
+                        .with_message(format!("Integer values must be positive. Found {int}"))
+                        .finish(),
+                );
+                return None;
             }
 
-            return Ok(ResolvedValue::Int(int.abs()));
+            return Some(ResolvedValue::Int(int.abs()));
         }
         Err(v) => v,
     };

@@ -1,17 +1,17 @@
 use std::{cell::OnceCell, collections::HashMap, mem};
 
-use chumsky::error::Rich;
+use ariadne::{Report, ReportKind};
 use internment::ArcIntern;
 use itertools::Itertools;
 use puzzle_theory::span::{Span, WithSpan};
 
 use crate::{
     BlockID, Code, Define, ExpandedCode, ExpandedCodeComponent, ExpansionInfo, Instruction, Macro,
-    MacroBranchKey, ParsedSyntax, RegistersDecl, ResolvedValue, TaggedInstruction, collect_err,
-    collect_flat_err, resolve_just_these_defines, tag_with_key,
+    MacroBranchKey, ParsedSyntax, RegistersDecl, Reporter, ResolvedValue, TaggedInstruction,
+    resolve_just_these_defines, tag_with_key,
 };
 
-pub fn expand(mut parsed: ParsedSyntax) -> Result<ExpandedCode, Vec<Rich<'static, char, Span>>> {
+pub fn expand(mut parsed: ParsedSyntax, r: Reporter) -> Option<ExpandedCode> {
     let branch_key_fn = parsed.expansion_info.fresh_branch_key();
 
     for macro_ in &mut parsed.expansion_info.macros {
@@ -22,38 +22,34 @@ pub fn expand(mut parsed: ParsedSyntax) -> Result<ExpandedCode, Vec<Rich<'static
         for branch in branches {
             let key = branch_key_fn();
 
-            for instr in &mut branch.code {
-                tag_with_key(instr, Some(key));
-            }
+            tag_with_key(&mut branch.code, Some(key));
         }
     }
-
-    let mut errs = Vec::new();
 
     let mut limit = 100;
 
-    while let Some(span) = expand_block(
-        BlockID(0),
-        &mut parsed.expansion_info,
-        &mut parsed.code,
-        &mut errs,
-    ) {
+    let before = r.count();
+
+    while let Some(span) =
+        expand_block(BlockID(0), &mut parsed.expansion_info, &mut parsed.code, &r)
+    {
         limit -= 1;
 
         if limit == 0 {
-            errs.push(Rich::custom(
-                span,
-                "Depth limit reached during macro expansion",
-            ));
-            return Err(errs);
+            r.push(
+                Report::build(ReportKind::Error, span)
+                    .with_message("Depth limit reached during macro expansion")
+                    .finish(),
+            );
+            return None;
         }
     }
 
-    if !errs.is_empty() {
-        return Err(errs);
+    if !r.count() - before != 0 {
+        return None;
     }
 
-    Ok(ExpandedCode {
+    Some(ExpandedCode {
         registers: match parsed.expansion_info.registers {
             Some(decl) => decl.into_inner(),
             None => RegistersDecl {
@@ -91,12 +87,12 @@ fn expand_block(
     block_id: BlockID,
     expansion_info: &mut ExpansionInfo,
     code: &mut Vec<WithSpan<TaggedInstruction>>,
-    errs: &mut Vec<Rich<'static, char, Span>>,
+    r: &Reporter,
 ) -> Option<Span> {
     // Will be set if anything is ever changed
     let mut changed = OnceCell::<Span>::new();
 
-    let new_code = collect_flat_err::<Vec<_>, _, _>(mem::take(code)
+    *code = (mem::take(code)
         .into_iter()
         .map(|mut tagged_instruction| {
             let maybe_block_id = &mut tagged_instruction.1;
@@ -124,17 +120,15 @@ fn expand_block(
 
                     block_info.labels.push(label.clone());
 
-                    Ok(vec![WithSpan::new(
+                    vec![WithSpan::new(
                         (Instruction::Label(label), maybe_block_id, maybe_branch_key),
                         span,
-                    )])
+                    )]
                 }
                 Instruction::Define(define) => {
                     if block_info.defines.contains_key(&define.name) {
-                        return Err(vec![Rich::custom(
-                            define.name.span().clone(),
-                            "Cannot shadow a `.define` in the same scope!",
-                        )]);
+                        r.push(Report::build(ReportKind::Error, span).with_message("Cannot shadow a `.define` in the same scope!").finish());
+                        return vec![]
                     }
 
                     let resolved = match expansion_info.resolve(define.value, block_id) {
@@ -156,25 +150,25 @@ fn expand_block(
                         .insert(ArcIntern::clone(&new_define.name), new_define);
                     let _ = changed.set(span);
 
-                    Ok(vec![])
+                    vec![]
                 }
                 Instruction::Code(code) => {
-                    expand_code(block_id, expansion_info, code, span, &changed, maybe_branch_key)
+                    expand_code(block_id, expansion_info, code, span, &changed, maybe_branch_key, r)
                 }
                 Instruction::Constant(name) => {
                     match expansion_info.block_info.get_define(block_id, &name) {
                         Some(define) => match &*define.value {
-                            ResolvedValue::Int(_) => Err(vec![Rich::custom(
-                                span,
-                                "Expected a code block, found an integer",
-                            )]),
+                            ResolvedValue::Int(_) => {
+                                r.push(Report::build(ReportKind::Error, span).with_message("Expected a code block, found an integer").finish());
+                                vec![]
+                            },
                             ResolvedValue::Ident {
                                 ident: _,
                                 as_reg: _,
-                            } => Err(vec![Rich::custom(
-                                span,
-                                "Expected a code block, found an identifier",
-                            )]),
+                            } => {
+                                r.push(Report::build(ReportKind::Error, span).with_message("Expected a code block, found an identifier").finish());
+                                vec![]
+                            },
                             ResolvedValue::Block(block) => {
                                 let _ = changed.set(span);
 
@@ -182,21 +176,19 @@ fn expand_block(
 
                                 let (new_id, _) = expansion_info.block_info.new_block(block_id);
 
-                                Ok(block
+                                block
                                     .code
                                     .into_iter()
                                     .map(|mut v| {
                                         v.1 = Some(new_id);
                                         v
                                     })
-                                    .collect_vec())
+                                    .collect_vec()
                             }
                         },
                         None => {
-                            Err(vec![Rich::custom(
-                                span,
-                                format!("`{name}` was not found in this scope"),
-                            )])
+                            r.push(Report::build(ReportKind::Error, span).with_message(format!("`{name}` was not found in this scope")).finish());
+                            vec![]
                         }
                     }
                 }
@@ -208,12 +200,18 @@ fn expand_block(
                     let _ = changed.set(span.clone());
 
                     match value.into_inner() {
-                        ResolvedValue::Int(_) => Err(vec![Rich::custom(span, "Expected the macro to return a code block; actually returned an integer")]),
-                        ResolvedValue::Ident { ident: _, as_reg: _ } => Err(vec![Rich::custom(span, "Expected the macro to return a code block; actually returned an identifier")]),
+                        ResolvedValue::Int(_) => {
+                            r.push(Report::build(ReportKind::Error, span).with_message("Expected the macro to return a code block; actually returned an integer").finish());
+                            vec![]
+                        },
+                        ResolvedValue::Ident { ident: _, as_reg: _ } => {
+                            r.push(Report::build(ReportKind::Error, span).with_message("Expected the macro to return a code block; actually returned an identifier").finish());
+                            vec![]
+                        },
                         ResolvedValue::Block(block) => {
                             let _ = changed.set(span);
 
-                            Ok(block.code.clone())
+                            block.code.clone()
                         },
                     }
                 }
@@ -221,28 +219,20 @@ fn expand_block(
                     let (new_id, _) = expansion_info.block_info.new_block(block_id);
                     let _ = changed.set(span);
 
-                    Ok(block
+                    block
                         .code
                         .into_iter()
                         .map(|mut v| {
                             v.1 = Some(new_id);
                             v
                         })
-                        .collect_vec())
+                        .collect_vec()
                 },
             }
         })
-    )
+    ).flatten()
+    .collect_vec()
         ;
-
-    match new_code {
-        Ok(new_code) => {
-            *code = new_code;
-        }
-        Err(new_errs) => {
-            errs.extend(new_errs);
-        }
-    }
 
     changed.take()
 }
@@ -254,14 +244,15 @@ fn expand_code(
     span: Span,
     changed: &OnceCell<Span>,
     maybe_branch_key: Option<MacroBranchKey>,
-) -> Result<Vec<WithSpan<TaggedInstruction>>, Vec<Rich<'static, char, Span>>> {
+    r: &Reporter,
+) -> Vec<WithSpan<TaggedInstruction>> {
     let macro_call = match code {
         Code::Primitive(prim) => {
-            return Ok(vec![span.with((
+            return vec![span.with((
                 Instruction::Code(Code::Primitive(prim)),
                 Some(block_id),
                 maybe_branch_key,
-            ))]);
+            ))];
         }
         Code::Macro(mac) => mac,
     };
@@ -272,10 +263,12 @@ fn expand_code(
         macro_call.name.span().source().clone(),
         ArcIntern::clone(&*macro_call.name),
     )) else {
-        return Err(vec![Rich::custom(
-            macro_call.name.span().clone(),
-            "Macro was not found in this scope",
-        )]);
+        r.push(
+            Report::build(ReportKind::Error, macro_call.name.span().clone())
+                .with_message("Macro was not found in this scope")
+                .finish(),
+        );
+        return vec![];
     };
 
     let macro_def = expansion_info
@@ -286,16 +279,28 @@ fn expand_code(
     match &**macro_def {
         Macro::UserDefined { branches } => {
             let args_span = macro_call.arguments.span().clone();
-            let mut args = collect_err(macro_call.arguments.into_inner().into_iter().map(|v| {
-                let span = v.span().clone();
-                match expansion_info.block_info.resolve(block_id, v.into_inner()) {
-                    Some(v) => Ok(span.with(v)),
-                    None => Err([Rich::<char, Span>::custom(
-                        span,
-                        "Constant was not found in this scope",
-                    )]),
-                }
-            }))?;
+            let Some(mut args) = macro_call
+                .arguments
+                .into_inner()
+                .into_iter()
+                .map(|v| {
+                    let span = v.span().clone();
+                    match expansion_info.block_info.resolve(block_id, v.into_inner()) {
+                        Some(v) => Some(span.with(v)),
+                        None => {
+                            r.push(
+                                Report::build(ReportKind::Error, macro_call.name.span().clone())
+                                    .with_message("Constant was not found in this scope")
+                                    .finish(),
+                            );
+                            None
+                        }
+                    }
+                })
+                .collect::<Option<Vec<_>>>()
+            else {
+                return vec![];
+            };
 
             for branch in branches {
                 let defines = match branch.pattern.matches(args, expansion_info) {
@@ -308,38 +313,40 @@ fn expand_code(
 
                 let (block_id, _) = expansion_info.block_info.new_block(block_id);
 
-                return collect_err::<Vec<_>, _, Vec<_>>(branch.code.iter().cloned().map(
-                    |mut v| {
-                        v.1 = Some(block_id);
-                        resolve_just_these_defines(&mut v, &defines)?;
-                        Ok(v)
-                    },
-                ));
+                let mut instr = branch.code.clone();
+                instr.1 = Some(block_id);
+                resolve_just_these_defines(&mut instr, &defines);
+
+                return vec![instr];
             }
 
-            Err(vec![Rich::custom(
-                args_span,
-                "These arguments did not match any of the patterns of this macro",
-            )])
+            r.push(
+                Report::build(ReportKind::Error, args_span)
+                    .with_message("These arguments did not match any of the patterns of this macro")
+                    .finish(),
+            );
+            vec![]
         }
-        Macro::Builtin(macro_fn) => Ok(vec![
-            span.with((
-                Instruction::Code(Code::Primitive(
-                    macro_fn(expansion_info, macro_call.arguments, block_id)
-                        .map_err(|err| vec![err])?
-                        .insert_branch_key(maybe_branch_key),
-                )),
-                Some(block_id),
-                maybe_branch_key,
-            )),
-        ]),
+        Macro::Builtin(macro_fn) => {
+            match macro_fn(expansion_info, macro_call.arguments, block_id, r) {
+                Some(v) => vec![span.with((
+                    Instruction::Code(Code::Primitive(v.insert_branch_key(maybe_branch_key))),
+                    Some(block_id),
+                    maybe_branch_key,
+                ))],
+                None => vec![],
+            }
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
 
-    use crate::parsing::tests::file;
+    use std::sync::Arc;
+
+use crate::Reporter;
+use crate::parsing::tests::file;
     use crate::{macro_expansion::expand, parsing::parse};
 
     #[test]
@@ -363,15 +370,14 @@ mod tests {
                 halt Poggers b
         ";
 
-        let parsed = match parse(&file(code), |_| unreachable!(), false) {
-            Ok(v) => v,
-            Err(e) => panic!("{e:?}"),
-        };
+        let reporter = Reporter::default();
 
-        let expanded = match expand(parsed) {
-            Ok(v) => v,
-            Err(e) => panic!("{e:?}"),
-        };
+        let parsed = parse(&file(code), |_| unreachable!(), false, Arc::clone(&reporter)).unwrap();
+
+        let expanded = expand(parsed.into_inner(), Arc::clone(&reporter)).unwrap();
+
+        let reports = Arc::try_unwrap(reporter).unwrap();
+        assert_eq!(reports.count(), 0);
 
         println!("{expanded:?}");
     }

@@ -13,6 +13,7 @@ use std::{
     },
 };
 
+use ariadne::{Report, ReportKind};
 use chumsky::error::Rich;
 use internment::ArcIntern;
 use parsing::parse;
@@ -34,6 +35,8 @@ pub mod q_emitter;
 mod rhai;
 mod strip_expanded;
 
+type Reporter = Arc<boxcar::Vec<Report<'static, Span>>>;
+
 /// Compiles a QAT program into a Q program while returning the register architecture used.
 ///
 /// # Errors
@@ -42,48 +45,15 @@ mod strip_expanded;
 pub fn compile(
     qat: &File,
     find_import: impl Fn(&str) -> Result<ArcIntern<str>, String> + 'static,
-) -> Result<(Program, Option<WithSpan<RegistersDecl>>), Vec<Rich<'static, char, Span>>> {
-    let parsed = parse(qat, find_import, false)?;
+    reporter: Reporter,
+) -> Option<(Program, Option<WithSpan<RegistersDecl>>)> {
+    let parsed = parse(qat, find_import, false, Arc::clone(&reporter))?;
 
     let arch = parsed.expansion_info.registers.clone();
 
-    let expanded = expand(parsed)?;
+    let expanded = expand(parsed.into_inner(), reporter)?;
 
     strip_expanded(expanded).map(|v| (v, arch))
-}
-
-#[expect(clippy::manual_try_fold)] // We are not reimplementing it
-pub fn collect_flat_err<C, I, IE>(
-    iter: impl Iterator<Item = Result<I, IE>>,
-) -> Result<C, Vec<IE::Item>>
-where
-    C: Default + Extend<I::Item>,
-    I: IntoIterator,
-    IE: IntoIterator,
-{
-    iter.fold(Ok(C::default()), |acc, v| match (acc, v) {
-        (Ok(mut collection), Ok(v)) => {
-            collection.extend(v);
-            Ok(collection)
-        }
-        (Ok(_), Err(errs)) => Err(errs.into_iter().collect()),
-        (Err(errs), Ok(_)) => Err(errs),
-        (Err(mut errs), Err(new_errs)) => {
-            errs.extend(new_errs);
-            Err(errs)
-        }
-    })
-}
-
-pub fn collect_err<C, V, IE>(iter: impl Iterator<Item = Result<V, IE>>) -> Result<C, Vec<IE::Item>>
-where
-    C: Default + Extend<V>,
-    IE: IntoIterator,
-{
-    collect_flat_err(iter.map(|v| match v {
-        Ok(v) => Ok([v]),
-        Err(e) => Err(e),
-    }))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -381,18 +351,19 @@ impl RhaiCall {
         span: Span,
         info: &ExpansionInfo,
         block_id: BlockID,
-    ) -> Result<WithSpan<ResolvedValue>, Vec<Rich<'static, char, Span>>> {
-        let args = collect_err(
-            self.args
-                .into_iter()
-                .map(|value| info.resolve(DefineValue::Value(value), block_id)),
-        )?;
+        r: &Reporter,
+    ) -> Option<WithSpan<ResolvedValue>> {
+        let args = self
+            .args
+            .into_iter()
+            .map(|value| info.resolve(DefineValue::Value(value), block_id, r))
+            .collect::<Option<Vec<_>>>()?;
 
         let rhai = info.rhai_macros.get(&span.source()).unwrap();
 
         let result = rhai.do_rhai_call(&self.function_name, args, span.clone(), info)?;
 
-        Ok(span.with(result))
+        Some(span.with(result))
     }
 }
 
@@ -546,7 +517,7 @@ impl MacroPattern {
 #[derive(Clone, Debug)]
 struct MacroBranch {
     pattern: WithSpan<MacroPattern>,
-    code: Vec<WithSpan<TaggedInstruction>>,
+    code: WithSpan<TaggedInstruction>,
 }
 
 #[derive(Clone, Debug)]
@@ -555,11 +526,7 @@ enum Macro {
         branches: Vec<WithSpan<MacroBranch>>,
     },
     Builtin(
-        fn(
-            &ExpansionInfo,
-            WithSpan<Vec<WithSpan<Value>>>,
-            BlockID,
-        ) -> Result<Primitive, Rich<'static, char, Span>>,
+        fn(&ExpansionInfo, WithSpan<Vec<WithSpan<Value>>>, BlockID, &Reporter) -> Option<Primitive>,
     ),
 }
 
@@ -780,16 +747,22 @@ impl ExpansionInfo {
         &self,
         value: DefineValue,
         block_id: BlockID,
-    ) -> Result<WithSpan<ResolvedValue>, Vec<Rich<'static, char, Span>>> {
+        r: &Reporter,
+    ) -> Option<WithSpan<ResolvedValue>> {
         match value {
             DefineValue::Value(v) => {
                 let span = v.span().clone();
                 let value = v.into_inner();
                 let Some(resolved) = self.block_info.resolve(block_id, value) else {
-                    return Err(vec![Rich::custom(span, "Constant not found in this scope")]);
+                    r.push(
+                        Report::build(ReportKind::Error, span)
+                            .with_message("Constant not found in this scope")
+                            .finish(),
+                    );
+                    return None;
                 };
 
-                Ok(span.with(resolved))
+                Some(span.with(resolved))
             }
             DefineValue::RhaiCall(call) => {
                 let span = call.span().clone();
