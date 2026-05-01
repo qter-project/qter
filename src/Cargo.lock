@@ -625,6 +625,7 @@ dependencies = [
  "humanize-duration",
  "log",
  "num-integer",
+ "pareto_front",
  "puzzle_theory",
  "rayon",
  "test-log",
@@ -1584,6 +1585,12 @@ dependencies = [
  "libc",
  "winapi",
 ]
+
+[[package]]
+name = "pareto_front"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b9c5b29bc46c2140b83938f0269cfa040e348727a11df9b02a3cb22aee2664f"
 
 [[package]]
 name = "parking_lot_core"

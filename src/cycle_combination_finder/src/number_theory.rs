@@ -1,7 +1,3 @@
-use std::num::NonZeroU16;
-
-use thiserror::Error;
-
 use crate::{FIRST_129_PRIMES, orderexps::OrderExps, puzzle::OrbitDef};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -144,34 +140,6 @@ pub fn divisors<const N: usize>(n: u8) -> Vec<OrderExps<N>> {
     }
 
     divisors
-}
-
-#[derive(Error, Debug)]
-pub enum OrderExpsConversionError {
-    #[error("We cannot represent numbers too large")]
-    PrimeTooLarge,
-}
-
-impl<const N: usize> TryFrom<NonZeroU16> for OrderExps<N> {
-    type Error = OrderExpsConversionError;
-
-    fn try_from(n: NonZeroU16) -> Result<Self, Self::Error> {
-        let mut exps = Self::one();
-        let mut primes_and_exps = FIRST_129_PRIMES.into_iter().zip(exps.0.as_mut_array());
-        let (mut prime, mut exp) = primes_and_exps.next().unwrap();
-        let mut remainder = n.get();
-        while remainder > 1 {
-            if remainder.is_multiple_of(prime) {
-                *exp += 1;
-                remainder /= prime;
-            } else if remainder > 1 {
-                (prime, exp) = primes_and_exps
-                    .next()
-                    .ok_or(OrderExpsConversionError::PrimeTooLarge)?;
-            }
-        }
-        Ok(exps)
-    }
 }
 
 #[cfg(test)]
@@ -462,33 +430,5 @@ mod divisors {
     #[should_panic(expected = "assertion failed: u16::from(n) < FIRST_")]
     fn too_big_prime_panics2() {
         let _ = divisors::<32>(137);
-    }
-}
-
-#[cfg(test)]
-mod orderexps {
-    use std::num::NonZeroU16;
-
-    use crate::{FIRST_129_PRIMES, orderexps::OrderExps};
-
-    #[test_log::test]
-    fn basic() {
-        for i in 1..FIRST_129_PRIMES[64] {
-            assert_eq!(
-                u16::try_from(
-                    OrderExps::<64>::try_from(NonZeroU16::new(i).unwrap())
-                        .unwrap()
-                        .as_bigint()
-                )
-                .unwrap(),
-                i
-            );
-        }
-    }
-
-    #[test_log::test]
-    #[should_panic(expected = "PrimeTooLarge")]
-    fn prime_too_large() {
-        OrderExps::<64>::try_from(NonZeroU16::new(FIRST_129_PRIMES[65]).unwrap()).unwrap();
     }
 }

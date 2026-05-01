@@ -15,6 +15,7 @@ thiserror.workspace = true
 env_logger = "0.11.9"
 bitgauss = { git = "https://github.com/qter-project/bitgauss" }
 union-find = { git = "https://github.com/qter-project/union-find-rs" }
+pareto_front = "1.0.1"
 
 [dev-dependencies]
 test-log.workspace = true

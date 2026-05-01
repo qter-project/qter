@@ -1,13 +1,16 @@
 use std::{
-    fmt::{Debug, Formatter},
-    ops::Mul,
+    cmp::Ordering,
+    fmt::{self, Debug},
+    num::NonZeroU16,
+    ops::{Div, Mul},
     simd::{
         Simd,
-        cmp::{SimdOrd, SimdPartialEq},
+        cmp::{SimdOrd, SimdPartialEq, SimdPartialOrd}, num::SimdUint,
     },
 };
 
 use puzzle_theory::numbers::{Int, U};
+use thiserror::Error;
 
 use crate::FIRST_129_PRIMES;
 
@@ -25,8 +28,12 @@ impl<const N: usize> OrderExps<N> {
     #[must_use]
     pub fn as_bigint(&self) -> Int<U> {
         let mut result = Int::one();
-        for (i, p) in FIRST_129_PRIMES.into_iter().enumerate().take(N) {
-            for _ in 0..self.0[i] {
+        for (p, &e) in FIRST_129_PRIMES
+            .into_iter()
+            .zip(self.0.as_array().iter())
+            .take(N)
+        {
+            for _ in 0..e {
                 result *= Int::<U>::from(p);
             }
         }
@@ -47,6 +54,40 @@ impl<const N: usize> OrderExps<N> {
             .to_bitmask()
             .is_power_of_two()
     }
+
+    #[inline]
+    #[must_use]
+    pub fn remove_factors(&self, removing: &Self) -> Self {
+        Self(self.0.saturating_sub(removing.0))
+    }
+}
+
+#[derive(Error, Debug)]
+pub enum OrderExpsConversionError {
+    #[error("We cannot represent numbers too large")]
+    PrimeTooLarge,
+}
+
+impl<const N: usize> TryFrom<NonZeroU16> for OrderExps<N> {
+    type Error = OrderExpsConversionError;
+
+    fn try_from(n: NonZeroU16) -> Result<Self, Self::Error> {
+        let mut exps = Self::one();
+        let mut primes_and_exps = FIRST_129_PRIMES.into_iter().zip(exps.0.as_mut_array());
+        let (mut prime, mut exp) = primes_and_exps.next().unwrap();
+        let mut remainder = n.get();
+        while remainder > 1 {
+            if remainder.is_multiple_of(prime) {
+                *exp += 1;
+                remainder /= prime;
+            } else if remainder > 1 {
+                (prime, exp) = primes_and_exps
+                    .next()
+                    .ok_or(OrderExpsConversionError::PrimeTooLarge)?;
+            }
+        }
+        Ok(exps)
+    }
 }
 
 impl<const N: usize> Mul for OrderExps<N> {
@@ -61,32 +102,80 @@ impl<const N: usize> Mul for OrderExps<N> {
 }
 
 impl<const N: usize> Debug for OrderExps<N> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "OF({})", self.as_bigint())
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_bigint())
     }
 }
 
-// const FIRST_32_PRIMES_LN: f32x32 = f32x32::from_array([
-//     LN_2, 1.0986123, 1.609438, 1.9459101, 2.3978953, 2.5649493, 2.8332133,
-// 2.944439, 3.1354942,     3.3672957, 3.4339871, 3.6109178, 3.713572,
-// 3.7612002, 3.8501475, 3.9702919, 4.0775375,     4.1108737, 4.204693, 4.26268,
-// 4.2904596, 4.3694477, 4.4188404, 4.4886365, 4.574711, 4.6151204,
-//     4.634729, 4.6728287, 4.691348, 4.727388, 4.8441873, 4.8751974,
-// ]);
-// const MAX_EXPONENT: u8x32 = u8x32::from_array(const {
-//     let mut ret = [0; 32];
-//     let mut i = 0;
-//     while i < 32 {
-//         ret[i] = u8::MAX / FIRST_32_PRIMES.to_array()[i];
-//         i += 1;
-//     }
-//     ret
-// });
+impl<const N: usize> PartialOrd for OrderExps<N> {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
 
-// impl PartialOrd for PrimePowerNum {
-//     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-//         let self_ln = self.0.cast::<f32>() * FIRST_32_PRIMES_LN;
-//         let other_ln = other.0.cast::<f32>() * FIRST_32_PRIMES_LN;
-//         self_ln.reduce_sum().partial_cmp(&other_ln.reduce_sum())
-//     }
-// }
+impl<const N: usize> Ord for OrderExps<N> {
+    #[inline]
+    fn cmp(&self, other: &Self) -> Ordering {
+        let max = self.0.simd_max(other.0);
+        match (max == self.0, max == other.0) {
+            (true, true) => Ordering::Equal,
+            (true, false) => Ordering::Greater,
+            (false, true) => Ordering::Less,
+            (false, false) => {
+                let a: f64 = FIRST_129_PRIMES
+                    .into_iter()
+                    .zip(self.0.as_array().iter())
+                    .take(N)
+                    .map(|(p, &e)| f64::from(e) * f64::from(p).ln())
+                    .sum();
+                let b: f64 = FIRST_129_PRIMES
+                    .into_iter()
+                    .zip(other.0.as_array().iter())
+                    .take(N)
+                    .map(|(p, &e)| f64::from(e) * f64::from(p).ln())
+                    .sum();
+                a.partial_cmp(&b).unwrap()
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::num::NonZeroU16;
+
+    use crate::{FIRST_129_PRIMES, orderexps::OrderExps};
+
+    #[test_log::test]
+    fn try_from_basic() {
+        for i in 1..FIRST_129_PRIMES[64] {
+            assert_eq!(
+                u16::try_from(
+                    OrderExps::<64>::try_from(NonZeroU16::new(i).unwrap())
+                        .unwrap()
+                        .as_bigint()
+                )
+                .unwrap(),
+                i
+            );
+        }
+    }
+
+    #[test_log::test]
+    #[should_panic(expected = "PrimeTooLarge")]
+    fn try_from_prime_too_large() {
+        OrderExps::<64>::try_from(NonZeroU16::new(FIRST_129_PRIMES[65]).unwrap()).unwrap();
+    }
+
+    #[test_log::test]
+    fn ord() {
+        for i in 1..FIRST_129_PRIMES[64] {
+            for j in 1..FIRST_129_PRIMES[64] {
+                let a = OrderExps::<64>::try_from(NonZeroU16::try_from(i).unwrap()).unwrap();
+                let b = OrderExps::<64>::try_from(NonZeroU16::try_from(j).unwrap()).unwrap();
+                assert_eq!(a.cmp(&b), i.cmp(&j));
+            }
+        }
+    }
+}
