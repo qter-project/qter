@@ -58,6 +58,46 @@ fn optimal_3() {
 }
 
 #[test_log::test]
+fn optimal_4() {
+    let cube3 = CUBE3.clone();
+    let ccf = CycleCombinationFinder::from(cube3);
+    let cycle_combinations = ccf.find(
+        Optimality::Optimal,
+        RegisterCount::Exactly(NonZeroU16::new(4).unwrap()),
+    );
+    assert_eq!(
+        cycles(cycle_combinations),
+        vec![
+            vec![1260, 2, 1, 1],
+            vec![630, 3, 3, 3],
+            vec![360, 4, 4, 4],
+            vec![180, 12, 6, 6],
+            vec![90, 12, 12, 12]
+        ],
+    );
+}
+
+#[test_log::test]
+fn optimal_5() {
+    let cube3 = CUBE3.clone();
+    let ccf = CycleCombinationFinder::from(cube3);
+    let cycle_combinations = ccf.find(
+        Optimality::Optimal,
+        RegisterCount::Exactly(NonZeroU16::new(5).unwrap()),
+    );
+    assert_eq!(
+        cycles(cycle_combinations),
+        vec![
+            vec![1260, 2, 1, 1, 1],
+            vec![630, 3, 3, 3, 3],
+            vec![180, 4, 4, 4, 4],
+            vec![126, 6, 6, 6, 6],
+            vec![36, 12, 12, 12, 12]
+        ],
+    );
+}
+
+#[test_log::test]
 fn equivalent_2() {
     let cube3 = CUBE3.clone();
     let ccf = CycleCombinationFinder::from(cube3);
