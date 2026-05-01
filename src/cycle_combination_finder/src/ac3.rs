@@ -8,7 +8,7 @@ pub enum ParityAssignment {
     Assigned(bool),
 }
 
-fn apply_constriants(
+fn apply_constraints(
     constraints: &BitMatrix,
     mut curr_assignment: Cow<[ParityAssignment]>,
     i: usize,
@@ -140,13 +140,13 @@ pub fn backtrack_ac3(constraints: &BitMatrix) -> impl Iterator<Item = impl Itera
                 }
                 Some(ParityAssignment::Unassigned) => {
                     if let Some(applied_false) =
-                        apply_constriants(constraints, Cow::Borrowed(&curr_assignment), i, false)
+                        apply_constraints(constraints, Cow::Borrowed(&curr_assignment), i, false)
                     {
                         stack.push((i + 1, applied_false));
                     }
 
                     if let Some(applied_true) =
-                        apply_constriants(constraints, Cow::Owned(curr_assignment), i, true)
+                        apply_constraints(constraints, Cow::Owned(curr_assignment), i, true)
                     {
                         stack.push((i + 1, applied_true));
                     }
