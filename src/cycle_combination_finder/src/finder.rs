@@ -3,6 +3,7 @@ use std::{
     simd::num::SimdUint,
 };
 
+use log::debug;
 use pareto_front::{Dominate, ParetoFront};
 use puzzle_theory::numbers::{Int, U};
 
@@ -119,6 +120,7 @@ fn cycle_combination_candidates<const N: usize>(
     let mut out = ParetoFront::new();
     // Note that this cannot be a possible order
     let mut max_last_register = OrderExps::one();
+    let mut iter_count = 0;
     cycle_combination_candidates_helper(
         &possible_orders,
         NonZeroUsize::from(register_count),
@@ -126,7 +128,9 @@ fn cycle_combination_candidates<const N: usize>(
         &mut max_last_register,
         &mut registers,
         &mut out,
+        &mut iter_count,
     );
+    debug!("Gathered candidates in {iter_count} iterations");
     drop(possible_orders);
     out
 }
@@ -138,19 +142,20 @@ fn cycle_combination_candidates_helper<const N: usize>(
     max_last_register: &mut OrderExps<N>,
     registers: &mut [PossibleOrder<N>],
     out: &mut ParetoFront<CycleCombinationCandidate<N>>,
+    iter_count: &mut u64,
 ) {
     let register_index = registers.len() - remaining_register_count.get();
     let mut rest = possible_orders;
-    while let Some((first, tail)) = rest.split_first() {
-        if register_index == 0 && first.order == *max_last_register {
+    while let Some((first, next_rest)) = rest.split_first() {
+        if register_index == 0 && first.order <= *max_last_register {
             break;
         }
-        rest = tail;
 
         let Some(next_remaining_piece_count) = remaining_piece_count
             .get()
             .checked_sub(first.min_piece_count.get())
         else {
+            rest = next_rest;
             continue;
         };
 
@@ -167,11 +172,13 @@ fn cycle_combination_candidates_helper<const N: usize>(
                     max_last_register,
                     registers,
                     out,
+                    iter_count,
                 );
                 registers[register_index] = old;
             }
         } else {
             let old = std::mem::replace(&mut registers[register_index], first.clone());
+            *iter_count += 1;
             if out.push(CycleCombinationCandidate {
                 registers: registers.to_vec(),
             }) {
@@ -182,6 +189,7 @@ fn cycle_combination_candidates_helper<const N: usize>(
             }
             registers[register_index] = old;
         }
+        rest = next_rest;
     }
 }
 
