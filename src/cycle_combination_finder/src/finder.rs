@@ -117,10 +117,13 @@ fn cycle_combination_candidates<const N: usize>(
         usize::from(register_count.get())
     ];
     let mut out = ParetoFront::new();
+    // Note that this cannot be a possible order
+    let mut max_last_register = OrderExps::one();
     cycle_combination_candidates_helper(
         &possible_orders,
         NonZeroUsize::from(register_count),
         piece_count_sum,
+        &mut max_last_register,
         &mut registers,
         &mut out,
     );
@@ -132,12 +135,16 @@ fn cycle_combination_candidates_helper<const N: usize>(
     possible_orders: &[PossibleOrder<N>],
     remaining_register_count: NonZeroUsize,
     remaining_piece_count: NonZeroUsize,
+    max_last_register: &mut OrderExps<N>,
     registers: &mut [PossibleOrder<N>],
     out: &mut ParetoFront<CycleCombinationCandidate<N>>,
 ) {
     let register_index = registers.len() - remaining_register_count.get();
     let mut rest = possible_orders;
     while let Some((first, tail)) = rest.split_first() {
+        if register_index == 0 && first.order == *max_last_register {
+            break;
+        }
         rest = tail;
 
         let Some(next_remaining_piece_count) = remaining_piece_count
@@ -157,6 +164,7 @@ fn cycle_combination_candidates_helper<const N: usize>(
                     rest,
                     next_remaining_register_count,
                     next_remaining_piece_count,
+                    max_last_register,
                     registers,
                     out,
                 );
@@ -164,9 +172,12 @@ fn cycle_combination_candidates_helper<const N: usize>(
             }
         } else {
             let old = std::mem::replace(&mut registers[register_index], first.clone());
-            out.push(CycleCombinationCandidate {
+            if out.push(CycleCombinationCandidate {
                 registers: registers.to_vec(),
-            });
+            }) {
+                *max_last_register = registers.last().unwrap().order.clone();
+                break;
+            }
             registers[register_index] = old;
         }
     }
