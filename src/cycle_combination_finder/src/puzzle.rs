@@ -1,6 +1,6 @@
 use std::{
     fmt::{self, Debug, Formatter},
-    num::NonZeroU16,
+    num::{NonZeroU8, NonZeroU16},
 };
 
 use bitgauss::BitMatrix;
@@ -9,7 +9,7 @@ use puzzle_theory::ksolve::KSolve;
 use thiserror::Error;
 use union_find::{QuickUnionUf, UnionBySize, UnionFind};
 
-use crate::{FIRST_129_PRIMES, gauss_jordan_without_zero_rows};
+use crate::{FIRST_129_PRIMES, gauss_jordan_without_zero_rows, orderexps::OrderExps};
 
 #[allow(non_snake_case)]
 pub mod cubeN;
@@ -184,10 +184,10 @@ impl<const N: usize> PuzzleDef<N> {
                         orientation,
                         parity_constraint: ParityConstraint::None,
                     };
-                    if u16::from(ret.orientation_count()) >= FIRST_129_PRIMES[N] {
+                    if u16::from(ret.orientation_count().get()) >= FIRST_129_PRIMES[N] {
                         return Err(PuzzleDefCreationError::OrbitTooMuchOrientation {
                             max: FIRST_129_PRIMES[N] - 1,
-                            actual: ret.orientation_count(),
+                            actual: ret.orientation_count().get(),
                         });
                     }
                     Ok(ret)
@@ -296,11 +296,20 @@ impl<const N: usize> PuzzleDef<N> {
 
 impl OrbitDef {
     #[must_use]
-    pub fn orientation_count(self) -> u8 {
-        match self.orientation {
+    pub fn orientation_count(self) -> NonZeroU8 {
+        #[allow(clippy::missing_panics_doc)]
+        NonZeroU8::new(match self.orientation {
             OrientationStatus::CanOrient { count, .. } => count,
             OrientationStatus::CannotOrient => 1,
-        }
+        })
+        .unwrap()
+    }
+
+    #[must_use]
+    pub fn orientation_count2(self) -> NonZeroU16 {
+        let orientation_count = self.orientation_count();
+        #[allow(clippy::missing_panics_doc)]
+        NonZeroU16::new(u16::from(orientation_count.get())).unwrap()
     }
 }
 
@@ -494,7 +503,7 @@ mod tests {
             .is_ok()
         );
     }
-    
+
     #[test_log::test]
     fn duplicate_indicies() {
         assert!(matches!(

@@ -2,10 +2,10 @@ use std::{
     cmp::Ordering,
     fmt::{self, Debug},
     num::NonZeroU16,
-    ops::{Div, Mul},
+    ops::Mul,
     simd::{
         Simd,
-        cmp::{SimdOrd, SimdPartialEq, SimdPartialOrd}, num::SimdUint,
+        cmp::{SimdOrd, SimdPartialEq},
     },
 };
 
@@ -53,12 +53,6 @@ impl<const N: usize> OrderExps<N> {
             .simd_ne(Simd::splat(0))
             .to_bitmask()
             .is_power_of_two()
-    }
-
-    #[inline]
-    #[must_use]
-    pub fn remove_factors(&self, removing: &Self) -> Self {
-        Self(self.0.saturating_sub(removing.0))
     }
 }
 
@@ -172,8 +166,8 @@ mod tests {
     fn ord() {
         for i in 1..FIRST_129_PRIMES[64] {
             for j in 1..FIRST_129_PRIMES[64] {
-                let a = OrderExps::<64>::try_from(NonZeroU16::try_from(i).unwrap()).unwrap();
-                let b = OrderExps::<64>::try_from(NonZeroU16::try_from(j).unwrap()).unwrap();
+                let a = OrderExps::<64>::try_from(NonZeroU16::new(i).unwrap()).unwrap();
+                let b = OrderExps::<64>::try_from(NonZeroU16::new(j).unwrap()).unwrap();
                 assert_eq!(a.cmp(&b), i.cmp(&j));
             }
         }

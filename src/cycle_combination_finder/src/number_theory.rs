@@ -47,9 +47,8 @@ pub fn max_prime_powers_below(orbit_defs: &[OrbitDef], n: u16) -> Vec<MaxPrimePo
         let mut min_piece_count = prime;
         let maybe_orienting_orbit = orbit_defs
             .iter()
-            .filter(|&&orbit_def| orbit_def.orientation_count() as usize == prime)
-            .max_by_key(|&&orbit_def| orbit_def.piece_count)
-            .copied();
+            .filter(|&orbit_def| orbit_def.orientation_count().get() as usize == prime)
+            .max_by_key(|&orbit_def| orbit_def.piece_count);
         let mut orienting_exponent = 2;
         loop {
             let next = min_piece_count * prime;

@@ -6,7 +6,7 @@
     clippy::unreadable_literal,
     clippy::similar_names
 )]
-#![feature(portable_simd, exact_div, gen_blocks)]
+#![feature(portable_simd, gen_blocks)]
 
 use bitgauss::BitMatrix;
 

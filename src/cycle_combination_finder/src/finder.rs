@@ -1,6 +1,6 @@
 use std::{
     num::{NonZeroU16, NonZeroUsize},
-    simd::{Simd, num::SimdUint},
+    simd::num::SimdUint,
 };
 
 use pareto_front::{Dominate, ParetoFront};
@@ -35,7 +35,7 @@ pub struct Cycle {
 #[derive(Debug, Clone)]
 pub struct PossibleOrder<const N: usize> {
     order: OrderExps<N>,
-    min_piece_count: usize,
+    min_piece_count: NonZeroUsize,
 }
 
 pub struct CycleCombinationCandidate<const N: usize> {
@@ -69,12 +69,10 @@ impl CycleCombination {
 
 impl<const N: usize> Dominate for CycleCombinationCandidate<N> {
     fn dominate(&self, other: &Self) -> bool {
-        for (s, o) in self.registers.iter().zip(&other.registers) {
-            if o.order > s.order {
-                return false;
-            }
-        }
-        true
+        self.registers
+            .iter()
+            .zip(&other.registers)
+            .all(|(s, o)| o.order <= s.order)
     }
 }
 
@@ -84,12 +82,37 @@ impl<const N: usize> From<PuzzleDef<N>> for CycleCombinationFinder<N> {
     }
 }
 
+fn min_piece_count<const N: usize>(
+    possible_order: &OrderExps<N>,
+    orientation_contribution: &OrderExps<N>,
+) -> NonZeroUsize {
+    assert_ne!(possible_order, &OrderExps::one());
+    NonZeroUsize::new(
+        possible_order
+            .0
+            .saturating_sub(orientation_contribution.0)
+            .as_array()
+            .iter()
+            .zip(FIRST_129_PRIMES)
+            .map(|(&exp, prime)| {
+                if exp == 0 {
+                    0
+                } else {
+                    usize::from(prime.pow(u32::from(exp)))
+                }
+            })
+            .sum::<usize>()
+            .max(1),
+    )
+    .unwrap()
+}
+
 fn cycle_combination_candidates<const N: usize>(
     possible_orders: Vec<PossibleOrder<N>>,
     register_count: NonZeroU16,
     piece_count_sum: NonZeroUsize,
 ) -> ParetoFront<CycleCombinationCandidate<N>> {
-    let mut path = vec![
+    let mut registers = vec![
         PossibleOrder {
             order: OrderExps::one(),
             min_piece_count: 1.try_into().unwrap(),
@@ -101,8 +124,7 @@ fn cycle_combination_candidates<const N: usize>(
         &possible_orders,
         NonZeroUsize::from(register_count),
         piece_count_sum,
-        &mut path,
-        // false,
+        &mut registers,
         &mut out,
     );
     drop(possible_orders);
@@ -116,18 +138,18 @@ fn cycle_combination_candidates_helper<const N: usize>(
     registers: &mut [PossibleOrder<N>],
     out: &mut ParetoFront<CycleCombinationCandidate<N>>,
 ) {
-    let register_count = registers.len();
-    let register_index = register_count - remaining_register_count.get();
+    let register_index = registers.len() - remaining_register_count.get();
     let mut rest = possible_orders;
     while let Some((first, tail)) = rest.split_first() {
         rest = tail;
 
         let Some(next_remaining_piece_count) = remaining_piece_count
             .get()
-            .checked_sub(first.min_piece_count)
+            .checked_sub(first.min_piece_count.get())
         else {
             continue;
         };
+
         if let Some(next_remaining_register_count) =
             NonZeroUsize::new(remaining_register_count.get() - 1)
         {
@@ -163,7 +185,8 @@ impl<const N: usize> CycleCombinationFinder<N> {
             self.puzzle_def
                 .orbit_defs()
                 .iter()
-                .fold(0, |acc, &orbit_def| acc + orbit_def.piece_count.get()),
+                .map(|&orbit_def| orbit_def.piece_count.get())
+                .sum::<u16>(),
         ))
         .unwrap();
 
@@ -182,36 +205,20 @@ impl<const N: usize> CycleCombinationFinder<N> {
         let possible_orders = self.puzzle_def.possible_orders();
         possible_orders.remove(&OrderExps::one());
 
-        let mut orienting_orbits = OrderExps::one();
-        for (exp, prime) in orienting_orbits
-            .0
-            .as_mut_array()
-            .iter_mut()
-            .zip(FIRST_129_PRIMES)
-        {
-            *exp = if self
-                .puzzle_def
+        let orientation_contribution =
+            self.puzzle_def
                 .orbit_defs()
                 .iter()
-                .any(|orbit_def| u16::from(orbit_def.orientation_count()) == prime)
-            {
-                1
-            } else {
-                0
-            }
-        }
+                .fold(OrderExps::one(), |acc, orbit_def| {
+                    acc.lcm(&OrderExps::<N>::try_from(orbit_def.orientation_count2()).unwrap())
+                });
         let mut possible_orders = possible_orders
             .into_iter()
             .map(|possible_order| {
-                // TODO: incorporate very basic parity and orientation requirements to make this
-                // heuristic better
-                let min_piece_count = possible_order.remove_factors(&orienting_orbits);
-                let min_piece_count = min_piece_count.0.cast::<u16>()
-                    * Simd::from_array(FIRST_129_PRIMES.first_chunk().unwrap().to_owned());
-                let min_piece_count = min_piece_count.reduce_sum();
+                let min_piece_count = min_piece_count(&possible_order, &orientation_contribution);
                 PossibleOrder {
                     order: possible_order,
-                    min_piece_count: usize::from(min_piece_count),
+                    min_piece_count,
                 }
             })
             .collect::<Vec<_>>();
@@ -224,7 +231,7 @@ impl<const N: usize> CycleCombinationFinder<N> {
             cycle_combination_candidates
                 .into_iter()
                 .map(|i| i.registers.into_iter().map(|j| j.order).collect::<Vec<_>>())
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>() // cycle_combination_candidates.len()
         );
         todo!()
     }

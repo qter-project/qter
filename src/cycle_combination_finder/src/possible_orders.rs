@@ -39,7 +39,7 @@ impl OrbitDef {
         #[allow(clippy::missing_panics_doc)]
         {
             assert!(self.piece_count.get() < FIRST_129_PRIMES[N]);
-            assert!(u16::from(orientation_count) < FIRST_129_PRIMES[N]);
+            assert!(u16::from(orientation_count.get()) < FIRST_129_PRIMES[N]);
         }
 
         let invalid_prime_index = FIRST_129_PRIMES.partition_point(|&prime| prime <= piece_count);
@@ -115,7 +115,7 @@ impl OrbitDef {
         }
 
         let extend_orientation_order_factors = {
-            let orientation_order_factors = divisors(orientation_count);
+            let orientation_order_factors = divisors(orientation_count.get());
             let maybe_prime_power_piece_count = if let OrientationStatus::CanOrient {
                 count: _,
                 sum_constraint: OrientationSumConstraint::Zero,
@@ -254,6 +254,7 @@ fn combine<'a, const N: usize>(
     if smallest.len() == 0 {
         return smaller;
     }
+
     if smaller.len() < smallest.len() {
         std::mem::swap(&mut smallest, &mut smaller);
     }
@@ -1131,7 +1132,7 @@ mod puzzle {
     fn test_possible_orders_big<const N: usize>(
         puzzle_def: &PuzzleDef<N>,
         expected_len: usize,
-        expected_highest_ten: [Int<U>; 10],
+        expected_highest_ten: &[Int<U>; 10],
     ) {
         let start = Instant::now();
         let possible_orders = puzzle_def.possible_orders();
@@ -1173,8 +1174,11 @@ mod puzzle {
         expected_len: usize,
         expected_highest_ten: [u64; 10],
     ) {
-        let expected_highest_ten = expected_highest_ten.map(Int::<U>::from);
-        test_possible_orders_big(puzzle_def, expected_len, expected_highest_ten);
+        test_possible_orders_big(
+            puzzle_def,
+            expected_len,
+            &expected_highest_ten.map(Int::<U>::from),
+        );
     }
 
     #[test_log::test]
@@ -1285,7 +1289,7 @@ mod puzzle {
         test_possible_orders_big(
             &MINX6,
             1624462,
-            [
+            &[
                 Int::<U>::from_str("114459483432082108320").unwrap(),
                 Int::<U>::from_str("124809543104132086200").unwrap(),
                 Int::<U>::from_str("136419733160330419800").unwrap(),
