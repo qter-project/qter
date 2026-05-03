@@ -175,7 +175,9 @@ fn cycle_combination_candidates_helper<const N: usize>(
             if out.push(CycleCombinationCandidate {
                 registers: registers.to_vec(),
             }) {
-                *max_last_register = registers.last().unwrap().order.clone();
+                *max_last_register = max_last_register
+                    .clone()
+                    .max(registers.last().unwrap().order.clone());
                 break;
             }
             registers[register_index] = old;
