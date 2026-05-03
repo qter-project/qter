@@ -6,10 +6,7 @@ use std::{
 use pareto_front::{Dominate, ParetoFront};
 use puzzle_theory::numbers::{Int, U};
 
-use crate::{
-    FIRST_129_PRIMES, number_theory::max_prime_powers_below, orderexps::OrderExps,
-    puzzle::PuzzleDef,
-};
+use crate::{FIRST_129_PRIMES, orderexps::OrderExps, puzzle::PuzzleDef};
 
 #[derive(Clone, Copy)]
 pub enum Optimality {
@@ -189,18 +186,6 @@ impl<const N: usize> CycleCombinationFinder<N> {
                 .sum::<u16>(),
         ))
         .unwrap();
-
-        let partition_max = self
-            .puzzle_def
-            .orbit_defs()
-            .iter()
-            .map(|orbit_def| orbit_def.piece_count)
-            .max()
-            // PuzzleDef enforces that there is at least one orbit
-            .unwrap();
-
-        let max_prime_powers =
-            max_prime_powers_below(self.puzzle_def.orbit_defs(), partition_max.get());
 
         let possible_orders = self.puzzle_def.possible_orders();
         possible_orders.remove(&OrderExps::one());
