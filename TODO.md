@@ -9,8 +9,12 @@
 
 ## CCF
 
-- possible orders reuse possible orders list if two orbits are the same
-- can we remove constraints?
+- possible orders
+  - reuse possible orders list if two orbits are the same
+  - compute minimum piece count
+  - can we just remove constraints?
+  - can we just ignore added extra orbits
+    - perhaps I can do separate analysis beforehand to show that 5354228880 can fit on the puzzle, and then if so, try to remove orbits and then see if 5354228880 still fits
 
 ## CCS
 
