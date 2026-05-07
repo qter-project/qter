@@ -2,8 +2,6 @@
 #![allow(
     clippy::too_many_arguments,
     clippy::too_many_lines,
-    clippy::bool_to_int_with_if,
-    clippy::unreadable_literal,
     clippy::similar_names
 )]
 #![feature(portable_simd, gen_blocks)]

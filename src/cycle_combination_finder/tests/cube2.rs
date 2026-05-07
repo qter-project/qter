@@ -1,1 +1,1 @@
-
+#![warn(clippy::pedantic)]

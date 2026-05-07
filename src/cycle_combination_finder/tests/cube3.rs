@@ -1,3 +1,5 @@
+#![warn(clippy::pedantic)]
+
 use std::num::NonZeroU16;
 
 use cycle_combination_finder::{

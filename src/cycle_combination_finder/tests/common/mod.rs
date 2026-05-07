@@ -1,4 +1,4 @@
-use cycle_combination_finder::finder::CycleCombination;
+#![warn(clippy::pedantic)]
 
 pub fn cycles(cycle_combinations: Vec<CycleCombination>) -> Vec<Vec<u32>> {
     cycle_combinations

@@ -1,3 +1,5 @@
+#![warn(clippy::pedantic)]
+
 use std::num::NonZeroU16;
 
 use cycle_combination_finder::{
@@ -21,11 +23,11 @@ fn optimal_2() {
     assert_eq!(
         cycles(cycle_combinations),
         vec![
-            vec![720720, 1],
-            vec![540540, 2],
-            vec![360360, 18],
-            vec![196560, 36],
-            vec![166320, 72],
+            vec![720_720, 1],
+            vec![540_540, 2],
+            vec![360_360, 18],
+            vec![196_560, 36],
+            vec![166_320, 72],
             vec![98280, 120],
             vec![83160, 180],
             vec![65520, 360],
@@ -50,10 +52,10 @@ fn optimal_3() {
     assert_eq!(
         cycles(cycle_combinations),
         vec![
-            vec![720720, 1, 1],
-            vec![360360, 12, 3],
-            vec![360360, 6, 6],
-            vec![180180, 12, 12],
+            vec![720_720, 1, 1],
+            vec![360_360, 12, 3],
+            vec![360_360, 6, 6],
+            vec![180_180, 12, 12],
             vec![98280, 24, 18],
             vec![83160, 36, 30],
             vec![55440, 60, 36],
