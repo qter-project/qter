@@ -100,8 +100,7 @@ impl<const N: usize> TryFrom<&[PossibleOrder<N>]> for CycleCombinationDetails<N>
 
 impl<const N: usize> From<PuzzleDef<N>> for CycleCombinationFinder<N> {
     fn from(puzzle_def: PuzzleDef<N>) -> Self {
-        let orientation_contribution =
-            OrderExps::lcms(puzzle_def.orbit_defs().iter().map(|orbit_def| {
+        let orientation_contribution = OrderExps::lcms(puzzle_def.orbit_defs().iter().map(|orbit_def| {
                 OrderExps::<N>::try_from(NonZeroU16::from(orbit_def.orientation_count())).unwrap()
             }))
             // `puzzle_def` must have at least one OrbitDef
@@ -292,7 +291,9 @@ impl<const N: usize> CycleCombinationFinder<N> {
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZeroU16;
+    use std::{num::NonZeroU16, time::Instant};
+
+    use log::info;
 
     use crate::finder::{CycleCombination, CycleCombinationFinder, Optimality, RegisterCount};
 
@@ -309,31 +310,17 @@ mod tests {
     }
 
     #[test_log::test]
-    fn optimal_2() {
-        let cube3 = crate::puzzle::minxN::MINX3.clone();
+    fn control() {
+        let minx3 = crate::puzzle::minxN::MINX3.clone();
         // let cube3 = crate::puzzle::cubeN::CUBE3.clone();
-        let ccf = CycleCombinationFinder::from(cube3);
+        let now = Instant::now();
+        let ccf = CycleCombinationFinder::from(minx3);
         let cycle_combinations = ccf.find(
             Optimality::Optimal,
-            RegisterCount::Exactly(NonZeroU16::new(2).unwrap()),
+            RegisterCount::Exactly(NonZeroU16::new(4).unwrap()),
         );
-        // let len = cycle_combination_candidates.len();
-        // // .combination
-        // // .into_inner()
-        // // .flatten()
-        // // .unwrap()
-        // // .cycles
-        // // .into_iter()
-        // // .map(|j| j.partitions)
-        // // .collect::<Vec<_>>())
-        // info!(
-        //     "{:?}",
-        //     cycle_combination_candidates
-        //         .iter()
-        //         .map(|i| i.orders.iter().map(|j|
-        // j.order.clone()).collect::<Vec<_>>())         .collect::<Vec<_>>()
-        // );
-        // info!("Len {len:?}");
+        info!("CCF in {:?}", now.elapsed());
+        info!("Solutions length: {}", cycle_combinations.len());
 
         assert_eq!(
             cycles(cycle_combinations),
