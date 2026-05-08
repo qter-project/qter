@@ -106,10 +106,7 @@ fn equivalent_2() {
         Optimality::Equivalent,
         RegisterCount::Exactly(NonZeroU16::new(2).unwrap()),
     );
-    assert_eq!(
-        u64::try_from(cycle_combinations[0].cycles()[0].order()).unwrap(),
-        90
-    );
+    assert_eq!(cycles(cycle_combinations), vec![vec![90, 90]]);
 }
 
 #[test_log::test]
@@ -120,8 +117,5 @@ fn equivalent_3() {
         Optimality::Equivalent,
         RegisterCount::Exactly(NonZeroU16::new(3).unwrap()),
     );
-    assert_eq!(
-        u64::try_from(cycle_combinations[0].cycles()[0].order()).unwrap(),
-        30
-    );
+    assert_eq!(cycles(cycle_combinations), vec![vec![30, 30, 30]]);
 }

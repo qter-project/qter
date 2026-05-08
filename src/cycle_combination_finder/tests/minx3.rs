@@ -6,7 +6,6 @@ use cycle_combination_finder::{
     finder::{CycleCombinationFinder, Optimality, RegisterCount},
     puzzle::minxN::MINX3,
 };
-use puzzle_theory::numbers::{Int, U};
 
 use crate::common::cycles;
 
@@ -79,10 +78,7 @@ fn equivalent_2() {
         Optimality::Equivalent,
         RegisterCount::Exactly(NonZeroU16::new(2).unwrap()),
     );
-    assert_eq!(
-        cycle_combinations[0].cycles()[0].order(),
-        Int::<U>::from(5040_u16),
-    );
+    assert_eq!(cycles(cycle_combinations), vec![vec![5040, 5040]]);
 }
 
 #[test_log::test]
@@ -93,8 +89,5 @@ fn equivalent_3() {
         Optimality::Equivalent,
         RegisterCount::Exactly(NonZeroU16::new(3).unwrap()),
     );
-    assert_eq!(
-        cycle_combinations[0].cycles()[0].order(),
-        Int::<U>::from(630_u16),
-    );
+    assert_eq!(cycles(cycle_combinations), vec![vec![630, 630, 630]]);
 }

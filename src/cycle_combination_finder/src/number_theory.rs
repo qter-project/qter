@@ -1,12 +1,5 @@
 use crate::{FIRST_129_PRIMES, orderexps::OrderExps};
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct MaxPrimePower {
-    pub prime: u16,
-    pub exponent: u16,
-    pub orienting_exponent: u16,
-}
-
 /// Compute all divisors of a number, with every divisor represented as a
 /// [`OrdersExps`].
 ///
