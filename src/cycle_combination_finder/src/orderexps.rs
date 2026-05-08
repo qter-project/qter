@@ -6,6 +6,7 @@ use std::{
     simd::{
         Simd,
         cmp::{SimdOrd, SimdPartialEq},
+        num::SimdUint,
     },
 };
 
@@ -48,11 +49,57 @@ impl<const N: usize> OrderExps<N> {
 
     #[inline]
     #[must_use]
+    pub fn lcms(iter: impl IntoIterator<Item = Self>) -> Option<Self> {
+        iter.into_iter().reduce(|a, b| a.lcm(&b))
+    }
+
+    #[inline]
+    #[must_use]
     pub fn is_prime_power(&self) -> bool {
         self.0
             .simd_ne(Simd::splat(0))
             .to_bitmask()
             .is_power_of_two()
+    }
+
+    /// Compute the prime power sum as a `u32`.
+    #[inline]
+    #[must_use]
+    pub fn prime_power_sum_u32(&self) -> u32 {
+        #[allow(clippy::missing_panics_doc)]
+        (self.0.cast::<u32>() * Simd::from_array(*FIRST_129_PRIMES.split_array_ref().0).cast())
+            .reduce_sum()
+    }
+
+    /// Compute the prime power sum as a `u16`. Note that overflow behavior is
+    /// wrapping, and there are no checks.
+    #[inline]
+    #[must_use]
+    pub fn prime_power_sum_u16_unchecked(&self) -> u16 {
+        #[allow(clippy::missing_panics_doc)]
+        (self.0.cast::<u16>() * Simd::from_array(*FIRST_129_PRIMES.split_array_ref().0))
+            .reduce_sum()
+    }
+
+    /// Compute the prime power sum as a `u8`. Note that overflow behavior is
+    /// wrapping, and there are no checks.
+    /// 
+    /// # Panics
+    /// 
+    /// If `N` is not one of `8`, `16`, or `32`.
+    #[inline]
+    #[must_use]
+    pub fn prime_power_sum_u8_unchecked(&self) -> u8 {
+        assert!(matches!(N, 8 | 16 | 32));
+        #[allow(clippy::missing_panics_doc, clippy::cast_possible_truncation)]
+        (self.0
+            * Simd::from_array(
+                FIRST_129_PRIMES
+                    .split_array_ref()
+                    .0
+                    .map(|prime| prime as u8),
+            ))
+        .reduce_sum()
     }
 }
 

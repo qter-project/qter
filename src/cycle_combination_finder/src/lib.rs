@@ -4,7 +4,7 @@
     clippy::too_many_lines,
     clippy::similar_names
 )]
-#![feature(portable_simd, gen_blocks)]
+#![feature(portable_simd, gen_blocks, split_array)]
 
 use bitgauss::BitMatrix;
 

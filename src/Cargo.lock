@@ -1588,9 +1588,9 @@ dependencies = [
 
 [[package]]
 name = "pareto_front"
-version = "1.0.1"
+version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b9c5b29bc46c2140b83938f0269cfa040e348727a11df9b02a3cb22aee2664f"
+checksum = "76d30544a9e8665288ddde23021da93c5d7fbcdc14eeff1b0e6577e3887995a3"
 
 [[package]]
 name = "parking_lot_core"

@@ -304,13 +304,6 @@ impl OrbitDef {
         })
         .unwrap()
     }
-
-    #[must_use]
-    pub fn orientation_count2(self) -> NonZeroU16 {
-        let orientation_count = self.orientation_count();
-        #[allow(clippy::missing_panics_doc)]
-        NonZeroU16::new(u16::from(orientation_count.get())).unwrap()
-    }
 }
 
 #[cfg(test)]

@@ -6,7 +6,6 @@ use cycle_combination_finder::{
     finder::{CycleCombinationFinder, Optimality, RegisterCount},
     puzzle::cubeN::CUBE3,
 };
-use puzzle_theory::numbers::{Int, U};
 
 use crate::common::cycles;
 
@@ -108,8 +107,8 @@ fn equivalent_2() {
         RegisterCount::Exactly(NonZeroU16::new(2).unwrap()),
     );
     assert_eq!(
-        cycle_combinations[0].cycles()[0].order(),
-        Int::<U>::from(90_u16),
+        u64::try_from(cycle_combinations[0].cycles()[0].order()).unwrap(),
+        90
     );
 }
 
@@ -122,7 +121,7 @@ fn equivalent_3() {
         RegisterCount::Exactly(NonZeroU16::new(3).unwrap()),
     );
     assert_eq!(
-        cycle_combinations[0].cycles()[0].order(),
-        Int::<U>::from(30_u16),
+        u64::try_from(cycle_combinations[0].cycles()[0].order()).unwrap(),
+        30
     );
 }
