@@ -1,7 +1,11 @@
 use std::{
     num::{NonZeroU16, NonZeroUsize},
     ops::Deref,
-    simd::num::SimdUint,
+    simd::{
+        Mask, Select, Simd,
+        cmp::SimdPartialEq,
+        num::SimdUint,
+    },
 };
 
 use log::{debug, trace};
@@ -13,6 +17,7 @@ use crate::{FIRST_129_PRIMES, orderexps::OrderExps, puzzle::PuzzleDef};
 pub enum Optimality {
     Equivalent,
     Optimal,
+    // TODO: SubOptimal which uses the naive pareto front dominate approach
 }
 
 #[derive(Clone, Copy)]
@@ -28,7 +33,7 @@ pub struct Cycle<const N: usize> {
 #[derive(Debug, Clone)]
 pub struct PossibleOrder<const N: usize> {
     order: OrderExps<N>,
-    min_piece_count: NonZeroUsize,
+    min_piece_count: NonZeroU16,
 }
 
 struct CycleCombinationCandidate<const N: usize> {
@@ -48,7 +53,14 @@ pub struct CycleCombination<const N: usize> {
 
 pub struct CycleCombinationFinder<const N: usize> {
     puzzle_def: PuzzleDef<N>,
-    orientation_contribution: OrderExps<N>,
+    orientations_exps: Vec<OrderExps<N>>,
+    orientation_exps_lcm: OrderExps<N>,
+}
+
+#[derive(Clone, Copy)]
+pub struct CycleCombinationFinderConfig {
+    pub optimality: Optimality,
+    pub register_count: RegisterCount,
 }
 
 impl<const N: usize> CycleCombination<N> {
@@ -77,6 +89,7 @@ impl<const N: usize> Dominate for CycleCombinationCandidate<N> {
         // Note that we should never have a case when `self == other` because
         // `cycle_combinations` visits a different order every time, hence we do not
         // have to implement this check as suggested by the `pareto_front` crate.
+        // TODO: multi_dominate
         debug_assert!(
             self.orders
                 .iter()
@@ -100,14 +113,19 @@ impl<const N: usize> TryFrom<&[PossibleOrder<N>]> for CycleCombinationDetails<N>
 
 impl<const N: usize> From<PuzzleDef<N>> for CycleCombinationFinder<N> {
     fn from(puzzle_def: PuzzleDef<N>) -> Self {
-        let orientation_contribution = OrderExps::lcms(puzzle_def.orbit_defs().iter().map(|orbit_def| {
+        let orientations_exps = puzzle_def
+            .orbit_defs()
+            .iter()
+            .map(|orbit_def| {
                 OrderExps::<N>::try_from(NonZeroU16::from(orbit_def.orientation_count())).unwrap()
-            }))
-            // `puzzle_def` must have at least one OrbitDef
-            .unwrap();
+            })
+            .collect::<Vec<_>>();
+        // `puzzle_def` must have at least one `OrbitDef`
+        let orientation_exps_lcm = OrderExps::lcms(orientations_exps.iter().cloned()).unwrap();
         Self {
             puzzle_def,
-            orientation_contribution,
+            orientations_exps,
+            orientation_exps_lcm,
         }
     }
 }
@@ -115,7 +133,7 @@ impl<const N: usize> From<PuzzleDef<N>> for CycleCombinationFinder<N> {
 fn cycle_combinations_helper<const N: usize>(
     possible_orders_except_one: &[PossibleOrder<N>],
     remaining_register_count: NonZeroUsize,
-    remaining_piece_count: NonZeroUsize,
+    remaining_piece_count: NonZeroU16,
     max_last_register: &mut OrderExps<N>,
     registers: &mut [PossibleOrder<N>],
     cycle_combination_candidates: &mut ParetoFront<CycleCombinationCandidate<N>>,
@@ -140,8 +158,7 @@ fn cycle_combinations_helper<const N: usize>(
         if let Some(next_remaining_register_count) =
             NonZeroUsize::new(remaining_register_count.get() - 1)
         {
-            if let Some(next_remaining_piece_count) = NonZeroUsize::new(next_remaining_piece_count)
-            {
+            if let Some(next_remaining_piece_count) = NonZeroU16::new(next_remaining_piece_count) {
                 let old = std::mem::replace(&mut registers[register_index], possible_order.clone());
                 cycle_combinations_helper(
                     curr_possible_orders,
@@ -162,6 +179,7 @@ fn cycle_combinations_helper<const N: usize>(
                 details: None,
             };
             // TODO: only use one pass
+            // TODO: _remove_dominated_starting_at should reuse a vec
             if !cycle_combination_candidates.dominate(&candidate)
                 && let Ok(details) = CycleCombinationDetails::try_from(&*candidate.orders)
             {
@@ -187,16 +205,17 @@ fn prime_power_cycle_piece_count(prime: u16, exp: u8) -> u16 {
 }
 
 impl<const N: usize> CycleCombinationFinder<N> {
-    fn min_piece_count_naive(&self, possible_order: &OrderExps<N>) -> NonZeroUsize {
-        NonZeroUsize::new(
+    fn min_piece_count(&self, possible_order: &OrderExps<N>) -> NonZeroU16 {
+        assert_ne!(possible_order, &OrderExps::one());
+        NonZeroU16::new(
             possible_order
                 .0
-                .saturating_sub(self.orientation_contribution.0)
+                .saturating_sub(self.orientation_exps_lcm.0)
                 .as_array()
                 .iter()
                 .zip(FIRST_129_PRIMES)
-                .map(|(&exp, prime)| usize::from(prime_power_cycle_piece_count(prime, exp)))
-                .sum::<usize>()
+                .map(|(&exp, prime)| prime_power_cycle_piece_count(prime, exp))
+                .sum::<u16>()
                 .max(1),
         )
         .unwrap()
@@ -204,7 +223,37 @@ impl<const N: usize> CycleCombinationFinder<N> {
 
     fn _min_piece_count(&self, possible_order: &OrderExps<N>) -> NonZeroUsize {
         assert_ne!(possible_order, &OrderExps::one());
-        todo!()
+
+        // let leftover_primes = self
+        //     .orientations_exps
+        //     .iter()
+        //     .fold(Mask::splat(true), |acc, orientation_exps| {
+        //         acc & orientation_exps.0.simd_eq(acc)
+        //     });
+        let mut leftover_prime_powers_mask = Mask::splat(true);
+        // self.orientation_exps_lcm
+        // let mut max_orienation_exps = Simd::splat(0);
+        for [a, b] in self.orientations_exps.array_windows() {
+            leftover_prime_powers_mask &= a.0.simd_eq(b.0);
+            // max_orienation_exps = max_orienation_exps.simd_max(other)
+        }
+
+        let mut leftover_prime_powers_sum = 0;
+        let mut leftover_prime_power_count = 0;
+        for leftover_prime_power in leftover_prime_powers_mask
+            .select(possible_order.0, Simd::splat(0))
+            .as_array()
+            .iter()
+            .zip(FIRST_129_PRIMES)
+            .map(|(&exp, prime)| prime_power_cycle_piece_count(prime, exp))
+        {
+            leftover_prime_powers_sum += leftover_prime_power;
+            leftover_prime_power_count += 1;
+        }
+
+        // leftover_primes.to_array()
+
+        todo!();
     }
 
     fn find_optimal(&self, register_count: RegisterCount) -> Vec<CycleCombination<N>> {
@@ -212,16 +261,14 @@ impl<const N: usize> CycleCombinationFinder<N> {
             panic!("expected exactly variant for now");
         };
 
-        let total_piece_count = NonZeroUsize::from(
-            NonZeroU16::new(
-                self.puzzle_def
-                    .orbit_defs()
-                    .iter()
-                    .map(|&orbit_def| orbit_def.piece_count.get())
-                    .sum::<u16>(),
-            )
-            .unwrap(),
-        );
+        let total_piece_count = NonZeroU16::new(
+            self.puzzle_def
+                .orbit_defs()
+                .iter()
+                .map(|&orbit_def| orbit_def.piece_count.get())
+                .sum::<u16>(),
+        )
+        .unwrap();
 
         let possible_orders_except_one = self.puzzle_def.possible_orders();
         possible_orders_except_one.remove(&OrderExps::one());
@@ -229,7 +276,7 @@ impl<const N: usize> CycleCombinationFinder<N> {
         let mut possible_orders_except_one = possible_orders_except_one
             .into_iter()
             .map(|possible_order| {
-                let min_piece_count = self.min_piece_count_naive(&possible_order);
+                let min_piece_count = self.min_piece_count(&possible_order);
                 PossibleOrder {
                     order: possible_order,
                     min_piece_count,
@@ -271,20 +318,17 @@ impl<const N: usize> CycleCombinationFinder<N> {
             .into_iter()
             .map(|candidate| CycleCombination {
                 orders: candidate.orders,
-                details: candidate.details.unwrap(),
+                // details: candidate.details.unwrap(),
+                details: CycleCombinationDetails { cycles: vec![] },
             })
             .collect()
     }
 
     #[must_use]
-    pub fn find(
-        &self,
-        optimality: Optimality,
-        register_count: RegisterCount,
-    ) -> Vec<CycleCombination<N>> {
-        match optimality {
+    pub fn find(&self, config: CycleCombinationFinderConfig) -> Vec<CycleCombination<N>> {
+        match config.optimality {
             Optimality::Equivalent => unimplemented!(),
-            Optimality::Optimal => self.find_optimal(register_count),
+            Optimality::Optimal => self.find_optimal(config.register_count),
         }
     }
 }
@@ -293,9 +337,13 @@ impl<const N: usize> CycleCombinationFinder<N> {
 mod tests {
     use std::{num::NonZeroU16, time::Instant};
 
+    use humanize_duration::{Truncate, prelude::DurationExt};
     use log::info;
 
-    use crate::finder::{CycleCombination, CycleCombinationFinder, Optimality, RegisterCount};
+    use crate::finder::{
+        CycleCombination, CycleCombinationFinder, CycleCombinationFinderConfig, Optimality,
+        RegisterCount,
+    };
 
     pub fn cycles<const N: usize>(cycle_combinations: Vec<CycleCombination<N>>) -> Vec<Vec<u32>> {
         cycle_combinations
@@ -315,11 +363,11 @@ mod tests {
         // let cube3 = crate::puzzle::cubeN::CUBE3.clone();
         let now = Instant::now();
         let ccf = CycleCombinationFinder::from(minx3);
-        let cycle_combinations = ccf.find(
-            Optimality::Optimal,
-            RegisterCount::Exactly(NonZeroU16::new(4).unwrap()),
-        );
-        info!("CCF in {:?}", now.elapsed());
+        let cycle_combinations = ccf.find(CycleCombinationFinderConfig {
+            optimality: Optimality::Optimal,
+            register_count: RegisterCount::Exactly(NonZeroU16::new(4).unwrap()),
+        });
+        info!("CCF in {}", now.elapsed().human(Truncate::Micro));
         info!("Solutions length: {}", cycle_combinations.len());
 
         assert_eq!(

@@ -155,6 +155,7 @@ impl<const N: usize> PartialOrd for OrderExps<N> {
     }
 }
 
+// TODO: logical vs total order
 impl<const N: usize> Ord for OrderExps<N> {
     #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
