@@ -1,17 +1,17 @@
 use std::{
     num::{NonZeroU16, NonZeroUsize},
     ops::Deref,
-    simd::{
-        Mask, Select, Simd,
-        cmp::SimdPartialEq,
-        num::SimdUint,
-    },
+    simd::num::SimdUint,
 };
 
 use log::{debug, trace};
 use pareto_front::{Dominate, ParetoFront};
 
-use crate::{FIRST_129_PRIMES, orderexps::OrderExps, puzzle::PuzzleDef};
+use crate::{
+    min_piece_count::{self, MinPieceCount},
+    orderexps::OrderExps,
+    puzzle::PuzzleDef,
+};
 
 #[derive(Clone, Copy)]
 pub enum Optimality {
@@ -53,8 +53,6 @@ pub struct CycleCombination<const N: usize> {
 
 pub struct CycleCombinationFinder<const N: usize> {
     puzzle_def: PuzzleDef<N>,
-    orientations_exps: Vec<OrderExps<N>>,
-    orientation_exps_lcm: OrderExps<N>,
 }
 
 #[derive(Clone, Copy)]
@@ -113,20 +111,7 @@ impl<const N: usize> TryFrom<&[PossibleOrder<N>]> for CycleCombinationDetails<N>
 
 impl<const N: usize> From<PuzzleDef<N>> for CycleCombinationFinder<N> {
     fn from(puzzle_def: PuzzleDef<N>) -> Self {
-        let orientations_exps = puzzle_def
-            .orbit_defs()
-            .iter()
-            .map(|orbit_def| {
-                OrderExps::<N>::try_from(NonZeroU16::from(orbit_def.orientation_count())).unwrap()
-            })
-            .collect::<Vec<_>>();
-        // `puzzle_def` must have at least one `OrbitDef`
-        let orientation_exps_lcm = OrderExps::lcms(orientations_exps.iter().cloned()).unwrap();
-        Self {
-            puzzle_def,
-            orientations_exps,
-            orientation_exps_lcm,
-        }
+        Self { puzzle_def }
     }
 }
 
@@ -196,66 +181,7 @@ fn cycle_combinations_helper<const N: usize>(
     }
 }
 
-fn prime_power_cycle_piece_count(prime: u16, exp: u8) -> u16 {
-    if exp == 0 {
-        0
-    } else {
-        prime.pow(u32::from(exp))
-    }
-}
-
 impl<const N: usize> CycleCombinationFinder<N> {
-    fn min_piece_count(&self, possible_order: &OrderExps<N>) -> NonZeroU16 {
-        assert_ne!(possible_order, &OrderExps::one());
-        NonZeroU16::new(
-            possible_order
-                .0
-                .saturating_sub(self.orientation_exps_lcm.0)
-                .as_array()
-                .iter()
-                .zip(FIRST_129_PRIMES)
-                .map(|(&exp, prime)| prime_power_cycle_piece_count(prime, exp))
-                .sum::<u16>()
-                .max(1),
-        )
-        .unwrap()
-    }
-
-    fn _min_piece_count(&self, possible_order: &OrderExps<N>) -> NonZeroUsize {
-        assert_ne!(possible_order, &OrderExps::one());
-
-        // let leftover_primes = self
-        //     .orientations_exps
-        //     .iter()
-        //     .fold(Mask::splat(true), |acc, orientation_exps| {
-        //         acc & orientation_exps.0.simd_eq(acc)
-        //     });
-        let mut leftover_prime_powers_mask = Mask::splat(true);
-        // self.orientation_exps_lcm
-        // let mut max_orienation_exps = Simd::splat(0);
-        for [a, b] in self.orientations_exps.array_windows() {
-            leftover_prime_powers_mask &= a.0.simd_eq(b.0);
-            // max_orienation_exps = max_orienation_exps.simd_max(other)
-        }
-
-        let mut leftover_prime_powers_sum = 0;
-        let mut leftover_prime_power_count = 0;
-        for leftover_prime_power in leftover_prime_powers_mask
-            .select(possible_order.0, Simd::splat(0))
-            .as_array()
-            .iter()
-            .zip(FIRST_129_PRIMES)
-            .map(|(&exp, prime)| prime_power_cycle_piece_count(prime, exp))
-        {
-            leftover_prime_powers_sum += leftover_prime_power;
-            leftover_prime_power_count += 1;
-        }
-
-        // leftover_primes.to_array()
-
-        todo!();
-    }
-
     fn find_optimal(&self, register_count: RegisterCount) -> Vec<CycleCombination<N>> {
         let RegisterCount::Exactly(total_register_count) = register_count else {
             panic!("expected exactly variant for now");
@@ -273,10 +199,11 @@ impl<const N: usize> CycleCombinationFinder<N> {
         let possible_orders_except_one = self.puzzle_def.possible_orders();
         possible_orders_except_one.remove(&OrderExps::one());
 
+        let min_piece_count_calculator = MinPieceCount::from(&self.puzzle_def);
         let mut possible_orders_except_one = possible_orders_except_one
             .into_iter()
             .map(|possible_order| {
-                let min_piece_count = self.min_piece_count(&possible_order);
+                let min_piece_count = min_piece_count_calculator.smart(&possible_order);
                 PossibleOrder {
                     order: possible_order,
                     min_piece_count,

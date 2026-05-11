@@ -4,7 +4,12 @@
     clippy::too_many_lines,
     clippy::similar_names
 )]
-#![feature(portable_simd, gen_blocks, split_array)]
+#![feature(
+    portable_simd,
+    gen_blocks,
+    split_array,
+    isolate_most_least_significant_one
+)]
 
 use bitgauss::BitMatrix;
 
@@ -34,6 +39,7 @@ fn gauss_jordan_without_zero_rows(m: &mut BitMatrix, expected_rows: usize) -> Ve
 
 pub mod ac3;
 pub mod finder;
+pub mod min_piece_count;
 pub mod number_theory;
 pub mod orderexps;
 pub mod possible_orders;
