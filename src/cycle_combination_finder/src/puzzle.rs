@@ -17,6 +17,8 @@ pub mod cubeN;
 pub mod minxN;
 pub mod misc;
 
+const MAX_ORBIT_COUNT: usize = 2usize.pow(16);
+
 #[derive(Error, Debug)]
 pub enum PuzzleDefCreationError {
     #[error(
@@ -26,6 +28,8 @@ pub enum PuzzleDefCreationError {
     InvalidOrbitConstraintsLength { expected: usize, actual: usize },
     #[error("Puzzle must have at least one orbit")]
     NoOrbits,
+    #[error("You can only have a maximum of {MAX_ORBIT_COUNT} orbits")]
+    TooManyOrbits,
     #[error("Even parity constraint contains the duplicated index {0}")]
     DuplicateIndicies(usize),
     #[error(
@@ -158,6 +162,9 @@ impl<const N: usize> PuzzleDef<N> {
     ) -> Result<Self, PuzzleDefCreationError> {
         if partial_orbit_defs.is_empty() {
             return Err(PuzzleDefCreationError::NoOrbits);
+        }
+        if partial_orbit_defs.len() > MAX_ORBIT_COUNT {
+            return Err(PuzzleDefCreationError::TooManyOrbits);
         }
 
         let mut orbit_defs = partial_orbit_defs
@@ -313,8 +320,8 @@ mod tests {
     use crate::{
         FIRST_129_PRIMES,
         puzzle::{
-            EvenParityConstraints, OrientationStatus, OrientationSumConstraint, PartialOrbitDef,
-            PuzzleDef, PuzzleDefCreationError,
+            EvenParityConstraints, MAX_ORBIT_COUNT, OrientationStatus, OrientationSumConstraint,
+            PartialOrbitDef, PuzzleDef, PuzzleDefCreationError,
         },
     };
 
@@ -356,6 +363,22 @@ mod tests {
             )
             .is_ok()
         );
+    }
+
+    #[test_log::test]
+    fn too_many_orbits() {
+        assert!(matches!(
+            PuzzleDef::<8>::new(
+                (0..MAX_ORBIT_COUNT + 1)
+                    .map(|_| PartialOrbitDef {
+                        piece_count: 1.try_into().unwrap(),
+                        orientation: OrientationStatus::CannotOrient,
+                    })
+                    .collect::<Vec<_>>(),
+                EvenParityConstraints(vec![])
+            ),
+            Err(PuzzleDefCreationError::TooManyOrbits),
+        ));
     }
 
     #[test_log::test]

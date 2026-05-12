@@ -1,5 +1,5 @@
 use std::{
-    num::NonZeroU16,
+    num::{NonZeroU16, NonZeroU32},
     simd::{Simd, cmp::SimdPartialEq, num::SimdUint},
 };
 
@@ -80,21 +80,22 @@ impl<const N: usize> From<&PuzzleDef<N>> for MinPieceCount<N> {
     }
 }
 
-fn prime_power_cycle_piece_count(prime: u16, exp: u8) -> u16 {
+fn prime_power_cycle_piece_count(prime: u16, exp: u8) -> u32 {
     if exp == 0 {
         0
     } else {
-        prime.pow(u32::from(exp))
+        u32::from(prime).pow(u32::from(exp))
     }
 }
 
 impl<const N: usize> MinPieceCount<N> {
-    // TODO: u32
     // TODO: only work when orientation sum constraint is Zero
     // TODO: special case C2
     // even parity constraints
     // piece count factors?
-    pub fn calculate(&self, possible_order: &OrderExps<N>) -> NonZeroU16 {
+    // tests for when ori is 1
+    // tests for when possible_order < ori exps
+    pub fn calculate(&self, possible_order: &OrderExps<N>) -> NonZeroU32 {
         assert_ne!(possible_order, &OrderExps::one());
         let mut leftover_prime_powers_sum = 0;
         let mut leftover_prime_power_count = 0;
@@ -114,7 +115,7 @@ impl<const N: usize> MinPieceCount<N> {
 
         // The maximum number of contributing orbits is the max N, one for every prime.
         // Thus this fits into a u16.
-        let mut needing_orientation_cycles_count = 0u16;
+        let mut needing_orientation_cycles_count = 0u32;
         let mut min_piece_count = leftover_prime_powers_sum;
         for orbit_orientation_contribution in &self.orbit_orientation_contributions {
             let mut contributing_prime_powers = orbit_orientation_contribution
@@ -145,12 +146,12 @@ impl<const N: usize> MinPieceCount<N> {
             needing_orientation_cycles_count.saturating_sub(leftover_prime_power_count);
 
         debug_assert!(min_piece_count >= self.calculate_naive(possible_order).get());
-        NonZeroU16::new(min_piece_count).unwrap()
+        NonZeroU32::new(min_piece_count).unwrap()
     }
 
-    pub fn calculate_naive(&self, possible_order: &OrderExps<N>) -> NonZeroU16 {
+    pub fn calculate_naive(&self, possible_order: &OrderExps<N>) -> NonZeroU32 {
         assert_ne!(possible_order, &OrderExps::one());
-        NonZeroU16::new(
+        NonZeroU32::new(
             possible_order
                 .0
                 .saturating_sub(self.orientations_exps_lcm.0)
@@ -158,7 +159,7 @@ impl<const N: usize> MinPieceCount<N> {
                 .iter()
                 .zip(FIRST_129_PRIMES)
                 .map(|(&exp, prime)| prime_power_cycle_piece_count(prime, exp))
-                .sum::<u16>()
+                .sum::<u32>()
                 .max(1),
         )
         .unwrap()
@@ -571,7 +572,7 @@ mod tests {
         //
         // 9 + 1 = 10
         assert_eq!(min_piece_count.calculate(&oe(72)).get(), 10);
-        
+
         let puzzle = big_puzzle_with_oris(&[5, 6]);
         let min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
@@ -598,7 +599,7 @@ mod tests {
         // 7 + 1 + 2 = 10
         assert_eq!(min_piece_count.calculate(&oe(210)).get(), 10);
     }
-        
+
     #[test_log::test]
     fn nontrivial_no_extra_cycles() {
         let puzzle = big_puzzle_with_oris(&[24, 72, 2]);

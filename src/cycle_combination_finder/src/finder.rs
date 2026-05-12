@@ -1,5 +1,5 @@
 use std::{
-    num::{NonZeroU16, NonZeroUsize},
+    num::{NonZeroU16, NonZeroU32, NonZeroUsize},
     ops::Deref,
 };
 
@@ -28,7 +28,7 @@ pub struct Cycle<const N: usize> {
 #[derive(Debug, Clone)]
 pub struct PossibleOrder<const N: usize> {
     order: OrderExps<N>,
-    min_piece_count: NonZeroU16,
+    min_piece_count: NonZeroU32,
 }
 
 struct CycleCombinationCandidate<const N: usize> {
@@ -113,7 +113,7 @@ impl<const N: usize> From<PuzzleDef<N>> for CycleCombinationFinder<N> {
 fn cycle_combinations_helper<const N: usize>(
     possible_orders_except_one: &[PossibleOrder<N>],
     remaining_register_count: NonZeroUsize,
-    remaining_piece_count: NonZeroU16,
+    remaining_piece_count: NonZeroU32,
     max_last_register: &mut OrderExps<N>,
     registers: &mut [PossibleOrder<N>],
     cycle_combination_candidates: &mut ParetoFront<CycleCombinationCandidate<N>>,
@@ -138,7 +138,7 @@ fn cycle_combinations_helper<const N: usize>(
         if let Some(next_remaining_register_count) =
             NonZeroUsize::new(remaining_register_count.get() - 1)
         {
-            if let Some(next_remaining_piece_count) = NonZeroU16::new(next_remaining_piece_count) {
+            if let Some(next_remaining_piece_count) = NonZeroU32::new(next_remaining_piece_count) {
                 let old = std::mem::replace(&mut registers[register_index], possible_order.clone());
                 cycle_combinations_helper(
                     curr_possible_orders,
@@ -182,12 +182,12 @@ impl<const N: usize> CycleCombinationFinder<N> {
             panic!("expected exactly variant for now");
         };
 
-        let total_piece_count = NonZeroU16::new(
+        let total_piece_count = NonZeroU32::new(
             self.puzzle_def
                 .orbit_defs()
                 .iter()
-                .map(|&orbit_def| orbit_def.piece_count.get())
-                .sum::<u16>(),
+                .map(|&orbit_def| u32::from(orbit_def.piece_count.get()))
+                .sum::<u32>(),
         )
         .unwrap();
 
