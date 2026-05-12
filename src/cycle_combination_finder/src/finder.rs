@@ -1,17 +1,12 @@
 use std::{
     num::{NonZeroU16, NonZeroUsize},
     ops::Deref,
-    simd::num::SimdUint,
 };
 
 use log::{debug, trace};
 use pareto_front::{Dominate, ParetoFront};
 
-use crate::{
-    min_piece_count::{self, MinPieceCount},
-    orderexps::OrderExps,
-    puzzle::PuzzleDef,
-};
+use crate::{min_piece_count::MinPieceCount, orderexps::OrderExps, puzzle::PuzzleDef};
 
 #[derive(Clone, Copy)]
 pub enum Optimality {
@@ -203,7 +198,7 @@ impl<const N: usize> CycleCombinationFinder<N> {
         let mut possible_orders_except_one = possible_orders_except_one
             .into_iter()
             .map(|possible_order| {
-                let min_piece_count = min_piece_count_calculator.smart(&possible_order);
+                let min_piece_count = min_piece_count_calculator.calculate(&possible_order);
                 PossibleOrder {
                     order: possible_order,
                     min_piece_count,

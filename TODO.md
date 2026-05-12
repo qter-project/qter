@@ -10,6 +10,7 @@
 ## CCF
 
 - possible orders
+  - daniel's SIMD gcd algorithm
   - reuse possible orders list if two orbits are the same
   - compute minimum piece count
   - can we just remove constraints?
