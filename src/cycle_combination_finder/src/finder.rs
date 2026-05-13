@@ -1,8 +1,10 @@
 use std::{
     num::{NonZeroU16, NonZeroU32, NonZeroUsize},
     ops::Deref,
+    time::Instant,
 };
 
+use humanize_duration::{Truncate, prelude::DurationExt};
 use log::{debug, trace};
 use pareto_front::{Dominate, ParetoFront};
 
@@ -194,6 +196,7 @@ impl<const N: usize> CycleCombinationFinder<N> {
         let possible_orders_except_one = self.puzzle_def.possible_orders();
         possible_orders_except_one.remove(&OrderExps::one());
 
+        let now = Instant::now();
         let min_piece_count_calculator = MinPieceCount::from(&self.puzzle_def);
         let mut possible_orders_except_one = possible_orders_except_one
             .into_iter()
@@ -205,6 +208,10 @@ impl<const N: usize> CycleCombinationFinder<N> {
                 }
             })
             .collect::<Vec<_>>();
+        debug!(
+            "All min piece counts in {}",
+            now.elapsed().human(Truncate::Micro)
+        );
         possible_orders_except_one.sort_unstable_by(|a, b| a.order.cmp(&b.order).reverse());
         trace!(
             "{}",
@@ -240,8 +247,7 @@ impl<const N: usize> CycleCombinationFinder<N> {
             .into_iter()
             .map(|candidate| CycleCombination {
                 orders: candidate.orders,
-                // details: candidate.details.unwrap(),
-                details: CycleCombinationDetails { cycles: vec![] },
+                details: candidate.details.unwrap(),
             })
             .collect()
     }
@@ -267,14 +273,14 @@ mod tests {
         RegisterCount,
     };
 
-    pub fn cycles<const N: usize>(cycle_combinations: Vec<CycleCombination<N>>) -> Vec<Vec<u32>> {
+    pub fn cycles<const N: usize>(cycle_combinations: Vec<CycleCombination<N>>) -> Vec<Vec<u64>> {
         cycle_combinations
             .into_iter()
             .map(|cycle_combination| {
                 cycle_combination
                     .orders()
                     .map(|order| order.as_bigint().try_into().unwrap())
-                    .collect::<Vec<u32>>()
+                    .collect::<Vec<u64>>()
             })
             .collect::<Vec<_>>()
     }

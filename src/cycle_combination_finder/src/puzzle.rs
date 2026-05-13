@@ -28,8 +28,10 @@ pub enum PuzzleDefCreationError {
     InvalidOrbitConstraintsLength { expected: usize, actual: usize },
     #[error("Puzzle must have at least one orbit")]
     NoOrbits,
-    #[error("You can only have a maximum of {MAX_ORBIT_COUNT} orbits")]
-    TooManyOrbits,
+    #[error(
+        "Puzzle has too many orbits. Expected a maximum of {MAX_ORBIT_COUNT} but found {actual}"
+    )]
+    TooManyOrbits { actual: usize, max: usize },
     #[error("Even parity constraint contains the duplicated index {0}")]
     DuplicateIndicies(usize),
     #[error(
@@ -164,7 +166,10 @@ impl<const N: usize> PuzzleDef<N> {
             return Err(PuzzleDefCreationError::NoOrbits);
         }
         if partial_orbit_defs.len() > MAX_ORBIT_COUNT {
-            return Err(PuzzleDefCreationError::TooManyOrbits);
+            return Err(PuzzleDefCreationError::TooManyOrbits {
+                actual: partial_orbit_defs.len(),
+                max: MAX_ORBIT_COUNT,
+            });
         }
 
         let mut orbit_defs = partial_orbit_defs
@@ -369,7 +374,7 @@ mod tests {
     fn too_many_orbits() {
         assert!(matches!(
             PuzzleDef::<8>::new(
-                (0..MAX_ORBIT_COUNT + 1)
+                (0..=MAX_ORBIT_COUNT)
                     .map(|_| PartialOrbitDef {
                         piece_count: 1.try_into().unwrap(),
                         orientation: OrientationStatus::CannotOrient,
@@ -377,7 +382,10 @@ mod tests {
                     .collect::<Vec<_>>(),
                 EvenParityConstraints(vec![])
             ),
-            Err(PuzzleDefCreationError::TooManyOrbits),
+            Err(PuzzleDefCreationError::TooManyOrbits {
+                actual: 65537,
+                max: 65536,
+            }),
         ));
     }
 

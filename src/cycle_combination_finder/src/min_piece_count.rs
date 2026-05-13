@@ -93,8 +93,6 @@ impl<const N: usize> MinPieceCount<N> {
     // TODO: special case C2
     // even parity constraints
     // piece count factors?
-    // tests for when ori is 1
-    // tests for when possible_order < ori exps
     pub fn calculate(&self, possible_order: &OrderExps<N>) -> NonZeroU32 {
         assert_ne!(possible_order, &OrderExps::one());
         let mut leftover_prime_powers_sum = 0;
@@ -122,7 +120,7 @@ impl<const N: usize> MinPieceCount<N> {
                 .0
                 .simd_ne(Simd::splat(0))
                 .to_bitmask();
-            let mut cycles_count = 0u16;
+            let mut cycles_count = 0u32;
             while contributing_prime_powers != 0 {
                 let prime_power_index = contributing_prime_powers.trailing_zeros() as usize;
                 let exp = possible_order.0[prime_power_index]
@@ -136,33 +134,23 @@ impl<const N: usize> MinPieceCount<N> {
 
                 contributing_prime_powers ^= contributing_prime_powers.isolate_lowest_one();
             }
-            needing_orientation_cycles_count += match cycles_count {
-                0 => 2,
-                1 => 1,
-                2.. => 0,
-            };
+            needing_orientation_cycles_count += 2u32.saturating_sub(cycles_count);
         }
         min_piece_count +=
             needing_orientation_cycles_count.saturating_sub(leftover_prime_power_count);
 
-        debug_assert!(min_piece_count >= self.calculate_naive(possible_order).get());
+        debug_assert!(
+            min_piece_count
+                >= possible_order
+                    .0
+                    .saturating_sub(self.orientations_exps_lcm.0)
+                    .as_array()
+                    .iter()
+                    .zip(FIRST_129_PRIMES)
+                    .map(|(&exp, prime)| prime_power_cycle_piece_count(prime, exp))
+                    .sum::<u32>()
+        );
         NonZeroU32::new(min_piece_count).unwrap()
-    }
-
-    pub fn calculate_naive(&self, possible_order: &OrderExps<N>) -> NonZeroU32 {
-        assert_ne!(possible_order, &OrderExps::one());
-        NonZeroU32::new(
-            possible_order
-                .0
-                .saturating_sub(self.orientations_exps_lcm.0)
-                .as_array()
-                .iter()
-                .zip(FIRST_129_PRIMES)
-                .map(|(&exp, prime)| prime_power_cycle_piece_count(prime, exp))
-                .sum::<u32>()
-                .max(1),
-        )
-        .unwrap()
     }
 }
 
@@ -339,8 +327,12 @@ mod initialization {
 
 #[cfg(test)]
 mod tests {
-    use crate::min_piece_count::{
-        MinPieceCount, big_puzzle_with_oris, oe, puzzle_with_piece_count_and_oris,
+    use crate::{
+        FIRST_129_PRIMES,
+        min_piece_count::{
+            MinPieceCount, big_puzzle_with_oris, oe, prime_power_cycle_piece_count,
+            puzzle_with_piece_count_and_oris,
+        },
     };
 
     #[test_log::test]
@@ -370,6 +362,33 @@ mod tests {
         //
         // 17 + 4 = 21
         assert_eq!(min_piece_count.calculate(&oe(136)).get(), 21);
+    }
+
+    #[test_log::test]
+    fn orientation_count_one() {
+        let puzzle = big_puzzle_with_oris(&[1, 1, 1]);
+        let min_piece_count = MinPieceCount::from(&puzzle);
+        assert_eq!(
+            min_piece_count,
+            MinPieceCount {
+                leftover_prime_powers_mask: !0,
+                orbit_orientation_contributions: vec![],
+                orientations_exps_lcm: oe(1),
+            }
+        );
+        for i in 2..100 {
+            let orderexps = oe(i);
+            assert_eq!(
+                min_piece_count.calculate(&orderexps).get(),
+                orderexps
+                    .0
+                    .as_array()
+                    .iter()
+                    .zip(FIRST_129_PRIMES)
+                    .map(|(&exp, prime)| prime_power_cycle_piece_count(prime, exp))
+                    .sum::<u32>()
+            );
+        }
     }
 
     #[test_log::test]
@@ -708,10 +727,98 @@ mod tests {
         // [0, 1]
         // [1, 0]
         //
-        // 1: [0, 0] => 1(pp) * 2(ori) + 1(EXTRA)
-        // 2: [0, 0] => 1(pp) * 3(ori) + 1(EXTRA)
+        // 1: [0, 0] => 1(pp) * 2(ori) + 2(EXTRA)
+        // 2: [0, 0] => 1(pp) * 3(ori) + 2(EXTRA)
         //
         // 4 + 3 = 7
         assert_eq!(min_piece_count.calculate(&oe(6)).get(), 4);
+
+        let puzzle = big_puzzle_with_oris(&[3]);
+        let min_piece_count = MinPieceCount::from(&puzzle);
+        assert_eq!(
+            min_piece_count,
+            MinPieceCount {
+                leftover_prime_powers_mask: !0b10,
+                orbit_orientation_contributions: vec![oe(3)],
+                orientations_exps_lcm: oe(3),
+            }
+        );
+        // [0, 1]
+        //
+        // orbit 1:
+        // [0, 1]
+        // [0, 0]
+        //
+        // 2: [0] => 1(pp) * 3(ori) + 2(EXTRA)
+        //
+        // 2 = 2
+        assert_eq!(min_piece_count.calculate(&oe(3)).get(), 2);
+    }
+
+    #[test_log::test]
+    fn small_order_exps() {
+        let puzzle = big_puzzle_with_oris(&[100, 9]);
+        let min_piece_count = MinPieceCount::from(&puzzle);
+        assert_eq!(
+            min_piece_count,
+            MinPieceCount {
+                leftover_prime_powers_mask: !0b111,
+                orbit_orientation_contributions: vec![oe(100), oe(9)],
+                orientations_exps_lcm: oe(900),
+            }
+        );
+        // [1, 1, 1]
+        //
+        // orbit 1:
+        // [2, 0, 2]
+        // [0, 0, 0]
+        //
+        // orbit 2:
+        // [0, 2, 0]
+        // [0, 0, 0]
+        //
+        // 1: [0, 0, 0] => 1(pp) * 10(ori) + 2(EXTRA)
+        // 2: [0, 0, 0] => 1(pp) * 3(ori) + 2(EXTRA)
+        // 
+        // 
+        //
+        // Note that we subdivide 100 into a +10 orientation cycle; we are always
+        // allowed to do this because saturaing the factor is guaranteed to make the
+        // number a divisor.
+        assert_eq!(min_piece_count.calculate(&oe(30)).get(), 4);
+    }
+
+    #[test_log::test]
+    fn everything_complex() {
+        let puzzle = big_puzzle_with_oris(&[60, 6, 45]);
+        let min_piece_count = MinPieceCount::from(&puzzle);
+        assert_eq!(
+            min_piece_count,
+            MinPieceCount {
+                leftover_prime_powers_mask: !0b111,
+                orbit_orientation_contributions: vec![oe(20), oe(9)],
+                orientations_exps_lcm: oe(180),
+            }
+        );
+        // [1, 1, 2]
+        //
+        // orbit 1:
+        // [2, 1, 1]
+        // [0, 0, 1]
+        //
+        // orbit 2:
+        // [1, 1, 0]
+        // [0, 0, 2]
+        //
+        // orbit 3:
+        // [0, 2, 1]
+        // [1, 0, 1]
+        //
+        // 1: [0, 0, 1] => 5(pp) * 20(ori) + 1(EXTRA)
+        // 2: [0, 0, 0] => 1(pp) * 1(ori)
+        // 3: [0, 0, 0] => 1(pp) * 9(ori) + 2(EXTRA)
+        //
+        // 5 + 1 + 2 = 8
+        assert_eq!(min_piece_count.calculate(&oe(150)).get(), 8);
     }
 }
