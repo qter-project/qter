@@ -145,6 +145,7 @@ fn cycle_combinations_helper<const N: usize>(
                 cycle_combinations_helper(
                     curr_possible_orders,
                     next_remaining_register_count,
+                    
                     next_remaining_piece_count,
                     max_last_register,
                     registers,

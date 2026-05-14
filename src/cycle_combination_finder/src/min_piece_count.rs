@@ -779,17 +779,175 @@ mod tests {
         //
         // 1: [0, 0, 0] => 1(pp) * 10(ori) + 2(EXTRA)
         // 2: [0, 0, 0] => 1(pp) * 3(ori) + 2(EXTRA)
-        // 
-        // 
+        //
+        // 2 + 2 = 4
         //
         // Note that we subdivide 100 into a +10 orientation cycle; we are always
         // allowed to do this because saturaing the factor is guaranteed to make the
         // number a divisor.
         assert_eq!(min_piece_count.calculate(&oe(30)).get(), 4);
     }
+}
+
+#[cfg(test)]
+mod suboptimal_edge_cases {
+    use crate::min_piece_count::{MinPieceCount, big_puzzle_with_oris, oe};
 
     #[test_log::test]
-    fn everything_complex() {
+    fn case1() {
+        let puzzle = big_puzzle_with_oris(&[225, 4]);
+        let min_piece_count = MinPieceCount::from(&puzzle);
+        assert_eq!(
+            min_piece_count,
+            MinPieceCount {
+                leftover_prime_powers_mask: !0b111,
+                orbit_orientation_contributions: vec![oe(225), oe(4)],
+                orientations_exps_lcm: oe(900),
+            }
+        );
+        // [1, 1, 1]
+        //
+        // orbit 1:
+        // [0, 2, 2]
+        // [1, 0, 0]
+        //
+        // orbit 2:
+        // [2, 0, 0]
+        // [0, 1, 1]
+        //
+        // bad case:
+        //
+        // 1: [0, 0, 0] => 1(pp) * 15(ori) + 2(EXTRA)
+        // 2: [0, 0, 0] => 1(pp) * 2(ori) + 2(EXTRA)
+        //
+        // 2 + 2 = 4
+        //
+        // good case:
+        //
+        // 1: [1, 0, 0] => 2(pp) * 30(ori) + 1(EXTRA)
+        // 2: [0, 0, 0] => 1(pp) * 1(ori)
+        //
+        // 2 + 1 = 3
+        assert_eq!(min_piece_count.calculate(&oe(30)).get(), 3);
+    }
+
+    #[test_log::test]
+    fn case2() {
+        let puzzle = big_puzzle_with_oris(&[15, 2]);
+        let min_piece_count = MinPieceCount::from(&puzzle);
+        assert_eq!(
+            min_piece_count,
+            MinPieceCount {
+                leftover_prime_powers_mask: !0b111,
+                orbit_orientation_contributions: vec![oe(225), oe(4)],
+                orientations_exps_lcm: oe(900),
+            }
+        );
+        // [1, 1, 1]
+        //
+        // orbit 1:
+        // [0, 1, 1]
+        // [1, 0, 0]
+        //
+        // orbit 2:
+        // [1, 0, 0]
+        // [0, 1, 1]
+        //
+        // bad case:
+        //
+        // 1: [0, 0, 0] => 1(pp) * 15(ori) + 2(EXTRA)
+        // 2: [0, 0, 0] => 1(pp) * 2(ori) + 2(EXTRA)
+        //
+        // 2 + 2 = 4
+        //
+        // good case:
+        //
+        // 1: [1, 0, 0] => 2(pp) * 30(ori) + 1(EXTRA)
+        // 2: [0, 0, 0] => 1(pp) * 1(ori)
+        //
+        // 2 + 1 = 3
+        assert_eq!(min_piece_count.calculate(&oe(30)).get(), 3);
+    }
+
+    #[test_log::test]
+    fn case3() {
+        let puzzle = big_puzzle_with_oris(&[15, 4]);
+        let min_piece_count = MinPieceCount::from(&puzzle);
+        assert_eq!(
+            min_piece_count,
+            MinPieceCount {
+                leftover_prime_powers_mask: !0b111,
+                orbit_orientation_contributions: vec![oe(225), oe(4)],
+                orientations_exps_lcm: oe(900),
+            }
+        );
+        // [1, 1, 1]
+        //
+        // orbit 1:
+        // [0, 1, 1]
+        // [1, 0, 0]
+        //
+        // orbit 2:
+        // [2, 0, 0]
+        // [0, 1, 1]
+        //
+        // bad case:
+        //
+        // 1: [0, 0, 0] => 1(pp) * 15(ori) + 2(EXTRA)
+        // 2: [0, 0, 0] => 1(pp) * 4(ori) + 2(EXTRA)
+        //
+        // 2 + 2 = 4
+        //
+        // good case:
+        //
+        // 1: [1, 0, 0] => 2(pp) * 30(ori) + 1(EXTRA)
+        // 2: [0, 0, 0] => 1(pp) * 1(ori)
+        //
+        // 2 + 1 = 3
+        assert_eq!(min_piece_count.calculate(&oe(30)).get(), 3);
+    }
+
+    #[test_log::test]
+    fn case4() {
+        let puzzle = big_puzzle_with_oris(&[30, 4]);
+        let min_piece_count = MinPieceCount::from(&puzzle);
+        assert_eq!(
+            min_piece_count,
+            MinPieceCount {
+                leftover_prime_powers_mask: !0b111,
+                orbit_orientation_contributions: vec![oe(225), oe(4)],
+                orientations_exps_lcm: oe(900),
+            }
+        );
+        // [2, 1, 1]
+        // 
+        // orbit 1:
+        // [1, 1, 1]
+        // [1, 0, 0]
+        // 
+        // orbit 2:
+        // [2, 0, 0]
+        // [0, 1, 1]
+        // 
+        // bad:
+        // 
+        // 1: [0, 0, 0] => 1(pp) * 15(ori) + 2(EXTRA) 
+        // 2: [0, 0, 0] => 1(pp) * 8(ori) + 2(EXTRA)
+        // 
+        // 2 + 2 = 4
+        // 
+        // good:
+        // 
+        // 1: [1, 0, 0] => 2(pp) * 30(ori) + 1(EXTRA)
+        // 2: [0, 0, 0] => 1(pp) * 1(ori)
+        // 
+        // 2 + 1 = 3
+        assert_eq!(min_piece_count.calculate(&oe(60)).get(), 3);
+    }
+
+    // TODO: test case when ori is even
+    #[test_log::test]
+    fn case5() {
         let puzzle = big_puzzle_with_oris(&[60, 6, 45]);
         let min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
@@ -814,11 +972,11 @@ mod tests {
         // [0, 2, 1]
         // [1, 0, 1]
         //
-        // 1: [0, 0, 1] => 5(pp) * 20(ori) + 1(EXTRA)
+        // 1: [0, 0, 1] => 5(pp) * 30(ori) + 1(EXTRA)
         // 2: [0, 0, 0] => 1(pp) * 1(ori)
-        // 3: [0, 0, 0] => 1(pp) * 9(ori) + 2(EXTRA)
+        // 3: [0, 0, 0] => 1(pp) * 1(ori)
         //
-        // 5 + 1 + 2 = 8
-        assert_eq!(min_piece_count.calculate(&oe(150)).get(), 8);
+        // 5 + 1 = 6
+        assert_eq!(min_piece_count.calculate(&oe(150)).get(), 6);
     }
 }
