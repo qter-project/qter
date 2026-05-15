@@ -145,7 +145,6 @@ fn cycle_combinations_helper<const N: usize>(
                 cycle_combinations_helper(
                     curr_possible_orders,
                     next_remaining_register_count,
-                    
                     next_remaining_piece_count,
                     max_last_register,
                     registers,
@@ -198,7 +197,7 @@ impl<const N: usize> CycleCombinationFinder<N> {
         possible_orders_except_one.remove(&OrderExps::one());
 
         let now = Instant::now();
-        let min_piece_count_calculator = MinPieceCount::from(&self.puzzle_def);
+        let mut min_piece_count_calculator = MinPieceCount::from(&self.puzzle_def);
         let mut possible_orders_except_one = possible_orders_except_one
             .into_iter()
             .map(|possible_order| {
