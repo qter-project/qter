@@ -16,6 +16,7 @@
   - can we just remove constraints?
   - can we just ignore added extra orbits
     - perhaps I can do separate analysis beforehand to show that 5354228880 can fit on the puzzle, and then if so, try to remove orbits and then see if 5354228880 still fits
+- throw out case if we ever compute it has a non-+1 orientation factor
 
 ## CCS
 
