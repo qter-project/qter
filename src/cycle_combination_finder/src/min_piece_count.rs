@@ -59,7 +59,7 @@ impl<const N: usize> MinPieceCount<N> {
         assert_ne!(possible_order, &OrderExps::one());
 
         let mut leftover_prime_powers_sum = 0;
-        let mut leftover_prime_power_count = 0;
+        let mut leftover_prime_powers_count = 0;
         let mut leftover_prime_powers_mask = self.leftover_prime_powers_mask;
         while leftover_prime_powers_mask != 0 {
             let prime_power_index = leftover_prime_powers_mask.trailing_zeros() as usize;
@@ -69,34 +69,34 @@ impl<const N: usize> MinPieceCount<N> {
             let leftover_prime_power = prime_power_cycle_piece_count(prime, exp);
             if leftover_prime_power != 0 {
                 leftover_prime_powers_sum += leftover_prime_power;
-                leftover_prime_power_count += 1;
+                leftover_prime_powers_count += 1;
             }
             leftover_prime_powers_mask ^= leftover_prime_powers_mask.isolate_lowest_one();
         }
 
-        let needed_prime_powers = possible_order
+        let required_cycle_prime_powers = possible_order
             .0
             .saturating_sub(self.orientations_exps_lcm.0);
-        let mut belongs_to: [Option<(usize, u32)>; N] = [None; N];
+        let mut prime_power_to_orbit: [Option<(usize, u32)>; N] = [None; N];
         for (orbit_index, orientation_exps) in self.orientations_exps.iter().enumerate() {
             let mut eq = possible_order
                 .0
                 .saturating_sub(orientation_exps.0)
-                .simd_eq(needed_prime_powers)
+                .simd_eq(required_cycle_prime_powers)
                 .to_bitmask();
             let eq_count = eq.count_ones();
             while eq != 0 {
                 #[allow(clippy::cast_possible_truncation)]
                 let prime_power_index = usize::from(eq.trailing_zeros() as u16);
                 if (self.leftover_prime_powers_mask >> prime_power_index) & 1 == 0 {
-                    match &mut belongs_to[prime_power_index] {
-                        Some(belonging) => {
-                            if eq_count > belonging.1 {
-                                *belonging = (orbit_index, eq_count);
+                    match &mut prime_power_to_orbit[prime_power_index] {
+                        Some(dominating_orbit) => {
+                            if eq_count > dominating_orbit.1 {
+                                *dominating_orbit = (orbit_index, eq_count);
                             }
                         }
-                        empty @ None => {
-                            *empty = Some((orbit_index, eq_count));
+                        to_dominate @ None => {
+                            *to_dominate = Some((orbit_index, eq_count));
                         }
                     }
                 }
@@ -106,8 +106,8 @@ impl<const N: usize> MinPieceCount<N> {
 
         self.orbit_orientation_contributions.fill(OrderExps::one());
 
-        for (prime_power_index, belonging) in belongs_to.into_iter().enumerate() {
-            let Some((orbit_index, _)) = belonging else {
+        for (prime_power_index, orbit) in prime_power_to_orbit.into_iter().enumerate() {
+            let Some((orbit_index, _)) = orbit else {
                 continue;
             };
             self.orbit_orientation_contributions[orbit_index].0[prime_power_index] =
@@ -118,14 +118,13 @@ impl<const N: usize> MinPieceCount<N> {
         // Thus this fits into a u16.
         let mut needing_orientation_cycles_count = 0u32;
         let mut min_piece_count = leftover_prime_powers_sum;
-        let mut perform_edge_case = false;
+        let mut transfer_two_extra_cycle = false;
         for orbit_orientation_contribution in &self.orbit_orientation_contributions {
             let mut contributing_prime_powers = orbit_orientation_contribution
                 .0
                 .simd_ne(Simd::splat(0))
                 .to_bitmask();
-            let orbit_orientation_contribution_is_two = match contributing_prime_powers.count_ones()
-            {
+            let orientation_contribution_is_two = match contributing_prime_powers.count_ones() {
                 0 => continue,
                 1 if orbit_orientation_contribution.0[0] != 0 => true,
                 _ => false,
@@ -133,8 +132,7 @@ impl<const N: usize> MinPieceCount<N> {
             let mut cycles_count = 0u32;
             while contributing_prime_powers != 0 {
                 let prime_power_index = contributing_prime_powers.trailing_zeros() as usize;
-                let exp = possible_order.0[prime_power_index]
-                    .saturating_sub(orbit_orientation_contribution.0[prime_power_index]);
+                let exp = required_cycle_prime_powers[prime_power_index];
                 let prime = FIRST_129_PRIMES[prime_power_index];
                 let cycle_piece_count = prime_power_cycle_piece_count(prime, exp);
                 if cycle_piece_count != 0 {
@@ -145,8 +143,8 @@ impl<const N: usize> MinPieceCount<N> {
             }
             needing_orientation_cycles_count += match cycles_count {
                 0 => {
-                    if orbit_orientation_contribution_is_two {
-                        perform_edge_case = true;
+                    if orientation_contribution_is_two {
+                        transfer_two_extra_cycle = true;
                     }
                     2
                 }
@@ -154,11 +152,12 @@ impl<const N: usize> MinPieceCount<N> {
                 2.. => 0,
             };
         }
-        let mut foo = needing_orientation_cycles_count.saturating_sub(leftover_prime_power_count);
-        if foo > 2 && perform_edge_case {
-            foo -= 1;
+        let mut unpaired_orientation_cycles_count =
+            needing_orientation_cycles_count.saturating_sub(leftover_prime_powers_count);
+        if unpaired_orientation_cycles_count > 2 && transfer_two_extra_cycle {
+            unpaired_orientation_cycles_count -= 1;
         }
-        min_piece_count += foo;
+        min_piece_count += unpaired_orientation_cycles_count;
 
         debug_assert!(
             min_piece_count
