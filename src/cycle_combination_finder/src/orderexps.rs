@@ -62,6 +62,18 @@ impl<const N: usize> OrderExps<N> {
             .is_power_of_two()
     }
 
+    #[inline]
+    #[must_use]
+    pub fn remove_factors(&self, removing: &Self) -> Self {
+        Self(self.0.saturating_sub(removing.0))
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn two_exponent(&self) -> u8 {
+        self.0[0]
+    }
+
     /// Compute the prime power sum as a `u32`.
     #[inline]
     #[must_use]
@@ -83,9 +95,9 @@ impl<const N: usize> OrderExps<N> {
 
     /// Compute the prime power sum as a `u8`. Note that overflow behavior is
     /// wrapping, and there are no checks.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// If `N` is not one of `8`, `16`, or `32`.
     #[inline]
     #[must_use]

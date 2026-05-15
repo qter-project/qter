@@ -77,8 +77,7 @@ impl OrbitDef {
                         even_parity_orders,
                         maybe_odd_parity_orders,
                     } => {
-                        // Do we have the two prime power (is it even)?
-                        let odd_parity = acc_order.0[0] != 0;
+                        let odd_parity = acc_order.two_exponent() != 0;
 
                         if odd_parity {
                             if let Some(odd_parity_orders) = maybe_odd_parity_orders {
