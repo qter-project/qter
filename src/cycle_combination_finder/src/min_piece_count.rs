@@ -1,6 +1,6 @@
 use std::{
     num::{NonZeroU16, NonZeroU32},
-    simd::{Simd, cmp::SimdPartialEq, num::SimdUint},
+    simd::{Simd, cmp::SimdPartialEq},
 };
 
 use crate::{
@@ -19,14 +19,19 @@ pub struct MinPieceCount<const N: usize> {
     orbit_orientation_contributions: Vec<OrderExps<N>>,
     orientations_exps_lcm: OrderExps<N>,
     has_even_parity_constraint: Vec<bool>,
+    has_two_orientation: bool,
 }
 
 impl<const N: usize> From<&PuzzleDef<N>> for MinPieceCount<N> {
     fn from(puzzle_def: &PuzzleDef<N>) -> Self {
+        let mut has_two_orientation = false;
         let orientations_exps = puzzle_def
             .orbit_defs()
             .iter()
             .map(|orbit_def| {
+                if orbit_def.orientation_count().get() == 2 {
+                    has_two_orientation = true;
+                }
                 OrderExps::<N>::try_from(NonZeroU16::from(orbit_def.orientation_count())).unwrap()
             })
             .collect::<Vec<_>>();
@@ -53,6 +58,7 @@ impl<const N: usize> From<&PuzzleDef<N>> for MinPieceCount<N> {
             orbit_orientation_contributions,
             orientations_exps_lcm,
             has_even_parity_constraint,
+            has_two_orientation,
         }
     }
 }
@@ -66,8 +72,11 @@ fn prime_power_cycle_piece_count(prime: u16, exp: u8) -> u32 {
 }
 
 impl<const N: usize> MinPieceCount<N> {
+    // TODO: test case when there are other 2 extras, and is_power_of_two is false
+    // TODO: combine case7 and case6, case7 and case4
     // TODO: only work when orientation sum constraint is Zero
     // TODO: special case C2
+    // TODO: test for not applying even parity constraint
     // piece count factors?
     pub fn calculate(&mut self, possible_order: &OrderExps<N>) -> NonZeroU32 {
         assert_ne!(possible_order, &OrderExps::one());
@@ -92,11 +101,12 @@ impl<const N: usize> MinPieceCount<N> {
             possible_order.remove_factors(&self.orientations_exps_lcm);
         let mut prime_power_to_orbit: [Option<(usize, u32)>; N] = [None; N];
         for (orbit_index, orientation_exps) in self.orientations_exps.iter().enumerate() {
-            let mut eq = possible_order
+            let mut eq = (possible_order
                 .remove_factors(orientation_exps)
                 .0
                 .simd_eq(required_cycle_prime_powers.0)
-                .to_bitmask();
+                & possible_order.0.simd_ne(Simd::splat(0)))
+            .to_bitmask();
             let eq_count = eq.count_ones();
             while eq != 0 {
                 #[allow(clippy::cast_possible_truncation)]
@@ -178,8 +188,8 @@ impl<const N: usize> MinPieceCount<N> {
         debug_assert!(
             min_piece_count
                 >= possible_order
+                    .remove_factors(&self.orientations_exps_lcm)
                     .0
-                    .saturating_sub(self.orientations_exps_lcm.0)
                     .as_array()
                     .iter()
                     .zip(FIRST_129_PRIMES)
@@ -231,20 +241,6 @@ fn puzzle_with_piece_count_and_oris(partial_orbit_defs: &[(u16, u8)]) -> PuzzleD
 #[cfg(test)]
 mod initialization {
     use crate::{min_piece_count::big_puzzle_with_oris, puzzle::cubeN::CUBE3};
-
-    #[test_log::test]
-    fn cube3() {
-        let cube3 = CUBE3.clone();
-        // assert_eq!(
-        //     MinPieceCount::from(&cube3),
-        //     MinPieceCount {
-        //         orbit_orientation_contributions: vec![oe(1), oe(1)],
-        //         orientations_exps: vec![oe(3), oe(2)],
-        //         leftover_prime_powers_mask: u64::from(!0b11u8),
-        //         orientations_exps_lcm: oe(6),
-        //     }
-        // );
-    }
 
     #[test_log::test]
     fn orbit_orientation_dominates() {
@@ -373,7 +369,7 @@ mod tests {
             MinPieceCount, big_puzzle_with_oris, oe, prime_power_cycle_piece_count,
             puzzle_with_piece_count_and_oris,
         },
-        puzzle::cubeN::CUBE3,
+        puzzle::{EvenParityConstraints, PartialOrbitDef, PuzzleDef, cubeN::CUBE3},
     };
 
     #[test_log::test]
@@ -546,6 +542,36 @@ mod tests {
         //
         // 4 + 3 + 5 + 11^2 = 133
         assert_eq!(min_piece_count.calculate(&oe(43560)).get(), 133);
+    }
+
+    #[test_log::test]
+    fn multi_dominates_not_enough_leftover() {
+        let puzzle = big_puzzle_with_oris(&[2, 3]);
+        let mut min_piece_count = MinPieceCount::from(&puzzle);
+        // assert_eq!(
+        //     min_piece_count,
+        //     MinPieceCount {
+        //         orbit_orientation_contributions: vec![oe(1)],
+        //         orientations_exps: vec![oe(1)],
+        //         leftover_prime_powers_mask: !0b11,
+        //         orientations_exps_lcm: oe(6),
+        //     }
+        // );
+        // [3, 2, 1]
+        //
+        // orbit 1:
+        // [1, 0]
+        // [2, 2]
+        //
+        // orbit 2:
+        // [0, 1]
+        // [3, 1]
+        //
+        // 1: [2, 0] => 4(pp) * 2(ori) * 5(leftover)
+        // 2: [0, 1] => 3(pp) * 3(ori) + 1(EXTRA)
+        //
+        // 4 + 3 + 5 + 1 = 13
+        assert_eq!(min_piece_count.calculate(&oe(360)).get(), 13);
     }
 
     #[test_log::test]
@@ -877,14 +903,9 @@ mod tests {
         assert_eq!(min_piece_count.calculate(&oe(1260)).get(), 19);
         assert_eq!(min_piece_count.calculate(&oe(990)).get(), 20);
         assert_eq!(min_piece_count.calculate(&oe(495)).get(), 19);
+        assert_eq!(min_piece_count.calculate(&oe(3)).get(), 2);
+        assert_eq!(min_piece_count.calculate(&oe(2)).get(), 2);
     }
-
-    // TODO: test for not applying even parity constraint
-}
-
-#[cfg(test)]
-mod suboptimal_edge_cases {
-    use crate::min_piece_count::{MinPieceCount, big_puzzle_with_oris, oe};
 
     #[test_log::test]
     fn case1() {
@@ -1120,8 +1141,6 @@ mod suboptimal_edge_cases {
         assert_eq!(min_piece_count.calculate(&oe(14700)).get(), 14);
     }
 
-    // TODO: test case when there are other 2 extras, and is_power_of_two is false
-    // TODO: combine case7 and case6, case7 and case4
     #[test_log::test]
     fn case7() {
         let puzzle = big_puzzle_with_oris(&[60, 6, 45]);
@@ -1167,8 +1186,6 @@ mod suboptimal_edge_cases {
         assert_eq!(min_piece_count.calculate(&oe(150)).get(), 6);
     }
 
-    // TODO: test case when there are other 2 extras, and is_power_of_two is false
-    // TODO: combine case7 and case6, case7 and case4
     #[test_log::test]
     fn case8() {
         let puzzle = big_puzzle_with_oris(&[90, 6, 20]);
@@ -1212,5 +1229,22 @@ mod suboptimal_edge_cases {
         //
         // 5 + 1 = 6
         assert_eq!(min_piece_count.calculate(&oe(150)).get(), 6);
+    }
+
+    #[test_log::test]
+    fn c2() {
+        let puzzle = big_puzzle_with_oris(&[2]);
+        let mut min_piece_count = MinPieceCount::from(&puzzle);
+        assert_eq!(min_piece_count.calculate(&oe(2)).get(), 2);
+        assert_eq!(min_piece_count.calculate(&oe(4)).get(), 3);
+        assert_eq!(min_piece_count.calculate(&oe(5)).get(), 5);
+        assert_eq!(min_piece_count.calculate(&oe(6)).get(), 4);
+
+        let puzzle = big_puzzle_with_oris(&[2, 2]);
+        let mut min_piece_count = MinPieceCount::from(&puzzle);
+        assert_eq!(min_piece_count.calculate(&oe(2)).get(), 2);
+        assert_eq!(min_piece_count.calculate(&oe(4)).get(), 3);
+        assert_eq!(min_piece_count.calculate(&oe(5)).get(), 5);
+        assert_eq!(min_piece_count.calculate(&oe(6)).get(), 4);
     }
 }
