@@ -65,6 +65,15 @@ fn prime_power_cycle_piece_count(prime: u16, exp: u8) -> u32 {
 }
 
 impl<const N: usize> MinPieceCount<'_, N> {
+    /// Compute a lower bound of the minimum number of pieces to construct a
+    /// twisty puzzle group element with *known* possible order. This bound is
+    /// close to being tight.
+    ///
+    /// # Panics
+    ///
+    /// This method panics if one is the possible order, since the minimum
+    /// number of piece is zero, and it would be preferrable for this function
+    /// to always return a [`NonZero`] type.
     // TODO: devise a scheme to make this incorporate piece counts
     pub fn calculate(&mut self, possible_order: &OrderExps<N>) -> NonZeroU32 {
         assert_ne!(possible_order, &OrderExps::one());
@@ -169,6 +178,9 @@ impl<const N: usize> MinPieceCount<'_, N> {
                     == 1 + u16::from(orientation_exps.two_exponent());
             }
             needing_orientation_cycles_count += match orbit_def.orientation {
+                // Sanity check: if the orbit cannot orient, its orientation factors always
+                // contributes nothing, and this contribution would have been skipped at the
+                // beginning of this loop
                 OrientationStatus::CannotOrient => unreachable!(),
                 OrientationStatus::CanOrient {
                     count: _,
@@ -198,6 +210,7 @@ impl<const N: usize> MinPieceCount<'_, N> {
         }
         min_piece_count += extra_piece_count;
 
+        // Compute the naive minimum piece count and ensure this bound is never worse
         debug_assert!(
             min_piece_count
                 >= possible_order
@@ -209,6 +222,7 @@ impl<const N: usize> MinPieceCount<'_, N> {
                     .map(|(&exp, prime)| prime_power_cycle_piece_count(prime, exp))
                     .sum::<u32>()
         );
+        // Every non-one order requires at least one piece
         NonZeroU32::new(min_piece_count).unwrap()
     }
 }
