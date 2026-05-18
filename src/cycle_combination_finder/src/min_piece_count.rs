@@ -3,19 +3,24 @@ use std::{
     simd::{Simd, cmp::SimdPartialEq},
 };
 
-use crate::{FIRST_129_PRIMES, orderexps::OrderExps, puzzle::PuzzleDef};
+use crate::{
+    FIRST_129_PRIMES,
+    orderexps::OrderExps,
+    puzzle::{OrbitDef, OrientationStatus, OrientationSumConstraint, PuzzleDef},
+};
 
-#[derive(Debug, PartialEq)]
-pub struct MinPieceCount<const N: usize> {
+#[derive(Debug)]
+pub struct MinPieceCount<'a, const N: usize> {
     orientations_exps: Vec<OrderExps<N>>,
     orbit_orientation_contributions: Vec<OrderExps<N>>,
+    orbit_defs: &'a [OrbitDef],
     leftover_prime_powers_mask: u64,
     orientations_exps_lcm: OrderExps<N>,
     has_even_parity_constraint: Vec<bool>,
 }
 
-impl<const N: usize> From<&PuzzleDef<N>> for MinPieceCount<N> {
-    fn from(puzzle_def: &PuzzleDef<N>) -> Self {
+impl<'a, const N: usize> From<&'a PuzzleDef<N>> for MinPieceCount<'a, N> {
+    fn from(puzzle_def: &'a PuzzleDef<N>) -> Self {
         let orientations_exps = puzzle_def
             .orbit_defs()
             .iter()
@@ -46,6 +51,7 @@ impl<const N: usize> From<&PuzzleDef<N>> for MinPieceCount<N> {
             leftover_prime_powers_mask,
             orientations_exps_lcm,
             has_even_parity_constraint,
+            orbit_defs: puzzle_def.orbit_defs(),
         }
     }
 }
@@ -58,9 +64,8 @@ fn prime_power_cycle_piece_count(prime: u16, exp: u8) -> u32 {
     }
 }
 
-impl<const N: usize> MinPieceCount<N> {
-    // TODO: only work when orientation sum constraint is Zero
-    // piece count factors?
+impl<const N: usize> MinPieceCount<'_, N> {
+    // TODO: devise a scheme to make this incorporate piece counts
     pub fn calculate(&mut self, possible_order: &OrderExps<N>) -> NonZeroU32 {
         assert_ne!(possible_order, &OrderExps::one());
 
@@ -130,10 +135,11 @@ impl<const N: usize> MinPieceCount<N> {
         let mut min_piece_count = leftover_prime_powers_sum;
         let mut transfer_extra_two_cycle = false;
         let mut receive_extra_two_cycle = false;
-        for (orbit_orientation_contribution, orientation_exps) in self
+        for ((orbit_orientation_contribution, orientation_exps), orbit_def) in self
             .orbit_orientation_contributions
             .iter()
             .zip(&self.orientations_exps)
+            .zip(self.orbit_defs)
         {
             let mut contributing_prime_powers = orbit_orientation_contribution
                 .0
@@ -159,10 +165,20 @@ impl<const N: usize> MinPieceCount<N> {
             if orientation_contribution_is_two {
                 transfer_extra_two_cycle = cycles_count == 0;
             } else {
-                receive_extra_two_cycle |=
-                    possible_order.two_exponent() == 1 + orientation_exps.two_exponent();
+                receive_extra_two_cycle |= u16::from(possible_order.two_exponent())
+                    == 1 + u16::from(orientation_exps.two_exponent());
             }
-            needing_orientation_cycles_count += 2u32.saturating_sub(cycles_count);
+            needing_orientation_cycles_count += match orbit_def.orientation {
+                OrientationStatus::CannotOrient => unreachable!(),
+                OrientationStatus::CanOrient {
+                    count: _,
+                    sum_constraint: OrientationSumConstraint::Zero,
+                } => 2u32.saturating_sub(cycles_count),
+                OrientationStatus::CanOrient {
+                    count: _,
+                    sum_constraint: OrientationSumConstraint::None,
+                } => 1u32.saturating_sub(cycles_count),
+            };
         }
         let mut extra_piece_count =
             needing_orientation_cycles_count.saturating_sub(leftover_prime_powers_count);
@@ -201,7 +217,7 @@ impl<const N: usize> MinPieceCount<N> {
 mod initialization {
     use crate::min_piece_count::{
         MinPieceCount,
-        tests::{big_puzzle_with_oris, oe},
+        tests::{PartialMinPieceCount, big_puzzle_with_oris, oe},
     };
 
     #[test_log::test]
@@ -209,8 +225,7 @@ mod initialization {
         let puzzle = big_puzzle_with_oris(&[180, 6, 5]);
         assert_eq!(
             MinPieceCount::from(&puzzle),
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 3],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(180), oe(6), oe(5)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(180),
@@ -233,8 +248,7 @@ mod initialization {
         // [0, 2, 0] = 9
         assert_eq!(
             MinPieceCount::from(&puzzle),
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 3],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(60), oe(6), oe(45)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(180),
@@ -256,8 +270,7 @@ mod initialization {
 
         assert_eq!(
             MinPieceCount::from(&puzzle),
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 3],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(60), oe(6), oe(180)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(180),
@@ -269,8 +282,7 @@ mod initialization {
 
         assert_eq!(
             MinPieceCount::from(&puzzle),
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 3],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(180), oe(6), oe(60)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(180),
@@ -295,8 +307,7 @@ mod initialization {
 
         assert_eq!(
             MinPieceCount::from(&puzzle),
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 3],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(20), oe(6), oe(12)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(60),
@@ -318,8 +329,7 @@ mod initialization {
 
         assert_eq!(
             MinPieceCount::from(&puzzle),
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 3],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(180), oe(75), oe(50)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(900),
@@ -342,6 +352,37 @@ mod tests {
             PuzzleDef,
         },
     };
+
+    #[derive(Debug)]
+    pub struct PartialMinPieceCount<const N: usize> {
+        pub orientations_exps: Vec<OrderExps<N>>,
+        pub leftover_prime_powers_mask: u64,
+        pub orientations_exps_lcm: OrderExps<N>,
+        pub has_even_parity_constraint: Vec<bool>,
+    }
+
+    impl<const N: usize> PartialEq<PartialMinPieceCount<N>> for MinPieceCount<'_, N> {
+        fn eq(&self, other: &PartialMinPieceCount<N>) -> bool {
+            let MinPieceCount {
+                orientations_exps: orientations_exps_1,
+                orbit_orientation_contributions: _,
+                orbit_defs: _,
+                leftover_prime_powers_mask: leftover_prime_powers_mask_1,
+                orientations_exps_lcm: orientations_exps_lcm_1,
+                has_even_parity_constraint: has_even_parity_constraint_1,
+            } = self;
+            let PartialMinPieceCount {
+                orientations_exps,
+                leftover_prime_powers_mask,
+                orientations_exps_lcm,
+                has_even_parity_constraint,
+            } = other;
+            *orientations_exps_1 == *orientations_exps
+                && *leftover_prime_powers_mask_1 == *leftover_prime_powers_mask
+                && *orientations_exps_lcm_1 == *orientations_exps_lcm
+                && *has_even_parity_constraint_1 == *has_even_parity_constraint
+        }
+    }
 
     pub fn oe<const N: usize>(x: u16) -> OrderExps<N> {
         OrderExps::try_from(NonZeroU16::try_from(x).unwrap()).unwrap()
@@ -384,8 +425,7 @@ mod tests {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 2],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(1), oe(2)],
                 leftover_prime_powers_mask: !0b1,
                 orientations_exps_lcm: oe(2),
@@ -417,8 +457,7 @@ mod tests {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 3],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(1), oe(1), oe(1)],
                 leftover_prime_powers_mask: !0,
                 orientations_exps_lcm: oe(1),
@@ -446,8 +485,7 @@ mod tests {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1)],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(3)],
                 leftover_prime_powers_mask: !0b10,
                 orientations_exps_lcm: oe(3),
@@ -479,8 +517,7 @@ mod tests {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 2],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(18), oe(9)],
                 leftover_prime_powers_mask: !0b11,
                 orientations_exps_lcm: oe(18),
@@ -507,8 +544,7 @@ mod tests {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 2],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(6), oe(3)],
                 leftover_prime_powers_mask: !0b11,
                 orientations_exps_lcm: oe(6),
@@ -535,8 +571,7 @@ mod tests {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 2],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(2), oe(12)],
                 leftover_prime_powers_mask: !0b11,
                 orientations_exps_lcm: oe(12),
@@ -563,8 +598,7 @@ mod tests {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 2],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(2), oe(3)],
                 leftover_prime_powers_mask: !0b11,
                 orientations_exps_lcm: oe(6),
@@ -594,8 +628,7 @@ mod tests {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 2],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(2), oe(3)],
                 leftover_prime_powers_mask: !0b11,
                 orientations_exps_lcm: oe(6),
@@ -622,8 +655,7 @@ mod tests {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 2],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(1), oe(3)],
                 leftover_prime_powers_mask: !0b10,
                 orientations_exps_lcm: oe(3),
@@ -653,8 +685,7 @@ mod tests {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 2],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(2), oe(3)],
                 leftover_prime_powers_mask: !0b11,
                 orientations_exps_lcm: oe(6),
@@ -684,8 +715,7 @@ mod tests {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 3],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(2), oe(8), oe(8)],
                 leftover_prime_powers_mask: !0b1,
                 orientations_exps_lcm: oe(8),
@@ -720,8 +750,7 @@ mod tests {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 3],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(24), oe(72), oe(2)],
                 leftover_prime_powers_mask: !0b11,
                 orientations_exps_lcm: oe(72),
@@ -756,8 +785,7 @@ mod tests {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 2],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(2), oe(12)],
                 leftover_prime_powers_mask: !0b11,
                 orientations_exps_lcm: oe(12),
@@ -784,8 +812,7 @@ mod tests {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 2],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(6), oe(3)],
                 leftover_prime_powers_mask: !0b11,
                 orientations_exps_lcm: oe(6),
@@ -815,8 +842,7 @@ mod tests {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 3],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(60), oe(6), oe(45)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(180),
@@ -858,8 +884,7 @@ mod tests {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 3],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(90), oe(6), oe(20)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(180),
@@ -904,8 +929,7 @@ mod tests {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 2],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(100), oe(9)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(900),
@@ -939,7 +963,7 @@ mod transfer_two_cycle {
     use crate::{
         min_piece_count::{
             MinPieceCount,
-            tests::{big_puzzle_with_oris, oe},
+            tests::{PartialMinPieceCount, big_puzzle_with_oris, oe},
         },
         puzzle::{
             EvenParityConstraints, OrientationStatus, OrientationSumConstraint, PartialOrbitDef,
@@ -1039,14 +1063,106 @@ mod transfer_two_cycle {
         }
     }
 
+    // TODO: more tests for no orientation constraint
+    #[test_log::test]
+    fn cube3_no_orientation_constraint() {
+        let cube3 = CUBE3.clone();
+
+        let cube3_no_orientation_constraint = PuzzleDef::<8>::new(
+            vec![
+                PartialOrbitDef {
+                    piece_count: 8.try_into().unwrap(),
+                    orientation: OrientationStatus::CanOrient {
+                        count: 3,
+                        sum_constraint: OrientationSumConstraint::None,
+                    },
+                },
+                PartialOrbitDef {
+                    piece_count: 12.try_into().unwrap(),
+                    orientation: OrientationStatus::CanOrient {
+                        count: 2,
+                        sum_constraint: OrientationSumConstraint::None,
+                    },
+                },
+            ],
+            EvenParityConstraints(vec![vec![0, 1]]),
+        )
+        .unwrap();
+
+        let cube3_corner_orientation_constraint = PuzzleDef::<8>::new(
+            vec![
+                PartialOrbitDef {
+                    piece_count: 8.try_into().unwrap(),
+                    orientation: OrientationStatus::CanOrient {
+                        count: 3,
+                        sum_constraint: OrientationSumConstraint::Zero,
+                    },
+                },
+                PartialOrbitDef {
+                    piece_count: 12.try_into().unwrap(),
+                    orientation: OrientationStatus::CanOrient {
+                        count: 2,
+                        sum_constraint: OrientationSumConstraint::None,
+                    },
+                },
+            ],
+            EvenParityConstraints(vec![vec![0, 1]]),
+        )
+        .unwrap();
+
+        let cube3_edge_orientation_constraint = PuzzleDef::<8>::new(
+            vec![
+                PartialOrbitDef {
+                    piece_count: 8.try_into().unwrap(),
+                    orientation: OrientationStatus::CanOrient {
+                        count: 3,
+                        sum_constraint: OrientationSumConstraint::None,
+                    },
+                },
+                PartialOrbitDef {
+                    piece_count: 12.try_into().unwrap(),
+                    orientation: OrientationStatus::CanOrient {
+                        count: 2,
+                        sum_constraint: OrientationSumConstraint::Zero,
+                    },
+                },
+            ],
+            EvenParityConstraints(vec![vec![0, 1]]),
+        )
+        .unwrap();
+
+        for (puzzle_def, expected_results) in [
+            (&cube3, [(1260, 19), (990, 20), (495, 19), (3, 2), (2, 2)]),
+            (
+                &cube3_no_orientation_constraint,
+                [(1260, 19), (990, 19), (495, 19), (3, 1), (2, 1)],
+            ),
+            (
+                &cube3_corner_orientation_constraint,
+                [(1260, 19), (990, 19), (495, 19), (3, 2), (2, 1)],
+            ),
+            (
+                &cube3_edge_orientation_constraint,
+                [(1260, 19), (990, 19), (495, 19), (3, 1), (2, 2)],
+            ),
+        ] {
+            let mut min_piece_count = MinPieceCount::from(puzzle_def);
+            for (input_oe, expected_count) in expected_results {
+                assert_eq!(
+                    min_piece_count.calculate(&oe(input_oe)).get(),
+                    expected_count,
+                );
+            }
+        }
+    }
+
     #[test_log::test]
     fn only_extras() {
         let puzzle = big_puzzle_with_oris(&[2, 3]);
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 2],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(2), oe(3)],
                 leftover_prime_powers_mask: !0b11,
                 orientations_exps_lcm: oe(6),
@@ -1082,8 +1198,7 @@ mod transfer_two_cycle {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1), oe(1)],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(15), oe(2)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(30),
@@ -1119,8 +1234,7 @@ mod transfer_two_cycle {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 2],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(225), oe(4)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(900),
@@ -1156,8 +1270,7 @@ mod transfer_two_cycle {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 2],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(15), oe(4)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(60),
@@ -1193,8 +1306,7 @@ mod transfer_two_cycle {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 3],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(2), oe(3), oe(5)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(30),
@@ -1239,8 +1351,7 @@ mod transfer_two_cycle {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 2],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(30), oe(4)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(60),
@@ -1279,8 +1390,7 @@ mod transfer_two_cycle {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 2],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(15), oe(2)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(30),
@@ -1316,8 +1426,7 @@ mod transfer_two_cycle {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 2],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(105), oe(4)],
                 leftover_prime_powers_mask: !0b1111,
                 orientations_exps_lcm: oe(420),
@@ -1353,8 +1462,7 @@ mod transfer_two_cycle {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 3],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(2), oe(3), oe(5)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(30),
@@ -1399,8 +1507,7 @@ mod transfer_two_cycle {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 2],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(30), oe(4)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(60),
@@ -1439,8 +1546,7 @@ mod transfer_two_cycle {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 2],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(30), oe(8)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(120),
@@ -1476,8 +1582,7 @@ mod transfer_two_cycle {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 2],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(10), oe(3)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(30),
@@ -1513,8 +1618,7 @@ mod transfer_two_cycle {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 2],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(5), oe(6)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(30),
@@ -1550,8 +1654,7 @@ mod transfer_two_cycle {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1), oe(1)],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(210), oe(4)],
                 leftover_prime_powers_mask: !0b1111,
                 orientations_exps_lcm: oe(420),
@@ -1587,8 +1690,7 @@ mod transfer_two_cycle {
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
-            MinPieceCount {
-                orbit_orientation_contributions: vec![oe(1); 2],
+            PartialMinPieceCount {
                 orientations_exps: vec![oe(15), oe(4)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(60),
