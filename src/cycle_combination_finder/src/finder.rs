@@ -212,7 +212,7 @@ impl<const N: usize> CycleCombinationFinder<N> {
             "All min piece counts in {}",
             now.elapsed().human(Truncate::Micro)
         );
-        possible_orders_except_one.sort_unstable_by(|a, b| a.order.cmp(&b.order).reverse());
+        possible_orders_except_one.sort_unstable_by(|a, b| b.order.cmp(&a.order));
         trace!(
             "{}",
             possible_orders_except_one

@@ -174,8 +174,11 @@ impl<const N: usize> MinPieceCount<'_, N> {
             if orientation_contribution_is_two {
                 transfer_extra_two_cycle = cycles_count == 0;
             } else {
-                receive_extra_two_cycle |= u16::from(possible_order.two_exponent())
-                    == 1 + u16::from(orientation_exps.two_exponent());
+                // we include the first condition because we have ensure the cycle with the
+                // extra piece is the cycle receiving it
+                receive_extra_two_cycle |= cycles_count < 2
+                    && u16::from(possible_order.two_exponent())
+                        == 1 + u16::from(orientation_exps.two_exponent());
             }
             needing_orientation_cycles_count += match orbit_def.orientation {
                 // Sanity check: if the orbit cannot orient, its orientation factors always
@@ -194,6 +197,8 @@ impl<const N: usize> MinPieceCount<'_, N> {
         }
         let mut extra_piece_count =
             needing_orientation_cycles_count.saturating_sub(leftover_prime_powers_count);
+        // first condition: if the leftover cycles are *never* enough to add enough
+        // extra pieces to invalidate the two extra cycle transfer
         if extra_piece_count > 2 && receive_extra_two_cycle && transfer_extra_two_cycle {
             extra_piece_count -= 1;
             // we don't know to which orbit we are tranferring this cycle to;
@@ -1556,6 +1561,48 @@ mod transfer_two_cycle {
 
     #[test_log::test]
     fn no_transfer_edge_cases() {
+        let puzzle = big_puzzle_with_oris(&[3, 4, 70]);
+        let mut min_piece_count = MinPieceCount::from(&puzzle);
+        assert_eq!(
+            min_piece_count,
+            PartialMinPieceCount {
+                orientations_exps: vec![oe(3), oe(4), oe(70)],
+                leftover_prime_powers_mask: !0b1111,
+                orientations_exps_lcm: oe(420),
+                has_even_parity_constraint: vec![false; 3],
+            }
+        );
+        // [2, 2, 2, 2]
+        //
+        // orbit 1:
+        // [0, 1, 0, 0]
+        // [2, 1, 2, 2]
+        //
+        // orbit 2:
+        // [2, 0, 0, 0]
+        // [0, 1, 2, 2]
+        //
+        // orbit 3:
+        // [1, 0, 1, 1]
+        // [1, 2, 1, 1]
+        //
+        // equal:
+        //
+        // 1: [0, 1, 0, 0] => 3(pp) * 3(ori) + 1(EXTRA)
+        // 2: [0, 0, 0, 0] => 1(pp) * 4(ori) + 2(EXTRA)
+        // 3: [0, 0, 1, 1] => 35(pp) * 35(ori)
+        //
+        // 3 + 2 + 7 + 5 = 18
+        //
+        // equal:
+        //
+        // 1: [0, 1, 0, 0] => 3(pp) * 3(ori) + 1(EXTRA)
+        // 2: [0, 0, 0, 0] => 1(pp) * 1(ori)
+        // 3: [1, 0, 1, 1] => 70(pp) * 70(ori)
+        //
+        // 3 + 1 + 2 + 5 + 7 = 18
+        assert_eq!(min_piece_count.calculate(&oe(44100)).get(), 18);
+
         let puzzle = big_puzzle_with_oris(&[30, 8]);
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
