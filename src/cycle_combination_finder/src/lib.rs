@@ -7,6 +7,7 @@
 #![feature(
     portable_simd,
     gen_blocks,
+    clone_from_ref,
     split_array,
     allocator_api,
     isolate_most_least_significant_one

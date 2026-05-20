@@ -41,7 +41,7 @@ pub struct PossibleOrder<const N: usize> {
 #[derive(Debug)]
 struct CycleCombinationCandidate<'a, const N: usize> {
     // first_order_index: usize,
-    orders: Vec<PossibleOrder<N>, &'a Bump>,
+    orders: Box<[PossibleOrder<N>], &'a Bump>,
     details: Option<CycleCombinationDetails<N>>,
 }
 
@@ -172,9 +172,8 @@ fn cycle_combinations_helper<'a, const N: usize>(
         } else {
             let old = std::mem::replace(&mut registers[register_index], possible_order.clone());
             *iter_count += 1;
-            // let b = Vec::new_in(bump);
             let candidate = CycleCombinationCandidate {
-                orders: registers.to_vec_in(bump),
+                orders: Box::clone_from_ref_in(registers, bump),
                 details: None,
             };
             if cycle_combination_candidates.push_and_dominating_check(
