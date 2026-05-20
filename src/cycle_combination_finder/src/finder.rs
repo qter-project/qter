@@ -202,7 +202,7 @@ impl<const N: usize> CycleCombinationFinder<N> {
         let mut possible_orders_except_one = possible_orders_except_one
             .into_iter()
             .map(|possible_order| {
-                let min_piece_count = min_piece_count_calculator.calculate(&possible_order);
+                let min_piece_count = min_piece_count_calculator.calculate(&possible_order).0;
                 PossibleOrder {
                     order: possible_order,
                     min_piece_count,
