@@ -26,6 +26,7 @@ pub enum RegisterCount {
     All,
 }
 
+#[derive(Debug)]
 pub struct Cycle<const N: usize> {
     // partitions: Vec<Vec<u16>>,
 }
@@ -36,12 +37,14 @@ pub struct PossibleOrder<const N: usize> {
     min_piece_count: NonZeroU32,
 }
 
+#[derive(Debug)]
 struct CycleCombinationCandidate<const N: usize> {
     // first_order_index: usize,
     orders: Vec<PossibleOrder<N>>,
     details: Option<CycleCombinationDetails<N>>,
 }
 
+#[derive(Debug)]
 pub struct CycleCombinationDetails<const N: usize> {
     cycles: Vec<Cycle<N>>,
 }
@@ -59,6 +62,15 @@ pub struct CycleCombinationFinder<const N: usize> {
 pub struct CycleCombinationFinderConfig {
     pub optimality: Optimality,
     pub register_count: RegisterCount,
+}
+
+impl<const N: usize> PossibleOrder<N> {
+    fn initialized() -> Self {
+        PossibleOrder {
+            order: OrderExps::one(),
+            min_piece_count: 1.try_into().unwrap(),
+        }
+    }
 }
 
 impl<const N: usize> CycleCombination<N> {
@@ -100,17 +112,17 @@ impl<const N: usize> Dominate for CycleCombinationCandidate<N> {
     }
 }
 
+impl<const N: usize> From<PuzzleDef<N>> for CycleCombinationFinder<N> {
+    fn from(puzzle_def: PuzzleDef<N>) -> Self {
+        Self { puzzle_def }
+    }
+}
+
 impl<const N: usize> TryFrom<&[PossibleOrder<N>]> for CycleCombinationDetails<N> {
     type Error = ();
 
     fn try_from(_precheck: &[PossibleOrder<N>]) -> Result<Self, ()> {
         Ok(CycleCombinationDetails { cycles: vec![] })
-    }
-}
-
-impl<const N: usize> From<PuzzleDef<N>> for CycleCombinationFinder<N> {
-    fn from(puzzle_def: PuzzleDef<N>) -> Self {
-        Self { puzzle_def }
     }
 }
 
@@ -226,13 +238,8 @@ impl<const N: usize> CycleCombinationFinder<N> {
                 .join("\n")
         );
 
-        let mut registers = vec![
-            PossibleOrder {
-                order: OrderExps::one(),
-                min_piece_count: 1.try_into().unwrap(),
-            };
-            usize::from(total_register_count.get())
-        ];
+        let mut registers =
+            vec![PossibleOrder::initialized(); usize::from(total_register_count.get())];
         let mut cycle_combination_candidates = CandidateParetoFront::default();
         let mut max_last_register = OrderExps::one();
         let mut iter_count = 0;

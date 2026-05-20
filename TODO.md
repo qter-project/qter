@@ -17,18 +17,17 @@
   - can we just ignore added extra orbits
     - perhaps I can do separate analysis beforehand to show that 5354228880 can fit on the puzzle, and then if so, try to remove orbits and then see if 5354228880 still fits
   - throw out order case if we ever compute it has a non-+1 orientation factor
-- min piece count:
+- min piece count
   - old MPC has edge case: it does 2 < cycle_count; it does 4 -> 5 pieces
   - devise a scheme to make MPC incorporate piece counts
   - is possible_order.0.simd_ne(Simd::splat(0)) really needed
-- finder:
-  - SubOptimal Optimality which uses the naive pareto front dominate approach; could also assume a lesser min piece count threshold
+- finder
   - compare with index rather than le in helper; faster?
   - sort by min piece count instead of by possible order
   - logical vs total order
-- pareto front:
-  - multi_dominate
-  - remove_dominated_starting_at should reuse a vec
+- pareto front
+  - multi_dominate; take advantage of the fact that the first element is always decreasing in order
+  - SubOptimal Optimality which uses the naive pareto front dominate approach; could also assume a lesser min piece count threshold
 
 ## CCS
 
