@@ -42,6 +42,7 @@ pub mod finder;
 pub mod min_piece_count;
 pub mod number_theory;
 pub mod orderexps;
+pub mod pareto_front;
 pub mod possible_orders;
 pub mod puzzle;
 pub mod trie;

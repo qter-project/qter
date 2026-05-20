@@ -6,9 +6,13 @@ use std::{
 
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::{debug, trace};
-use pareto_front::{Dominate, ParetoFront};
 
-use crate::{min_piece_count::MinPieceCount, orderexps::OrderExps, puzzle::PuzzleDef};
+use crate::{
+    min_piece_count::MinPieceCount,
+    orderexps::OrderExps,
+    pareto_front::{CandidateParetoFront, Dominate},
+    puzzle::PuzzleDef,
+};
 
 #[derive(Clone, Copy)]
 pub enum Optimality {
@@ -119,7 +123,7 @@ fn cycle_combinations_helper<const N: usize>(
     remaining_piece_count: NonZeroU32,
     max_last_register: &mut OrderExps<N>,
     registers: &mut [PossibleOrder<N>],
-    cycle_combination_candidates: &mut ParetoFront<CycleCombinationCandidate<N>>,
+    cycle_combination_candidates: &mut CandidateParetoFront<CycleCombinationCandidate<N>>,
     iter_count: &mut u64,
 ) {
     let register_index = registers.len() - remaining_register_count.get();
@@ -230,7 +234,7 @@ impl<const N: usize> CycleCombinationFinder<N> {
             };
             usize::from(total_register_count.get())
         ];
-        let mut cycle_combination_candidates = ParetoFront::new();
+        let mut cycle_combination_candidates = CandidateParetoFront::default();
         let mut max_last_register = OrderExps::one();
         let mut iter_count = 0;
         cycle_combinations_helper(
