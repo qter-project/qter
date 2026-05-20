@@ -14,7 +14,8 @@ use crate::{min_piece_count::MinPieceCount, orderexps::OrderExps, puzzle::Puzzle
 pub enum Optimality {
     Equivalent,
     Optimal,
-    // TODO: SubOptimal which uses the naive pareto front dominate approach
+    // TODO: SubOptimal which uses the naive pareto front dominate approach; could also assume a
+    // lesser min piece count threshold
 }
 
 #[derive(Clone, Copy)]
@@ -287,10 +288,10 @@ mod tests {
 
     #[test_log::test]
     fn control() {
-        let minx3 = crate::puzzle::minxN::MINX3.clone();
-        // let cube3 = crate::puzzle::cubeN::CUBE3.clone();
+        let puzzle = crate::puzzle::minxN::MINX3.clone();
+        // let puzzle = crate::puzzle::cubeN::CUBE3.clone();
         let now = Instant::now();
-        let ccf = CycleCombinationFinder::from(minx3);
+        let ccf = CycleCombinationFinder::from(puzzle);
         let cycle_combinations = ccf.find(CycleCombinationFinderConfig {
             optimality: Optimality::Optimal,
             register_count: RegisterCount::Exactly(NonZeroU16::new(4).unwrap()),

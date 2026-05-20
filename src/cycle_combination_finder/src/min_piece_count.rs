@@ -3,24 +3,18 @@ use std::{
     simd::{Simd, cmp::SimdPartialEq},
 };
 
-use crate::{
-    FIRST_129_PRIMES,
-    orderexps::OrderExps,
-    puzzle::{OrbitDef, OrientationStatus, OrientationSumConstraint, PuzzleDef},
-};
+use crate::{FIRST_129_PRIMES, orderexps::OrderExps, puzzle::PuzzleDef};
 
 #[derive(Debug)]
-pub struct MinPieceCount<'a, const N: usize> {
+pub struct MinPieceCount<const N: usize> {
     orientations_exps: Vec<OrderExps<N>>,
     orbit_orientation_contributions: Vec<OrderExps<N>>,
-    orbit_defs: &'a [OrbitDef],
     leftover_prime_powers_mask: u64,
     orientations_exps_lcm: OrderExps<N>,
-    has_even_parity_constraint: Vec<bool>,
 }
 
-impl<'a, const N: usize> From<&'a PuzzleDef<N>> for MinPieceCount<'a, N> {
-    fn from(puzzle_def: &'a PuzzleDef<N>) -> Self {
+impl<const N: usize> From<&PuzzleDef<N>> for MinPieceCount<N> {
+    fn from(puzzle_def: &PuzzleDef<N>) -> Self {
         let orientations_exps = puzzle_def
             .orbit_defs()
             .iter()
@@ -33,25 +27,11 @@ impl<'a, const N: usize> From<&'a PuzzleDef<N>> for MinPieceCount<'a, N> {
             orientations_exps_lcm.0.simd_eq(Simd::splat(0)).to_bitmask();
         let orbit_orientation_contributions = vec![OrderExps::one(); orientations_exps.len()];
 
-        let mut has_even_parity_constraint = vec![false; puzzle_def.orbit_defs().len()];
-        for orbit_index in (0..puzzle_def.even_parity_constraints().rows()).flat_map(|i| {
-            puzzle_def
-                .even_parity_constraints()
-                .row(i)
-                .iter()
-                .enumerate()
-                .filter_map(|(orbit_index, x)| if x { Some(orbit_index) } else { None })
-        }) {
-            has_even_parity_constraint[orbit_index] = true;
-        }
-
         Self {
             orientations_exps,
             orbit_orientation_contributions,
             leftover_prime_powers_mask,
             orientations_exps_lcm,
-            has_even_parity_constraint,
-            orbit_defs: puzzle_def.orbit_defs(),
         }
     }
 }
@@ -64,7 +44,7 @@ fn prime_power_cycle_piece_count(prime: u16, exp: u8) -> u32 {
     }
 }
 
-impl<const N: usize> MinPieceCount<'_, N> {
+impl<const N: usize> MinPieceCount<N> {
     /// Compute a lower bound of the minimum number of pieces to construct a
     /// twisty puzzle group element with *known* possible order. This bound is
     /// close to being tight.
@@ -102,6 +82,7 @@ impl<const N: usize> MinPieceCount<'_, N> {
                 .remove_factors(orientation_exps)
                 .0
                 .simd_eq(required_cycle_prime_powers.0)
+            // TOOD: is this really needed?
                 & possible_order.0.simd_ne(Simd::splat(0)))
             .to_bitmask();
             let eq_count = eq.count_ones();
@@ -126,14 +107,10 @@ impl<const N: usize> MinPieceCount<'_, N> {
 
         self.orbit_orientation_contributions.fill(OrderExps::one());
 
-        let mut maybe_two_orientation_contribution_orbit_index = None;
         for (prime_power_index, orbit) in prime_power_to_orbit.into_iter().enumerate() {
             let Some((orbit_index, _)) = orbit else {
                 continue;
             };
-            if prime_power_index == 0 && required_cycle_prime_powers.two_exponent() != 0 {
-                maybe_two_orientation_contribution_orbit_index = Some(orbit_index);
-            }
             self.orbit_orientation_contributions[orbit_index].0[prime_power_index] =
                 self.orientations_exps_lcm.0[prime_power_index];
         }
@@ -142,78 +119,32 @@ impl<const N: usize> MinPieceCount<'_, N> {
         // Thus this fits into a u32.
         let mut needing_orientation_cycles_count = 0u32;
         let mut min_piece_count = leftover_prime_powers_sum;
-        let mut transfer_extra_two_cycle = false;
-        let mut receive_extra_two_cycle = false;
-        for ((orbit_orientation_contribution, orientation_exps), orbit_def) in self
-            .orbit_orientation_contributions
-            .iter()
-            .zip(&self.orientations_exps)
-            .zip(self.orbit_defs)
-        {
+        for orbit_orientation_contribution in &self.orbit_orientation_contributions {
             let mut contributing_prime_powers = orbit_orientation_contribution
                 .0
                 .simd_ne(Simd::splat(0))
                 .to_bitmask();
-            let orientation_contribution_is_two = match contributing_prime_powers.count_ones() {
-                0 => continue,
-                1 => orbit_orientation_contribution.two_exponent() != 0,
-                _ => false,
-            };
-            let mut cycles_count = 0u32;
+            if contributing_prime_powers == 0 {
+                continue;
+            }
+            let mut needs_orientation_cycles_count = true;
             while contributing_prime_powers != 0 {
                 let prime_power_index = contributing_prime_powers.trailing_zeros() as usize;
                 let exp = required_cycle_prime_powers.0[prime_power_index];
                 let prime = FIRST_129_PRIMES[prime_power_index];
                 let cycle_piece_count = prime_power_cycle_piece_count(prime, exp);
                 if cycle_piece_count != 0 {
+                    needs_orientation_cycles_count = false;
                     min_piece_count += cycle_piece_count;
-                    cycles_count += 1;
                 }
                 contributing_prime_powers ^= contributing_prime_powers.isolate_lowest_one();
             }
-            if orientation_contribution_is_two {
-                transfer_extra_two_cycle = cycles_count == 0;
-            } else {
-                // we include the first condition because we have ensure the cycle with the
-                // extra piece is the cycle receiving it
-                receive_extra_two_cycle |= cycles_count < 2
-                    && u16::from(possible_order.two_exponent())
-                        == 1 + u16::from(orientation_exps.two_exponent());
+            if needs_orientation_cycles_count {
+                needing_orientation_cycles_count += 1;
             }
-            needing_orientation_cycles_count += match orbit_def.orientation {
-                // Sanity check: if the orbit cannot orient, its orientation factors always
-                // contributes nothing, and this contribution would have been skipped at the
-                // beginning of this loop
-                OrientationStatus::CannotOrient => unreachable!(),
-                OrientationStatus::CanOrient {
-                    count: _,
-                    sum_constraint: OrientationSumConstraint::Zero,
-                } => 2u32.saturating_sub(cycles_count),
-                OrientationStatus::CanOrient {
-                    count: _,
-                    sum_constraint: OrientationSumConstraint::None,
-                } => 1u32.saturating_sub(cycles_count),
-            };
         }
-        let mut extra_piece_count =
+        min_piece_count +=
             needing_orientation_cycles_count.saturating_sub(leftover_prime_powers_count);
-        // first condition: if the leftover cycles are *never* enough to add enough
-        // extra pieces to invalidate the two extra cycle transfer
-        if extra_piece_count > 2 && receive_extra_two_cycle && transfer_extra_two_cycle {
-            extra_piece_count -= 1;
-            // we don't know to which orbit we are tranferring this cycle to;
-            // such analysis is too complicated so we just give up.
-            // TODO: do this
-        } else if let Some(two_orientation_contribution_orbit_index) =
-            maybe_two_orientation_contribution_orbit_index
-            && self.has_even_parity_constraint[two_orientation_contribution_orbit_index]
-        {
-            // sufficiently advanced analysis cannot assign the two orientation to an orbit
-            // with an even parity constraint if the counts are the same to improve because
-            // that would not be the worst case scenario
-            extra_piece_count += 2;
-        }
-        min_piece_count += extra_piece_count;
 
         // Compute the naive minimum piece count and ensure this bound is never worse
         debug_assert!(
@@ -233,132 +164,6 @@ impl<const N: usize> MinPieceCount<'_, N> {
 }
 
 #[cfg(test)]
-mod initialization {
-    use crate::min_piece_count::{
-        MinPieceCount,
-        tests::{PartialMinPieceCount, big_puzzle_with_oris, oe},
-    };
-
-    #[test_log::test]
-    fn iii_dominates() {
-        let puzzle = big_puzzle_with_oris(&[180, 6, 5]);
-        assert_eq!(
-            MinPieceCount::from(&puzzle),
-            PartialMinPieceCount {
-                orientations_exps: vec![oe(180), oe(6), oe(5)],
-                leftover_prime_powers_mask: !0b111,
-                orientations_exps_lcm: oe(180),
-                has_even_parity_constraint: vec![false; 3],
-            }
-        );
-    }
-
-    #[test_log::test]
-    fn iii_multi_dominates() {
-        let puzzle = big_puzzle_with_oris(&[60, 6, 45]);
-        // the prime powers matrix looks like
-        // [2, 1, 1]
-        // [1, 1, 0]
-        // [0, 2, 1]
-        //
-        // so we expect
-        //
-        // [2, 0, 1] = 20
-        // [0, 2, 0] = 9
-        assert_eq!(
-            MinPieceCount::from(&puzzle),
-            PartialMinPieceCount {
-                orientations_exps: vec![oe(60), oe(6), oe(45)],
-                leftover_prime_powers_mask: !0b111,
-                orientations_exps_lcm: oe(180),
-                has_even_parity_constraint: vec![false; 3],
-            }
-        );
-    }
-
-    #[test_log::test]
-    fn iii_dominates_greater_eq() {
-        // the prime powers matrix looks like
-        // [2, 1, 1]
-        // [1, 1, 0]
-        // [2, 2, 1]
-        //
-        // so we expect the last to dominate everything because it has a higher
-        // `eq_count`.
-        let puzzle = big_puzzle_with_oris(&[60, 6, 180]);
-
-        assert_eq!(
-            MinPieceCount::from(&puzzle),
-            PartialMinPieceCount {
-                orientations_exps: vec![oe(60), oe(6), oe(180)],
-                leftover_prime_powers_mask: !0b111,
-                orientations_exps_lcm: oe(180),
-                has_even_parity_constraint: vec![false; 3],
-            }
-        );
-
-        let puzzle = big_puzzle_with_oris(&[180, 6, 60]);
-
-        assert_eq!(
-            MinPieceCount::from(&puzzle),
-            PartialMinPieceCount {
-                orientations_exps: vec![oe(180), oe(6), oe(60)],
-                leftover_prime_powers_mask: !0b111,
-                orientations_exps_lcm: oe(180),
-                has_even_parity_constraint: vec![false; 3],
-            }
-        );
-    }
-
-    #[test_log::test]
-    fn iii_dominates_equal_eq_chooses_first() {
-        // the prime powers matrix looks like
-        // [2, 0, 1]
-        // [1, 1, 0]
-        // [2, 1, 0]
-        //
-        // first wins the 2 and 5 prime powers, and the second wins the 3 prime power.
-        // so we expect
-        //
-        // [2, 0, 1] = 20
-        // [0, 1, 0] = 3
-        let puzzle = big_puzzle_with_oris(&[20, 6, 12]);
-
-        assert_eq!(
-            MinPieceCount::from(&puzzle),
-            PartialMinPieceCount {
-                orientations_exps: vec![oe(20), oe(6), oe(12)],
-                leftover_prime_powers_mask: !0b111,
-                orientations_exps_lcm: oe(60),
-                has_even_parity_constraint: vec![false; 3],
-            }
-        );
-
-        // the prime powers matrix looks like
-        // [2, 2, 1]
-        // [0, 1, 2]
-        // [1, 0, 2]
-        //
-        // first wins the 2 and 3 prime powers, and the second wins the 3 prime power
-        // because it is first. so we expect
-        //
-        // [2, 2, 0] = 36
-        // [0, 0, 2] = 25
-        let puzzle = big_puzzle_with_oris(&[180, 75, 50]);
-
-        assert_eq!(
-            MinPieceCount::from(&puzzle),
-            PartialMinPieceCount {
-                orientations_exps: vec![oe(180), oe(75), oe(50)],
-                leftover_prime_powers_mask: !0b111,
-                orientations_exps_lcm: oe(900),
-                has_even_parity_constraint: vec![false; 3],
-            }
-        );
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use std::num::NonZeroU16;
 
@@ -368,7 +173,7 @@ mod tests {
         orderexps::OrderExps,
         puzzle::{
             EvenParityConstraints, OrientationStatus, OrientationSumConstraint, PartialOrbitDef,
-            PuzzleDef,
+            PuzzleDef, cubeN::CUBE3,
         },
     };
 
@@ -377,29 +182,24 @@ mod tests {
         pub orientations_exps: Vec<OrderExps<N>>,
         pub leftover_prime_powers_mask: u64,
         pub orientations_exps_lcm: OrderExps<N>,
-        pub has_even_parity_constraint: Vec<bool>,
     }
 
-    impl<const N: usize> PartialEq<PartialMinPieceCount<N>> for MinPieceCount<'_, N> {
+    impl<const N: usize> PartialEq<PartialMinPieceCount<N>> for MinPieceCount<N> {
         fn eq(&self, other: &PartialMinPieceCount<N>) -> bool {
             let MinPieceCount {
                 orientations_exps: orientations_exps_1,
                 orbit_orientation_contributions: _,
-                orbit_defs: _,
                 leftover_prime_powers_mask: leftover_prime_powers_mask_1,
                 orientations_exps_lcm: orientations_exps_lcm_1,
-                has_even_parity_constraint: has_even_parity_constraint_1,
             } = self;
             let PartialMinPieceCount {
                 orientations_exps,
                 leftover_prime_powers_mask,
                 orientations_exps_lcm,
-                has_even_parity_constraint,
             } = other;
             *orientations_exps_1 == *orientations_exps
                 && *leftover_prime_powers_mask_1 == *leftover_prime_powers_mask
                 && *orientations_exps_lcm_1 == *orientations_exps_lcm
-                && *has_even_parity_constraint_1 == *has_even_parity_constraint
         }
     }
 
@@ -448,7 +248,6 @@ mod tests {
                 orientations_exps: vec![oe(1), oe(2)],
                 leftover_prime_powers_mask: !0b1,
                 orientations_exps_lcm: oe(2),
-                has_even_parity_constraint: vec![false; 2],
             }
         );
         // [3, 0, 0, 0, 0, 0, 1]
@@ -480,7 +279,6 @@ mod tests {
                 orientations_exps: vec![oe(1), oe(1), oe(1)],
                 leftover_prime_powers_mask: !0,
                 orientations_exps_lcm: oe(1),
-                has_even_parity_constraint: vec![false; 3],
             }
         );
         for i in 2..100 {
@@ -508,24 +306,21 @@ mod tests {
                 orientations_exps: vec![oe(3)],
                 leftover_prime_powers_mask: !0b10,
                 orientations_exps_lcm: oe(3),
-                has_even_parity_constraint: vec![false],
             }
         );
         assert_eq!(min_piece_count.calculate(&oe(2)).get(), 2);
-        assert_eq!(min_piece_count.calculate(&oe(3)).get(), 2);
+        assert_eq!(min_piece_count.calculate(&oe(3)).get(), 1);
         assert_eq!(min_piece_count.calculate(&oe(4)).get(), 4);
         assert_eq!(min_piece_count.calculate(&oe(5)).get(), 5);
-        assert_eq!(min_piece_count.calculate(&oe(6)).get(), 3);
+        assert_eq!(min_piece_count.calculate(&oe(6)).get(), 2);
 
         for puzzle in [big_puzzle_with_oris(&[2]), big_puzzle_with_oris(&[2, 2])] {
             let mut min_piece_count = MinPieceCount::from(&puzzle);
-            assert_eq!(min_piece_count.calculate(&oe(2)).get(), 2);
-            assert_eq!(min_piece_count.calculate(&oe(4)).get(), 3);
+            assert_eq!(min_piece_count.calculate(&oe(2)).get(), 1);
+            assert_eq!(min_piece_count.calculate(&oe(4)).get(), 2);
             assert_eq!(min_piece_count.calculate(&oe(5)).get(), 5);
-            assert_eq!(min_piece_count.calculate(&oe(6)).get(), 4);
+            assert_eq!(min_piece_count.calculate(&oe(6)).get(), 3);
             assert_eq!(min_piece_count.calculate(&oe(30)).get(), 8);
-            // this test case produces the suboptimal result, but this will almost never
-            // happen
             assert_eq!(min_piece_count.calculate(&oe(210)).get(), 15);
         }
     }
@@ -540,7 +335,6 @@ mod tests {
                 orientations_exps: vec![oe(18), oe(9)],
                 leftover_prime_powers_mask: !0b11,
                 orientations_exps_lcm: oe(18),
-                has_even_parity_constraint: vec![false; 2],
             }
         );
         // [3, 2, 1, 0, 2]
@@ -567,7 +361,6 @@ mod tests {
                 orientations_exps: vec![oe(6), oe(3)],
                 leftover_prime_powers_mask: !0b11,
                 orientations_exps_lcm: oe(6),
-                has_even_parity_constraint: vec![false; 2],
             }
         );
         // [3, 2, 1, 0, 2]
@@ -594,7 +387,6 @@ mod tests {
                 orientations_exps: vec![oe(2), oe(12)],
                 leftover_prime_powers_mask: !0b11,
                 orientations_exps_lcm: oe(12),
-                has_even_parity_constraint: vec![false; 2],
             }
         );
         // [3, 2, 1, 0, 2]
@@ -621,7 +413,6 @@ mod tests {
                 orientations_exps: vec![oe(2), oe(3)],
                 leftover_prime_powers_mask: !0b11,
                 orientations_exps_lcm: oe(6),
-                has_even_parity_constraint: vec![false; 2],
             }
         );
         // [3, 2, 1, 0, 2]
@@ -651,7 +442,6 @@ mod tests {
                 orientations_exps: vec![oe(2), oe(3)],
                 leftover_prime_powers_mask: !0b11,
                 orientations_exps_lcm: oe(6),
-                has_even_parity_constraint: vec![false; 2],
             }
         );
         // [3, 2, 1]
@@ -665,10 +455,10 @@ mod tests {
         // [3, 1]
         //
         // 1: [2, 0] => 4(pp) * 2(ori) * 5(leftover)
-        // 2: [0, 1] => 3(pp) * 3(ori) + 1(EXTRA)
+        // 2: [0, 1] => 3(pp) * 3(ori)
         //
-        // 4 + 3 + 5 + 1 = 13
-        assert_eq!(min_piece_count.calculate(&oe(360)).get(), 13);
+        // 4 + 3 + 5 = 12
+        assert_eq!(min_piece_count.calculate(&oe(360)).get(), 12);
 
         let puzzle = big_puzzle_with_oris(&[1, 3]);
         let mut min_piece_count = MinPieceCount::from(&puzzle);
@@ -678,7 +468,6 @@ mod tests {
                 orientations_exps: vec![oe(1), oe(3)],
                 leftover_prime_powers_mask: !0b10,
                 orientations_exps_lcm: oe(3),
-                has_even_parity_constraint: vec![false; 2],
             }
         );
         // [3, 2]
@@ -708,7 +497,6 @@ mod tests {
                 orientations_exps: vec![oe(2), oe(3)],
                 leftover_prime_powers_mask: !0b11,
                 orientations_exps_lcm: oe(6),
-                has_even_parity_constraint: vec![false; 2],
             }
         );
         // [3, 2]
@@ -721,11 +509,11 @@ mod tests {
         // [0, 1]
         // [3, 1]
         //
-        // 1: [2, 0] => 4(pp) * 2(ori) + 1(EXTRA)
-        // 2: [0, 1] => 3(pp) * 3(ori) + 1(EXTRA)
+        // 1: [2, 0] => 4(pp) * 2(ori)
+        // 2: [0, 1] => 3(pp) * 3(ori)
         //
-        // 4 + 1 + 3 + 1 = 9
-        assert_eq!(min_piece_count.calculate(&oe(72)).get(), 9);
+        // 4 + 3 = 7
+        assert_eq!(min_piece_count.calculate(&oe(72)).get(), 7);
     }
 
     #[test_log::test]
@@ -738,7 +526,6 @@ mod tests {
                 orientations_exps: vec![oe(2), oe(8), oe(8)],
                 leftover_prime_powers_mask: !0b1,
                 orientations_exps_lcm: oe(8),
-                has_even_parity_constraint: vec![false; 3],
             }
         );
         // [3, 2]
@@ -757,10 +544,10 @@ mod tests {
         //
         // 1: [0] => 1(pp) * 1(ori)
         // 2: [0] => 1(pp) * 1(ori)
-        // 3: [0] => 1(pp) * 8(ori) * 9(leftover) + 1(EXTRA)
+        // 3: [0] => 1(pp) * 8(ori) * 9(leftover)
         //
-        // 9 + 1 = 10
-        assert_eq!(min_piece_count.calculate(&oe(72)).get(), 10);
+        // 9 = 9
+        assert_eq!(min_piece_count.calculate(&oe(72)).get(), 9);
     }
 
     #[test_log::test]
@@ -773,7 +560,6 @@ mod tests {
                 orientations_exps: vec![oe(24), oe(72), oe(2)],
                 leftover_prime_powers_mask: !0b11,
                 orientations_exps_lcm: oe(72),
-                has_even_parity_constraint: vec![false; 3],
             }
         );
         // [4, 3]
@@ -808,7 +594,6 @@ mod tests {
                 orientations_exps: vec![oe(2), oe(12)],
                 leftover_prime_powers_mask: !0b11,
                 orientations_exps_lcm: oe(12),
-                has_even_parity_constraint: vec![false; 2],
             }
         );
         // [3, 2]
@@ -835,7 +620,6 @@ mod tests {
                 orientations_exps: vec![oe(6), oe(3)],
                 leftover_prime_powers_mask: !0b11,
                 orientations_exps_lcm: oe(6),
-                has_even_parity_constraint: vec![false; 2],
             }
         );
         // [3, 2]
@@ -865,7 +649,6 @@ mod tests {
                 orientations_exps: vec![oe(60), oe(6), oe(45)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(180),
-                has_even_parity_constraint: vec![false; 3],
             }
         );
         // [1, 1, 2]
@@ -882,22 +665,22 @@ mod tests {
         // [0, 2, 1]
         // [1, 0, 1]
         //
-        // bad:
+        // equal:
         //
-        // 1: [0, 0, 1] => 5(pp) * 10(ori) + 1(EXTRA)
+        // 1: [0, 0, 1] => 5(pp) * 10(ori)
         // 2: [0, 0, 0] => 1(pp) * 1(ori)
-        // 3: [0, 0, 0] => 1(pp) * 3(ori) + 2(EXTRA)
+        // 3: [0, 0, 0] => 1(pp) * 3(ori)
         //
-        // 5 + 1 + 2 = 8
+        // 5 = 5
         //
-        // good:
+        // equal:
         //
-        // 1: [0, 0, 1] => 5(pp) * 30(ori) + 1(EXTRA)
+        // 1: [0, 0, 1] => 5(pp) * 30(ori)
         // 2: [0, 0, 0] => 1(pp) * 1(ori)
         // 3: [0, 0, 0] => 1(pp) * 1(ori)
         //
-        // 5 + 1 = 6
-        assert_eq!(min_piece_count.calculate(&oe(150)).get(), 6);
+        // 5 = 5
+        assert_eq!(min_piece_count.calculate(&oe(150)).get(), 5);
 
         let puzzle = big_puzzle_with_oris(&[90, 6, 20]);
         let mut min_piece_count = MinPieceCount::from(&puzzle);
@@ -907,7 +690,6 @@ mod tests {
                 orientations_exps: vec![oe(90), oe(6), oe(20)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(180),
-                has_even_parity_constraint: vec![false; 3],
             }
         );
         // [1, 1, 2]
@@ -926,20 +708,20 @@ mod tests {
         //
         // bad:
         //
-        // 1: [0, 0, 1] => 5(pp) * 15(ori) + 1(EXTRA)
+        // 1: [0, 0, 1] => 5(pp) * 15(ori)
         // 2: [0, 0, 0] => 1(pp) * 1(ori)
-        // 3: [0, 0, 0] => 1(pp) * 2(ori) + 2(EXTRA)
+        // 3: [0, 0, 0] => 1(pp) * 2(ori) + 1(EXTRA)
         //
-        // 5 + 1 + 2 = 8
+        // 5 + 1 = 6
         //
         // good:
         //
-        // 1: [0, 0, 1] => 5(pp) * 30(ori) + 1(EXTRA)
+        // 1: [0, 0, 1] => 5(pp) * 30(ori)
         // 2: [0, 0, 0] => 1(pp) * 1(ori)
         // 3: [0, 0, 0] => 1(pp) * 1(ori)
         //
-        // 5 + 1 = 6
-        assert_eq!(min_piece_count.calculate(&oe(150)).get(), 6);
+        // 5 = 5
+        assert_eq!(min_piece_count.calculate(&oe(150)).get(), 5);
     }
 
     #[test_log::test]
@@ -952,7 +734,6 @@ mod tests {
                 orientations_exps: vec![oe(100), oe(9)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(900),
-                has_even_parity_constraint: vec![false; 2],
             }
         );
         // [1, 1, 1]
@@ -965,30 +746,16 @@ mod tests {
         // [0, 2, 0]
         // [0, 0, 0]
         //
-        // 1: [0, 0, 0] => 1(pp) * 10(ori) + 2(EXTRA)
-        // 2: [0, 0, 0] => 1(pp) * 3(ori) + 2(EXTRA)
+        // 1: [0, 0, 0] => 1(pp) * 10(ori) + 1(EXTRA)
+        // 2: [0, 0, 0] => 1(pp) * 3(ori) + 1(EXTRA)
         //
-        // 2 + 2 = 4
+        // 1 + 1 = 2
         //
         // Note that we subdivide 100 into a +10 orientation cycle; we are always
         // allowed to do this because saturating the factor is guaranteed to make the
         // number a divisor.
-        assert_eq!(min_piece_count.calculate(&oe(30)).get(), 4);
+        assert_eq!(min_piece_count.calculate(&oe(30)).get(), 2);
     }
-}
-
-#[cfg(test)]
-mod transfer_two_cycle {
-    use crate::{
-        min_piece_count::{
-            MinPieceCount,
-            tests::{PartialMinPieceCount, big_puzzle_with_oris, oe},
-        },
-        puzzle::{
-            EvenParityConstraints, OrientationStatus, OrientationSumConstraint, PartialOrbitDef,
-            PuzzleDef, cubeN::CUBE3,
-        },
-    };
 
     #[test_log::test]
     fn cube3_even_parity_constraint() {
@@ -1000,7 +767,7 @@ mod transfer_two_cycle {
                     piece_count: 8.try_into().unwrap(),
                     orientation: OrientationStatus::CanOrient {
                         count: 3,
-                        sum_constraint: OrientationSumConstraint::Zero,
+                        sum_constraint: OrientationSumConstraint::None,
                     },
                 },
                 PartialOrbitDef {
@@ -1028,7 +795,7 @@ mod transfer_two_cycle {
                     piece_count: 12.try_into().unwrap(),
                     orientation: OrientationStatus::CanOrient {
                         count: 2,
-                        sum_constraint: OrientationSumConstraint::Zero,
+                        sum_constraint: OrientationSumConstraint::None,
                     },
                 },
             ],
@@ -1042,14 +809,14 @@ mod transfer_two_cycle {
                     piece_count: 8.try_into().unwrap(),
                     orientation: OrientationStatus::CanOrient {
                         count: 3,
-                        sum_constraint: OrientationSumConstraint::Zero,
+                        sum_constraint: OrientationSumConstraint::None,
                     },
                 },
                 PartialOrbitDef {
                     piece_count: 12.try_into().unwrap(),
                     orientation: OrientationStatus::CanOrient {
                         count: 2,
-                        sum_constraint: OrientationSumConstraint::Zero,
+                        sum_constraint: OrientationSumConstraint::None,
                     },
                 },
             ],
@@ -1058,111 +825,18 @@ mod transfer_two_cycle {
         .unwrap();
 
         for (puzzle_def, expected_results) in [
-            (&cube3, [(1260, 19), (990, 20), (495, 19), (3, 2), (2, 2)]),
+            (&cube3, [(1260, 17), (990, 19), (495, 19), (3, 1), (2, 1)]),
             (
                 &cube3_no_parity_constraint,
-                [(1260, 17), (990, 20), (495, 19), (3, 2), (2, 2)],
+                [(1260, 17), (990, 19), (495, 19), (3, 1), (2, 1)],
             ),
             (
                 &cube3_corner_parity_constraint,
-                [(1260, 17), (990, 20), (495, 19), (3, 2), (2, 2)],
+                [(1260, 17), (990, 19), (495, 19), (3, 1), (2, 1)],
             ),
             (
                 &cube3_edge_parity_constraint,
-                [(1260, 19), (990, 20), (495, 19), (3, 2), (2, 2)],
-            ),
-        ] {
-            let mut min_piece_count = MinPieceCount::from(puzzle_def);
-            for (input_oe, expected_count) in expected_results {
-                assert_eq!(
-                    min_piece_count.calculate(&oe(input_oe)).get(),
-                    expected_count,
-                );
-            }
-        }
-    }
-
-    // TODO: more tests for no orientation constraint
-    #[test_log::test]
-    fn cube3_no_orientation_constraint() {
-        let cube3 = CUBE3.clone();
-
-        let cube3_no_orientation_constraint = PuzzleDef::<8>::new(
-            vec![
-                PartialOrbitDef {
-                    piece_count: 8.try_into().unwrap(),
-                    orientation: OrientationStatus::CanOrient {
-                        count: 3,
-                        sum_constraint: OrientationSumConstraint::None,
-                    },
-                },
-                PartialOrbitDef {
-                    piece_count: 12.try_into().unwrap(),
-                    orientation: OrientationStatus::CanOrient {
-                        count: 2,
-                        sum_constraint: OrientationSumConstraint::None,
-                    },
-                },
-            ],
-            EvenParityConstraints(vec![vec![0, 1]]),
-        )
-        .unwrap();
-
-        let cube3_corner_orientation_constraint = PuzzleDef::<8>::new(
-            vec![
-                PartialOrbitDef {
-                    piece_count: 8.try_into().unwrap(),
-                    orientation: OrientationStatus::CanOrient {
-                        count: 3,
-                        sum_constraint: OrientationSumConstraint::Zero,
-                    },
-                },
-                PartialOrbitDef {
-                    piece_count: 12.try_into().unwrap(),
-                    orientation: OrientationStatus::CanOrient {
-                        count: 2,
-                        sum_constraint: OrientationSumConstraint::None,
-                    },
-                },
-            ],
-            EvenParityConstraints(vec![vec![0, 1]]),
-        )
-        .unwrap();
-
-        let cube3_edge_orientation_constraint = PuzzleDef::<8>::new(
-            vec![
-                PartialOrbitDef {
-                    piece_count: 8.try_into().unwrap(),
-                    orientation: OrientationStatus::CanOrient {
-                        count: 3,
-                        sum_constraint: OrientationSumConstraint::None,
-                    },
-                },
-                PartialOrbitDef {
-                    piece_count: 12.try_into().unwrap(),
-                    orientation: OrientationStatus::CanOrient {
-                        count: 2,
-                        sum_constraint: OrientationSumConstraint::Zero,
-                    },
-                },
-            ],
-            EvenParityConstraints(vec![vec![0, 1]]),
-        )
-        .unwrap();
-
-        for (puzzle_def, expected_results) in [
-            (&cube3, [(1260, 19), (990, 20), (495, 19), (3, 2), (2, 2)]),
-            (
-                &cube3_no_orientation_constraint,
-                [(1260, 19), (990, 19), (495, 19), (3, 1), (2, 1)],
-            ),
-            (
-                &cube3_corner_orientation_constraint,
-                [(1260, 19), (990, 19), (495, 19), (3, 2), (2, 1)],
-            ),
-            (
-                &cube3_edge_orientation_constraint,
-                [(1260, 19), (990, 19), (495, 19), (3, 1), (2, 2)],
+                [(1260, 17), (990, 19), (495, 19), (3, 1), (2, 1)],
             ),
         ] {
             let mut min_piece_count = MinPieceCount::from(puzzle_def);
@@ -1185,7 +859,6 @@ mod transfer_two_cycle {
                 orientations_exps: vec![oe(2), oe(3)],
                 leftover_prime_powers_mask: !0b11,
                 orientations_exps_lcm: oe(6),
-                has_even_parity_constraint: vec![false; 2],
             }
         );
         // [1, 1]
@@ -1198,20 +871,11 @@ mod transfer_two_cycle {
         // [0, 1]
         // [1, 0]
         //
-        // bad:
+        // 1: [0, 0] => 1(pp) * 2(ori) + 1(EXTRA)
+        // 2: [0, 0] => 1(pp) * 3(ori) + 1(EXTRA)
         //
-        // 1: [0, 0] => 1(pp) * 2(ori) + 2(EXTRA)
-        // 2: [0, 0] => 1(pp) * 3(ori) + 2(EXTRA)
-        //
-        // 2 + 2 = 4
-        //
-        // good:
-        //
-        // 1: [0, 0] => 1(pp) * 1(ori)
-        // 2: [1, 0] => 2(pp) * 3(ori) + 1(EXTRA)
-        //
-        // 2 + 1 = 3
-        assert_eq!(min_piece_count.calculate(&oe(6)).get(), 3);
+        // 1 + 1 = 2
+        assert_eq!(min_piece_count.calculate(&oe(6)).get(), 2);
 
         let puzzle = big_puzzle_with_oris(&[15, 2]);
         let mut min_piece_count = MinPieceCount::from(&puzzle);
@@ -1221,7 +885,6 @@ mod transfer_two_cycle {
                 orientations_exps: vec![oe(15), oe(2)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(30),
-                has_even_parity_constraint: vec![false; 2],
             }
         );
         // [1, 1, 1]
@@ -1234,20 +897,11 @@ mod transfer_two_cycle {
         // [1, 0, 0]
         // [0, 1, 1]
         //
-        // bad case:
+        // 1: [0, 0, 0] => 1(pp) * 15(ori) + 1(EXTRA)
+        // 2: [0, 0, 0] => 1(pp) * 2(ori) + 1(EXTRA)
         //
-        // 1: [0, 0, 0] => 1(pp) * 15(ori) + 2(EXTRA)
-        // 2: [0, 0, 0] => 1(pp) * 2(ori) + 2(EXTRA)
-        //
-        // 2 + 2 = 4
-        //
-        // good case:
-        //
-        // 1: [1, 0, 0] => 2(pp) * 15(ori) + 1(EXTRA)
-        // 2: [0, 0, 0] => 1(pp) * 1(ori)
-        //
-        // 2 + 1 = 3
-        assert_eq!(min_piece_count.calculate(&oe(30)).get(), 3);
+        // 1 + 1 = 2
+        assert_eq!(min_piece_count.calculate(&oe(30)).get(), 2);
 
         let puzzle = big_puzzle_with_oris(&[225, 4]);
         let mut min_piece_count = MinPieceCount::from(&puzzle);
@@ -1257,7 +911,6 @@ mod transfer_two_cycle {
                 orientations_exps: vec![oe(225), oe(4)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(900),
-                has_even_parity_constraint: vec![false; 2],
             }
         );
         // [1, 1, 1]
@@ -1270,20 +923,11 @@ mod transfer_two_cycle {
         // [2, 0, 0]
         // [0, 1, 1]
         //
-        // bad case:
+        // 1: [0, 0, 0] => 1(pp) * 15(ori) + 1(EXTRA)
+        // 2: [0, 0, 0] => 1(pp) * 2(ori) + 1(EXTRA)
         //
-        // 1: [0, 0, 0] => 1(pp) * 15(ori) + 2(EXTRA)
-        // 2: [0, 0, 0] => 1(pp) * 2(ori) + 2(EXTRA)
-        //
-        // 2 + 2 = 4
-        //
-        // good case:
-        //
-        // 1: [1, 0, 0] => 2(pp) * 15(ori) + 1(EXTRA)
-        // 2: [0, 0, 0] => 1(pp) * 1(ori)
-        //
-        // 2 + 1 = 3
-        assert_eq!(min_piece_count.calculate(&oe(30)).get(), 3);
+        // 1 + 1 = 2
+        assert_eq!(min_piece_count.calculate(&oe(30)).get(), 2);
 
         let puzzle = big_puzzle_with_oris(&[15, 4]);
         let mut min_piece_count = MinPieceCount::from(&puzzle);
@@ -1293,7 +937,6 @@ mod transfer_two_cycle {
                 orientations_exps: vec![oe(15), oe(4)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(60),
-                has_even_parity_constraint: vec![false; 2],
             }
         );
         // [1, 1, 1]
@@ -1306,20 +949,11 @@ mod transfer_two_cycle {
         // [2, 0, 0]
         // [0, 1, 1]
         //
-        // bad case:
+        // 1: [0, 0, 0] => 1(pp) * 15(ori) + 1(EXTRA)
+        // 2: [0, 0, 0] => 1(pp) * 4(ori) + 1(EXTRA)
         //
-        // 1: [0, 0, 0] => 1(pp) * 15(ori) + 2(EXTRA)
-        // 2: [0, 0, 0] => 1(pp) * 4(ori) + 2(EXTRA)
-        //
-        // 2 + 2 = 4
-        //
-        // good case:
-        //
-        // 1: [1, 0, 0] => 2(pp) * 15(ori) + 1(EXTRA)
-        // 2: [0, 0, 0] => 1(pp) * 1(ori)
-        //
-        // 2 + 1 = 3
-        assert_eq!(min_piece_count.calculate(&oe(30)).get(), 3);
+        // 1 + 1 = 2
+        assert_eq!(min_piece_count.calculate(&oe(30)).get(), 2);
 
         let puzzle = big_puzzle_with_oris(&[2, 3, 5]);
         let mut min_piece_count = MinPieceCount::from(&puzzle);
@@ -1329,7 +963,6 @@ mod transfer_two_cycle {
                 orientations_exps: vec![oe(2), oe(3), oe(5)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(30),
-                has_even_parity_constraint: vec![false; 3],
             }
         );
         // [1, 1, 1]
@@ -1346,22 +979,12 @@ mod transfer_two_cycle {
         // [0, 0, 1]
         // [1, 1, 0]
         //
-        // bad:
+        // 1: [0, 0, 0] => 1(pp) * 2(ori) + 1(EXTRA)
+        // 2: [0, 0, 0] => 1(pp) * 3(ori) + 1(EXTRA)
+        // 3: [0, 0, 0] => 1(pp) * 5(ori) + 1(EXTRA)
         //
-        // 1: [0, 0, 0] => 1(pp) * 2(ori) + 2(EXTRA)
-        // 2: [0, 0, 0] => 1(pp) * 3(ori) + 2(EXTRA)
-        // 3: [0, 0, 0] => 1(pp) * 5(ori) + 2(EXTRA)
-        //
-        // 2 + 2 = 4
-        //
-        // good:
-        //
-        // 1: [0, 0, 0] => 1(pp) * 1(ori)
-        // 2: [1, 0, 0] => 2(pp) * 3(ori) + 1(EXTRA)
-        // 3: [0, 0, 0] => 1(pp) * 5(ori) + 2(EXTRA)
-        //
-        // 2 + 1 = 3
-        assert_eq!(min_piece_count.calculate(&oe(30)).get(), 5);
+        // 1 + 1 + 1 = 3
+        assert_eq!(min_piece_count.calculate(&oe(30)).get(), 3);
     }
 
     #[test_log::test]
@@ -1374,7 +997,6 @@ mod transfer_two_cycle {
                 orientations_exps: vec![oe(30), oe(4)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(60),
-                has_even_parity_constraint: vec![false; 2],
             }
         );
         // [2, 1, 1]
@@ -1387,20 +1009,11 @@ mod transfer_two_cycle {
         // [2, 0, 0]
         // [0, 1, 1]
         //
-        // bad:
+        // 1: [0, 0, 0] => 1(pp) * 15(ori) + 1(EXTRA)
+        // 2: [0, 0, 0] => 1(pp) * 4(ori) + 1(EXTRA)
         //
-        // 1: [0, 0, 0] => 1(pp) * 15(ori) + 2(EXTRA)
-        // 2: [0, 0, 0] => 1(pp) * 4(ori) + 2(EXTRA)
-        //
-        // 2 + 2 = 4
-        //
-        // good:
-        //
-        // 1: [1, 0, 0] => 2(pp) * 30(ori) + 1(EXTRA)
-        // 2: [0, 0, 0] => 1(pp) * 1(ori)
-        //
-        // 2 + 1 = 3
-        assert_eq!(min_piece_count.calculate(&oe(60)).get(), 3);
+        // 1 + 1 = 2
+        assert_eq!(min_piece_count.calculate(&oe(60)).get(), 2);
     }
 
     #[test_log::test]
@@ -1413,7 +1026,6 @@ mod transfer_two_cycle {
                 orientations_exps: vec![oe(15), oe(2)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(30),
-                has_even_parity_constraint: vec![false; 2],
             }
         );
         // [1, 1, 2]
@@ -1426,20 +1038,11 @@ mod transfer_two_cycle {
         // [1, 0, 0]
         // [0, 1, 2]
         //
-        // bad:
+        // 1: [0, 0, 1] => 5(pp) * 15(ori)
+        // 2: [0, 0, 0] => 1(pp) * 2(ori) + 1(EXTRA)
         //
-        // 1: [0, 0, 1] => 5(pp) * 15(ori) + 1(EXTRA)
-        // 2: [0, 0, 0] => 1(pp) * 2(ori) + 2(EXTRA)
-        //
-        // 5 + 1 + 2 = 8
-        //
-        // good:
-        //
-        // 1: [1, 0, 1] => 10(pp) * 15(ori)
-        // 2: [0, 0, 0] => 1(pp) * 1(ori)
-        //
-        // 5 + 2 = 7
-        assert_eq!(min_piece_count.calculate(&oe(150)).get(), 7);
+        // 5 + 1 = 6
+        assert_eq!(min_piece_count.calculate(&oe(150)).get(), 6);
 
         let puzzle = big_puzzle_with_oris(&[105, 4]);
         let mut min_piece_count = MinPieceCount::from(&puzzle);
@@ -1449,7 +1052,6 @@ mod transfer_two_cycle {
                 orientations_exps: vec![oe(105), oe(4)],
                 leftover_prime_powers_mask: !0b1111,
                 orientations_exps_lcm: oe(420),
-                has_even_parity_constraint: vec![false; 2],
             }
         );
         // [1, 1, 1, 2]
@@ -1462,20 +1064,11 @@ mod transfer_two_cycle {
         // [2, 0, 0, 0]
         // [0, 1, 1, 2]
         //
-        // bad:
+        // 1: [0, 0, 0, 1] => 7(pp) * 105(ori)
+        // 2: [0, 0, 0, 0] => 1(pp) * 2(ori) + 1(EXTRA)
         //
-        // 1: [0, 0, 0, 1] => 7(pp) * 105(ori) + 1(EXTRA)
-        // 2: [0, 0, 0, 0] => 1(pp) * 2(ori) + 2(EXTRA)
-        //
-        // 7 + 1 + 2 = 10
-        //
-        // good:
-        //
-        // 1: [1, 0, 0, 1] => 14(pp) * 105(ori)
-        // 2: [0, 0, 0, 0] => 1(pp) * 1(ori)
-        //
-        // 7 + 2 = 9
-        assert_eq!(min_piece_count.calculate(&oe(1470)).get(), 9);
+        // 7 + 1 = 8
+        assert_eq!(min_piece_count.calculate(&oe(1470)).get(), 8);
 
         let puzzle = big_puzzle_with_oris(&[2, 3, 5]);
         let mut min_piece_count = MinPieceCount::from(&puzzle);
@@ -1485,7 +1078,6 @@ mod transfer_two_cycle {
                 orientations_exps: vec![oe(2), oe(3), oe(5)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(30),
-                has_even_parity_constraint: vec![false; 3],
             }
         );
         // [2, 1, 1]
@@ -1502,22 +1094,12 @@ mod transfer_two_cycle {
         // [0, 0, 1]
         // [1, 1, 0]
         //
-        // equal:
+        // 1: [1, 0, 0] => 2(pp) * 2(ori)
+        // 2: [0, 0, 0] => 1(pp) * 3(ori) + 1(EXTRA)
+        // 3: [0, 0, 0] => 1(pp) * 5(ori) + 1(EXTRA)
         //
-        // 1: [1, 0, 0] => 2(pp) * 2(ori) + 1(EXTRA)
-        // 2: [0, 0, 0] => 1(pp) * 3(ori) + 2(EXTRA)
-        // 3: [0, 0, 0] => 1(pp) * 5(ori) + 2(EXTRA)
-        //
-        // 2 + 1 + 2 + 2 = 7
-        //
-        // equal:
-        //
-        // 1: [0, 0, 0] => 1(pp) * 1(ori)
-        // 2: [2, 0, 0] => 4(pp) * 3(ori) + 1(EXTRA)
-        // 3: [0, 0, 0] => 1(pp) * 5(ori) + 2(EXTRA)
-        //
-        // 2 + 2 + 1 + 2 = 7
-        assert_eq!(min_piece_count.calculate(&oe(60)).get(), 7);
+        // 2 + 1 + 1 = 4
+        assert_eq!(min_piece_count.calculate(&oe(60)).get(), 4);
     }
 
     #[test_log::test]
@@ -1530,7 +1112,6 @@ mod transfer_two_cycle {
                 orientations_exps: vec![oe(30), oe(4)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(60),
-                has_even_parity_constraint: vec![false; 2],
             }
         );
         // [2, 1, 2]
@@ -1543,20 +1124,11 @@ mod transfer_two_cycle {
         // [2, 0, 0]
         // [0, 1, 2]
         //
-        // bad:
+        // 1: [0, 0, 1] => 5(pp) * 15(ori)
+        // 2: [0, 0, 0] => 1(pp) * 4(ori) + 1(EXTRA)
         //
-        // 1: [0, 0, 1] => 5(pp) * 15(ori) + 1(EXTRA)
-        // 2: [0, 0, 0] => 1(pp) * 4(ori) + 2(EXTRA)
-        //
-        // 5 + 1 + 2 = 8
-        //
-        // good:
-        //
-        // 1: [1, 0, 1] => 10(pp) * 30(ori)
-        // 2: [0, 0, 0] => 1(pp) * 1(ori)
-        //
-        // 5 + 2 = 7
-        assert_eq!(min_piece_count.calculate(&oe(300)).get(), 7);
+        // 5 + 1 = 6
+        assert_eq!(min_piece_count.calculate(&oe(300)).get(), 6);
     }
 
     #[test_log::test]
@@ -1569,7 +1141,6 @@ mod transfer_two_cycle {
                 orientations_exps: vec![oe(3), oe(4), oe(70)],
                 leftover_prime_powers_mask: !0b1111,
                 orientations_exps_lcm: oe(420),
-                has_even_parity_constraint: vec![false; 3],
             }
         );
         // [2, 2, 2, 2]
@@ -1586,22 +1157,12 @@ mod transfer_two_cycle {
         // [1, 0, 1, 1]
         // [1, 2, 1, 1]
         //
-        // equal:
-        //
-        // 1: [0, 1, 0, 0] => 3(pp) * 3(ori) + 1(EXTRA)
-        // 2: [0, 0, 0, 0] => 1(pp) * 4(ori) + 2(EXTRA)
+        // 1: [0, 1, 0, 0] => 3(pp) * 3(ori)
+        // 2: [0, 0, 0, 0] => 1(pp) * 4(ori) + 1(EXTRA)
         // 3: [0, 0, 1, 1] => 35(pp) * 35(ori)
         //
-        // 3 + 2 + 7 + 5 = 18
-        //
-        // equal:
-        //
-        // 1: [0, 1, 0, 0] => 3(pp) * 3(ori) + 1(EXTRA)
-        // 2: [0, 0, 0, 0] => 1(pp) * 1(ori)
-        // 3: [1, 0, 1, 1] => 70(pp) * 70(ori)
-        //
-        // 3 + 1 + 2 + 5 + 7 = 18
-        assert_eq!(min_piece_count.calculate(&oe(44100)).get(), 18);
+        // 3 + 1 + 7 + 5 = 16
+        assert_eq!(min_piece_count.calculate(&oe(44100)).get(), 16);
 
         let puzzle = big_puzzle_with_oris(&[30, 8]);
         let mut min_piece_count = MinPieceCount::from(&puzzle);
@@ -1611,7 +1172,6 @@ mod transfer_two_cycle {
                 orientations_exps: vec![oe(30), oe(8)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(120),
-                has_even_parity_constraint: vec![false; 2],
             }
         );
         // [3, 1, 2]
@@ -1624,20 +1184,11 @@ mod transfer_two_cycle {
         // [3, 0, 0]
         // [0, 1, 2]
         //
-        // good:
+        // 1: [0, 0, 1] => 5(pp) * 15(ori)
+        // 2: [0, 0, 0] => 1(pp) * 8(ori) + 1(EXTRA)
         //
-        // 1: [0, 0, 1] => 5(pp) * 15(ori) + 1(EXTRA)
-        // 2: [0, 0, 0] => 1(pp) * 8(ori) + 2(EXTRA)
-        //
-        // 5 + 1 + 2 = 8
-        //
-        // bad:
-        //
-        // 1: [2, 0, 1] => 40(pp) * 30(ori)
-        // 2: [0, 0, 0] => 1(pp) * 1(ori)
-        //
-        // 4 + 5 = 9
-        assert_eq!(min_piece_count.calculate(&oe(600)).get(), 8);
+        // 5 + 1 = 6
+        assert_eq!(min_piece_count.calculate(&oe(600)).get(), 6);
 
         let puzzle = big_puzzle_with_oris(&[10, 3]);
         let mut min_piece_count = MinPieceCount::from(&puzzle);
@@ -1647,7 +1198,6 @@ mod transfer_two_cycle {
                 orientations_exps: vec![oe(10), oe(3)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(30),
-                has_even_parity_constraint: vec![false; 2],
             }
         );
         // [1, 1, 2]
@@ -1660,20 +1210,11 @@ mod transfer_two_cycle {
         // [0, 1, 0]
         // [1, 0, 2]
         //
-        // equal:
+        // 1: [0, 0, 1] => 5(pp) * 10(ori)
+        // 2: [0, 0, 0] => 1(pp) * 3(ori) + 1(EXTRA)
         //
-        // 1: [0, 0, 1] => 5(pp) * 10(ori) + 1(EXTRA)
-        // 2: [0, 0, 0] => 1(pp) * 3(ori) + 2(EXTRA)
-        //
-        // 5 + 1 + 2 = 8
-        //
-        // equal:
-        //
-        // 1: [0, 1, 1] => 15(pp) * 10(ori)
-        // 2: [0, 0, 0] => 1(pp) * 1(ori)
-        //
-        // 3 + 5 = 8
-        assert_eq!(min_piece_count.calculate(&oe(150)).get(), 8);
+        // 5 + 1 = 6
+        assert_eq!(min_piece_count.calculate(&oe(150)).get(), 6);
 
         let puzzle = big_puzzle_with_oris(&[5, 6]);
         let mut min_piece_count = MinPieceCount::from(&puzzle);
@@ -1683,7 +1224,6 @@ mod transfer_two_cycle {
                 orientations_exps: vec![oe(5), oe(6)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(30),
-                has_even_parity_constraint: vec![false; 2],
             }
         );
         // [1, 1, 1, 1]
@@ -1696,20 +1236,11 @@ mod transfer_two_cycle {
         // [1, 1, 0, 0]
         // [0, 0, 1, 1]
         //
-        // good:
+        // 1: [0, 0, 0] => 1(pp) * 5(ori) * 7(leftover)
+        // 2: [0, 0, 0] => 1(pp) * 6(ori) + 1(EXTRA)
         //
-        // 1: [0, 0, 0] => 1(pp) * 5(ori) * 7(leftover) + 1(EXTRA)
-        // 2: [0, 0, 0] => 1(pp) * 6(ori) + 2(EXTRA)
-        //
-        // 7 + 1 + 2 = 10
-        //
-        // bad:
-        //
-        // 1: [1, 0, 0] => 2(pp) * 5(ori) * 7(leftover)
-        // 2: [0, 0, 0] => 1(pp) * 3(ori) * 2(EXTRA)
-        //
-        // 2 + 7 + 2 = 11
-        assert_eq!(min_piece_count.calculate(&oe(210)).get(), 10);
+        // 7 + 1 = 8
+        assert_eq!(min_piece_count.calculate(&oe(210)).get(), 8);
 
         let puzzle = big_puzzle_with_oris(&[210, 4]);
         let mut min_piece_count = MinPieceCount::from(&puzzle);
@@ -1719,7 +1250,6 @@ mod transfer_two_cycle {
                 orientations_exps: vec![oe(210), oe(4)],
                 leftover_prime_powers_mask: !0b1111,
                 orientations_exps_lcm: oe(420),
-                has_even_parity_constraint: vec![false; 2],
             }
         );
         // [2, 1, 2, 2]
@@ -1732,20 +1262,11 @@ mod transfer_two_cycle {
         // [2, 0, 0, 0]
         // [0, 1, 2, 2]
         //
-        // equal:
-        //
         // 1: [0, 0, 1, 1] => 35(pp) * 105(ori)
-        // 2: [0, 0, 0, 0] => 1(pp) * 4(ori) + 2(EXTRA)
+        // 2: [0, 0, 0, 0] => 1(pp) * 4(ori) + 1(EXTRA)
         //
-        // 7 + 5 + 2 = 14
-        //
-        // equal:
-        //
-        // 1: [1, 0, 1, 1] => 70(pp) * 210(ori)
-        // 2: [0, 0, 0, 0] => 1(pp) * 1(ori)
-        //
-        // 7 + 5 + 2 = 14
-        assert_eq!(min_piece_count.calculate(&oe(14700)).get(), 14);
+        // 7 + 5 + 1 = 13
+        assert_eq!(min_piece_count.calculate(&oe(14700)).get(), 13);
 
         let puzzle = big_puzzle_with_oris(&[15, 4]);
         let mut min_piece_count = MinPieceCount::from(&puzzle);
@@ -1755,7 +1276,6 @@ mod transfer_two_cycle {
                 orientations_exps: vec![oe(15), oe(4)],
                 leftover_prime_powers_mask: !0b111,
                 orientations_exps_lcm: oe(60),
-                has_even_parity_constraint: vec![false; 2],
             }
         );
         // [2, 1, 1]
@@ -1768,19 +1288,10 @@ mod transfer_two_cycle {
         // [2, 0, 0]
         // [0, 1, 1]
         //
-        // bad:
+        // 1: [0, 0, 0] => 1(pp) * 15(ori) + 1(EXTRA)
+        // 2: [0, 0, 0] => 1(pp) * 4(ori) + 1(EXTRA)
         //
-        // 1: [2, 0, 0] => 4(pp) * 15(ori) + 1(EXTRA)
-        // 2: [0, 0, 0] => 1(pp) * 1(ori)
-        //
-        // 2 + 2 + 1 = 5
-        //
-        // good:
-        //
-        // 1: [0, 0, 0] => 1(pp) * 15(ori) + 2(EXTRA)
-        // 2: [0, 0, 0] => 1(pp) * 4(ori) + 2(EXTRA)
-        //
-        // 2 + 2 = 4
-        assert_eq!(min_piece_count.calculate(&oe(60)).get(), 4);
+        // 1 + 1 = 2
+        assert_eq!(min_piece_count.calculate(&oe(60)).get(), 2);
     }
 }
