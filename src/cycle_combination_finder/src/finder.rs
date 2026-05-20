@@ -4,6 +4,7 @@ use std::{
     time::Instant,
 };
 
+use bumpalo::Bump;
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::{debug, trace};
 
@@ -38,9 +39,9 @@ pub struct PossibleOrder<const N: usize> {
 }
 
 #[derive(Debug)]
-struct CycleCombinationCandidate<const N: usize> {
+struct CycleCombinationCandidate<'a, const N: usize> {
     // first_order_index: usize,
-    orders: Vec<PossibleOrder<N>>,
+    orders: Vec<PossibleOrder<N>, &'a Bump>,
     details: Option<CycleCombinationDetails<N>>,
 }
 
@@ -94,7 +95,7 @@ impl<const N: usize> CycleCombinationDetails<N> {
     }
 }
 
-impl<const N: usize> Dominate for CycleCombinationCandidate<N> {
+impl<const N: usize> Dominate for CycleCombinationCandidate<'_, N> {
     fn dominate(&self, other: &Self) -> bool {
         // Note that we should never have a case when `self == other` because
         // `cycle_combinations` visits a different order every time, hence we do not
@@ -126,14 +127,15 @@ impl<const N: usize> TryFrom<&[PossibleOrder<N>]> for CycleCombinationDetails<N>
     }
 }
 
-fn cycle_combinations_helper<const N: usize>(
+fn cycle_combinations_helper<'a, const N: usize>(
     possible_orders_except_one: &[PossibleOrder<N>],
     remaining_register_count: NonZeroUsize,
     remaining_piece_count: NonZeroU32,
     max_last_register: &mut OrderExps<N>,
     registers: &mut [PossibleOrder<N>],
-    cycle_combination_candidates: &mut CandidateParetoFront<CycleCombinationCandidate<N>>,
+    cycle_combination_candidates: &mut CandidateParetoFront<CycleCombinationCandidate<'a, N>>,
     iter_count: &mut u64,
+    bump: &'a Bump,
 ) {
     let register_index = registers.len() - remaining_register_count.get();
     let mut curr_possible_orders = possible_orders_except_one;
@@ -163,26 +165,31 @@ fn cycle_combinations_helper<const N: usize>(
                     registers,
                     cycle_combination_candidates,
                     iter_count,
+                    bump,
                 );
                 registers[register_index] = old;
             }
         } else {
             let old = std::mem::replace(&mut registers[register_index], possible_order.clone());
             *iter_count += 1;
+            // let b = Vec::new_in(bump);
             let candidate = CycleCombinationCandidate {
-                orders: registers.to_vec(),
+                orders: registers.to_vec_in(bump),
                 details: None,
             };
-            if cycle_combination_candidates.push_and_check(candidate, |dominating_candidate| {
-                if let Ok(details) =
-                    CycleCombinationDetails::try_from(&*dominating_candidate.orders)
-                {
-                    dominating_candidate.details = Some(details);
-                    true
-                } else {
-                    false
-                }
-            }) {
+            if cycle_combination_candidates.push_and_dominating_check(
+                candidate,
+                |dominating_candidate| {
+                    if let Ok(details) =
+                        CycleCombinationDetails::try_from(&*dominating_candidate.orders)
+                    {
+                        dominating_candidate.details = Some(details);
+                        true
+                    } else {
+                        false
+                    }
+                },
+            ) {
                 *max_last_register = max_last_register
                     .clone()
                     .max(registers.last().unwrap().order.clone());
@@ -240,9 +247,10 @@ impl<const N: usize> CycleCombinationFinder<N> {
 
         let mut registers =
             vec![PossibleOrder::initialized(); usize::from(total_register_count.get())];
-        let mut cycle_combination_candidates = CandidateParetoFront::default();
         let mut max_last_register = OrderExps::one();
         let mut iter_count = 0;
+        let bump = Bump::new();
+        let mut cycle_combination_candidates = CandidateParetoFront::default();
         cycle_combinations_helper(
             &possible_orders_except_one,
             NonZeroUsize::from(total_register_count),
@@ -251,13 +259,14 @@ impl<const N: usize> CycleCombinationFinder<N> {
             &mut registers,
             &mut cycle_combination_candidates,
             &mut iter_count,
+            &bump,
         );
         drop(possible_orders_except_one);
         debug!("Cycle combinations in {iter_count} iterations");
         Vec::from(cycle_combination_candidates)
             .into_iter()
             .map(|candidate| CycleCombination {
-                orders: candidate.orders,
+                orders: candidate.orders.to_vec(),
                 details: candidate.details.unwrap(),
             })
             .collect()

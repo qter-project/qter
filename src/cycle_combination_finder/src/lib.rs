@@ -8,6 +8,7 @@
     portable_simd,
     gen_blocks,
     split_array,
+    allocator_api,
     isolate_most_least_significant_one
 )]
 

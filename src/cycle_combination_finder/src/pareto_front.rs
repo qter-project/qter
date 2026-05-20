@@ -14,7 +14,7 @@ pub struct CandidateParetoFront<T> {
 }
 
 impl<T: Dominate> CandidateParetoFront<T> {
-    pub fn push_and_check(
+    pub fn push_and_dominating_check(
         &mut self,
         mut new_element: T,
         mut check: impl FnMut(&mut T) -> bool,
