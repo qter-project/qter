@@ -18,8 +18,6 @@ use crate::{
 pub enum Optimality {
     Equivalent,
     Optimal,
-    // TODO: SubOptimal which uses the naive pareto front dominate approach; could also assume a
-    // lesser min piece count threshold
 }
 
 #[derive(Clone, Copy)]
@@ -89,7 +87,6 @@ impl<const N: usize> Dominate for CycleCombinationCandidate<N> {
         // Note that we should never have a case when `self == other` because
         // `cycle_combinations` visits a different order every time, hence we do not
         // have to implement this check as suggested by the `pareto_front` crate.
-        // TODO: multi_dominate
         debug_assert!(
             self.orders
                 .iter()
@@ -129,7 +126,6 @@ fn cycle_combinations_helper<const N: usize>(
     let register_index = registers.len() - remaining_register_count.get();
     let mut curr_possible_orders = possible_orders_except_one;
     while let Some((possible_order, next_possible_orders)) = curr_possible_orders.split_first() {
-        // TODO: compare with index rather than le; faster?
         if register_index == 0 && possible_order.order <= *max_last_register {
             break;
         }
@@ -165,8 +161,6 @@ fn cycle_combinations_helper<const N: usize>(
                 orders: registers.to_vec(),
                 details: None,
             };
-            // TODO: only use one pass
-            // TODO: _remove_dominated_starting_at should reuse a vec
             if !cycle_combination_candidates.dominate(&candidate)
                 && let Ok(details) = CycleCombinationDetails::try_from(&*candidate.orders)
             {

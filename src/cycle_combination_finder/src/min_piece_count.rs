@@ -54,7 +54,6 @@ impl<const N: usize> MinPieceCount<N> {
     /// This method panics if one is the possible order, since the minimum
     /// number of piece is zero, and it would be preferrable for this function
     /// to always return a [`NonZero`] type.
-    // TODO: devise a scheme to make this incorporate piece counts
     pub fn calculate(&mut self, possible_order: &OrderExps<N>) -> (NonZeroU32, Option<usize>) {
         assert_ne!(possible_order, &OrderExps::one());
 
@@ -82,7 +81,6 @@ impl<const N: usize> MinPieceCount<N> {
                 .remove_factors(orientation_exps)
                 .0
                 .simd_eq(required_cycle_prime_powers.0)
-                // TODO: is this really needed?
                 & possible_order.0.simd_ne(Simd::splat(0)))
             .to_bitmask();
             let eq_count = eq.count_ones();
