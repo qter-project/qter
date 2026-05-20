@@ -13,6 +13,7 @@ pub trait Dominate {
 #[derive(Clone, Debug)]
 pub struct CandidateParetoFront<T> {
     front: Vec<T>,
+    index_dominated_elements: Vec<usize>,
 }
 
 impl<T: Dominate> CandidateParetoFront<T> {
@@ -21,17 +22,28 @@ impl<T: Dominate> CandidateParetoFront<T> {
     fn remove_dominated_starting_at(&mut self, new_element: &T, index_start: usize) {
         // lists all elements dominated by `new_element`, starting at index
         // `index_start`
-        let mut index_dominated_elements = Vec::new();
-        for (index, element) in self.front.iter().enumerate().skip(index_start) {
+        let available_elements = self.front.len().saturating_sub(index_start);
+        if self.index_dominated_elements.len() < available_elements {
+            self.index_dominated_elements.resize(available_elements, 0);
+        }
+        let mut len = 0;
+        for ((index, element), x) in self
+            .front
+            .iter()
+            .enumerate()
+            .skip(index_start)
+            .zip(&mut self.index_dominated_elements)
+        {
             if new_element.dominate(element) {
-                index_dominated_elements.push(index);
+                *x = index;
+                len += 1;
             }
         }
 
         // removes the elements at the listed indexes
         // in reverse order to take into acount that each removed index shift all the
         // following indexes
-        for index in index_dominated_elements.into_iter().rev() {
+        for &index in self.index_dominated_elements.iter().take(len).rev() {
             self.front.swap_remove(index);
         }
     }
@@ -132,7 +144,10 @@ impl<T: Dominate> CandidateParetoFront<T> {
 
 impl<T: Dominate> Default for CandidateParetoFront<T> {
     fn default() -> Self {
-        Self { front: vec![] }
+        Self {
+            front: vec![],
+            index_dominated_elements: vec![],
+        }
     }
 }
 
