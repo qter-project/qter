@@ -157,15 +157,20 @@ fn cycle_combinations_helper<const N: usize>(
         } else {
             let old = std::mem::replace(&mut registers[register_index], possible_order.clone());
             *iter_count += 1;
-            let mut candidate = CycleCombinationCandidate {
+            let candidate = CycleCombinationCandidate {
                 orders: registers.to_vec(),
                 details: None,
             };
-            if !cycle_combination_candidates.dominate(&candidate)
-                && let Ok(details) = CycleCombinationDetails::try_from(&*candidate.orders)
-            {
-                candidate.details = Some(details);
-                assert!(cycle_combination_candidates.push(candidate));
+            if cycle_combination_candidates.push_and_check(candidate, |dominating_candidate| {
+                if let Ok(details) =
+                    CycleCombinationDetails::try_from(&*dominating_candidate.orders)
+                {
+                    dominating_candidate.details = Some(details);
+                    true
+                } else {
+                    false
+                }
+            }) {
                 *max_last_register = max_last_register
                     .clone()
                     .max(registers.last().unwrap().order.clone());
@@ -242,7 +247,7 @@ impl<const N: usize> CycleCombinationFinder<N> {
         );
         drop(possible_orders_except_one);
         debug!("Cycle combinations in {iter_count} iterations");
-        cycle_combination_candidates
+        Vec::from(cycle_combination_candidates)
             .into_iter()
             .map(|candidate| CycleCombination {
                 orders: candidate.orders,
