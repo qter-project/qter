@@ -1,4 +1,7 @@
-use std::num::{NonZeroU16, NonZeroU32, NonZeroUsize};
+use std::{
+    hint::assert_unchecked,
+    num::{NonZeroU16, NonZeroU32, NonZeroUsize},
+};
 
 use bumpalo::Bump;
 use log::debug;
@@ -71,19 +74,21 @@ impl<const N: usize> CycleCombinationsTree<N> {
     unsafe fn search_helper<'a>(
         &'a self,
         mutable: &mut CycleCombinationsTreeMutable<'a, N>,
-        remaining_possible_orders_except_one: &[PossibleOrder<N>],
-        remaining_register_count: NonZeroUsize,
-        remaining_piece_count: NonZeroU32,
+        possible_orders_except_one: &[PossibleOrder<N>],
+        register_count: NonZeroUsize,
+        piece_count: NonZeroU32,
     ) {
-        let register_index = mutable.registers.len() - remaining_register_count.get();
-        let mut curr_possible_orders = remaining_possible_orders_except_one;
+        let register_index = mutable.registers.len() - register_count.get();
+        unsafe { assert_unchecked(register_index < mutable.registers.len()) };
+
+        let mut curr_possible_orders = possible_orders_except_one;
         while let Some((possible_order, next_possible_orders)) = curr_possible_orders.split_first()
         {
             if register_index == 0 && possible_order.order <= mutable.max_last_register {
                 break;
             }
 
-            let Some(next_remaining_piece_count) = remaining_piece_count
+            let Some(next_remaining_piece_count) = piece_count
                 .get()
                 .checked_sub(possible_order.min_piece_count.get())
             else {
@@ -91,14 +96,13 @@ impl<const N: usize> CycleCombinationsTree<N> {
                 continue;
             };
 
-            if let Some(next_remaining_register_count) =
-                NonZeroUsize::new(remaining_register_count.get() - 1)
+            if let Some(next_remaining_register_count) = NonZeroUsize::new(register_count.get() - 1)
             {
                 if let Some(next_remaining_piece_count) =
                     NonZeroU32::new(next_remaining_piece_count)
                 {
                     let old = std::mem::replace(
-                        unsafe { mutable.registers.get_unchecked_mut(register_index) },
+                        &mut mutable.registers[register_index],
                         possible_order.clone(),
                     );
                     unsafe {
@@ -109,12 +113,11 @@ impl<const N: usize> CycleCombinationsTree<N> {
                             next_remaining_piece_count,
                         );
                     }
-                    *unsafe { mutable.registers.get_unchecked_mut(register_index) } = old;
+                    mutable.registers[register_index] = old;
                 }
             } else {
-                // SAFETY: `register_index`
                 let old = std::mem::replace(
-                    unsafe { mutable.registers.get_unchecked_mut(register_index) },
+                    &mut mutable.registers[register_index],
                     possible_order.clone(),
                 );
                 mutable.iter_count += 1;
@@ -135,7 +138,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
                         .max(mutable.registers.last().order.clone());
                     break;
                 }
-                *unsafe { mutable.registers.get_unchecked_mut(register_index) } = old;
+                mutable.registers[register_index] = old;
             }
             curr_possible_orders = next_possible_orders;
         }
