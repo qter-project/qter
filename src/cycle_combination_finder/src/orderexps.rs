@@ -170,25 +170,30 @@ impl<const N: usize> PartialOrd for OrderExps<N> {
 impl<const N: usize> Ord for OrderExps<N> {
     #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
-        let max = self.0.simd_max(other.0);
-        match (max == self.0, max == other.0) {
+        let min = self.0.simd_min(other.0);
+        match (min == self.0, min == other.0) {
             (true, true) => Ordering::Equal,
-            (true, false) => Ordering::Greater,
-            (false, true) => Ordering::Less,
+            (false, true) => Ordering::Greater,
+            (true, false) => Ordering::Less,
             (false, false) => {
-                let a: f64 = FIRST_129_PRIMES
+                // Note that it is slower to use exponent/product compared to product/sum. It is
+                // also slower to subtract `min` from `self` and `other`.
+                let a: f32 = FIRST_129_PRIMES
                     .into_iter()
                     .zip(self.0.as_array().iter())
                     .take(N)
-                    .map(|(p, &e)| f64::from(e) * f64::from(p).ln())
+                    .map(|(p, &e)| f32::from(e) * f32::from(p).ln())
                     .sum();
-                let b: f64 = FIRST_129_PRIMES
+                let b: f32 = FIRST_129_PRIMES
                     .into_iter()
                     .zip(other.0.as_array().iter())
                     .take(N)
-                    .map(|(p, &e)| f64::from(e) * f64::from(p).ln())
+                    .map(|(p, &e)| f32::from(e) * f32::from(p).ln())
                     .sum();
-                a.partial_cmp(&b).unwrap()
+                // SAFETY: the input to f32::from are all regular integer numbers. Therefore,
+                // there `a` and `b` are also numbers. This may seem unwarranted, but it
+                // actually has a measurable impact on performance since this is a hot function.
+                unsafe { a.partial_cmp(&b).unwrap_unchecked() }
             }
         }
     }
