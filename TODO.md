@@ -26,7 +26,6 @@
   - sort by min piece count instead of by possible order
   - logical vs total order
   - try out DFS parallelization
-  - bumpalo, Vec::new_in
 - pareto front
   - SubOptimal Optimality which uses the naive pareto front dominate approach; could also assume a lesser min piece count threshold
 

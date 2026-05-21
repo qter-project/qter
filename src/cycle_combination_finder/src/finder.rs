@@ -11,7 +11,7 @@ use log::{debug, trace};
 use crate::{
     min_piece_count::MinPieceCount,
     orderexps::OrderExps,
-    pareto_front::{CandidateParetoFront, Dominate},
+    pareto_front::{CycleCombinationParetoFront, Dominate},
     puzzle::PuzzleDef,
 };
 
@@ -39,10 +39,10 @@ pub struct PossibleOrder<const N: usize> {
 }
 
 #[derive(Debug)]
-struct CycleCombinationCandidate<'a, const N: usize> {
+struct ArenaCycleCombination<'a, const N: usize> {
     // first_order_index: usize,
     orders: Box<[PossibleOrder<N>], &'a Bump>,
-    details: Option<CycleCombinationDetails<N>>,
+    details: CycleCombinationDetails<N>,
 }
 
 #[derive(Debug)]
@@ -51,7 +51,7 @@ pub struct CycleCombinationDetails<const N: usize> {
 }
 
 pub struct CycleCombination<const N: usize> {
-    orders: Vec<PossibleOrder<N>>,
+    orders: Box<[PossibleOrder<N>]>,
     details: CycleCombinationDetails<N>,
 }
 
@@ -95,20 +95,20 @@ impl<const N: usize> CycleCombinationDetails<N> {
     }
 }
 
-impl<const N: usize> Dominate for CycleCombinationCandidate<'_, N> {
-    fn dominate(&self, other: &Self) -> bool {
+impl<const N: usize> Dominate<N> for ArenaCycleCombination<'_, N> {
+    fn dominate(&self, other: &[PossibleOrder<N>]) -> bool {
         // Note that we should never have a case when `self == other` because
         // `cycle_combinations` visits a different order every time, hence we do not
         // have to implement this check as suggested by the `pareto_front` crate.
         debug_assert!(
             self.orders
                 .iter()
-                .zip(&other.orders)
+                .zip(other)
                 .any(|(s, o)| s.order != o.order)
         );
         self.orders
             .iter()
-            .zip(&other.orders)
+            .zip(other)
             .all(|(s, o)| s.order >= o.order)
     }
 }
@@ -127,13 +127,13 @@ impl<const N: usize> TryFrom<&[PossibleOrder<N>]> for CycleCombinationDetails<N>
     }
 }
 
-fn cycle_combinations_helper<'a, const N: usize>(
+unsafe fn cycle_combinations_helper<'a, const N: usize>(
     possible_orders_except_one: &[PossibleOrder<N>],
     remaining_register_count: NonZeroUsize,
     remaining_piece_count: NonZeroU32,
     max_last_register: &mut OrderExps<N>,
     registers: &mut [PossibleOrder<N>],
-    cycle_combination_candidates: &mut CandidateParetoFront<CycleCombinationCandidate<'a, N>>,
+    cycle_combinations: &mut CycleCombinationParetoFront<N, ArenaCycleCombination<'a, N>>,
     iter_count: &mut u64,
     bump: &'a Bump,
 ) {
@@ -156,45 +156,43 @@ fn cycle_combinations_helper<'a, const N: usize>(
             NonZeroUsize::new(remaining_register_count.get() - 1)
         {
             if let Some(next_remaining_piece_count) = NonZeroU32::new(next_remaining_piece_count) {
-                let old = std::mem::replace(&mut registers[register_index], possible_order.clone());
-                cycle_combinations_helper(
-                    curr_possible_orders,
-                    next_remaining_register_count,
-                    next_remaining_piece_count,
-                    max_last_register,
-                    registers,
-                    cycle_combination_candidates,
-                    iter_count,
-                    bump,
+                let old = std::mem::replace(
+                    unsafe { registers.get_unchecked_mut(register_index) },
+                    possible_order.clone(),
                 );
-                registers[register_index] = old;
+                unsafe {
+                    cycle_combinations_helper(
+                        curr_possible_orders,
+                        next_remaining_register_count,
+                        next_remaining_piece_count,
+                        max_last_register,
+                        registers,
+                        cycle_combinations,
+                        iter_count,
+                        bump,
+                    );
+                }
+                *unsafe { registers.get_unchecked_mut(register_index) } = old;
             }
         } else {
-            let old = std::mem::replace(&mut registers[register_index], possible_order.clone());
+            // SAFETY: `register_index`
+            let old = std::mem::replace(
+                unsafe { registers.get_unchecked_mut(register_index) },
+                possible_order.clone(),
+            );
             *iter_count += 1;
-            let candidate = CycleCombinationCandidate {
-                orders: Box::clone_from_ref_in(registers, bump),
-                details: None,
-            };
-            if cycle_combination_candidates.push_and_dominating_check(
-                candidate,
-                |dominating_candidate| {
-                    if let Ok(details) =
-                        CycleCombinationDetails::try_from(&*dominating_candidate.orders)
-                    {
-                        dominating_candidate.details = Some(details);
-                        true
-                    } else {
-                        false
-                    }
-                },
-            ) {
+            if cycle_combinations.push_and_dominating_check(registers, |dominating_registers| {
+                Some(ArenaCycleCombination {
+                    orders: Box::clone_from_ref_in(registers, bump),
+                    details: CycleCombinationDetails::try_from(dominating_registers).ok()?,
+                })
+            }) {
                 *max_last_register = max_last_register
                     .clone()
                     .max(registers.last().unwrap().order.clone());
                 break;
             }
-            registers[register_index] = old;
+            *unsafe { registers.get_unchecked_mut(register_index) } = old;
         }
         curr_possible_orders = next_possible_orders;
     }
@@ -249,24 +247,26 @@ impl<const N: usize> CycleCombinationFinder<N> {
         let mut max_last_register = OrderExps::one();
         let mut iter_count = 0;
         let bump = Bump::new();
-        let mut cycle_combination_candidates = CandidateParetoFront::default();
-        cycle_combinations_helper(
-            &possible_orders_except_one,
-            NonZeroUsize::from(total_register_count),
-            total_piece_count,
-            &mut max_last_register,
-            &mut registers,
-            &mut cycle_combination_candidates,
-            &mut iter_count,
-            &bump,
-        );
+        let mut cycle_combinations = CycleCombinationParetoFront::default();
+        unsafe {
+            cycle_combinations_helper(
+                &possible_orders_except_one,
+                NonZeroUsize::from(total_register_count),
+                total_piece_count,
+                &mut max_last_register,
+                &mut registers,
+                &mut cycle_combinations,
+                &mut iter_count,
+                &bump,
+            );
+        }
         drop(possible_orders_except_one);
         debug!("Cycle combinations in {iter_count} iterations");
-        Vec::from(cycle_combination_candidates)
+        Vec::from(cycle_combinations)
             .into_iter()
             .map(|candidate| CycleCombination {
-                orders: candidate.orders.to_vec(),
-                details: candidate.details.unwrap(),
+                orders: Box::clone_from_ref(&candidate.orders),
+                details: candidate.details,
             })
             .collect()
     }
