@@ -25,3 +25,11 @@ thiserror = "2.0.11"
 
 [profile.bench]
 debug = true
+
+[profile.release]
+panic = "abort"
+lto = "thin"
+
+[profile.profiling]
+inherits = "release"
+debug = true
