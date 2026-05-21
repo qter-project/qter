@@ -48,3 +48,5 @@ pub mod pareto_front;
 pub mod possible_orders;
 pub mod puzzle;
 pub mod trie;
+pub mod cycle_combinations_tree;
+pub mod least_one_vec;
