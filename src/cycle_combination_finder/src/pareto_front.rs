@@ -30,7 +30,11 @@ impl<const N: usize, T: CycleCombinationDominate<N>> CycleCombinationParetoFront
                 // percolate the best elements to the top NOTE: in my benchmarks
                 // this brings clear performance benefits by putting "killer" elements first
                 if i > 0 {
-                    self.inner.swap(i, i - 1);
+                    // SAFETY: `i` is in range, and `i - 1` must also be in range because of the if
+                    // note that this was not optimizing the bounds check
+                    unsafe {
+                        self.inner.swap_unchecked(i, i - 1);
+                    }
                 }
                 return false;
             }

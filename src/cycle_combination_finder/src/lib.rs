@@ -5,6 +5,7 @@
     clippy::similar_names
 )]
 #![feature(
+    slice_swap_unchecked,
     portable_simd,
     gen_blocks,
     clone_from_ref,
