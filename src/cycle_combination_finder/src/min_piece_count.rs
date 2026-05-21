@@ -122,12 +122,13 @@ impl<const N: usize> MinPieceCount<N> {
         let mut needing_orientation_cycles_count = 0u32;
         let mut min_piece_count = leftover_prime_powers_sum;
         for orbit_orientation_contribution in &self.orbit_orientation_contributions {
-            let contributing_prime_powers =
-                orbit_orientation_contribution.0.simd_ne(Simd::splat(0));
-            if !contributing_prime_powers.any() {
+            let mut contributing_prime_powers_mask = orbit_orientation_contribution
+                .0
+                .simd_ne(Simd::splat(0))
+                .to_bitmask();
+            if contributing_prime_powers_mask == 0 {
                 continue;
             }
-            let mut contributing_prime_powers_mask = contributing_prime_powers.to_bitmask();
             let mut needs_orientation_cycles_count = true;
             while contributing_prime_powers_mask != 0 {
                 let prime_power_index = contributing_prime_powers_mask.trailing_zeros() as usize;

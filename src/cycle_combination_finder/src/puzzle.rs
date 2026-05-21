@@ -9,7 +9,7 @@ use puzzle_theory::ksolve::KSolve;
 use thiserror::Error;
 use union_find::{QuickUnionUf, UnionBySize, UnionFind};
 
-use crate::{FIRST_129_PRIMES, gauss_jordan_without_zero_rows};
+use crate::{FIRST_129_PRIMES, gauss_jordan_without_zero_rows, least_one::{LeastOneSlice, LeastOneVec}};
 
 #[allow(non_snake_case)]
 pub mod cubeN;
@@ -49,7 +49,7 @@ pub enum PuzzleDefCreationError {
 
 #[derive(Clone)]
 pub struct PuzzleDef<const N: usize> {
-    orbit_defs: Vec<OrbitDef>,
+    orbit_defs: LeastOneVec<OrbitDef>,
     even_parity_constraints: BitMatrix,
     connected_components: Vec<Vec<usize>>,
 }
@@ -162,9 +162,6 @@ impl<const N: usize> PuzzleDef<N> {
         partial_orbit_defs: Vec<PartialOrbitDef>,
         EvenParityConstraints(raw_even_parity_constraints): EvenParityConstraints,
     ) -> Result<Self, PuzzleDefCreationError> {
-        if partial_orbit_defs.is_empty() {
-            return Err(PuzzleDefCreationError::NoOrbits);
-        }
         if partial_orbit_defs.len() > MAX_ORBIT_COUNT {
             return Err(PuzzleDefCreationError::TooManyOrbits {
                 actual: partial_orbit_defs.len(),
@@ -172,40 +169,45 @@ impl<const N: usize> PuzzleDef<N> {
             });
         }
 
-        let mut orbit_defs = partial_orbit_defs
-            .into_iter()
-            .map(
-                |PartialOrbitDef {
-                     piece_count,
-                     orientation,
-                 }| {
-                    match orientation {
-                        OrientationStatus::CanOrient { count, .. } if count == 0 || count == 1 => {
-                            return Err(PuzzleDefCreationError::InvalidOrientationCount(count));
+        let mut orbit_defs = LeastOneVec::try_from(
+            partial_orbit_defs
+                .into_iter()
+                .map(
+                    |PartialOrbitDef {
+                         piece_count,
+                         orientation,
+                     }| {
+                        match orientation {
+                            OrientationStatus::CanOrient { count, .. }
+                                if count == 0 || count == 1 =>
+                            {
+                                return Err(PuzzleDefCreationError::InvalidOrientationCount(count));
+                            }
+                            _ => (),
                         }
-                        _ => (),
-                    }
-                    if piece_count.get() >= FIRST_129_PRIMES[N] {
-                        return Err(PuzzleDefCreationError::OrbitTooManyPieces {
-                            max: FIRST_129_PRIMES[N] - 1,
-                            actual: piece_count.get(),
-                        });
-                    }
-                    let ret = OrbitDef {
-                        piece_count,
-                        orientation,
-                        parity_constraint: ParityConstraint::None,
-                    };
-                    if u16::from(ret.orientation_count().get()) >= FIRST_129_PRIMES[N] {
-                        return Err(PuzzleDefCreationError::OrbitTooMuchOrientation {
-                            max: FIRST_129_PRIMES[N] - 1,
-                            actual: ret.orientation_count().get(),
-                        });
-                    }
-                    Ok(ret)
-                },
-            )
-            .collect::<Result<Vec<_>, PuzzleDefCreationError>>()?;
+                        if piece_count.get() >= FIRST_129_PRIMES[N] {
+                            return Err(PuzzleDefCreationError::OrbitTooManyPieces {
+                                max: FIRST_129_PRIMES[N] - 1,
+                                actual: piece_count.get(),
+                            });
+                        }
+                        let ret = OrbitDef {
+                            piece_count,
+                            orientation,
+                            parity_constraint: ParityConstraint::None,
+                        };
+                        if u16::from(ret.orientation_count().get()) >= FIRST_129_PRIMES[N] {
+                            return Err(PuzzleDefCreationError::OrbitTooMuchOrientation {
+                                max: FIRST_129_PRIMES[N] - 1,
+                                actual: ret.orientation_count().get(),
+                            });
+                        }
+                        Ok(ret)
+                    },
+                )
+                .collect::<Result<Vec<_>, PuzzleDefCreationError>>()?,
+        )
+        .map_err(|()| PuzzleDefCreationError::NoOrbits)?;
 
         let cols = orbit_defs.len();
         let rows = raw_even_parity_constraints.len();
@@ -291,8 +293,8 @@ impl<const N: usize> PuzzleDef<N> {
     }
 
     #[must_use]
-    pub fn orbit_defs(&self) -> &[OrbitDef] {
-        &self.orbit_defs
+    pub fn orbit_defs(&self) -> LeastOneSlice<'_, OrbitDef> {
+        self.orbit_defs.as_slice()
     }
 
     #[must_use]

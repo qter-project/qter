@@ -5,6 +5,7 @@ use log::debug;
 
 use crate::{
     finder::{CycleCombination, CycleCombinationDetails, PossibleOrder},
+    least_one::{LeastOneSlice, LeastOneVec},
     orderexps::OrderExps,
     pareto_front::{CycleCombinationDominate, CycleCombinationParetoFront},
     puzzle::OrbitDef,
@@ -18,7 +19,7 @@ pub struct CycleCombinationsTree<const N: usize> {
 }
 
 pub struct CycleCombinationsTreeMutable<'a, const N: usize> {
-    registers: Vec<PossibleOrder<N>>,
+    registers: LeastOneVec<PossibleOrder<N>>,
     max_last_register: OrderExps<N>,
     iter_count: u64,
     cycle_combinations: CycleCombinationParetoFront<N, ArenaCycleCombination<'a, N>>,
@@ -45,9 +46,11 @@ impl<const N: usize> CycleCombinationsTree<N> {
     pub fn new(
         exact_register_count: NonZeroU16,
         possible_orders_except_one: Vec<PossibleOrder<N>>,
-        orbit_defs: &[OrbitDef],
+        orbit_defs: LeastOneSlice<'_, OrbitDef>,
     ) -> Self {
         #[allow(clippy::missing_panics_doc)]
+        // We are allowed to unwrap because `orbit_defs` is non-empty, and `piece_count` is a
+        // NonZero. Therefore the sum must be non-zero.
         let exact_piece_count = NonZeroU32::new(
             orbit_defs
                 .iter()
@@ -115,8 +118,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
                     possible_order.clone(),
                 );
                 mutable.iter_count += 1;
-                let registers_except_first =
-                    unsafe { mutable.registers.split_first().unwrap_unchecked().1 };
+                let registers_except_first = mutable.registers.split_first().1;
                 if mutable.cycle_combinations.push_and_dominating_check(
                     registers_except_first,
                     |dominating_registers| {
@@ -130,7 +132,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
                     mutable.max_last_register = mutable
                         .max_last_register
                         .clone()
-                        .max(mutable.registers.last().unwrap().order.clone());
+                        .max(mutable.registers.last().order.clone());
                     break;
                 }
                 *unsafe { mutable.registers.get_unchecked_mut(register_index) } = old;
@@ -140,11 +142,14 @@ impl<const N: usize> CycleCombinationsTree<N> {
     }
 
     pub fn search(self) -> Vec<CycleCombination<N>> {
+        // We can unwrap because `exact_register_count` is NonZero.
+        #[allow(clippy::missing_panics_doc)]
         let mut mutable = CycleCombinationsTreeMutable {
-            registers: vec![
+            registers: LeastOneVec::try_from(vec![
                 PossibleOrder::initialized();
                 usize::from(self.exact_register_count.get())
-            ],
+            ])
+            .unwrap(),
             max_last_register: OrderExps::one(),
             iter_count: 0,
             cycle_combinations: CycleCombinationParetoFront::default(),
