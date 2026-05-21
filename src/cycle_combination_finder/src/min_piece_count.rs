@@ -160,8 +160,8 @@ impl<const N: usize> MinPieceCount<N> {
                     .map(|(&exp, prime)| prime_power_cycle_piece_count(prime, exp))
                     .sum::<u32>()
         );
-        // Every non-one order requires at least one piece
         (
+            // Every non-one order requires at least one piece
             NonZeroU32::new(min_piece_count).unwrap(),
             maybe_two_orientation_contribution_orbit_index,
         )

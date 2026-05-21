@@ -11,7 +11,7 @@ use log::{debug, trace};
 use crate::{
     min_piece_count::MinPieceCount,
     orderexps::OrderExps,
-    pareto_front::{CycleCombinationParetoFront, Dominate},
+    pareto_front::{CycleCombinationDominate, CycleCombinationParetoFront},
     puzzle::PuzzleDef,
 };
 
@@ -95,20 +95,22 @@ impl<const N: usize> CycleCombinationDetails<N> {
     }
 }
 
-impl<const N: usize> Dominate<N> for ArenaCycleCombination<'_, N> {
-    fn dominate(&self, other: &[PossibleOrder<N>]) -> bool {
+impl<const N: usize> CycleCombinationDominate<N> for ArenaCycleCombination<'_, N> {
+    fn dominate(&self, registers_except_first: &[PossibleOrder<N>]) -> bool {
         // Note that we should never have a case when `self == other` because
         // `cycle_combinations` visits a different order every time, hence we do not
         // have to implement this check as suggested by the `pareto_front` crate.
         debug_assert!(
             self.orders
                 .iter()
-                .zip(other)
-                .any(|(s, o)| s.order != o.order)
+                .skip(1)
+                .zip(registers_except_first)
+                .all(|(s, o)| s.order != o.order)
         );
         self.orders
             .iter()
-            .zip(other)
+            .skip(1)
+            .zip(registers_except_first)
             .all(|(s, o)| s.order >= o.order)
     }
 }
@@ -181,12 +183,16 @@ unsafe fn cycle_combinations_helper<'a, const N: usize>(
                 possible_order.clone(),
             );
             *iter_count += 1;
-            if cycle_combinations.push_and_dominating_check(registers, |dominating_registers| {
-                Some(ArenaCycleCombination {
-                    orders: Box::clone_from_ref_in(registers, bump),
-                    details: CycleCombinationDetails::try_from(dominating_registers).ok()?,
-                })
-            }) {
+            let registers_except_first = unsafe { registers.split_first().unwrap_unchecked().1 };
+            if cycle_combinations.push_and_dominating_check(
+                registers_except_first,
+                |dominating_registers| {
+                    Some(ArenaCycleCombination {
+                        orders: Box::clone_from_ref_in(registers, bump),
+                        details: CycleCombinationDetails::try_from(dominating_registers).ok()?,
+                    })
+                },
+            ) {
                 *max_last_register = max_last_register
                     .clone()
                     .max(registers.last().unwrap().order.clone());

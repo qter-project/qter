@@ -3,11 +3,13 @@
 use crate::finder::PossibleOrder;
 
 /// Used to define a pseudo-ordering for multi-dimensional optimization.
-pub trait Dominate<const N: usize> {
+pub trait CycleCombinationDominate<const N: usize> {
     /// Returns `true` if we are better (which might be superior or inferior
     /// depending on the specification) than `x` along all dimenssions.
     /// By convention, it usually returns `false` if `x` is equal to `self`.
-    fn dominate(&self, other: &[PossibleOrder<N>]) -> bool;
+    ///
+    /// Note that we assume the first element doesn't exist.
+    fn dominate(&self, registers_except_first: &[PossibleOrder<N>]) -> bool;
 }
 
 #[derive(Clone, Debug)]
@@ -15,14 +17,14 @@ pub struct CycleCombinationParetoFront<const N: usize, T> {
     inner: Vec<T>,
 }
 
-impl<const N: usize, T: Dominate<N>> CycleCombinationParetoFront<N, T> {
+impl<const N: usize, T: CycleCombinationDominate<N>> CycleCombinationParetoFront<N, T> {
     pub fn push_and_dominating_check(
         &mut self,
-        registers: &[PossibleOrder<N>],
+        registers_except_first: &[PossibleOrder<N>],
         dominating_check: impl FnOnce(&[PossibleOrder<N>]) -> Option<T>,
     ) -> bool {
         for (i, element) in self.inner.iter().enumerate() {
-            if element.dominate(registers) {
+            if element.dominate(registers_except_first) {
                 // `new_element` is dominated by `element`, it is thus not part of the Pareto
                 // front swap `element` with the previous element in order to
                 // percolate the best elements to the top NOTE: in my benchmarks
@@ -37,7 +39,7 @@ impl<const N: usize, T: Dominate<N>> CycleCombinationParetoFront<N, T> {
             // strictly lesser orders
         }
 
-        if let Some(candidate) = (dominating_check)(registers) {
+        if let Some(candidate) = (dominating_check)(registers_except_first) {
             // `new_element` has not been dominated; it is thus part of the Pareto front
             self.inner.push(candidate);
             true
@@ -47,13 +49,15 @@ impl<const N: usize, T: Dominate<N>> CycleCombinationParetoFront<N, T> {
     }
 }
 
-impl<const N: usize, T: Dominate<N>> Default for CycleCombinationParetoFront<N, T> {
+impl<const N: usize, T: CycleCombinationDominate<N>> Default for CycleCombinationParetoFront<N, T> {
     fn default() -> Self {
         Self { inner: vec![] }
     }
 }
 
-impl<const N: usize, T: Dominate<N>> From<CycleCombinationParetoFront<N, T>> for Vec<T> {
+impl<const N: usize, T: CycleCombinationDominate<N>> From<CycleCombinationParetoFront<N, T>>
+    for Vec<T>
+{
     /// Converts the Pareto front into a vector.
     fn from(CycleCombinationParetoFront { inner }: CycleCombinationParetoFront<N, T>) -> Vec<T> {
         inner

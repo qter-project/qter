@@ -27,7 +27,6 @@ thiserror = "2.0.11"
 debug = true
 
 [profile.release]
-panic = "abort"
 lto = "thin"
 
 [profile.profiling]

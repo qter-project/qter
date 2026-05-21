@@ -18,6 +18,8 @@
     - perhaps I can do separate analysis beforehand to show that 5354228880 can fit on the puzzle, and then if so, try to remove orbits and then see if 5354228880 still fits
   - throw out order case if we ever compute it has a non-+1 orientation factor
 - min piece count
+  - clean up test cases
+  - test case for: orientation counts 30, 4, and 19, and order 60 * 19
   - old MPC has edge case: it does 2 < cycle_count; it does 4 -> 5 pieces
   - devise a scheme to make MPC incorporate piece counts
   - is possible_order.0.simd_ne(Simd::splat(0)) really needed
@@ -26,6 +28,7 @@
   - sort by min piece count instead of by possible order
   - logical vs total order
   - try out DFS parallelization
+  - move CycleCombination to tree.rs
 - pareto front
   - SubOptimal Optimality which uses the naive pareto front dominate approach; could also assume a lesser min piece count threshold
 
@@ -43,6 +46,7 @@
   - 3x3 https://github.com/Voltara/vcube/blob/9f5bc2cce18f29437879ace825f22917f6705378/src/cube.h#L240
   - any puzzle https://github.com/cubing/twsearch/blob/main/src/cpp/index.cpp
 - spam debug_assert!()
+- special version of a decrement algorithm for each register that would be allowed to mess up the entire rest of the cube?
 - solve for all cycle structures from CCF at once vs many runs of single cycle structure at a time
 - ⭐pruning table
   - generate table during the solve
