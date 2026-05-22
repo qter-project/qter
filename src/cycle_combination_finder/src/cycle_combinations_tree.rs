@@ -77,7 +77,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let mut curr_possible_orders = remaining_possible_orders_except_one;
         while let Some((possible_order, next_possible_orders)) = curr_possible_orders.split_first()
         {
-            if register_index == 0
+            if (register_index == 0 || register_index == 1)
                 && next_possible_orders.len() <= mutable.max_last_register_reverse_index
             {
                 break;
