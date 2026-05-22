@@ -140,7 +140,7 @@ impl<const N: usize> CycleCombinationFinder<N> {
             possible_orders_except_one,
             self.puzzle_def.orbit_defs(),
         )
-        .search()
+        .search_dfs()
     }
 
     #[must_use]

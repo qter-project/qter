@@ -18,6 +18,18 @@ impl<T> TryFrom<Vec<T>> for NonemptyVec<T> {
     }
 }
 
+impl<'a, T> TryFrom<&'a [T]> for NonemptySlice<'a, T> {
+    type Error = ();
+
+    fn try_from(value: &'a [T]) -> Result<Self, Self::Error> {
+        if value.is_empty() {
+            Err(())
+        } else {
+            Ok(Self(value))
+        }
+    }
+}
+
 impl<T> DerefMut for NonemptyVec<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
@@ -25,7 +37,7 @@ impl<T> DerefMut for NonemptyVec<T> {
 }
 
 impl<T> Deref for NonemptyVec<T> {
-    type Target = [T];
+    type Target = Vec<T>;
 
     fn deref(&self) -> &Self::Target {
         &self.0

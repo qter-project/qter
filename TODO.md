@@ -12,6 +12,9 @@
 - tree
   - try out DFS parallelization
   - document unsafe
+  - NonemptyVec([PossibleOrder { order: 116454478140, min_piece_count: 137 }, PossibleOrder { order: 6, min_piece_count: 2 }, PossibleOrder { order: 3, min_piece_count: 1 }])
+  followed by
+  NonemptyVec([PossibleOrder { order: 82990547640, min_piece_count: 137 }, PossibleOrder { order: 6, min_piece_count: 2 }, PossibleOrder { order: 3, min_piece_count: 1 }])
 - possible orders
   - daniel's SIMD gcd algorithm
   - compute minimum piece count

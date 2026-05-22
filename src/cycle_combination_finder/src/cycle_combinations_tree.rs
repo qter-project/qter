@@ -66,7 +66,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
         }
     }
 
-    unsafe fn search_helper<'a>(
+    unsafe fn search_dfs_helper<'a>(
         &'a self,
         mutable: &mut CycleCombinationsTreeMutable<'a, N>,
         remaining_possible_orders_except_one: &[PossibleOrder<N>],
@@ -102,7 +102,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
                         possible_order.clone(),
                     );
                     unsafe {
-                        self.search_helper(
+                        self.search_dfs_helper(
                             mutable,
                             curr_possible_orders,
                             next_remaining_register_count,
@@ -140,7 +140,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
         }
     }
 
-    pub fn search(self) -> Vec<CycleCombination<N>> {
+    pub fn search_dfs(self) -> Vec<CycleCombination<N>> {
         // We can unwrap because `exact_register_count` is NonZero.
         #[allow(clippy::missing_panics_doc)]
         let mut mutable = CycleCombinationsTreeMutable {
@@ -154,7 +154,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
             cycle_combinations: CycleCombinationParetoFront::default(),
         };
         unsafe {
-            self.search_helper(
+            self.search_dfs_helper(
                 &mut mutable,
                 &self.possible_orders_except_one,
                 NonZeroUsize::from(self.exact_register_count),
@@ -171,16 +171,6 @@ impl<const N: usize> CycleCombinationsTree<N> {
 
 impl<const N: usize> CycleCombinationDominate<N> for ArenaCycleCombination<'_, N> {
     fn dominate(&self, registers_except_first: &[PossibleOrder<N>]) -> bool {
-        // Note that we should never have a case when `self == other` because
-        // `cycle_combinations` visits a different order every time, hence we do not
-        // have to implement this check as suggested by the `pareto_front` crate.
-        debug_assert!(
-            self.orders
-                .iter()
-                .skip(1)
-                .zip(registers_except_first)
-                .all(|(s, o)| s.order != o.order)
-        );
         self.orders
             .iter()
             .skip(1)
