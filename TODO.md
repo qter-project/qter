@@ -9,29 +9,26 @@
 
 ## CCF
 
+- tree
+  - try out DFS parallelization
+  - document unsafe
 - possible orders
   - daniel's SIMD gcd algorithm
-  - reuse possible orders list if two orbits are the same
   - compute minimum piece count
   - can we just remove constraints?
   - can we just ignore added extra orbits
     - perhaps I can do separate analysis beforehand to show that 5354228880 can fit on the puzzle, and then if so, try to remove orbits and then see if 5354228880 still fits
-  - throw out order case if we ever compute it has a non-+1 orientation factor
 - min piece count
   - clean up test cases
   - test case for: orientation counts 30, 4, and 19, and order 60 * 19
   - old MPC has edge case: it does 2 < cycle_count; it does 4 -> 5 pieces
   - devise a scheme to make MPC incorporate piece counts
   - is possible_order.0.simd_ne(Simd::splat(0)) really needed
-- finder
-  - compare with index rather than le in helper; faster?
-  - sort by min piece count instead of by possible order
-  - logical vs total order
-  - try out DFS parallelization
-  - move CycleCombination to tree.rs
-- pareto front
+- after MVP
   - SubOptimal Optimality which uses the naive pareto front dominate approach; could also assume a lesser min piece count threshold
-  - can also improve if register_index == 0
+  - respond on github
+  - reuse possible orders list if two orbits are the same
+  - throw out order case if we ever compute it has a non-+1 orientation factor
 
 ## CCS
 
