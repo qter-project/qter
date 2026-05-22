@@ -6,7 +6,6 @@ use log::debug;
 use crate::{
     finder::{CycleCombination, CycleCombinationDetails, PossibleOrder},
     nonemptyvec::{NonemptySlice, NonemptyVec},
-    orderexps::OrderExps,
     pareto_front::{CycleCombinationDominate, CycleCombinationParetoFront},
     puzzle::OrbitDef,
 };
@@ -20,7 +19,7 @@ pub struct CycleCombinationsTree<const N: usize> {
 
 pub struct CycleCombinationsTreeMutable<'a, const N: usize> {
     registers: NonemptyVec<PossibleOrder<N>>,
-    max_last_register: OrderExps<N>,
+    max_last_register_reverse_index: usize,
     iter_count: u64,
     cycle_combinations: CycleCombinationParetoFront<N, ArenaCycleCombination<'a, N>>,
 }
@@ -78,7 +77,9 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let mut curr_possible_orders = remaining_possible_orders_except_one;
         while let Some((possible_order, next_possible_orders)) = curr_possible_orders.split_first()
         {
-            if register_index == 0 && possible_order.order <= mutable.max_last_register {
+            if register_index == 0
+                && next_possible_orders.len() <= mutable.max_last_register_reverse_index
+            {
                 break;
             }
 
@@ -128,10 +129,9 @@ impl<const N: usize> CycleCombinationsTree<N> {
                         })
                     },
                 ) {
-                    mutable.max_last_register = mutable
-                        .max_last_register
-                        .clone()
-                        .max(mutable.registers.last().order.clone());
+                    mutable.max_last_register_reverse_index = mutable
+                        .max_last_register_reverse_index
+                        .max(next_possible_orders.len());
                     break;
                 }
                 *unsafe { mutable.registers.get_unchecked_mut(register_index) } = old;
@@ -149,7 +149,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
                 usize::from(self.exact_register_count.get())
             ])
             .unwrap(),
-            max_last_register: OrderExps::one(),
+            max_last_register_reverse_index: 0,
             iter_count: 0,
             cycle_combinations: CycleCombinationParetoFront::default(),
         };

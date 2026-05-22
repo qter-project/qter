@@ -22,8 +22,8 @@ fn cycles<const N: usize>(cycle_combinations: Vec<CycleCombination<N>>) -> Vec<V
 fn main() {
     env_logger::init();
 
-    // let puzzle = cycle_combination_finder::puzzle::minxN::MINX3.clone();
-    let puzzle = cycle_combination_finder::puzzle::cubeN::CUBE3.clone();
+    let puzzle = cycle_combination_finder::puzzle::minxN::MINX4.clone();
+    // let puzzle = cycle_combination_finder::puzzle::cubeN::CUBE3.clone();
     let now = Instant::now();
     let ccf = CycleCombinationFinder::from(puzzle);
     let cycle_combinations = ccf.find(CycleCombinationFinderConfig {

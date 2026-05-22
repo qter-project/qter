@@ -31,6 +31,7 @@
   - move CycleCombination to tree.rs
 - pareto front
   - SubOptimal Optimality which uses the naive pareto front dominate approach; could also assume a lesser min piece count threshold
+  - can also improve if register_index == 0
 
 ## CCS
 
