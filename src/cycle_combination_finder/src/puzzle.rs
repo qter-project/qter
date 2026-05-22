@@ -9,7 +9,7 @@ use puzzle_theory::ksolve::KSolve;
 use thiserror::Error;
 use union_find::{QuickUnionUf, UnionBySize, UnionFind};
 
-use crate::{FIRST_129_PRIMES, gauss_jordan_without_zero_rows, least_one::{LeastOneSlice, LeastOneVec}};
+use crate::{FIRST_129_PRIMES, gauss_jordan_without_zero_rows, nonemptyvec::{NonemptySlice, NonemptyVec}};
 
 #[allow(non_snake_case)]
 pub mod cubeN;
@@ -49,7 +49,7 @@ pub enum PuzzleDefCreationError {
 
 #[derive(Clone)]
 pub struct PuzzleDef<const N: usize> {
-    orbit_defs: LeastOneVec<OrbitDef>,
+    orbit_defs: NonemptyVec<OrbitDef>,
     even_parity_constraints: BitMatrix,
     connected_components: Vec<Vec<usize>>,
 }
@@ -169,7 +169,7 @@ impl<const N: usize> PuzzleDef<N> {
             });
         }
 
-        let mut orbit_defs = LeastOneVec::try_from(
+        let mut orbit_defs = NonemptyVec::try_from(
             partial_orbit_defs
                 .into_iter()
                 .map(
@@ -293,7 +293,7 @@ impl<const N: usize> PuzzleDef<N> {
     }
 
     #[must_use]
-    pub fn orbit_defs(&self) -> LeastOneSlice<'_, OrbitDef> {
+    pub fn orbit_defs(&self) -> NonemptySlice<'_, OrbitDef> {
         self.orbit_defs.as_slice()
     }
 

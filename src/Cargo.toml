@@ -25,7 +25,3 @@ thiserror = "2.0.11"
 
 [profile.bench]
 debug = true
-
-[profile.profiling]
-inherits = "release"
-debug = true

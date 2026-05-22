@@ -5,7 +5,7 @@ use log::debug;
 
 use crate::{
     finder::{CycleCombination, CycleCombinationDetails, PossibleOrder},
-    least_one::{LeastOneSlice, LeastOneVec},
+    nonemptyvec::{NonemptySlice, NonemptyVec},
     orderexps::OrderExps,
     pareto_front::{CycleCombinationDominate, CycleCombinationParetoFront},
     puzzle::OrbitDef,
@@ -19,7 +19,7 @@ pub struct CycleCombinationsTree<const N: usize> {
 }
 
 pub struct CycleCombinationsTreeMutable<'a, const N: usize> {
-    registers: LeastOneVec<PossibleOrder<N>>,
+    registers: NonemptyVec<PossibleOrder<N>>,
     max_last_register: OrderExps<N>,
     iter_count: u64,
     cycle_combinations: CycleCombinationParetoFront<N, ArenaCycleCombination<'a, N>>,
@@ -27,7 +27,6 @@ pub struct CycleCombinationsTreeMutable<'a, const N: usize> {
 
 #[derive(Debug)]
 struct ArenaCycleCombination<'a, const N: usize> {
-    // first_order_index: usize,
     orders: Box<[PossibleOrder<N>], &'a Bump>,
     details: CycleCombinationDetails<N>,
 }
@@ -46,7 +45,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
     pub fn new(
         exact_register_count: NonZeroU16,
         possible_orders_except_one: Vec<PossibleOrder<N>>,
-        orbit_defs: LeastOneSlice<'_, OrbitDef>,
+        orbit_defs: NonemptySlice<'_, OrbitDef>,
     ) -> Self {
         #[allow(clippy::missing_panics_doc)]
         // We are allowed to unwrap because `orbit_defs` is non-empty, and `piece_count` is a
@@ -145,7 +144,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
         // We can unwrap because `exact_register_count` is NonZero.
         #[allow(clippy::missing_panics_doc)]
         let mut mutable = CycleCombinationsTreeMutable {
-            registers: LeastOneVec::try_from(vec![
+            registers: NonemptyVec::try_from(vec![
                 PossibleOrder::initialized();
                 usize::from(self.exact_register_count.get())
             ])
