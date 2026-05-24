@@ -1,7 +1,7 @@
 use std::{
     num::{NonZeroU16, NonZeroU32},
     ops::Deref,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use humanize_duration::{Truncate, prelude::DurationExt};
@@ -96,8 +96,17 @@ impl<const N: usize> From<PuzzleDef<N>> for CycleCombinationFinder<N> {
 impl<const N: usize> TryFrom<&[PossibleOrder<N>]> for CycleCombinationDetails<N> {
     type Error = ();
 
-    fn try_from(_precheck: &[PossibleOrder<N>]) -> Result<Self, ()> {
-        Ok(CycleCombinationDetails { cycles: vec![] })
+    fn try_from(registers: &[PossibleOrder<N>]) -> Result<Self, ()> {
+        if registers
+            .iter()
+            .map(|register| u64::try_from(register.order.as_bigint()).unwrap())
+            .sum::<u64>()
+            .is_multiple_of(28)
+        {
+            Ok(CycleCombinationDetails { cycles: vec![] })
+        } else {
+            Err(())
+        }
     }
 }
 
