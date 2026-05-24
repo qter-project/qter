@@ -22,13 +22,13 @@ fn cycles<const N: usize>(cycle_combinations: Vec<CycleCombination<N>>) -> Vec<V
 fn main() {
     env_logger::init();
 
-    let puzzle = cycle_combination_finder::puzzle::minxN::MINX3.clone();
-    // let puzzle = cycle_combination_finder::puzzle::cubeN::CUBE3.clone();
+    // let puzzle = cycle_combination_finder::puzzle::minxN::MINX3.clone();
+    let puzzle = cycle_combination_finder::puzzle::cubeN::CUBE3.clone();
     let now = Instant::now();
     let ccf = CycleCombinationFinder::from(puzzle);
     let cycle_combinations = ccf.find(CycleCombinationFinderConfig {
         optimality: Optimality::Optimal,
-        register_count: RegisterCount::Exactly(NonZeroU16::new(4).unwrap()),
+        register_count: RegisterCount::Exactly(NonZeroU16::new(1).unwrap()),
     });
     info!("CCF in {}", now.elapsed().human(Truncate::Micro));
     info!("Solutions length: {}", cycle_combinations.len());
