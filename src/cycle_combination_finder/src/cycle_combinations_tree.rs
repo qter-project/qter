@@ -12,10 +12,7 @@ use std::{
 use log::{debug, trace};
 
 use crate::{
-    finder::{CycleCombination, CycleCombinationDetails, PossibleOrder},
-    nonemptyvec::{NonemptySlice, NonemptyVec},
-    pareto_front::{ConcurrentCCParetoFront, CycleCombinationDominate},
-    puzzle::OrbitDef,
+    cycle_combination_details::CycleCombinationDetails, finder::{CycleCombination, PossibleOrder}, nonemptyvec::{NonemptySlice, NonemptyVec}, pareto_front::concurrent_pareto_front::ConcurrentCCParetoFront, puzzle::OrbitDef
 };
 
 pub struct CycleCombinationsTree<const N: usize> {
@@ -23,9 +20,9 @@ pub struct CycleCombinationsTree<const N: usize> {
     exact_register_count: NonZeroU16,
     exact_piece_count: NonZeroU32,
     max_last_register_reverse_index: Arc<AtomicUsize>,
-    cycle_combinations: Arc<ConcurrentCCParetoFront<N, CycleCombination<N>>>,
+    cycle_combinations: Arc<ConcurrentCCParetoFront<N>>,
     permits: Arc<Mutex<usize>>,
-    cvar: Arc<Condvar>,
+    search_progession: Arc<Condvar>,
     sender: Sender<CycleCombinationCandidate<N>>,
     receiver_thread: JoinHandle<()>,
 }
@@ -41,22 +38,6 @@ struct CycleCombinationCandidate<const N: usize> {
     registers: Box<[PossibleOrder<N>]>,
     last_register_reverse_index: usize,
 }
-
-type ArenaCycleCombination<const N: usize> = CycleCombination<N>;
-// #[derive(Debug)]
-// struct ArenaCycleCombination<'a, const N: usize> {
-//     orders: Box<[PossibleOrder<N>], &'a Bump>,
-//     details: CycleCombinationDetails<N>,
-// }
-
-// impl<const N: usize> From<ArenaCycleCombination<N>> for CycleCombination<N> {
-//     fn from(value: ArenaCycleCombination<N>) -> Self {
-//         CycleCombination {
-//             orders: Box::clone_from_ref(&value.orders),
-//             details: value.details,
-//         }
-//     }
-// }
 
 #[allow(unused)]
 fn dbg_registers<const N: usize>(registers: &[PossibleOrder<N>]) -> String {
@@ -130,14 +111,15 @@ impl<const N: usize> CycleCombinationsTree<N> {
                                     if cycle_combinations.push_and_dominating_check(
                                         search_queue_candidate.registers,
                                         |dominating_registers| {
-                                            let details = CycleCombinationDetails::try_from(
+                                            match CycleCombinationDetails::try_from(
                                                 &*dominating_registers,
-                                            )
-                                            .ok()?;
-                                            Some(ArenaCycleCombination {
-                                                orders: dominating_registers,
-                                                details,
-                                            })
+                                            ) {
+                                                Ok(details) => Ok(CycleCombination {
+                                                    registers: dominating_registers,
+                                                    details,
+                                                }),
+                                                Err(()) => Err(dominating_registers),
+                                            }
                                         },
                                     ) {
                                         max_last_register_reverse_index.update(
@@ -177,14 +159,13 @@ impl<const N: usize> CycleCombinationsTree<N> {
         };
 
         Self {
-            // bump,
             possible_orders_except_one,
             exact_register_count,
             exact_piece_count,
             max_last_register_reverse_index,
             cycle_combinations,
             permits,
-            cvar: search_progession,
+            search_progession,
             sender,
             receiver_thread,
         }
@@ -257,7 +238,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
                 {
                     let mut lock = self.permits.lock();
                     if *lock == 0 {
-                        self.cvar.wait(&mut lock);
+                        self.search_progession.wait(&mut lock);
                     }
                 }
                 *unsafe { mutable.registers.get_unchecked_mut(register_index) } = old;
@@ -294,22 +275,12 @@ impl<const N: usize> CycleCombinationsTree<N> {
 
         loop {
             match Arc::try_unwrap(self.cycle_combinations) {
-                Ok(cycle_combinations) => break Vec::from(cycle_combinations),
+                Ok(cycle_combinations) => break Vec::from(cycle_combinations.into_sequential()),
                 Err(org) => {
                     self.cycle_combinations = org;
                     std::thread::yield_now();
                 }
             }
         }
-    }
-}
-
-impl<const N: usize> CycleCombinationDominate<N> for ArenaCycleCombination<N> {
-    fn dominate(&self, registers: &[PossibleOrder<N>]) -> bool {
-        self.orders
-            .iter()
-            .skip(1)
-            .zip(registers.iter().skip(1))
-            .all(|(s, o)| s.order >= o.order)
     }
 }

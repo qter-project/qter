@@ -630,6 +630,7 @@ dependencies = [
  "rayon",
  "test-log",
  "thiserror",
+ "thread_local",
  "union-find",
 ]
 

@@ -8,13 +8,11 @@
     nonpoison_mutex,
     nonpoison_condvar,
     sync_nonpoison,
-    nonpoison_rwlock,
     slice_swap_unchecked,
     portable_simd,
     gen_blocks,
     clone_from_ref,
     split_array,
-    allocator_api,
     isolate_most_least_significant_one
 )]
 
@@ -46,6 +44,7 @@ fn gauss_jordan_without_zero_rows(m: &mut BitMatrix, expected_rows: usize) -> Ve
 
 pub mod ac3;
 pub mod cycle_combinations_tree;
+pub mod cycle_combination_details;
 pub mod finder;
 pub mod min_piece_count;
 pub mod nonemptyvec;

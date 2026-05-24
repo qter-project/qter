@@ -1,13 +1,14 @@
 use std::{
     num::{NonZeroU16, NonZeroU32},
     ops::Deref,
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::{debug, trace};
 
 use crate::{
+    cycle_combination_details::CycleCombinationDetails,
     cycle_combinations_tree::CycleCombinationsTree, min_piece_count::MinPieceCount,
     orderexps::OrderExps, puzzle::PuzzleDef,
 };
@@ -24,11 +25,6 @@ pub enum RegisterCount {
     All,
 }
 
-#[derive(Debug)]
-pub struct Cycle<const N: usize> {
-    // partitions: Vec<Vec<u16>>,
-}
-
 #[derive(Debug, Clone)]
 pub struct PossibleOrder<const N: usize> {
     pub(crate) order: OrderExps<N>,
@@ -36,12 +32,8 @@ pub struct PossibleOrder<const N: usize> {
 }
 
 #[derive(Debug)]
-pub struct CycleCombinationDetails<const N: usize> {
-    cycles: Vec<Cycle<N>>,
-}
-
 pub struct CycleCombination<const N: usize> {
-    pub(crate) orders: Box<[PossibleOrder<N>]>,
+    pub(crate) registers: Box<[PossibleOrder<N>]>,
     pub(crate) details: CycleCombinationDetails<N>,
 }
 
@@ -67,8 +59,10 @@ impl<const N: usize> PossibleOrder<N> {
 }
 
 impl<const N: usize> CycleCombination<N> {
-    pub fn orders(&self) -> impl Iterator<Item = &OrderExps<N>> {
-        self.orders.iter().map(|PossibleOrder { order, .. }| order)
+    pub fn registers(&self) -> impl Iterator<Item = &OrderExps<N>> {
+        self.registers
+            .iter()
+            .map(|PossibleOrder { order, .. }| order)
     }
 }
 
@@ -80,34 +74,9 @@ impl<const N: usize> Deref for CycleCombination<N> {
     }
 }
 
-impl<const N: usize> CycleCombinationDetails<N> {
-    #[must_use]
-    pub fn cycles(&self) -> &[Cycle<N>] {
-        &self.cycles
-    }
-}
-
 impl<const N: usize> From<PuzzleDef<N>> for CycleCombinationFinder<N> {
     fn from(puzzle_def: PuzzleDef<N>) -> Self {
         Self { puzzle_def }
-    }
-}
-
-impl<const N: usize> TryFrom<&[PossibleOrder<N>]> for CycleCombinationDetails<N> {
-    type Error = ();
-
-    fn try_from(registers: &[PossibleOrder<N>]) -> Result<Self, ()> {
-        std::thread::sleep(Duration::from_millis(10));
-        if registers
-            .iter()
-            .map(|register| u64::try_from(register.order.as_bigint()).unwrap())
-            .sum::<u64>()
-            .is_multiple_of(28)
-        {
-            Ok(CycleCombinationDetails { cycles: vec![] })
-        } else {
-            Err(())
-        }
     }
 }
 

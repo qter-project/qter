@@ -12,8 +12,8 @@ fn cycles<const N: usize>(cycle_combinations: Vec<CycleCombination<N>>) -> Vec<V
         .into_iter()
         .map(|cycle_combination| {
             cycle_combination
-                .orders()
-                .map(|order| order.as_bigint().try_into().unwrap())
+                .registers()
+                .map(|register| register.as_bigint().try_into().unwrap())
                 .collect::<Vec<u64>>()
         })
         .collect::<Vec<_>>()
