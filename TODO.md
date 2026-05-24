@@ -9,12 +9,13 @@
 
 ## CCF
 
+- finder
+  - MAKE SURE pareto front dominance impl is correct
 - tree
-  - try out DFS parallelization
+  - bumpalo?
   - document unsafe
-  - NonemptyVec([PossibleOrder { order: 116454478140, min_piece_count: 137 }, PossibleOrder { order: 6, min_piece_count: 2 }, PossibleOrder { order: 3, min_piece_count: 1 }])
-  followed by
-  NonemptyVec([PossibleOrder { order: 82990547640, min_piece_count: 137 }, PossibleOrder { order: 6, min_piece_count: 2 }, PossibleOrder { order: 3, min_piece_count: 1 }])
+  - NonemptyVec([PossibleOrder { order: 116454478140, min_piece_count: 137 }, PossibleOrder { order: 6, min_piece_count: 2 }, PossibleOrder { order: 3, min_piece_count: 1 }]) followed by NonemptyVec([PossibleOrder { order: 82990547640, min_piece_count: 137 }, PossibleOrder { order: 6, min_piece_count: 2 }, PossibleOrder { order: 3, min_piece_count: 1 }])
+  - try out thread local pareto front
 - possible orders
   - daniel's SIMD gcd algorithm
   - compute minimum piece count
@@ -28,7 +29,9 @@
   - devise a scheme to make MPC incorporate piece counts
   - is possible_order.0.simd_ne(Simd::splat(0)) really needed
 - after MVP
+  - max diff ratio setting. prevents solutions like 720720, 2, 2
   - SubOptimal Optimality which uses the naive pareto front dominate approach; could also assume a lesser min piece count threshold
+  - can register_index <= 1 be better?
   - respond on github
   - reuse possible orders list if two orbits are the same
   - throw out order case if we ever compute it has a non-+1 orientation factor

@@ -1,42 +1,70 @@
-use std::num::{NonZeroU16, NonZeroU32, NonZeroUsize};
+use std::{
+    num::{NonZeroU16, NonZeroU32, NonZeroUsize},
+    sync::{
+        Arc,
+        atomic::{self, AtomicUsize},
+        mpsc::{self, Sender},
+        nonpoison::{Condvar, Mutex},
+    },
+    thread::JoinHandle,
+};
 
-use bumpalo::Bump;
-use log::debug;
+use log::{debug, trace};
 
 use crate::{
     finder::{CycleCombination, CycleCombinationDetails, PossibleOrder},
     nonemptyvec::{NonemptySlice, NonemptyVec},
-    pareto_front::{CycleCombinationDominate, CycleCombinationParetoFront},
+    pareto_front::{ConcurrentCCParetoFront, CycleCombinationDominate},
     puzzle::OrbitDef,
 };
 
 pub struct CycleCombinationsTree<const N: usize> {
-    bump: Bump,
     possible_orders_except_one: Vec<PossibleOrder<N>>,
     exact_register_count: NonZeroU16,
     exact_piece_count: NonZeroU32,
+    max_last_register_reverse_index: Arc<AtomicUsize>,
+    cycle_combinations: Arc<ConcurrentCCParetoFront<N, CycleCombination<N>>>,
+    permits: Arc<Mutex<usize>>,
+    cvar: Arc<Condvar>,
+    sender: Sender<CycleCombinationCandidate<N>>,
+    receiver_thread: JoinHandle<()>,
 }
 
-pub struct CycleCombinationsTreeMutable<'a, const N: usize> {
+pub struct CycleCombinationsTreeMutable<const N: usize> {
     registers: NonemptyVec<PossibleOrder<N>>,
-    max_last_register_reverse_index: usize,
     iter_count: u64,
-    cycle_combinations: CycleCombinationParetoFront<N, ArenaCycleCombination<'a, N>>,
 }
 
-#[derive(Debug)]
-struct ArenaCycleCombination<'a, const N: usize> {
-    orders: Box<[PossibleOrder<N>], &'a Bump>,
-    details: CycleCombinationDetails<N>,
+#[derive(Debug, Clone)]
+struct CycleCombinationCandidate<const N: usize> {
+    head: bool,
+    registers: Box<[PossibleOrder<N>]>,
+    last_register_reverse_index: usize,
 }
 
-impl<const N: usize> From<ArenaCycleCombination<'_, N>> for CycleCombination<N> {
-    fn from(value: ArenaCycleCombination<N>) -> Self {
-        CycleCombination {
-            orders: Box::clone_from_ref(&value.orders),
-            details: value.details,
-        }
-    }
+type ArenaCycleCombination<const N: usize> = CycleCombination<N>;
+// #[derive(Debug)]
+// struct ArenaCycleCombination<'a, const N: usize> {
+//     orders: Box<[PossibleOrder<N>], &'a Bump>,
+//     details: CycleCombinationDetails<N>,
+// }
+
+// impl<const N: usize> From<ArenaCycleCombination<N>> for CycleCombination<N> {
+//     fn from(value: ArenaCycleCombination<N>) -> Self {
+//         CycleCombination {
+//             orders: Box::clone_from_ref(&value.orders),
+//             details: value.details,
+//         }
+//     }
+// }
+
+#[allow(unused)]
+fn dbg_registers<const N: usize>(registers: &[PossibleOrder<N>]) -> String {
+    registers
+        .iter()
+        .map(|x| u64::try_from(x.order.as_bigint()).unwrap().to_string())
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 impl<const N: usize> CycleCombinationsTree<N> {
@@ -57,28 +85,128 @@ impl<const N: usize> CycleCombinationsTree<N> {
         )
         .unwrap();
 
-        let bump = Bump::new();
+        let max_last_register_reverse_index = Arc::new(AtomicUsize::new(0));
+        let cycle_combinations = Arc::new(ConcurrentCCParetoFront::default());
+        let permits = Arc::new(Mutex::new(rayon::current_num_threads()));
+        let search_progession = Arc::new(Condvar::new());
+        let (sender, receiver) = mpsc::channel::<CycleCombinationCandidate<N>>();
+        let receiver_thread = {
+            let permits = Arc::clone(&permits);
+            let max_last_register_reverse_index = Arc::clone(&max_last_register_reverse_index);
+            let cycle_combinations = Arc::clone(&cycle_combinations);
+            let search_progession = Arc::clone(&search_progession);
+            std::thread::spawn(move || {
+                let mut search_queue: Vec<CycleCombinationCandidate<N>> = vec![];
+                for candidate in receiver {
+                    if candidate.head && !search_queue.is_empty() {
+                        {
+                            // TODO: ensure it actually waits since there are 14 threads not 12
+                            let search_queue = search_queue.clone();
+                            let permits = Arc::clone(&permits);
+                            let max_last_register_reverse_index =
+                                Arc::clone(&max_last_register_reverse_index);
+                            let cycle_combinations = Arc::clone(&cycle_combinations);
+                            let cvar = Arc::clone(&search_progession);
+                            rayon::spawn(move || {
+                                {
+                                    let mut l = permits.lock();
+                                    trace!(
+                                        "{:?} just acq: {} -> {}",
+                                        std::thread::current().id(),
+                                        l,
+                                        *l - 1
+                                    );
+                                    *l -= 1;
+                                }
+                                // println!(
+                                //     "---\n{:?}\n{}\n---",
+                                //     std::thread::current().id(),
+                                //     q.iter()
+                                //         .map(|i| dbg_registers(i))
+                                //         .collect::<Vec<_>>()
+                                //         .join("\n")
+                                // );
+                                for search_queue_candidate in search_queue {
+                                    if cycle_combinations.push_and_dominating_check(
+                                        search_queue_candidate.registers,
+                                        |dominating_registers| {
+                                            let details = CycleCombinationDetails::try_from(
+                                                &*dominating_registers,
+                                            )
+                                            .ok()?;
+                                            Some(ArenaCycleCombination {
+                                                orders: dominating_registers,
+                                                details,
+                                            })
+                                        },
+                                    ) {
+                                        max_last_register_reverse_index.update(
+                                            atomic::Ordering::Relaxed,
+                                            atomic::Ordering::Relaxed,
+                                            |curr_last_register_reverse_index| {
+                                                curr_last_register_reverse_index.max(
+                                                    search_queue_candidate
+                                                        .last_register_reverse_index,
+                                                )
+                                            },
+                                        );
+                                        break;
+                                    }
+                                }
+                                {
+                                    let mut l = permits.lock();
+                                    if *l == 0 {
+                                        cvar.notify_one();
+                                    }
+                                    trace!(
+                                        "{:?} just released: {} -> {}",
+                                        std::thread::current().id(),
+                                        l,
+                                        *l + 1
+                                    );
+                                    *l += 1;
+                                }
+                            });
+                        }
+                        search_queue.clear();
+                    } else {
+                        search_queue.push(candidate);
+                    }
+                }
+            })
+        };
+
         Self {
-            bump,
+            // bump,
             possible_orders_except_one,
             exact_register_count,
             exact_piece_count,
+            max_last_register_reverse_index,
+            cycle_combinations,
+            permits,
+            cvar: search_progession,
+            sender,
+            receiver_thread,
         }
     }
 
-    unsafe fn search_dfs_helper<'a>(
-        &'a self,
-        mutable: &mut CycleCombinationsTreeMutable<'a, N>,
+    unsafe fn search_dfs_helper(
+        &self,
+        mutable: &mut CycleCombinationsTreeMutable<N>,
         remaining_possible_orders_except_one: &[PossibleOrder<N>],
         remaining_register_count: NonZeroUsize,
         remaining_piece_count: NonZeroU32,
     ) {
         let register_index = mutable.registers.len() - remaining_register_count.get();
         let mut curr_possible_orders = remaining_possible_orders_except_one;
+        let mut head = true;
         while let Some((possible_order, next_possible_orders)) = curr_possible_orders.split_first()
         {
             if register_index <= 1
-                && next_possible_orders.len() <= mutable.max_last_register_reverse_index
+                && next_possible_orders.len()
+                    <= self
+                        .max_last_register_reverse_index
+                        .load(atomic::Ordering::Relaxed)
             {
                 break;
             }
@@ -118,21 +246,19 @@ impl<const N: usize> CycleCombinationsTree<N> {
                     possible_order.clone(),
                 );
                 mutable.iter_count += 1;
-                let registers_except_first = mutable.registers.split_first().1;
-                if mutable.cycle_combinations.push_and_dominating_check(
-                    registers_except_first,
-                    |dominating_registers| {
-                        Some(ArenaCycleCombination {
-                            orders: Box::clone_from_ref_in(&mutable.registers, &self.bump),
-                            details: CycleCombinationDetails::try_from(dominating_registers)
-                                .ok()?,
-                        })
-                    },
-                ) {
-                    mutable.max_last_register_reverse_index = mutable
-                        .max_last_register_reverse_index
-                        .max(next_possible_orders.len());
-                    break;
+                self.sender
+                    .send(CycleCombinationCandidate {
+                        head,
+                        registers: Box::clone_from_ref(&mutable.registers),
+                        last_register_reverse_index: next_possible_orders.len(),
+                    })
+                    .unwrap();
+                head = false;
+                {
+                    let mut lock = self.permits.lock();
+                    if *lock == 0 {
+                        self.cvar.wait(&mut lock);
+                    }
                 }
                 *unsafe { mutable.registers.get_unchecked_mut(register_index) } = old;
             }
@@ -140,7 +266,8 @@ impl<const N: usize> CycleCombinationsTree<N> {
         }
     }
 
-    pub fn search_dfs(self) -> Vec<CycleCombination<N>> {
+    #[must_use]
+    pub fn search_dfs(mut self) -> Vec<CycleCombination<N>> {
         // We can unwrap because `exact_register_count` is NonZero.
         #[allow(clippy::missing_panics_doc)]
         let mut mutable = CycleCombinationsTreeMutable {
@@ -149,9 +276,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
                 usize::from(self.exact_register_count.get())
             ])
             .unwrap(),
-            max_last_register_reverse_index: 0,
             iter_count: 0,
-            cycle_combinations: CycleCombinationParetoFront::default(),
         };
         unsafe {
             self.search_dfs_helper(
@@ -162,19 +287,29 @@ impl<const N: usize> CycleCombinationsTree<N> {
             );
         }
         debug!("Cycle combinations in {} iterations", mutable.iter_count);
-        Vec::from(mutable.cycle_combinations)
-            .into_iter()
-            .map(std::convert::Into::into)
-            .collect()
+
+        drop(self.sender);
+        #[allow(clippy::missing_panics_doc)]
+        self.receiver_thread.join().unwrap();
+
+        loop {
+            match Arc::try_unwrap(self.cycle_combinations) {
+                Ok(cycle_combinations) => break Vec::from(cycle_combinations),
+                Err(org) => {
+                    self.cycle_combinations = org;
+                    std::thread::yield_now();
+                }
+            }
+        }
     }
 }
 
-impl<const N: usize> CycleCombinationDominate<N> for ArenaCycleCombination<'_, N> {
-    fn dominate(&self, registers_except_first: &[PossibleOrder<N>]) -> bool {
+impl<const N: usize> CycleCombinationDominate<N> for ArenaCycleCombination<N> {
+    fn dominate(&self, registers: &[PossibleOrder<N>]) -> bool {
         self.orders
             .iter()
             .skip(1)
-            .zip(registers_except_first)
+            .zip(registers.iter().skip(1))
             .all(|(s, o)| s.order >= o.order)
     }
 }

@@ -5,6 +5,10 @@
     clippy::similar_names
 )]
 #![feature(
+    nonpoison_mutex,
+    nonpoison_condvar,
+    sync_nonpoison,
+    nonpoison_rwlock,
     slice_swap_unchecked,
     portable_simd,
     gen_blocks,
@@ -41,13 +45,13 @@ fn gauss_jordan_without_zero_rows(m: &mut BitMatrix, expected_rows: usize) -> Ve
 }
 
 pub mod ac3;
+pub mod cycle_combinations_tree;
 pub mod finder;
 pub mod min_piece_count;
+pub mod nonemptyvec;
 pub mod number_theory;
 pub mod orderexps;
 pub mod pareto_front;
 pub mod possible_orders;
 pub mod puzzle;
 pub mod trie;
-pub mod cycle_combinations_tree;
-pub mod nonemptyvec;

@@ -97,6 +97,7 @@ impl<const N: usize> TryFrom<&[PossibleOrder<N>]> for CycleCombinationDetails<N>
     type Error = ();
 
     fn try_from(registers: &[PossibleOrder<N>]) -> Result<Self, ()> {
+        std::thread::sleep(Duration::from_millis(10));
         if registers
             .iter()
             .map(|register| u64::try_from(register.order.as_bigint()).unwrap())
