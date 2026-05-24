@@ -12,7 +12,11 @@ use std::{
 use log::{debug, trace};
 
 use crate::{
-    cycle_combination_details::CycleCombinationDetails, finder::{CycleCombination, PossibleOrder}, nonemptyvec::{NonemptySlice, NonemptyVec}, pareto_front::concurrent_pareto_front::ConcurrentCCParetoFront, puzzle::OrbitDef
+    cycle_combination_details::CycleCombinationDetails,
+    finder::{CycleCombination, PossibleOrder},
+    nonemptyvec::{NonemptySlice, NonemptyVec},
+    pareto_front::concurrent_pareto_front::ConcurrentCCParetoFront,
+    puzzle::OrbitDef,
 };
 
 pub struct CycleCombinationsTree<const N: usize> {
@@ -122,6 +126,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
                                             }
                                         },
                                     ) {
+                                        // TODO: this is just wrong
                                         max_last_register_reverse_index.update(
                                             atomic::Ordering::Relaxed,
                                             atomic::Ordering::Relaxed,
@@ -151,9 +156,8 @@ impl<const N: usize> CycleCombinationsTree<N> {
                             });
                         }
                         search_queue.clear();
-                    } else {
-                        search_queue.push(candidate);
                     }
+                    search_queue.push(candidate);
                 }
             })
         };
@@ -269,7 +273,15 @@ impl<const N: usize> CycleCombinationsTree<N> {
         }
         debug!("Cycle combinations in {} iterations", mutable.iter_count);
 
+        self.sender
+            .send(CycleCombinationCandidate {
+                head: true,
+                registers: vec![].into_boxed_slice(),
+                last_register_reverse_index: 0,
+            })
+            .unwrap();
         drop(self.sender);
+
         #[allow(clippy::missing_panics_doc)]
         self.receiver_thread.join().unwrap();
 
