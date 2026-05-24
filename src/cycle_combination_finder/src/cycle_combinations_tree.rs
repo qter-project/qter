@@ -273,6 +273,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
         }
         debug!("Cycle combinations in {} iterations", mutable.iter_count);
 
+        #[allow(clippy::missing_panics_doc)]
         self.sender
             .send(CycleCombinationCandidate {
                 head: true,
@@ -287,7 +288,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
 
         loop {
             match Arc::try_unwrap(self.cycle_combinations) {
-                Ok(cycle_combinations) => break Vec::from(cycle_combinations.into_sequential()),
+                Ok(cycle_combinations) => break cycle_combinations.into_sequential().into(),
                 Err(org) => {
                     self.cycle_combinations = org;
                     std::thread::yield_now();
