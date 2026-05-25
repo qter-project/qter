@@ -3,7 +3,7 @@
 use std::num::NonZeroU16;
 
 use cycle_combination_finder::{
-    finder::{CycleCombinationFinder, CycleCombinationFinderConfig, Optimality, RegisterCount},
+    finder::{CycleCombinationFinder, RegisterCount},
     puzzle::misc::BIG1,
 };
 
@@ -14,11 +14,10 @@ mod common;
 #[test_log::test]
 fn optimal_2() {
     let big = BIG1.clone();
-    let ccf = CycleCombinationFinder::from(big);
-    let cycle_combinations = ccf.find(CycleCombinationFinderConfig {
-        optimality: Optimality::Optimal,
-        register_count: RegisterCount::Exactly(NonZeroU16::new(2).unwrap()),
-    });
+    let cycle_combinations = CycleCombinationFinder::from(big)
+        .with_register_count(RegisterCount::Exactly(NonZeroU16::new(2).unwrap()))
+        .with_sorted(true)
+        .find();
     assert_eq!(
         cycles(cycle_combinations),
         vec![

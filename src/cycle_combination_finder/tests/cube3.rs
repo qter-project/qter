@@ -3,7 +3,7 @@
 use std::num::NonZeroU16;
 
 use cycle_combination_finder::{
-    finder::{CycleCombinationFinder, CycleCombinationFinderConfig, Optimality, RegisterCount},
+    finder::{CycleCombinationFinder, Optimality, RegisterCount},
     puzzle::cubeN::CUBE3,
 };
 
@@ -14,11 +14,10 @@ mod common;
 #[test_log::test]
 fn optimal_2() {
     let cube3 = CUBE3.clone();
-    let ccf = CycleCombinationFinder::from(cube3);
-    let cycle_combinations = ccf.find(CycleCombinationFinderConfig {
-        optimality: Optimality::Optimal,
-        register_count: RegisterCount::Exactly(NonZeroU16::new(2).unwrap()),
-    });
+    let cycle_combinations = CycleCombinationFinder::from(cube3)
+        .with_register_count(RegisterCount::Exactly(NonZeroU16::new(2).unwrap()))
+        .with_sorted(true)
+        .find();
     assert_eq!(
         cycles(cycle_combinations),
         vec![
@@ -37,11 +36,10 @@ fn optimal_2() {
 #[test_log::test]
 fn optimal_3() {
     let cube3 = CUBE3.clone();
-    let ccf = CycleCombinationFinder::from(cube3);
-    let cycle_combinations = ccf.find(CycleCombinationFinderConfig {
-        optimality: Optimality::Optimal,
-        register_count: RegisterCount::Exactly(NonZeroU16::new(3).unwrap()),
-    });
+    let cycle_combinations = CycleCombinationFinder::from(cube3)
+        .with_register_count(RegisterCount::Exactly(NonZeroU16::new(3).unwrap()))
+        .with_sorted(true)
+        .find();
     assert_eq!(
         cycles(cycle_combinations),
         vec![
@@ -61,11 +59,10 @@ fn optimal_3() {
 #[test_log::test]
 fn optimal_4() {
     let cube3 = CUBE3.clone();
-    let ccf = CycleCombinationFinder::from(cube3);
-    let cycle_combinations = ccf.find(CycleCombinationFinderConfig {
-        optimality: Optimality::Optimal,
-        register_count: RegisterCount::Exactly(NonZeroU16::new(4).unwrap()),
-    });
+    let cycle_combinations = CycleCombinationFinder::from(cube3)
+        .with_register_count(RegisterCount::Exactly(NonZeroU16::new(4).unwrap()))
+        .with_sorted(true)
+        .find();
     assert_eq!(
         cycles(cycle_combinations),
         vec![
@@ -81,11 +78,10 @@ fn optimal_4() {
 #[test_log::test]
 fn optimal_5() {
     let cube3 = CUBE3.clone();
-    let ccf = CycleCombinationFinder::from(cube3);
-    let cycle_combinations = ccf.find(CycleCombinationFinderConfig {
-        optimality: Optimality::Optimal,
-        register_count: RegisterCount::Exactly(NonZeroU16::new(5).unwrap()),
-    });
+    let cycle_combinations = CycleCombinationFinder::from(cube3)
+        .with_register_count(RegisterCount::Exactly(NonZeroU16::new(5).unwrap()))
+        .with_sorted(true)
+        .find();
     assert_eq!(
         cycles(cycle_combinations),
         vec![
@@ -101,21 +97,21 @@ fn optimal_5() {
 #[test_log::test]
 fn equivalent_2() {
     let cube3 = CUBE3.clone();
-    let ccf = CycleCombinationFinder::from(cube3);
-    let cycle_combinations = ccf.find(CycleCombinationFinderConfig {
-        optimality: Optimality::Equivalent,
-        register_count: RegisterCount::Exactly(NonZeroU16::new(2).unwrap()),
-    });
+    let cycle_combinations = CycleCombinationFinder::from(cube3)
+        .with_register_count(RegisterCount::Exactly(NonZeroU16::new(2).unwrap()))
+        .with_optimality(Optimality::Equivalent)
+        .with_sorted(true)
+        .find();
     assert_eq!(cycles(cycle_combinations), vec![vec![90, 90]]);
 }
 
 #[test_log::test]
 fn equivalent_3() {
     let cube3 = CUBE3.clone();
-    let ccf = CycleCombinationFinder::from(cube3);
-    let cycle_combinations = ccf.find(CycleCombinationFinderConfig {
-        optimality: Optimality::Equivalent,
-        register_count: RegisterCount::Exactly(NonZeroU16::new(3).unwrap()),
-    });
+    let cycle_combinations = CycleCombinationFinder::from(cube3)
+        .with_register_count(RegisterCount::Exactly(NonZeroU16::new(3).unwrap()))
+        .with_optimality(Optimality::Equivalent)
+        .with_sorted(true)
+        .find();
     assert_eq!(cycles(cycle_combinations), vec![vec![30, 30, 30]]);
 }

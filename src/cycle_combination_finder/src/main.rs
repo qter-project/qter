@@ -1,9 +1,6 @@
 use std::{num::NonZeroU16, time::Instant};
 
-use cycle_combination_finder::finder::{
-    CycleCombination, CycleCombinationFinder, CycleCombinationFinderConfig, Optimality,
-    RegisterCount,
-};
+use cycle_combination_finder::finder::{CycleCombination, CycleCombinationFinder, RegisterCount};
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::info;
 
@@ -25,11 +22,10 @@ fn main() {
     let puzzle = cycle_combination_finder::puzzle::minxN::MINX3.clone();
     // let puzzle = cycle_combination_finder::puzzle::cubeN::CUBE3.clone();
     let now = Instant::now();
-    let ccf = CycleCombinationFinder::from(puzzle);
-    let cycle_combinations = ccf.find(CycleCombinationFinderConfig {
-        optimality: Optimality::Optimal,
-        register_count: RegisterCount::Exactly(NonZeroU16::new(4).unwrap()),
-    });
+    let cycle_combinations = CycleCombinationFinder::from(puzzle)
+        .with_register_count(RegisterCount::Exactly(NonZeroU16::new(4).unwrap()))
+        .with_sorted(true)
+        .find();
     info!("CCF in {}", now.elapsed().human(Truncate::Micro));
     info!("Solutions length: {}", cycle_combinations.len());
 

@@ -1,4 +1,5 @@
 use std::{
+    cmp::Ordering,
     num::{NonZeroU16, NonZeroU32},
     ops::Deref,
     time::Instant,
@@ -13,15 +14,17 @@ use crate::{
     orderexps::OrderExps, puzzle::PuzzleDef,
 };
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub enum Optimality {
     Equivalent,
+    #[default]
     Optimal,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub enum RegisterCount {
     Exactly(NonZeroU16),
+    #[default]
     All,
 }
 
@@ -39,12 +42,16 @@ pub struct CycleCombination<const N: usize> {
 
 pub struct CycleCombinationFinder<const N: usize> {
     puzzle_def: PuzzleDef<N>,
+    config: CycleCombinationFinderConfig,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub struct CycleCombinationFinderConfig {
-    pub optimality: Optimality,
-    pub register_count: RegisterCount,
+    optimality: Optimality,
+    register_count: RegisterCount,
+    // TODO:
+    // max_solutions_count: 
+    sorted: bool,
 }
 
 impl<const N: usize> PossibleOrder<N> {
@@ -55,6 +62,46 @@ impl<const N: usize> PossibleOrder<N> {
             order: OrderExps::one(),
             min_piece_count: 1.try_into().unwrap(),
         }
+    }
+}
+
+impl<const N: usize> Ord for PossibleOrder<N> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.order.cmp(&other.order)
+    }
+}
+
+impl<const N: usize> PartialOrd for PossibleOrder<N> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<const N: usize> Eq for PossibleOrder<N> {}
+
+impl<const N: usize> PartialEq for PossibleOrder<N> {
+    fn eq(&self, other: &Self) -> bool {
+        self.order == other.order
+    }
+}
+
+impl<const N: usize> Ord for CycleCombination<N> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.registers.iter().cmp(&other.registers)
+    }
+}
+
+impl<const N: usize> PartialOrd for CycleCombination<N> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<const N: usize> Eq for CycleCombination<N> {}
+
+impl<const N: usize> PartialEq for CycleCombination<N> {
+    fn eq(&self, other: &Self) -> bool {
+        self.registers == other.registers
     }
 }
 
@@ -76,11 +123,32 @@ impl<const N: usize> Deref for CycleCombination<N> {
 
 impl<const N: usize> From<PuzzleDef<N>> for CycleCombinationFinder<N> {
     fn from(puzzle_def: PuzzleDef<N>) -> Self {
-        Self { puzzle_def }
+        Self {
+            puzzle_def,
+            config: CycleCombinationFinderConfig::default(),
+        }
     }
 }
 
 impl<const N: usize> CycleCombinationFinder<N> {
+    #[must_use]
+    pub fn with_sorted(mut self, sorted: bool) -> Self {
+        self.config.sorted = sorted;
+        self
+    }
+
+    #[must_use]
+    pub fn with_optimality(mut self, optimality: Optimality) -> Self {
+        self.config.optimality = optimality;
+        self
+    }
+
+    #[must_use]
+    pub fn with_register_count(mut self, register_count: RegisterCount) -> Self {
+        self.config.register_count = register_count;
+        self
+    }
+
     fn find_optimal(&self, register_count: RegisterCount) -> Vec<CycleCombination<N>> {
         let RegisterCount::Exactly(exact_register_count) = register_count else {
             panic!("expected exactly variant for now");
@@ -123,10 +191,12 @@ impl<const N: usize> CycleCombinationFinder<N> {
     }
 
     #[must_use]
-    pub fn find(&self, config: CycleCombinationFinderConfig) -> Vec<CycleCombination<N>> {
-        match config.optimality {
+    pub fn find(&self) -> Vec<CycleCombination<N>> {
+        let mut ret = match self.config.optimality {
             Optimality::Equivalent => unimplemented!(),
-            Optimality::Optimal => self.find_optimal(config.register_count),
-        }
+            Optimality::Optimal => self.find_optimal(self.config.register_count),
+        };
+        ret.sort_unstable();
+        ret
     }
 }

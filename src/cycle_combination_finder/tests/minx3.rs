@@ -3,7 +3,7 @@
 use std::num::NonZeroU16;
 
 use cycle_combination_finder::{
-    finder::{CycleCombinationFinder, CycleCombinationFinderConfig, Optimality, RegisterCount},
+    finder::{CycleCombinationFinder, Optimality, RegisterCount},
     puzzle::minxN::MINX3,
 };
 
@@ -14,11 +14,10 @@ mod common;
 #[test_log::test]
 fn optimal_2() {
     let megaminx = MINX3.clone();
-    let ccf = CycleCombinationFinder::from(megaminx);
-    let cycle_combinations = ccf.find(CycleCombinationFinderConfig {
-        optimality: Optimality::Optimal,
-        register_count: RegisterCount::Exactly(NonZeroU16::new(2).unwrap()),
-    });
+    let cycle_combinations = CycleCombinationFinder::from(megaminx)
+        .with_register_count(RegisterCount::Exactly(NonZeroU16::new(2).unwrap()))
+        .with_sorted(true)
+        .find();
     assert_eq!(
         cycles(cycle_combinations),
         vec![
@@ -43,11 +42,10 @@ fn optimal_2() {
 #[test_log::test]
 fn optimal_3() {
     let megaminx = MINX3.clone();
-    let ccf = CycleCombinationFinder::from(megaminx);
-    let cycle_combinations = ccf.find(CycleCombinationFinderConfig {
-        optimality: Optimality::Optimal,
-        register_count: RegisterCount::Exactly(NonZeroU16::new(3).unwrap()),
-    });
+    let cycle_combinations = CycleCombinationFinder::from(megaminx)
+        .with_register_count(RegisterCount::Exactly(NonZeroU16::new(3).unwrap()))
+        .with_sorted(true)
+        .find();
     assert_eq!(
         cycles(cycle_combinations),
         vec![
@@ -73,21 +71,21 @@ fn optimal_3() {
 #[test_log::test]
 fn equivalent_2() {
     let megaminx = MINX3.clone();
-    let ccf = CycleCombinationFinder::from(megaminx);
-    let cycle_combinations = ccf.find(CycleCombinationFinderConfig {
-        optimality: Optimality::Equivalent,
-        register_count: RegisterCount::Exactly(NonZeroU16::new(2).unwrap()),
-    });
+    let cycle_combinations = CycleCombinationFinder::from(megaminx)
+        .with_register_count(RegisterCount::Exactly(NonZeroU16::new(2).unwrap()))
+        .with_optimality(Optimality::Equivalent)
+        .with_sorted(true)
+        .find();
     assert_eq!(cycles(cycle_combinations), vec![vec![5040, 5040]]);
 }
 
 #[test_log::test]
 fn equivalent_3() {
     let megaminx = MINX3.clone();
-    let ccf = CycleCombinationFinder::from(megaminx);
-    let cycle_combinations = ccf.find(CycleCombinationFinderConfig {
-        optimality: Optimality::Equivalent,
-        register_count: RegisterCount::Exactly(NonZeroU16::new(3).unwrap()),
-    });
+    let cycle_combinations = CycleCombinationFinder::from(megaminx)
+        .with_register_count(RegisterCount::Exactly(NonZeroU16::new(3).unwrap()))
+        .with_optimality(Optimality::Equivalent)
+        .with_sorted(true)
+        .find();
     assert_eq!(cycles(cycle_combinations), vec![vec![630, 630, 630]]);
 }
