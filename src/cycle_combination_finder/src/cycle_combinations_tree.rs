@@ -2,15 +2,14 @@ use std::{
     num::{NonZeroU16, NonZeroU32, NonZeroUsize},
     sync::{
         Arc,
-        atomic::{self, AtomicUsize},
-        nonpoison::{Condvar, Mutex},
+        atomic::{self, AtomicU32, AtomicUsize},
+        mpmc,
     },
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use humanize_duration::{Truncate, prelude::DurationExt};
-use log::{debug, trace};
-use spmc::Sender;
+use log::debug;
 
 use crate::{
     cycle_combination_details::CycleCombinationDetails,
@@ -30,15 +29,13 @@ pub struct CycleCombinationsTreeMutable<const N: usize> {
     prefix_and_last_registers: Vec<(PossibleOrder<N>, usize)>,
     registers: NonemptyVec<PossibleOrder<N>>,
     candidate_count: u64,
-    waiting_time: Duration,
-    sender: Sender<PackedCycleCombinationCandidateQueue<N>>,
+    sender: mpmc::Sender<PackedCycleCombinationCandidateQueue<N>>,
 }
 
 pub struct CycleCombinationsTreeConcurrent<const N: usize> {
     cycle_combinations: ConcurrentCCParetoFront<N>,
     max_last_register_order_reverse_index: AtomicUsize,
-    permits: Mutex<usize>,
-    search_progression: Condvar,
+    post_candidate_count: AtomicU32,
 }
 
 #[derive(Debug, Clone)]
@@ -109,16 +106,6 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let mut send_queue = false;
         while let Some((possible_order, next_possible_orders)) = curr_possible_orders.split_first()
         {
-            let mut permits_lock = concurrent.permits.lock();
-            if *permits_lock == 0 {
-                let waiting = Instant::now();
-                concurrent.search_progression.wait(&mut permits_lock);
-                drop(permits_lock);
-                mutable.waiting_time += waiting.elapsed();
-            } else {
-                drop(permits_lock);
-            }
-
             if register_index <= 1
                 && next_possible_orders.len()
                     <= concurrent
@@ -194,16 +181,16 @@ impl<const N: usize> CycleCombinationsTree<N> {
 
     #[must_use]
     pub fn search_dfs(self) -> Vec<CycleCombination<N>> {
-        let (sender, receiver) = spmc::channel::<PackedCycleCombinationCandidateQueue<N>>();
-
         #[allow(clippy::missing_panics_doc)]
         let core_ids = core_affinity::get_core_ids().unwrap();
 
+        // We do not use `0` as to allow a buffer for every core to prevent starvation
+        let (sender, receiver) = mpmc::sync_channel::<PackedCycleCombinationCandidateQueue<N>>(core_ids.len());
+
         let concurrent = Arc::new(CycleCombinationsTreeConcurrent {
+            post_candidate_count: AtomicU32::new(0),
             cycle_combinations: ConcurrentCCParetoFront::default(),
             max_last_register_order_reverse_index: AtomicUsize::new(0),
-            permits: Mutex::new(core_ids.len()),
-            search_progression: Condvar::new(),
         });
 
         let worker_thread_handles = core_ids
@@ -214,19 +201,6 @@ impl<const N: usize> CycleCombinationsTree<N> {
                 std::thread::spawn(move || {
                     core_affinity::set_for_current(core_id);
                     while let Ok(packed_queue) = receiver.recv() {
-                        let mut permits_lock = concurrent.permits.lock();
-                        let old_permits = *permits_lock;
-                        *permits_lock = old_permits - 1;
-                        drop(permits_lock);
-
-                        trace!(
-                            "{:?} just acq: {} -> {}",
-                            std::thread::current().id(),
-                            old_permits,
-                            old_permits - 1
-                        );
-
-                        // TODO: put into its own function
                         let (prefix_registers, last_registers) = packed_queue
                             .prefix_and_last_registers
                             .split_at(usize::from(self.exact_register_count.get() - 1));
@@ -240,6 +214,9 @@ impl<const N: usize> CycleCombinationsTree<N> {
                             if concurrent.cycle_combinations.push_and_dominating_check(
                                 disjoint_registers,
                                 |dominating_registers| {
+                                    concurrent
+                                        .post_candidate_count
+                                        .fetch_add(1, atomic::Ordering::Relaxed);
                                     CycleCombinationDetails::new(dominating_registers).map(
                                         |details| CycleCombination {
                                             registers: dominating_registers
@@ -258,19 +235,6 @@ impl<const N: usize> CycleCombinationsTree<N> {
                                 break;
                             }
                         }
-                        let mut permits_lock = concurrent.permits.lock();
-                        let old_permits = *permits_lock;
-                        *permits_lock = old_permits + 1;
-                        drop(permits_lock);
-                        if old_permits == 0 {
-                            concurrent.search_progression.notify_one();
-                        }
-                        trace!(
-                            "{:?} just rel: {} -> {}",
-                            std::thread::current().id(),
-                            old_permits,
-                            old_permits + 1
-                        );
                     }
                 })
             })
@@ -286,11 +250,10 @@ impl<const N: usize> CycleCombinationsTree<N> {
             ])
             .unwrap(),
             candidate_count: 0,
-            waiting_time: Duration::default(),
             sender,
         };
 
-        let start = Instant::now();
+        let total_time = Instant::now();
 
         unsafe {
             Self::search_dfs_helper(
@@ -302,7 +265,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
             );
         }
 
-        let dfs_time = start.elapsed();
+        let dfs_time = total_time.elapsed();
 
         drop(mutable.sender);
         for handle in worker_thread_handles {
@@ -311,11 +274,13 @@ impl<const N: usize> CycleCombinationsTree<N> {
         }
 
         debug!(
-            "Search tree: iterations={}; total={}; dfs={}; waiting={}",
+            "Search tree complete: candidates={}; post_candidates={}; total={}; dfs={}",
             mutable.candidate_count,
-            start.elapsed().human(Truncate::Micro),
+            concurrent
+                .post_candidate_count
+                .load(atomic::Ordering::Relaxed),
+            total_time.elapsed().human(Truncate::Micro),
             dfs_time.human(Truncate::Micro),
-            mutable.waiting_time.human(Truncate::Micro)
         );
 
         #[allow(clippy::missing_panics_doc)]

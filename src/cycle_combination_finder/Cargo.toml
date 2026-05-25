@@ -17,7 +17,6 @@ bitgauss = { git = "https://github.com/qter-project/bitgauss" }
 union-find = { git = "https://github.com/qter-project/union-find-rs" }
 bumpalo = { version = "3.20.2", features = ["allocator_api"] }
 thread_local = "1.1.9"
-spmc = "0.3.0"
 core_affinity = "0.8.3"
 
 [dev-dependencies]
