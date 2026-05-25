@@ -2,7 +2,7 @@ use std::{
     num::{NonZeroU16, NonZeroU32, NonZeroUsize},
     sync::{
         Arc,
-        atomic::{self, AtomicU32, AtomicUsize},
+        atomic::{self, AtomicUsize},
         nonpoison::{Condvar, Mutex},
     },
     time::{Duration, Instant},
@@ -106,30 +106,19 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let mut curr_possible_orders = possible_orders;
         let maybe_next_remaining_register_count =
             NonZeroUsize::new(remaining_register_count.get() - 1);
-        // let mut good;
-        if maybe_next_remaining_register_count.is_none() {
-            // TODO: can this be extended and this not used, wasting time?
-            mutable.prefix_and_last_registers.clear();
-            mutable.prefix_and_last_registers.extend(
-                mutable
-                    .registers
-                    .split_last()
-                    .1
-                    .iter()
-                    .map(|register| (register.clone(), 0)),
-            );
-        }
+        let mut send_queue = false;
         while let Some((possible_order, next_possible_orders)) = curr_possible_orders.split_first()
         {
-            {
-                let mut lock = concurrent.permits.lock();
-                if *lock == 0 {
-                    // TODO: make this part of mutable
-                    let waiting = Instant::now();
-                    concurrent.search_progression.wait(&mut lock);
-                    mutable.waiting_time += waiting.elapsed();
-                }
+            let mut permits_lock = concurrent.permits.lock();
+            if *permits_lock == 0 {
+                let waiting = Instant::now();
+                concurrent.search_progression.wait(&mut permits_lock);
+                drop(permits_lock);
+                mutable.waiting_time += waiting.elapsed();
+            } else {
+                drop(permits_lock);
             }
+
             if register_index <= 1
                 && next_possible_orders.len()
                     <= concurrent
@@ -168,6 +157,22 @@ impl<const N: usize> CycleCombinationsTree<N> {
                 }
             } else {
                 mutable.candidate_count += 1;
+
+                if !send_queue {
+                    // Initialize in here because a puzzle with no orientations at all can have a
+                    // possible order that is not one, which may cause no solutions to be found at
+                    // this leaf node
+                    mutable.prefix_and_last_registers.clear();
+                    mutable.prefix_and_last_registers.extend(
+                        mutable
+                            .registers
+                            .split_last()
+                            .1
+                            .iter()
+                            .map(|register| (register.clone(), 0)),
+                    );
+                    send_queue = true;
+                }
                 mutable
                     .prefix_and_last_registers
                     .push((possible_order.clone(), next_possible_orders.len()));
@@ -175,7 +180,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
             curr_possible_orders = next_possible_orders;
         }
 
-        if maybe_next_remaining_register_count.is_none() {
+        if send_queue {
             mutable
                 .sender
                 .send(PackedCycleCombinationCandidateQueue {
