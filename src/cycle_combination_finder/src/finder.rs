@@ -246,6 +246,8 @@ mod tests {
             .collect::<Vec<_>>()
     }
 
+    // TODO: minx4 test
+    
     #[test_log::test]
     fn minx3_optimal_4() {
         let minx3 = MINX3.clone();

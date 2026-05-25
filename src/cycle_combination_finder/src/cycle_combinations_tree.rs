@@ -2,10 +2,9 @@ use std::{
     num::{NonZeroU16, NonZeroU32, NonZeroUsize},
     sync::{
         Arc,
-        atomic::{self, AtomicUsize},
+        atomic::{self, AtomicU32, AtomicUsize},
         nonpoison::{Condvar, Mutex},
     },
-    thread::available_parallelism,
     time::{Duration, Instant},
 };
 
@@ -192,36 +191,37 @@ impl<const N: usize> CycleCombinationsTree<N> {
     pub fn search_dfs(self) -> Vec<CycleCombination<N>> {
         let (sender, receiver) = spmc::channel::<PackedCycleCombinationCandidateQueue<N>>();
 
-        let num_worker_threads = available_parallelism()
-            .map(|a| a.get() - 1)
-            .unwrap_or_default()
-            .max(1);
+        #[allow(clippy::missing_panics_doc)]
+        let core_ids = core_affinity::get_core_ids().unwrap();
 
         let concurrent = Arc::new(CycleCombinationsTreeConcurrent {
             cycle_combinations: ConcurrentCCParetoFront::default(),
             max_last_register_order_reverse_index: AtomicUsize::new(0),
-            permits: Mutex::new(num_worker_threads),
+            permits: Mutex::new(core_ids.len()),
             search_progression: Condvar::new(),
         });
 
-        let worker_thread_handles = (0..num_worker_threads)
-            .map(|_| {
+        let worker_thread_handles = core_ids
+            .into_iter()
+            .map(|core_id| {
                 let receiver = receiver.clone();
                 let concurrent = Arc::clone(&concurrent);
                 std::thread::spawn(move || {
+                    core_affinity::set_for_current(core_id);
                     while let Ok(packed_queue) = receiver.recv() {
-                        {
-                            let mut l = concurrent.permits.lock();
-                            trace!(
-                                "{:?} just acq: {} -> {}",
-                                std::thread::current().id(),
-                                l,
-                                *l - 1
-                            );
-                            *l -= 1;
-                        }
+                        let mut permits_lock = concurrent.permits.lock();
+                        let old_permits = *permits_lock;
+                        *permits_lock = old_permits - 1;
+                        drop(permits_lock);
 
-                        // TODO: unchecked?
+                        trace!(
+                            "{:?} just acq: {} -> {}",
+                            std::thread::current().id(),
+                            old_permits,
+                            old_permits - 1
+                        );
+
+                        // TODO: put into its own function
                         let (prefix_registers, last_registers) = packed_queue
                             .prefix_and_last_registers
                             .split_at(usize::from(self.exact_register_count.get() - 1));
@@ -253,19 +253,19 @@ impl<const N: usize> CycleCombinationsTree<N> {
                                 break;
                             }
                         }
-                        {
-                            let mut l = concurrent.permits.lock();
-                            if *l == 0 {
-                                concurrent.search_progression.notify_one();
-                            }
-                            trace!(
-                                "{:?} just released: {} -> {}",
-                                std::thread::current().id(),
-                                l,
-                                *l + 1
-                            );
-                            *l += 1;
+                        let mut permits_lock = concurrent.permits.lock();
+                        let old_permits = *permits_lock;
+                        *permits_lock = old_permits + 1;
+                        drop(permits_lock);
+                        if old_permits == 0 {
+                            concurrent.search_progression.notify_one();
                         }
+                        trace!(
+                            "{:?} just rel: {} -> {}",
+                            std::thread::current().id(),
+                            old_permits,
+                            old_permits + 1
+                        );
                     }
                 })
             })
@@ -285,7 +285,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
             sender,
         };
 
-        let now = Instant::now();
+        let start = Instant::now();
 
         unsafe {
             Self::search_dfs_helper(
@@ -297,18 +297,21 @@ impl<const N: usize> CycleCombinationsTree<N> {
             );
         }
 
-        debug!(
-            "Search tree: iterations={}; total={}; waiting={}",
-            mutable.candidate_count,
-            now.elapsed().human(Truncate::Micro),
-            mutable.waiting_time.human(Truncate::Micro)
-        );
+        let dfs_time = start.elapsed();
 
         drop(mutable.sender);
         for handle in worker_thread_handles {
             #[allow(clippy::missing_panics_doc)]
             handle.join().unwrap();
         }
+
+        debug!(
+            "Search tree: iterations={}; total={}; dfs={}; waiting={}",
+            mutable.candidate_count,
+            start.elapsed().human(Truncate::Micro),
+            dfs_time.human(Truncate::Micro),
+            mutable.waiting_time.human(Truncate::Micro)
+        );
 
         #[allow(clippy::missing_panics_doc)]
         Arc::into_inner(concurrent)
