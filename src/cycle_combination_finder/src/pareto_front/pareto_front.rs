@@ -8,16 +8,20 @@ pub struct CCParetoFront<const N: usize> {
     index_dominated_elements: Vec<usize>,
 }
 
-fn dominate<const N: usize>(
-    dominating: &[PossibleOrder<N>],
-    to_dominate: &[PossibleOrder<N>],
+fn dominate<'a, const N: usize>(
+    // dominating: &[PossibleOrder<N>],
+    // to_dominate: &[PossibleOrder<N>],
+    dominating: impl IntoIterator<Item = &'a PossibleOrder<N>>,
+    to_dominate: impl IntoIterator<Item = &'a PossibleOrder<N>>,
     skip_first: bool,
 ) -> bool {
-    debug_assert_eq!(dominating.len(), to_dominate.len());
+    // TODO: uncomment
     // sanity check
-    debug_assert!(!skip_first || dominating[0].order >= to_dominate[0].order);
+    // debug_assert_eq!(dominating.len(), to_dominate.len());
+    // debug_assert!(!skip_first || dominating[0].order >= to_dominate[0].order);
+
     dominating
-        .iter()
+        .into_iter()
         .zip(to_dominate)
         .skip(usize::from(skip_first))
         .all(|(d, t)| d.order >= t.order)
@@ -51,14 +55,21 @@ impl<const N: usize> CCParetoFront<N> {
 
     pub fn push_and_dominating_check(
         &mut self,
-        mut registers: Box<[PossibleOrder<N>]>,
+        registers: (&[(PossibleOrder<N>, usize)], &PossibleOrder<N>),
         mut dominating_check: impl FnMut(
-            Box<[PossibleOrder<N>]>,
-        )
-            -> Result<CycleCombination<N>, Box<[PossibleOrder<N>]>>,
+            (&[(PossibleOrder<N>, usize)], &PossibleOrder<N>),
+        ) -> Option<CycleCombination<N>>,
     ) -> bool {
         for (i, member) in self.inner.iter().enumerate() {
-            if dominate(&member.registers, &registers, true) {
+            if dominate(
+                &member.registers,
+                registers
+                    .0
+                    .iter()
+                    .map(|(prefix_register, _)| prefix_register)
+                    .chain(std::iter::once(registers.1)),
+                true,
+            ) {
                 // `new_element` is dominated by `element`, it is thus not part of the Pareto
                 // front swap `element` with the previous element in order to
                 // percolate the best elements to the top NOTE: in my benchmarks
@@ -72,25 +83,27 @@ impl<const N: usize> CCParetoFront<N> {
                     }
                 }
                 return false;
-            } else if dominate(&registers, &member.registers, false) {
-                match (dominating_check)(registers) {
-                    Ok(cycle_combination) => {
-                        // `new_element` dominates `element`, it is thus part of the Pareto front
-                        self.inner.swap_remove(i);
-                        // looks at the rest of the Pareto front to remove any further element that
-                        // are dominated
-                        self.remove_dominated_starting_at(&cycle_combination.registers, i);
-                        self.inner.push(cycle_combination);
-                        return true;
-                    }
-                    Err(prev) => {
-                        registers = prev;
-                    }
-                }
+            } else if dominate(
+                registers
+                    .0
+                    .iter()
+                    .map(|(prefix_register, _)| prefix_register)
+                    .chain(std::iter::once(registers.1)),
+                &member.registers,
+                false,
+            ) && let Some(cycle_combination) = (dominating_check)(registers)
+            {
+                // `new_element` dominates `element`, it is thus part of the Pareto front
+                self.inner.swap_remove(i);
+                // looks at the rest of the Pareto front to remove any further element that
+                // are dominated
+                self.remove_dominated_starting_at(&cycle_combination.registers, i);
+                self.inner.push(cycle_combination);
+                return true;
             }
         }
 
-        if let Ok(candidate) = (dominating_check)(registers) {
+        if let Some(candidate) = (dominating_check)(registers) {
             // `new_element` has not been dominated; it is thus part of the Pareto front
             self.inner.push(candidate);
             true

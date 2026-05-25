@@ -27,10 +27,10 @@ impl<const N: usize> ConcurrentCCParetoFront<N> {
     /// Rather, it is meant to be called in parallel.
     pub fn push_and_dominating_check(
         &self,
-        registers: Box<[PossibleOrder<N>]>,
+        registers: (&[(PossibleOrder<N>, usize)], &PossibleOrder<N>),
         dominating_check: impl FnMut(
-            Box<[PossibleOrder<N>]>,
-        ) -> Result<CycleCombination<N>, Box<[PossibleOrder<N>]>>,
+            (&[(PossibleOrder<N>, usize)], &PossibleOrder<N>),
+        ) -> Option<CycleCombination<N>>,
     ) -> bool {
         // gets a mutable *pointer* to the Pareto front associated with the current
         // thread

@@ -26,27 +26,26 @@ pub struct CycleCombinationsTree<const N: usize> {
 }
 
 pub struct CycleCombinationsTreeImmutable<const N: usize> {
-    sender: Sender<CycleCombinationCandidate<N>>,
+    sender: Sender<PackedCycleCombinationCandidateQueue<N>>,
     receiver_thread: JoinHandle<()>,
 }
 
 pub struct CycleCombinationsTreeMutable<const N: usize> {
+    prefix_and_last_registers: Vec<(PossibleOrder<N>, usize)>,
     registers: NonemptyVec<PossibleOrder<N>>,
     candidate_count: u64,
 }
 
 pub struct CycleCombinationsTreeConcurrent<const N: usize> {
     cycle_combinations: ConcurrentCCParetoFront<N>,
-    max_last_register_reverse_index: AtomicUsize,
+    max_last_register_order_reverse_index: AtomicUsize,
     permits: Mutex<usize>,
     search_progression: Condvar,
 }
 
 #[derive(Debug, Clone)]
-struct CycleCombinationCandidate<const N: usize> {
-    head: bool,
-    registers: Box<[PossibleOrder<N>]>,
-    last_register_reverse_index: usize,
+struct PackedCycleCombinationCandidateQueue<const N: usize> {
+    prefix_and_last_registers: Box<[(PossibleOrder<N>, usize)]>,
 }
 
 #[allow(unused)]
@@ -84,22 +83,36 @@ impl<const N: usize> CycleCombinationsTree<N> {
     }
 
     unsafe fn search_dfs_helper(
-        self2: &CycleCombinationsTreeImmutable<N>,
+        immutable: &CycleCombinationsTreeImmutable<N>,
         mutable: &mut CycleCombinationsTreeMutable<N>,
         concurrent: &Arc<CycleCombinationsTreeConcurrent<N>>,
-        remaining_possible_orders_except_one: &[PossibleOrder<N>],
+        possible_orders: &[PossibleOrder<N>],
         remaining_register_count: NonZeroUsize,
         remaining_piece_count: NonZeroU32,
     ) {
         let register_index = mutable.registers.len() - remaining_register_count.get();
-        let mut curr_possible_orders = remaining_possible_orders_except_one;
-        let mut head = true;
+        let mut curr_possible_orders = possible_orders;
+        let maybe_next_remaining_register_count =
+            NonZeroUsize::new(remaining_register_count.get() - 1);
+        // let mut good;
+        if maybe_next_remaining_register_count.is_none() {
+            // TODO: can this be extended and this not used, wasting time?
+            mutable.prefix_and_last_registers.clear();
+            mutable.prefix_and_last_registers.extend(
+                mutable
+                    .registers
+                    .split_last()
+                    .1
+                    .iter()
+                    .map(|register| (register.clone(), 0)),
+            );
+        }
         while let Some((possible_order, next_possible_orders)) = curr_possible_orders.split_first()
         {
             if register_index <= 1
                 && next_possible_orders.len()
                     <= concurrent
-                        .max_last_register_reverse_index
+                        .max_last_register_order_reverse_index
                         .load(atomic::Ordering::Relaxed)
             {
                 break;
@@ -113,9 +126,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
                 continue;
             };
 
-            if let Some(next_remaining_register_count) =
-                NonZeroUsize::new(remaining_register_count.get() - 1)
-            {
+            if let Some(next_remaining_register_count) = maybe_next_remaining_register_count {
                 if let Some(next_remaining_piece_count) =
                     NonZeroU32::new(next_remaining_piece_count)
                 {
@@ -125,7 +136,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
                     );
                     unsafe {
                         Self::search_dfs_helper(
-                            self2,
+                            immutable,
                             mutable,
                             concurrent,
                             curr_possible_orders,
@@ -136,30 +147,26 @@ impl<const N: usize> CycleCombinationsTree<N> {
                     *unsafe { mutable.registers.get_unchecked_mut(register_index) } = old;
                 }
             } else {
-                // SAFETY: `register_index`
-                let old = std::mem::replace(
-                    unsafe { mutable.registers.get_unchecked_mut(register_index) },
-                    possible_order.clone(),
-                );
                 mutable.candidate_count += 1;
-                self2
-                    .sender
-                    .send(CycleCombinationCandidate {
-                        head,
-                        registers: Box::clone_from_ref(&mutable.registers),
-                        last_register_reverse_index: next_possible_orders.len(),
-                    })
-                    .unwrap();
-                head = false;
-                {
-                    let mut lock = concurrent.permits.lock();
-                    if *lock == 0 {
-                        concurrent.search_progression.wait(&mut lock);
-                    }
-                }
-                *unsafe { mutable.registers.get_unchecked_mut(register_index) } = old;
+                mutable
+                    .prefix_and_last_registers
+                    .push((possible_order.clone(), next_possible_orders.len()));
             }
             curr_possible_orders = next_possible_orders;
+        }
+
+        if maybe_next_remaining_register_count.is_none() {
+            immutable
+                .sender
+                .send(PackedCycleCombinationCandidateQueue {
+                    prefix_and_last_registers: Box::clone_from_ref(&mutable.prefix_and_last_registers),
+                })
+                .unwrap();
+            // TODO: should this be inside?
+            let mut lock = concurrent.permits.lock();
+            if *lock == 0 {
+                concurrent.search_progression.wait(&mut lock);
+            }
         }
     }
 
@@ -168,6 +175,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
         // We can unwrap because `exact_register_count` is NonZero.
         #[allow(clippy::missing_panics_doc)]
         let mut mutable = CycleCombinationsTreeMutable {
+            prefix_and_last_registers: vec![],
             registers: NonemptyVec::try_from(vec![
                 PossibleOrder::initialized();
                 usize::from(self.exact_register_count.get())
@@ -178,99 +186,85 @@ impl<const N: usize> CycleCombinationsTree<N> {
 
         let mut concurrent = Arc::new(CycleCombinationsTreeConcurrent {
             cycle_combinations: ConcurrentCCParetoFront::default(),
-            max_last_register_reverse_index: AtomicUsize::new(0),
+            max_last_register_order_reverse_index: AtomicUsize::new(0),
             permits: Mutex::new(rayon::current_num_threads()),
             search_progression: Condvar::new(),
         });
 
-        let (sender, receiver) = mpsc::channel::<CycleCombinationCandidate<N>>();
+        let (sender, receiver) = mpsc::channel::<PackedCycleCombinationCandidateQueue<N>>();
         let receiver_thread = {
             let concurrent = Arc::clone(&concurrent);
             std::thread::spawn(move || {
-                let mut search_queue: Vec<CycleCombinationCandidate<N>> = vec![];
-                for candidate in receiver {
-                    if candidate.head && !search_queue.is_empty() {
+                for packed_queue in receiver {
+                    let concurrent = Arc::clone(&concurrent);
+                    rayon::spawn(move || {
                         {
-                            // TODO: ensure it actually waits since there are 14 threads not 12
-                            let search_queue = search_queue.clone();
-                            let concurrent = Arc::clone(&concurrent);
-                            rayon::spawn(move || {
-                                {
-                                    let mut l = concurrent.permits.lock();
-                                    trace!(
-                                        "{:?} just acq: {} -> {}",
-                                        std::thread::current().id(),
-                                        l,
-                                        *l - 1
-                                    );
-                                    *l -= 1;
-                                }
-                                // println!(
-                                //     "---\n{:?}\n{}\n---",
-                                //     std::thread::current().id(),
-                                //     q.iter()
-                                //         .map(|i| dbg_registers(i))
-                                //         .collect::<Vec<_>>()
-                                //         .join("\n")
-                                // );
-                                for search_queue_candidate in search_queue {
-                                    if concurrent.cycle_combinations.push_and_dominating_check(
-                                        search_queue_candidate.registers,
-                                        |dominating_registers| {
-                                            match CycleCombinationDetails::try_from(
-                                                &*dominating_registers,
-                                            ) {
-                                                Ok(details) => Ok(CycleCombination {
-                                                    registers: dominating_registers,
-                                                    details,
-                                                }),
-                                                Err(()) => Err(dominating_registers),
-                                            }
-                                        },
-                                    ) {
-                                        concurrent.max_last_register_reverse_index.update(
-                                            atomic::Ordering::Relaxed,
-                                            atomic::Ordering::Relaxed,
-                                            |curr_max| {
-                                                curr_max.max(
-                                                    search_queue_candidate
-                                                        .last_register_reverse_index,
-                                                )
-                                            },
-                                        );
-                                        break;
-                                    }
-                                }
-                                {
-                                    let mut l = concurrent.permits.lock();
-                                    if *l == 0 {
-                                        concurrent.search_progression.notify_one();
-                                    }
-                                    trace!(
-                                        "{:?} just released: {} -> {}",
-                                        std::thread::current().id(),
-                                        l,
-                                        *l + 1
-                                    );
-                                    *l += 1;
-                                }
-                            });
+                            let mut l = concurrent.permits.lock();
+                            trace!(
+                                "{:?} just acq: {} -> {}",
+                                std::thread::current().id(),
+                                l,
+                                *l - 1
+                            );
+                            *l -= 1;
                         }
-                        search_queue.clear();
-                    }
-                    search_queue.push(candidate);
+
+                        // TODO: unchecked?
+                        let (prefix_registers, last_register) = packed_queue
+                            .prefix_and_last_registers
+                            .split_at(usize::from(self.exact_register_count.get() - 1));
+                        for &(ref last_register, last_register_order_reverse_index) in last_register {
+                            if concurrent.cycle_combinations.push_and_dominating_check(
+                                (prefix_registers, last_register),
+                                |dominating_registers| {
+                                    CycleCombinationDetails::new(dominating_registers).map(
+                                        |details| CycleCombination {
+                                            registers: dominating_registers
+                                                .0
+                                                .iter()
+                                                .map(|(register, _)| register)
+                                                .chain(std::iter::once(dominating_registers.1))
+                                                .cloned()
+                                                .collect::<Vec<_>>()
+                                                .into_boxed_slice(),
+                                            details,
+                                        },
+                                    )
+                                },
+                            ) {
+                                concurrent.max_last_register_order_reverse_index.fetch_max(
+                                    last_register_order_reverse_index,
+                                    atomic::Ordering::Relaxed,
+                                );
+                                break;
+                            }
+                        }
+                        {
+                            let mut l = concurrent.permits.lock();
+                            if *l == 0 {
+                                concurrent.search_progression.notify_one();
+                            }
+                            trace!(
+                                "{:?} just released: {} -> {}",
+                                std::thread::current().id(),
+                                l,
+                                *l + 1
+                            );
+                            *l += 1;
+                        }
+                    });
                 }
             })
         };
 
-        let self2 = CycleCombinationsTreeImmutable {
+        let immutable = CycleCombinationsTreeImmutable {
             sender,
             receiver_thread,
         };
 
         unsafe {
             Self::search_dfs_helper(
-                &self2,
+                &immutable,
                 &mut mutable,
                 &concurrent,
                 &self.possible_orders_except_one,
@@ -278,21 +272,15 @@ impl<const N: usize> CycleCombinationsTree<N> {
                 self.exact_piece_count,
             );
         }
-        debug!("Cycle combinations in {} iterations", mutable.candidate_count);
+        debug!(
+            "Cycle combinations in {} iterations",
+            mutable.candidate_count
+        );
+
+        drop(immutable.sender);
 
         #[allow(clippy::missing_panics_doc)]
-        self2
-            .sender
-            .send(CycleCombinationCandidate {
-                head: true,
-                registers: vec![].into_boxed_slice(),
-                last_register_reverse_index: 0,
-            })
-            .unwrap();
-        drop(self2.sender);
-
-        #[allow(clippy::missing_panics_doc)]
-        self2.receiver_thread.join().unwrap();
+        immutable.receiver_thread.join().unwrap();
 
         loop {
             match Arc::try_unwrap(concurrent) {

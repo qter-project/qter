@@ -10,20 +10,22 @@ pub struct CycleCombinationDetails<const N: usize> {
     cycles: Vec<Cycle<N>>,
 }
 
-impl<const N: usize> TryFrom<&[PossibleOrder<N>]> for CycleCombinationDetails<N> {
-    type Error = ();
-
-    fn try_from(registers: &[PossibleOrder<N>]) -> Result<Self, ()> {
-        // std::thread::sleep(Duration::from_millis(10));
+impl<const N: usize> CycleCombinationDetails<N> {
+    #[must_use]
+    pub fn new(registers: (&[(PossibleOrder<N>, usize)], &PossibleOrder<N>)) -> Option<Self> {
+        #[allow(clippy::missing_panics_doc)]
         if registers
+            .0
             .iter()
+            .map(|(prefix_register, _)| prefix_register)
+            .chain(std::iter::once(registers.1))
             .map(|register| u64::try_from(register.order.as_bigint()).unwrap())
             .sum::<u64>()
             .is_multiple_of(28)
         {
-            Ok(CycleCombinationDetails { cycles: vec![] })
+            Some(CycleCombinationDetails { cycles: vec![] })
         } else {
-            Err(())
+            None
         }
     }
 }

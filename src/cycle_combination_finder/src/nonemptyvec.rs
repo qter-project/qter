@@ -54,9 +54,9 @@ impl<T> Deref for NonemptySlice<'_, T> {
 
 impl<T> NonemptyVec<T> {
     #[must_use]
-    pub fn split_first(&self) -> (&T, &[T]) {
+    pub fn split_last(&self) -> (&T, &[T]) {
         // SAFETY: this collection has at least one element
-        unsafe { self.0.split_first().unwrap_unchecked() }
+        unsafe { self.0.split_last().unwrap_unchecked() }
     }
 
     #[must_use]

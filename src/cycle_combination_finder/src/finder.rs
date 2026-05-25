@@ -212,10 +212,12 @@ impl<const N: usize> CycleCombinationFinder<N> {
             assert_eq!(
                 ret.len(),
                 expected_length,
-                "Expected {} solutions, found {}",
+                "Expected {} solutions, found {}. First 20 solutions: {:#?}",
                 expected_length,
-                ret.len()
+                ret.len(),
+                ret.into_iter().take(20).collect::<Vec<_>>(),
             );
+            debug!("Successfully found {} solutions", ret.len());
         }
         ret.sort_unstable();
         ret

@@ -9,12 +9,16 @@
 
 ## CCF
 
-- tree
-  - can merge be more efficient
-  - slab allocator
-  - document unsafe
-  - NonemptyVec([PossibleOrder { order: 116454478140, min_piece_count: 137 }, PossibleOrder { order: 6, min_piece_count: 2 }, PossibleOrder { order: 3, min_piece_count: 1 }]) followed by NonemptyVec([PossibleOrder { order: 82990547640, min_piece_count: 137 }, PossibleOrder { order: 6, min_piece_count: 2 }, PossibleOrder { order: 3, min_piece_count: 1 }])
-  - try out thread local pareto front
+- maybe don't use a usize to find the max order, use the Simd itself
+- don't use PossibleOrder wrapper; get rid of min_piece_count memory overhead
+- ensure last queue is sent
+- cpu affinity
+- can merge be more efficient
+- get rid of thread_local crate with something specialized
+- slab allocator
+- document unsafe
+- NonemptyVec([PossibleOrder { order: 116454478140, min_piece_count: 137 }, PossibleOrder { order: 6, min_piece_count: 2 }, PossibleOrder { order: 3, min_piece_count: 1 }]) followed by NonemptyVec([PossibleOrder { order: 82990547640, min_piece_count: 137 }, PossibleOrder { order: 6, min_piece_count: 2 }, PossibleOrder { order: 3, min_piece_count: 1 }])
+
 - possible orders
   - daniel's SIMD gcd algorithm
   - compute minimum piece count
