@@ -43,8 +43,8 @@ fn gauss_jordan_without_zero_rows(m: &mut BitMatrix, expected_rows: usize) -> Ve
 }
 
 pub mod ac3;
-pub mod cycle_combinations_tree;
 pub mod cycle_combination_details;
+pub mod cycle_combinations_tree;
 pub mod finder;
 pub mod min_piece_count;
 pub mod nonemptyvec;

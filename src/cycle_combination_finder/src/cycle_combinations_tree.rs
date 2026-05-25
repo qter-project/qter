@@ -3,15 +3,15 @@ use std::{
     sync::{
         Arc,
         atomic::{self, AtomicUsize},
-        mpsc::{self, Sender},
         nonpoison::{Condvar, Mutex},
     },
-    thread::JoinHandle,
+    thread::available_parallelism,
     time::{Duration, Instant},
 };
 
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::{debug, trace};
+use spmc::Sender;
 
 use crate::{
     cycle_combination_details::CycleCombinationDetails,
@@ -27,16 +27,12 @@ pub struct CycleCombinationsTree<const N: usize> {
     exact_piece_count: NonZeroU32,
 }
 
-pub struct CycleCombinationsTreeImmutable<const N: usize> {
-    sender: Sender<PackedCycleCombinationCandidateQueue<N>>,
-    receiver_thread: JoinHandle<()>,
-}
-
 pub struct CycleCombinationsTreeMutable<const N: usize> {
     prefix_and_last_registers: Vec<(PossibleOrder<N>, usize)>,
     registers: NonemptyVec<PossibleOrder<N>>,
     candidate_count: u64,
     waiting_time: Duration,
+    sender: Sender<PackedCycleCombinationCandidateQueue<N>>,
 }
 
 pub struct CycleCombinationsTreeConcurrent<const N: usize> {
@@ -101,7 +97,6 @@ impl<const N: usize> CycleCombinationsTree<N> {
     }
 
     unsafe fn search_dfs_helper(
-        immutable: &CycleCombinationsTreeImmutable<N>,
         mutable: &mut CycleCombinationsTreeMutable<N>,
         concurrent: &Arc<CycleCombinationsTreeConcurrent<N>>,
         possible_orders: &[PossibleOrder<N>],
@@ -154,7 +149,6 @@ impl<const N: usize> CycleCombinationsTree<N> {
                     );
                     unsafe {
                         Self::search_dfs_helper(
-                            immutable,
                             mutable,
                             concurrent,
                             curr_possible_orders,
@@ -181,7 +175,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
                 concurrent.search_progression.wait(&mut lock);
                 mutable.waiting_time += now.elapsed();
             }
-            immutable
+            mutable
                 .sender
                 .send(PackedCycleCombinationCandidateQueue {
                     prefix_and_last_registers: Box::clone_from_ref(
@@ -194,33 +188,26 @@ impl<const N: usize> CycleCombinationsTree<N> {
 
     #[must_use]
     pub fn search_dfs(self) -> Vec<CycleCombination<N>> {
-        // We can unwrap because `exact_register_count` is NonZero.
-        #[allow(clippy::missing_panics_doc)]
-        let mut mutable = CycleCombinationsTreeMutable {
-            prefix_and_last_registers: vec![],
-            registers: NonemptyVec::try_from(vec![
-                PossibleOrder::initialized();
-                usize::from(self.exact_register_count.get())
-            ])
-            .unwrap(),
-            candidate_count: 0,
-            waiting_time: Duration::default(),
-        };
+        let (sender, receiver) = spmc::channel::<PackedCycleCombinationCandidateQueue<N>>();
 
-        let mut concurrent = Arc::new(CycleCombinationsTreeConcurrent {
+        let num_worker_threads = available_parallelism()
+            .map(|a| a.get() - 1)
+            .unwrap_or_default()
+            .max(1);
+
+        let concurrent = Arc::new(CycleCombinationsTreeConcurrent {
             cycle_combinations: ConcurrentCCParetoFront::default(),
             max_last_register_order_reverse_index: AtomicUsize::new(0),
-            permits: Mutex::new(rayon::current_num_threads()),
+            permits: Mutex::new(num_worker_threads),
             search_progression: Condvar::new(),
         });
 
-        let (sender, receiver) = mpsc::channel::<PackedCycleCombinationCandidateQueue<N>>();
-        let receiver_thread = {
-            let concurrent = Arc::clone(&concurrent);
-            std::thread::spawn(move || {
-                for packed_queue in receiver {
-                    let concurrent = Arc::clone(&concurrent);
-                    rayon::spawn(move || {
+        let worker_thread_handles = (0..num_worker_threads)
+            .map(|_| {
+                let receiver = receiver.clone();
+                let concurrent = Arc::clone(&concurrent);
+                std::thread::spawn(move || {
+                    while let Ok(packed_queue) = receiver.recv() {
                         {
                             let mut l = concurrent.permits.lock();
                             trace!(
@@ -277,21 +264,29 @@ impl<const N: usize> CycleCombinationsTree<N> {
                             );
                             *l += 1;
                         }
-                    });
-                }
+                    }
+                })
             })
-        };
+            .collect::<Vec<_>>();
 
-        let immutable = CycleCombinationsTreeImmutable {
+        // We can unwrap because `exact_register_count` is NonZero.
+        #[allow(clippy::missing_panics_doc)]
+        let mut mutable = CycleCombinationsTreeMutable {
+            prefix_and_last_registers: vec![],
+            registers: NonemptyVec::try_from(vec![
+                PossibleOrder::initialized();
+                usize::from(self.exact_register_count.get())
+            ])
+            .unwrap(),
+            candidate_count: 0,
+            waiting_time: Duration::default(),
             sender,
-            receiver_thread,
         };
 
         let now = Instant::now();
 
         unsafe {
             Self::search_dfs_helper(
-                &immutable,
                 &mut mutable,
                 &concurrent,
                 &self.possible_orders_except_one,
@@ -301,25 +296,23 @@ impl<const N: usize> CycleCombinationsTree<N> {
         }
 
         debug!(
-            "Search tree: iterations={} total={} waiting={}",
+            "Search tree: iterations={}; total={}; waiting={}",
             mutable.candidate_count,
             now.elapsed().human(Truncate::Micro),
             mutable.waiting_time.human(Truncate::Micro)
         );
 
-        drop(immutable.sender);
+        drop(mutable.sender);
+        for handle in worker_thread_handles {
+            #[allow(clippy::missing_panics_doc)]
+            handle.join().unwrap();
+        }
 
         #[allow(clippy::missing_panics_doc)]
-        immutable.receiver_thread.join().unwrap();
-
-        loop {
-            match Arc::try_unwrap(concurrent) {
-                Ok(exlusive) => break exlusive.cycle_combinations.into_sequential().into(),
-                Err(still_concurrent) => {
-                    concurrent = still_concurrent;
-                    std::thread::yield_now();
-                }
-            }
-        }
+        Arc::into_inner(concurrent)
+            .unwrap()
+            .cycle_combinations
+            .into_sequential()
+            .into()
     }
 }

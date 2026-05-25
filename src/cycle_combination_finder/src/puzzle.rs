@@ -9,7 +9,10 @@ use puzzle_theory::ksolve::KSolve;
 use thiserror::Error;
 use union_find::{QuickUnionUf, UnionBySize, UnionFind};
 
-use crate::{FIRST_129_PRIMES, gauss_jordan_without_zero_rows, nonemptyvec::{NonemptySlice, NonemptyVec}};
+use crate::{
+    FIRST_129_PRIMES, gauss_jordan_without_zero_rows,
+    nonemptyvec::{NonemptySlice, NonemptyVec},
+};
 
 #[allow(non_snake_case)]
 pub mod cubeN;

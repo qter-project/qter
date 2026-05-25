@@ -9,10 +9,10 @@
 
 ## CCF
 
+- cpu affinity
 - maybe don't use a usize to find the max order, use the Simd itself
 - don't use PossibleOrder wrapper; get rid of min_piece_count memory overhead
 - ensure last queue is sent
-- cpu affinity
 - can merge be more efficient
 - get rid of thread_local crate with something specialized
 - slab allocator

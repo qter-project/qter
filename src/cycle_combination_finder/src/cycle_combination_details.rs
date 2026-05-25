@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::cycle_combinations_tree::DisjointRegisters;
 
@@ -15,7 +15,13 @@ pub struct CycleCombinationDetails<const N: usize> {
 impl<const N: usize> CycleCombinationDetails<N> {
     #[must_use]
     pub fn new(registers: DisjointRegisters<N>) -> Option<Self> {
-        std::thread::sleep(Duration::from_millis(10));
+        // std::thread::sleep(Duration::from_millis(10));
+        let now = Instant::now();
+        loop {
+            if now.elapsed() > Duration::from_millis(10) {
+                break;
+            }
+        }
         #[allow(clippy::missing_panics_doc)]
         if registers
             .iter()

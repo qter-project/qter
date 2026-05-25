@@ -12,12 +12,11 @@ pub struct CCParetoFront<const N: usize> {
 }
 
 fn dominate<'a, const N: usize>(
-    // dominating: &[PossibleOrder<N>],
-    // to_dominate: &[PossibleOrder<N>],
     dominating: impl IntoIterator<Item = &'a PossibleOrder<N>>,
     to_dominate: impl IntoIterator<Item = &'a PossibleOrder<N>>,
     skip_first: bool,
 ) -> bool {
+    // TODO: be more confident split_firsts are valid
     // TODO: uncomment
     // sanity check
     // debug_assert_eq!(dominating.len(), to_dominate.len());
