@@ -7,8 +7,10 @@ use std::{
         nonpoison::{Condvar, Mutex},
     },
     thread::JoinHandle,
+    time::{Duration, Instant},
 };
 
+use humanize_duration::{Truncate, prelude::DurationExt};
 use log::{debug, trace};
 
 use crate::{
@@ -34,6 +36,7 @@ pub struct CycleCombinationsTreeMutable<const N: usize> {
     prefix_and_last_registers: Vec<(PossibleOrder<N>, usize)>,
     registers: NonemptyVec<PossibleOrder<N>>,
     candidate_count: u64,
+    waiting_time: Duration,
 }
 
 pub struct CycleCombinationsTreeConcurrent<const N: usize> {
@@ -46,6 +49,21 @@ pub struct CycleCombinationsTreeConcurrent<const N: usize> {
 #[derive(Debug, Clone)]
 struct PackedCycleCombinationCandidateQueue<const N: usize> {
     prefix_and_last_registers: Box<[(PossibleOrder<N>, usize)]>,
+}
+
+#[derive(Clone, Copy)]
+pub struct DisjointRegisters<'a, const N: usize> {
+    prefix_registers: &'a [(PossibleOrder<N>, usize)],
+    last_register: &'a PossibleOrder<N>,
+}
+
+impl<const N: usize> DisjointRegisters<'_, N> {
+    pub fn iter(&self) -> impl Iterator<Item = &PossibleOrder<N>> {
+        self.prefix_registers
+            .iter()
+            .map(|(prefix_register, _)| prefix_register)
+            .chain(std::iter::once(self.last_register))
+    }
 }
 
 #[allow(unused)]
@@ -156,17 +174,21 @@ impl<const N: usize> CycleCombinationsTree<N> {
         }
 
         if maybe_next_remaining_register_count.is_none() {
-            immutable
-                .sender
-                .send(PackedCycleCombinationCandidateQueue {
-                    prefix_and_last_registers: Box::clone_from_ref(&mutable.prefix_and_last_registers),
-                })
-                .unwrap();
             // TODO: should this be inside?
             let mut lock = concurrent.permits.lock();
             if *lock == 0 {
+                let now = Instant::now();
                 concurrent.search_progression.wait(&mut lock);
+                mutable.waiting_time += now.elapsed();
             }
+            immutable
+                .sender
+                .send(PackedCycleCombinationCandidateQueue {
+                    prefix_and_last_registers: Box::clone_from_ref(
+                        &mutable.prefix_and_last_registers,
+                    ),
+                })
+                .unwrap();
         }
     }
 
@@ -182,6 +204,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
             ])
             .unwrap(),
             candidate_count: 0,
+            waiting_time: Duration::default(),
         };
 
         let mut concurrent = Arc::new(CycleCombinationsTreeConcurrent {
@@ -210,23 +233,25 @@ impl<const N: usize> CycleCombinationsTree<N> {
                         }
 
                         // TODO: unchecked?
-                        let (prefix_registers, last_register) = packed_queue
+                        let (prefix_registers, last_registers) = packed_queue
                             .prefix_and_last_registers
                             .split_at(usize::from(self.exact_register_count.get() - 1));
-                        for &(ref last_register, last_register_order_reverse_index) in last_register {
+                        for &(ref last_register, last_register_order_reverse_index) in
+                            last_registers
+                        {
+                            let disjoint_registers = DisjointRegisters {
+                                prefix_registers,
+                                last_register,
+                            };
                             if concurrent.cycle_combinations.push_and_dominating_check(
-                                (prefix_registers, last_register),
+                                disjoint_registers,
                                 |dominating_registers| {
                                     CycleCombinationDetails::new(dominating_registers).map(
                                         |details| CycleCombination {
                                             registers: dominating_registers
-                                                .0
                                                 .iter()
-                                                .map(|(register, _)| register)
-                                                .chain(std::iter::once(dominating_registers.1))
                                                 .cloned()
-                                                .collect::<Vec<_>>()
-                                                .into_boxed_slice(),
+                                                .collect::<Box<_>>(),
                                             details,
                                         },
                                     )
@@ -262,6 +287,8 @@ impl<const N: usize> CycleCombinationsTree<N> {
             receiver_thread,
         };
 
+        let now = Instant::now();
+
         unsafe {
             Self::search_dfs_helper(
                 &immutable,
@@ -272,9 +299,12 @@ impl<const N: usize> CycleCombinationsTree<N> {
                 self.exact_piece_count,
             );
         }
+
         debug!(
-            "Cycle combinations in {} iterations",
-            mutable.candidate_count
+            "Search tree: iterations={} total={} waiting={}",
+            mutable.candidate_count,
+            now.elapsed().human(Truncate::Micro),
+            mutable.waiting_time.human(Truncate::Micro)
         );
 
         drop(immutable.sender);

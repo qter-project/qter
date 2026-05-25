@@ -1,6 +1,9 @@
 //! Build a [Pareto front](https://en.wikipedia.org/wiki/Pareto_front) incrementaly. Based on the [pareto_front](https://crates.io/crates/pareto_front) crate.
 
-use crate::finder::{CycleCombination, PossibleOrder};
+use crate::{
+    cycle_combinations_tree::DisjointRegisters,
+    finder::{CycleCombination, PossibleOrder},
+};
 
 #[derive(Debug, Default)]
 pub struct CCParetoFront<const N: usize> {
@@ -55,21 +58,11 @@ impl<const N: usize> CCParetoFront<N> {
 
     pub fn push_and_dominating_check(
         &mut self,
-        registers: (&[(PossibleOrder<N>, usize)], &PossibleOrder<N>),
-        mut dominating_check: impl FnMut(
-            (&[(PossibleOrder<N>, usize)], &PossibleOrder<N>),
-        ) -> Option<CycleCombination<N>>,
+        registers: DisjointRegisters<N>,
+        mut dominating_check: impl FnMut(DisjointRegisters<N>) -> Option<CycleCombination<N>>,
     ) -> bool {
         for (i, member) in self.inner.iter().enumerate() {
-            if dominate(
-                &member.registers,
-                registers
-                    .0
-                    .iter()
-                    .map(|(prefix_register, _)| prefix_register)
-                    .chain(std::iter::once(registers.1)),
-                true,
-            ) {
+            if dominate(&member.registers, registers.iter(), true) {
                 // `new_element` is dominated by `element`, it is thus not part of the Pareto
                 // front swap `element` with the previous element in order to
                 // percolate the best elements to the top NOTE: in my benchmarks
@@ -83,15 +76,8 @@ impl<const N: usize> CCParetoFront<N> {
                     }
                 }
                 return false;
-            } else if dominate(
-                registers
-                    .0
-                    .iter()
-                    .map(|(prefix_register, _)| prefix_register)
-                    .chain(std::iter::once(registers.1)),
-                &member.registers,
-                false,
-            ) && let Some(cycle_combination) = (dominating_check)(registers)
+            } else if dominate(registers.iter(), &member.registers, false)
+                && let Some(cycle_combination) = (dominating_check)(registers)
             {
                 // `new_element` dominates `element`, it is thus part of the Pareto front
                 self.inner.swap_remove(i);

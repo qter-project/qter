@@ -3,7 +3,7 @@ use std::cell::UnsafeCell;
 use thread_local::ThreadLocal;
 
 use crate::{
-    finder::{CycleCombination, PossibleOrder},
+    cycle_combinations_tree::DisjointRegisters, finder::CycleCombination,
     pareto_front::pareto_front::CCParetoFront,
 };
 
@@ -27,10 +27,8 @@ impl<const N: usize> ConcurrentCCParetoFront<N> {
     /// Rather, it is meant to be called in parallel.
     pub fn push_and_dominating_check(
         &self,
-        registers: (&[(PossibleOrder<N>, usize)], &PossibleOrder<N>),
-        dominating_check: impl FnMut(
-            (&[(PossibleOrder<N>, usize)], &PossibleOrder<N>),
-        ) -> Option<CycleCombination<N>>,
+        registers: DisjointRegisters<N>,
+        dominating_check: impl FnMut(DisjointRegisters<N>) -> Option<CycleCombination<N>>,
     ) -> bool {
         // gets a mutable *pointer* to the Pareto front associated with the current
         // thread

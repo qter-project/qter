@@ -1,4 +1,6 @@
-use crate::finder::PossibleOrder;
+use std::time::Duration;
+
+use crate::cycle_combinations_tree::DisjointRegisters;
 
 #[derive(Debug)]
 pub struct Cycle<const N: usize> {
@@ -12,13 +14,11 @@ pub struct CycleCombinationDetails<const N: usize> {
 
 impl<const N: usize> CycleCombinationDetails<N> {
     #[must_use]
-    pub fn new(registers: (&[(PossibleOrder<N>, usize)], &PossibleOrder<N>)) -> Option<Self> {
+    pub fn new(registers: DisjointRegisters<N>) -> Option<Self> {
+        std::thread::sleep(Duration::from_millis(10));
         #[allow(clippy::missing_panics_doc)]
         if registers
-            .0
             .iter()
-            .map(|(prefix_register, _)| prefix_register)
-            .chain(std::iter::once(registers.1))
             .map(|register| u64::try_from(register.order.as_bigint()).unwrap())
             .sum::<u64>()
             .is_multiple_of(28)

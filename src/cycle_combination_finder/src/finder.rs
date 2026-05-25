@@ -226,10 +226,7 @@ impl<const N: usize> CycleCombinationFinder<N> {
 
 #[cfg(test)]
 mod tests {
-    use std::{num::NonZeroU16, time::Instant};
-
-    use humanize_duration::{Truncate, prelude::DurationExt};
-    use log::info;
+    use std::num::NonZeroU16;
 
     use crate::{
         finder::{CycleCombination, CycleCombinationFinder, RegisterCount},
@@ -252,48 +249,40 @@ mod tests {
     #[test_log::test]
     fn minx3_optimal_4() {
         let minx3 = MINX3.clone();
-        let now = Instant::now();
         CycleCombinationFinder::from(minx3)
             .with_register_count(RegisterCount::Exactly(NonZeroU16::new(4).unwrap()))
             .with_expected_length_assertion(347)
             .with_sorted(true)
             .find();
-        info!("CCF in {}", now.elapsed().human(Truncate::Micro));
     }
 
     #[test_log::test]
     fn minx3_optimal_3() {
         let minx3 = MINX3.clone();
-        let now = Instant::now();
         CycleCombinationFinder::from(minx3)
             .with_register_count(RegisterCount::Exactly(NonZeroU16::new(3).unwrap()))
             .with_expected_length_assertion(64)
             .with_sorted(true)
             .find();
-        info!("CCF in {}", now.elapsed().human(Truncate::Micro));
     }
 
     #[test_log::test]
     fn cube3_optimal_3() {
         let puzzle = CUBE3.clone();
-        let now = Instant::now();
         CycleCombinationFinder::from(puzzle)
             .with_register_count(RegisterCount::Exactly(NonZeroU16::new(3).unwrap()))
             .with_expected_length_assertion(17)
             .with_sorted(true)
             .find();
-        info!("CCF in {}", now.elapsed().human(Truncate::Micro));
     }
 
     #[test_log::test]
     fn cube3_optimal_2() {
         let puzzle = CUBE3.clone();
-        let now = Instant::now();
         CycleCombinationFinder::from(puzzle)
             .with_register_count(RegisterCount::Exactly(NonZeroU16::new(2).unwrap()))
             .with_expected_length_assertion(5)
             .with_sorted(true)
             .find();
-        info!("CCF in {}", now.elapsed().human(Truncate::Micro));
     }
 }
