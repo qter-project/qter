@@ -29,6 +29,7 @@
   - is possible_order.0.simd_ne(Simd::splat(0)) really needed
 - after MVP
   - max diff ratio setting. prevents solutions like 720720, 2, 2
+  - max solutions per register count setting
   - SubOptimal Optimality which uses the naive pareto front dominate approach; could also assume a lesser min piece count threshold
   - can register_index <= 1 be better?
   - respond on github

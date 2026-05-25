@@ -8,5 +8,5 @@ filter = "binary_id(cycle_combination_solver::cube3) or binary_id(cycle_combinat
 fail-fast = false
 
 [[profile.ccf.overrides]]
-filter = 'test(possible_orders::puzzle)'
+filter = 'test(possible_orders::puzzle) or test(finder::tests)'
 threads-required = "num-cpus"

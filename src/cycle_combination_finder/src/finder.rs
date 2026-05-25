@@ -49,9 +49,8 @@ pub struct CycleCombinationFinder<const N: usize> {
 pub struct CycleCombinationFinderConfig {
     optimality: Optimality,
     register_count: RegisterCount,
-    // TODO:
-    // max_solutions_count: 
     sorted: bool,
+    maybe_expected_length: Option<usize>,
 }
 
 impl<const N: usize> PossibleOrder<N> {
@@ -149,6 +148,12 @@ impl<const N: usize> CycleCombinationFinder<N> {
         self
     }
 
+    #[must_use]
+    pub fn with_expected_length_assertion(mut self, expected_length: usize) -> Self {
+        self.config.maybe_expected_length = Some(expected_length);
+        self
+    }
+
     fn find_optimal(&self, register_count: RegisterCount) -> Vec<CycleCombination<N>> {
         let RegisterCount::Exactly(exact_register_count) = register_count else {
             panic!("expected exactly variant for now");
@@ -190,13 +195,103 @@ impl<const N: usize> CycleCombinationFinder<N> {
         .search_dfs()
     }
 
-    #[must_use]
+    /// Search for CCF solutions in parallel.
+    ///
+    /// # Panics
+    ///
+    /// Panics if an expected length assertion was set via
+    /// [`Self::with_expected_length_assertion`] and the solutions length
+    /// mismatches.
+    #[allow(clippy::must_use_candidate)]
     pub fn find(&self) -> Vec<CycleCombination<N>> {
         let mut ret = match self.config.optimality {
             Optimality::Equivalent => unimplemented!(),
             Optimality::Optimal => self.find_optimal(self.config.register_count),
         };
+        if let Some(expected_length) = self.config.maybe_expected_length {
+            assert_eq!(
+                ret.len(),
+                expected_length,
+                "Expected {} solutions, found {}",
+                expected_length,
+                ret.len()
+            );
+        }
         ret.sort_unstable();
         ret
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{num::NonZeroU16, time::Instant};
+
+    use humanize_duration::{Truncate, prelude::DurationExt};
+    use log::info;
+
+    use crate::{
+        finder::{CycleCombination, CycleCombinationFinder, RegisterCount},
+        puzzle::{cubeN::CUBE3, minxN::MINX3},
+    };
+
+    #[allow(unused)]
+    fn cycles<const N: usize>(cycle_combinations: Vec<CycleCombination<N>>) -> Vec<Vec<u64>> {
+        cycle_combinations
+            .into_iter()
+            .map(|cycle_combination| {
+                cycle_combination
+                    .registers()
+                    .map(|register| register.as_bigint().try_into().unwrap())
+                    .collect::<Vec<u64>>()
+            })
+            .collect::<Vec<_>>()
+    }
+
+    #[test_log::test]
+    fn minx3_optimal_4() {
+        let minx3 = MINX3.clone();
+        let now = Instant::now();
+        CycleCombinationFinder::from(minx3)
+            .with_register_count(RegisterCount::Exactly(NonZeroU16::new(4).unwrap()))
+            .with_expected_length_assertion(347)
+            .with_sorted(true)
+            .find();
+        info!("CCF in {}", now.elapsed().human(Truncate::Micro));
+    }
+
+    #[test_log::test]
+    fn minx3_optimal_3() {
+        let minx3 = MINX3.clone();
+        let now = Instant::now();
+        CycleCombinationFinder::from(minx3)
+            .with_register_count(RegisterCount::Exactly(NonZeroU16::new(3).unwrap()))
+            .with_expected_length_assertion(64)
+            .with_sorted(true)
+            .find();
+        info!("CCF in {}", now.elapsed().human(Truncate::Micro));
+    }
+
+    #[test_log::test]
+    fn cube3_optimal_3() {
+        let puzzle = CUBE3.clone();
+        let now = Instant::now();
+        CycleCombinationFinder::from(puzzle)
+            .with_register_count(RegisterCount::Exactly(NonZeroU16::new(3).unwrap()))
+            .with_expected_length_assertion(17)
+            .with_sorted(true)
+            .find();
+        info!("CCF in {}", now.elapsed().human(Truncate::Micro));
+    }
+
+    #[test_log::test]
+    fn cube3_optimal_2() {
+        let puzzle = CUBE3.clone();
+        let now = Instant::now();
+        CycleCombinationFinder::from(puzzle)
+            .with_register_count(RegisterCount::Exactly(NonZeroU16::new(2).unwrap()))
+            .with_expected_length_assertion(5)
+            .with_sorted(true)
+            .find();
+        info!("CCF in {}", now.elapsed().human(Truncate::Micro));
     }
 }
