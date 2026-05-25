@@ -122,6 +122,15 @@ impl<const N: usize> CycleCombinationsTree<N> {
         }
         while let Some((possible_order, next_possible_orders)) = curr_possible_orders.split_first()
         {
+            {
+                let mut lock = concurrent.permits.lock();
+                if *lock == 0 {
+                    // TODO: make this part of mutable
+                    let waiting = Instant::now();
+                    concurrent.search_progression.wait(&mut lock);
+                    mutable.waiting_time += waiting.elapsed();
+                }
+            }
             if register_index <= 1
                 && next_possible_orders.len()
                     <= concurrent
@@ -168,13 +177,6 @@ impl<const N: usize> CycleCombinationsTree<N> {
         }
 
         if maybe_next_remaining_register_count.is_none() {
-            // TODO: should this be inside?
-            let mut lock = concurrent.permits.lock();
-            if *lock == 0 {
-                let now = Instant::now();
-                concurrent.search_progression.wait(&mut lock);
-                mutable.waiting_time += now.elapsed();
-            }
             mutable
                 .sender
                 .send(PackedCycleCombinationCandidateQueue {
