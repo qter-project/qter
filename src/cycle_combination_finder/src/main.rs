@@ -6,6 +6,8 @@ use cycle_combination_finder::{
 };
 
 fn main() {
+    env_logger::init();
+    
     let minx3 = MINX3.clone();
     CycleCombinationFinder::from(minx3)
         .with_register_count(RegisterCount::Exactly(NonZeroU16::new(4).unwrap()))
