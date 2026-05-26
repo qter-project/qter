@@ -255,7 +255,6 @@ mod tests {
         CycleCombinationFinder::from(minx4)
             .with_register_count(RegisterCount::Exactly(NonZeroU16::new(4).unwrap()))
             .with_expected_length_assertion(251)
-            .with_sorted(true)
             .find();
     }
 
@@ -265,7 +264,6 @@ mod tests {
         CycleCombinationFinder::from(minx3)
             .with_register_count(RegisterCount::Exactly(NonZeroU16::new(4).unwrap()))
             .with_expected_length_assertion(347)
-            .with_sorted(true)
             .find();
     }
 
@@ -275,7 +273,6 @@ mod tests {
         CycleCombinationFinder::from(minx3)
             .with_register_count(RegisterCount::Exactly(NonZeroU16::new(3).unwrap()))
             .with_expected_length_assertion(64)
-            .with_sorted(true)
             .find();
     }
 
@@ -285,7 +282,6 @@ mod tests {
         CycleCombinationFinder::from(puzzle)
             .with_register_count(RegisterCount::Exactly(NonZeroU16::new(3).unwrap()))
             .with_expected_length_assertion(17)
-            .with_sorted(true)
             .find();
     }
 
@@ -295,7 +291,6 @@ mod tests {
         CycleCombinationFinder::from(puzzle)
             .with_register_count(RegisterCount::Exactly(NonZeroU16::new(2).unwrap()))
             .with_expected_length_assertion(5)
-            .with_sorted(true)
             .find();
     }
 }
