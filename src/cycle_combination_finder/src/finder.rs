@@ -122,7 +122,7 @@ impl<const N: usize> CycleCombinationFinder<N> {
         .search_dfs()
     }
 
-    #[must_use]
+    #[allow(clippy::must_use_candidate)]
     pub fn find(&self, config: CycleCombinationFinderConfig) -> Vec<CycleCombination<N>> {
         match config.optimality {
             Optimality::Equivalent => unimplemented!(),

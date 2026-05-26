@@ -1,5 +1,9 @@
-use std::num::{NonZeroU16, NonZeroU32, NonZeroUsize};
+use std::{
+    num::{NonZeroU16, NonZeroU32, NonZeroUsize},
+    time::Instant,
+};
 
+use humanize_duration::{Truncate, prelude::DurationExt};
 use log::debug;
 
 use crate::{
@@ -19,7 +23,8 @@ pub struct CycleCombinationsTree<const N: usize> {
 pub struct CycleCombinationsTreeMutable<const N: usize> {
     registers: NonemptyVec<PossibleOrder<N>>,
     max_last_register_reverse_index: usize,
-    iter_count: u64,
+    candidate_count: u64,
+    post_candidate_count: u64,
     cycle_combinations: CCParetoFront<N>,
 }
 
@@ -98,17 +103,18 @@ impl<const N: usize> CycleCombinationsTree<N> {
                     unsafe { mutable.registers.get_unchecked_mut(register_index) },
                     possible_order.clone(),
                 );
-                mutable.iter_count += 1;
+                mutable.candidate_count += 1;
                 if mutable.cycle_combinations.push_and_dominating_check(
                     Box::clone_from_ref(&mutable.registers),
-                    |dominating_registers| match CycleCombinationDetails::try_from(
-                        &*dominating_registers,
-                    ) {
-                        Ok(details) => Ok(CycleCombination {
-                            registers: dominating_registers,
-                            details,
-                        }),
-                        Err(()) => Err(dominating_registers),
+                    |dominating_registers| {
+                        mutable.post_candidate_count += 1;
+                        match CycleCombinationDetails::try_from(&*dominating_registers) {
+                            Ok(details) => Ok(CycleCombination {
+                                registers: dominating_registers,
+                                details,
+                            }),
+                            Err(()) => Err(dominating_registers),
+                        }
                     },
                 ) {
                     mutable.max_last_register_reverse_index = mutable
@@ -133,9 +139,13 @@ impl<const N: usize> CycleCombinationsTree<N> {
             ])
             .unwrap(),
             max_last_register_reverse_index: 0,
-            iter_count: 0,
+            candidate_count: 0,
+            post_candidate_count: 0,
             cycle_combinations: CCParetoFront::default(),
         };
+
+        let now = Instant::now();
+
         unsafe {
             Self::search_dfs_helper(
                 &mut mutable,
@@ -144,7 +154,14 @@ impl<const N: usize> CycleCombinationsTree<N> {
                 self.exact_piece_count,
             );
         }
-        debug!("Cycle combinations in {} iterations", mutable.iter_count);
-        Vec::from(mutable.cycle_combinations)
+        let ret = Vec::from(mutable.cycle_combinations);
+        debug!("Successfully found {} solutions", ret.len());
+        debug!(
+            "Search tree complete: candidates={}; post_candidates={}; total={}",
+            mutable.candidate_count,
+            mutable.post_candidate_count,
+            now.elapsed().human(Truncate::Millis)
+        );
+        ret
     }
 }
