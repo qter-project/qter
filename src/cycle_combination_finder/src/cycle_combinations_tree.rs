@@ -68,10 +68,11 @@ fn dbg_registers<const N: usize>(registers: &[PossibleOrder<N>]) -> String {
         .join(", ")
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn worker_thread<const N: usize>(
     core_id: CoreId,
-    receiver: &mpmc::Receiver<PackedCycleCombinationCandidateQueue<N>>,
-    concurrent: &Arc<CycleCombinationsTreeConcurrent<N>>,
+    receiver: mpmc::Receiver<PackedCycleCombinationCandidateQueue<N>>,
+    concurrent: Arc<CycleCombinationsTreeConcurrent<N>>,
     exact_register_count: NonZeroU16,
 ) {
     core_affinity::set_for_current(core_id);
@@ -112,6 +113,10 @@ fn worker_thread<const N: usize>(
     }
 }
 
+/// # Safety
+///
+/// `remaining_register_count` must be less than or equal to
+/// `mutable.registers.len()`.
 unsafe fn search_dfs_helper<const N: usize>(
     mutable: &mut CycleCombinationsTreeMutable<N>,
     concurrent: &Arc<CycleCombinationsTreeConcurrent<N>>,
@@ -143,10 +148,14 @@ unsafe fn search_dfs_helper<const N: usize>(
 
         if let Some(next_remaining_register_count) = maybe_next_remaining_register_count {
             if let Some(next_remaining_piece_count) = NonZeroU32::new(next_remaining_piece_count) {
+                // SAFETY: caller guarantees `mutable.registers.len()` <=
+                // `remaining_register_count`, and `remaining_register_count` != 0.
+                // `register_index` must thus be in bounds of `mutable.registers`.
                 let old = std::mem::replace(
                     unsafe { mutable.registers.get_unchecked_mut(register_index) },
                     possible_order.clone(),
                 );
+                // SAFETY: `remaining_register_count` only ever decreases.
                 unsafe {
                     search_dfs_helper(
                         mutable,
@@ -156,6 +165,7 @@ unsafe fn search_dfs_helper<const N: usize>(
                         next_remaining_piece_count,
                     );
                 }
+                // SAFETY: see above.
                 *unsafe { mutable.registers.get_unchecked_mut(register_index) } = old;
             }
         } else {
@@ -225,7 +235,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
 
         // We do not use `0` as to allow a buffer for every core to prevent starvation
         let (sender, receiver) =
-            mpmc::sync_channel::<PackedCycleCombinationCandidateQueue<N>>(core_ids.len());
+            mpmc::sync_channel::<PackedCycleCombinationCandidateQueue<N>>(core_ids.len() * 10);
 
         let concurrent = Arc::new(CycleCombinationsTreeConcurrent {
             post_candidate_count: AtomicU32::new(0),
@@ -239,7 +249,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
                 let receiver = receiver.clone();
                 let concurrent = Arc::clone(&concurrent);
                 std::thread::spawn(move || {
-                    worker_thread(core_id, &receiver, &concurrent, self.exact_register_count);
+                    worker_thread(core_id, receiver, concurrent, self.exact_register_count);
                 })
             })
             .collect::<Vec<_>>();

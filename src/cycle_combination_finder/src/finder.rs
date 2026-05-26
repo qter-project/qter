@@ -230,7 +230,10 @@ mod tests {
 
     use crate::{
         finder::{CycleCombination, CycleCombinationFinder, RegisterCount},
-        puzzle::{cubeN::CUBE3, minxN::MINX3},
+        puzzle::{
+            cubeN::CUBE3,
+            minxN::{MINX3, MINX4},
+        },
     };
 
     #[allow(unused)]
@@ -246,8 +249,16 @@ mod tests {
             .collect::<Vec<_>>()
     }
 
-    // TODO: minx4 test
-    
+    #[test_log::test]
+    fn minx4_optimal_3() {
+        let minx4 = MINX4.clone();
+        CycleCombinationFinder::from(minx4)
+            .with_register_count(RegisterCount::Exactly(NonZeroU16::new(4).unwrap()))
+            .with_expected_length_assertion(251)
+            .with_sorted(true)
+            .find();
+    }
+
     #[test_log::test]
     fn minx3_optimal_4() {
         let minx3 = MINX3.clone();
