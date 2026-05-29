@@ -1,11 +1,12 @@
 use std::{
+    fmt::{self, Debug},
     num::{NonZeroU16, NonZeroU32, NonZeroUsize},
     sync::{
         Arc,
         atomic::{self, AtomicU32, AtomicUsize},
         mpmc,
     },
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use core_affinity::CoreId;
@@ -29,10 +30,14 @@ pub struct CycleCombinationsTree<const N: usize> {
 pub struct CycleCombinationsTreeMutable<const N: usize> {
     prefix_and_last_registers: Vec<(PossibleOrder<N>, usize)>,
     registers: NonemptyVec<PossibleOrder<N>>,
-    candidate_count: u64,
     sender: mpmc::Sender<PackedCycleCombinationCandidateQueue<N>>,
+
+    candidate_count: u32,
+    send_time: Duration,
+    alloc_time: Duration,
 }
 
+#[derive(Default)]
 pub struct CycleCombinationsTreeConcurrent<const N: usize> {
     cycle_combinations: ConcurrentCCParetoFront<N>,
     max_last_register_order_reverse_index: AtomicUsize,
@@ -48,6 +53,94 @@ struct PackedCycleCombinationCandidateQueue<const N: usize> {
 pub struct DisjointRegisters<'a, const N: usize> {
     prefix_registers: &'a [(PossibleOrder<N>, usize)],
     last_register: &'a PossibleOrder<N>,
+}
+
+struct ThreadInfo {
+    recv_time: Duration,
+    mkp_time: Duration,
+}
+
+struct ProfileInfo {
+    candidate_count: u32,
+    post_candidate_count: u32,
+    total_time: Duration,
+    dfs_percent_alloc: f64,
+    dfs_percent_cpu: f64,
+    dfs_percent_io: f64,
+    mkp_percent_cpu: f64,
+    mkp_percent_io: f64,
+    num_cores: usize,
+}
+
+impl Debug for ProfileInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ProfileInfo")
+            .field(&format!("{:>21}", "candidate_count"), &self.candidate_count)
+            .field(
+                &format!("{:>21}", "post_candidate_count"),
+                &format!(
+                    "{} ({} total)",
+                    self.post_candidate_count,
+                    self.post_candidate_count * u32::try_from(self.num_cores).unwrap()
+                ),
+            )
+            .field(
+                &format!("{:>21}", "total_time"),
+                &format!("{}", self.total_time.human(Truncate::Micro)),
+            )
+            .field(
+                &format!("{:>21}", "dfs_alloc_percent"),
+                &format!(
+                    "{:05.2}% ({})",
+                    self.dfs_percent_alloc * 100.0,
+                    self.total_time
+                        .mul_f64(self.dfs_percent_alloc)
+                        .human(Truncate::Micro)
+                ),
+            )
+            .field(
+                &format!("{:>21}", "dfs_cpu_percent"),
+                &format!(
+                    "{:05.2}% ({})",
+                    self.dfs_percent_cpu * 100.0,
+                    self.total_time
+                        .mul_f64(self.dfs_percent_cpu)
+                        .human(Truncate::Micro)
+                ),
+            )
+            .field(
+                &format!("{:>21}", "dfs_io_percent"),
+                &format!(
+                    "{:05.2}% ({})",
+                    self.dfs_percent_io * 100.0,
+                    self.total_time
+                        .mul_f64(self.dfs_percent_io)
+                        .human(Truncate::Micro)
+                ),
+            )
+            .field(
+                &format!("{:>21}", "mkp_cpu_percent"),
+                &format!(
+                    "{:05.2}% ({})",
+                    self.mkp_percent_cpu * 100.0,
+                    self.total_time
+                        .mul_f64(self.mkp_percent_cpu)
+                        .human(Truncate::Micro)
+                ),
+            )
+            .field(
+                &format!("{:>21}", "mkp_io_percent"),
+                &format!(
+                    "{:05.2}% ({})",
+                    self.mkp_percent_io * 100.0,
+                    self.total_time
+                        .mul_f64(self.mkp_percent_io)
+                        .human(Truncate::Micro)
+                ),
+            )
+            .field(&format!("{:>21}", "num_cores"), &self.num_cores)
+            .finish()
+    }
 }
 
 impl<const N: usize> DisjointRegisters<'_, N> {
@@ -74,9 +167,16 @@ fn worker_thread<const N: usize>(
     receiver: mpmc::Receiver<PackedCycleCombinationCandidateQueue<N>>,
     concurrent: Arc<CycleCombinationsTreeConcurrent<N>>,
     exact_register_count: NonZeroU16,
-) {
+) -> ThreadInfo {
+    let total_time = Instant::now();
+    let mut recv_time = Duration::default();
     core_affinity::set_for_current(core_id);
-    while let Ok(packed_queue) = receiver.recv() {
+    loop {
+        let now = Instant::now();
+        let Ok(packed_queue) = receiver.recv() else {
+            break;
+        };
+        recv_time += now.elapsed();
         let (prefix_registers, last_registers) = packed_queue
             .prefix_and_last_registers
             .split_at(usize::from(exact_register_count.get() - 1));
@@ -110,6 +210,10 @@ fn worker_thread<const N: usize>(
                 break;
             }
         }
+    }
+    ThreadInfo {
+        recv_time,
+        mkp_time: total_time.elapsed().saturating_sub(recv_time),
     }
 }
 
@@ -194,12 +298,15 @@ unsafe fn search_dfs_helper<const N: usize>(
     }
 
     if send_queue {
-        mutable
-            .sender
-            .send(PackedCycleCombinationCandidateQueue {
-                prefix_and_last_registers: Box::clone_from_ref(&mutable.prefix_and_last_registers),
-            })
-            .unwrap();
+        let now = Instant::now();
+        let payload = PackedCycleCombinationCandidateQueue {
+            prefix_and_last_registers: Box::clone_from_ref(&mutable.prefix_and_last_registers),
+        };
+        let now2 = Instant::now();
+        mutable.alloc_time += now2 - now;
+        let sent = mutable.sender.send(payload);
+        mutable.send_time += now2.elapsed();
+        sent.unwrap();
     }
 }
 
@@ -232,27 +339,13 @@ impl<const N: usize> CycleCombinationsTree<N> {
     pub fn search_dfs(self) -> Vec<CycleCombination<N>> {
         #[allow(clippy::missing_panics_doc)]
         let core_ids = core_affinity::get_core_ids().unwrap();
+        let num_cores = core_ids.len();
 
         // We do not use `0` as to allow a buffer for every core to prevent starvation
         let (sender, receiver) =
             mpmc::sync_channel::<PackedCycleCombinationCandidateQueue<N>>(core_ids.len() * 10);
 
-        let concurrent = Arc::new(CycleCombinationsTreeConcurrent {
-            post_candidate_count: AtomicU32::new(0),
-            cycle_combinations: ConcurrentCCParetoFront::default(),
-            max_last_register_order_reverse_index: AtomicUsize::new(0),
-        });
-
-        let worker_thread_handles = core_ids
-            .into_iter()
-            .map(|core_id| {
-                let receiver = receiver.clone();
-                let concurrent = Arc::clone(&concurrent);
-                std::thread::spawn(move || {
-                    worker_thread(core_id, receiver, concurrent, self.exact_register_count);
-                })
-            })
-            .collect::<Vec<_>>();
+        let concurrent = Arc::default();
 
         // We can unwrap because `exact_register_count` is NonZero.
         #[allow(clippy::missing_panics_doc)]
@@ -264,8 +357,21 @@ impl<const N: usize> CycleCombinationsTree<N> {
             ])
             .unwrap(),
             candidate_count: 0,
+            send_time: Duration::default(),
+            alloc_time: Duration::default(),
             sender,
         };
+
+        let worker_thread_handles = core_ids
+            .into_iter()
+            .map(|core_id| {
+                let receiver = receiver.clone();
+                let concurrent = Arc::clone(&concurrent);
+                std::thread::spawn(move || {
+                    worker_thread(core_id, receiver, concurrent, self.exact_register_count)
+                })
+            })
+            .collect::<Vec<_>>();
 
         let total_time = Instant::now();
 
@@ -282,20 +388,42 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let dfs_time = total_time.elapsed();
 
         drop(mutable.sender);
-        for handle in worker_thread_handles {
-            #[allow(clippy::missing_panics_doc)]
-            handle.join().unwrap();
-        }
+        #[allow(clippy::missing_panics_doc)]
+        let (recv_time, mkp_time) = worker_thread_handles.into_iter().fold(
+            (Duration::default(), Duration::default()),
+            |acc, handle| {
+                let thread_info = handle.join().unwrap();
+                (acc.0 + thread_info.recv_time, acc.1 + thread_info.mkp_time)
+            },
+        );
 
         #[allow(clippy::missing_panics_doc)]
         let exclusive = Arc::into_inner(concurrent).unwrap();
-        debug!(
-            "Search tree complete: candidates={}; post_candidates={}; total={}; dfs={}",
-            mutable.candidate_count,
-            exclusive.post_candidate_count.into_inner(),
-            total_time.elapsed().human(Truncate::Micro),
-            dfs_time.human(Truncate::Micro),
-        );
+
+        #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+        let dfs_percent_io = (mutable.send_time.as_nanos() as f64) / (dfs_time.as_nanos() as f64);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+        let dfs_percent_alloc =
+            (mutable.alloc_time.as_nanos() as f64) / (dfs_time.as_nanos() as f64);
+        let dfs_percent_cpu = 1.0 - dfs_percent_io - dfs_percent_alloc;
+        #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+        let mkp_percent_io = (recv_time.as_nanos() as f64) / (mkp_time.as_nanos() as f64);
+        let mkp_percent_cpu = 1.0 - mkp_percent_io;
+
+        let profile_info = ProfileInfo {
+            candidate_count: mutable.candidate_count,
+            post_candidate_count: exclusive.post_candidate_count.into_inner(),
+            total_time: total_time.elapsed(),
+            dfs_percent_alloc,
+            dfs_percent_cpu,
+            dfs_percent_io,
+            mkp_percent_cpu,
+            mkp_percent_io,
+            num_cores,
+        };
+
+        debug!("Search tree complete");
+        debug!("{profile_info:#?}");
         exclusive.cycle_combinations.into_sequential().into()
     }
 }

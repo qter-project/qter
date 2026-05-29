@@ -24,5 +24,7 @@ fn main() {
             .with_register_count(RegisterCount::Exactly(NonZeroU16::new(3).unwrap()))
             .with_expected_length_assertion(251)
             .find();
+    } else {
+        println!("Enter minx3 or minx4");
     }
 }
