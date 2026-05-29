@@ -10,6 +10,7 @@ use std::{
 };
 
 use core_affinity::CoreId;
+use cpu_time::ThreadTime;
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::debug;
 
@@ -33,7 +34,6 @@ pub struct CycleCombinationsTreeMutable<const N: usize> {
     sender: mpmc::Sender<PackedCycleCombinationCandidateQueue<N>>,
 
     candidate_count: u32,
-    send_time: Duration,
     alloc_time: Duration,
 }
 
@@ -56,7 +56,7 @@ pub struct DisjointRegisters<'a, const N: usize> {
 }
 
 struct ThreadInfo {
-    recv_time: Duration,
+    total_mkp_cpu_time: Duration,
     total_mkp_time: Duration,
 }
 
@@ -177,15 +177,10 @@ fn worker_thread<const N: usize>(
     concurrent: Arc<CycleCombinationsTreeConcurrent<N>>,
     exact_register_count: NonZeroU16,
 ) -> ThreadInfo {
-    let total_time = Instant::now();
-    let mut recv_time = Duration::default();
     core_affinity::set_for_current(core_id);
-    loop {
-        let now = Instant::now();
-        let Ok(packed_queue) = receiver.recv() else {
-            break;
-        };
-        recv_time += now.elapsed();
+    let total_time = Instant::now();
+    let cpu_time = ThreadTime::now();
+    while let Ok(packed_queue) = receiver.recv() {
         let (prefix_registers, last_registers) = packed_queue
             .prefix_and_last_registers
             .split_at(usize::from(exact_register_count.get() - 1));
@@ -221,7 +216,7 @@ fn worker_thread<const N: usize>(
         }
     }
     ThreadInfo {
-        recv_time,
+        total_mkp_cpu_time: cpu_time.elapsed(),
         total_mkp_time: total_time.elapsed(),
     }
 }
@@ -311,11 +306,8 @@ unsafe fn search_dfs_helper<const N: usize>(
         let payload = PackedCycleCombinationCandidateQueue {
             prefix_and_last_registers: Box::clone_from_ref(&mutable.prefix_and_last_registers),
         };
-        let now2 = Instant::now();
-        mutable.alloc_time += now2 - now;
-        let sent = mutable.sender.send(payload);
-        mutable.send_time += now2.elapsed();
-        sent.unwrap();
+        mutable.alloc_time += now.elapsed();
+        mutable.sender.send(payload).unwrap();
     }
 }
 
@@ -366,7 +358,6 @@ impl<const N: usize> CycleCombinationsTree<N> {
             ])
             .unwrap(),
             candidate_count: 0,
-            send_time: Duration::default(),
             alloc_time: Duration::default(),
             sender,
         };
@@ -383,6 +374,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
             .collect::<Vec<_>>();
 
         let total_time = Instant::now();
+        let cpu_time = ThreadTime::now();
 
         unsafe {
             search_dfs_helper(
@@ -395,15 +387,16 @@ impl<const N: usize> CycleCombinationsTree<N> {
         }
 
         let dfs_time = total_time.elapsed();
+        let dfs_cpu_time = cpu_time.elapsed();
 
         drop(mutable.sender);
         #[allow(clippy::missing_panics_doc)]
-        let (recv_time, total_mkp_time) = worker_thread_handles.into_iter().fold(
+        let (total_mkp_cpu_time, total_mkp_time) = worker_thread_handles.into_iter().fold(
             (Duration::default(), Duration::default()),
             |acc, handle| {
                 let thread_info = handle.join().unwrap();
                 (
-                    acc.0 + thread_info.recv_time,
+                    acc.0 + thread_info.total_mkp_cpu_time,
                     acc.1 + thread_info.total_mkp_time,
                 )
             },
@@ -415,14 +408,15 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let exclusive = Arc::into_inner(concurrent).unwrap();
 
         #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-        let dfs_percent_io = (mutable.send_time.as_nanos() as f64) / (dfs_time.as_nanos() as f64);
+        let dfs_percent_cpu = (dfs_cpu_time.as_nanos() as f64) / (dfs_time.as_nanos() as f64);
+        let dfs_percent_io = 1.0 - dfs_percent_cpu;
         #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
         let dfs_percent_alloc =
             (mutable.alloc_time.as_nanos() as f64) / (dfs_time.as_nanos() as f64);
-        let dfs_percent_cpu = 1.0 - dfs_percent_io - dfs_percent_alloc;
         #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-        let mkp_percent_io = (recv_time.as_nanos() as f64) / (total_mkp_time.as_nanos() as f64);
-        let mkp_percent_cpu = 1.0 - mkp_percent_io;
+        let mkp_percent_cpu =
+            (total_mkp_cpu_time.as_nanos() as f64) / (total_mkp_time.as_nanos() as f64);
+        let mkp_percent_io = 1.0 - mkp_percent_cpu;
 
         let profile_info = ProfileInfo {
             candidate_count: mutable.candidate_count,
