@@ -1,3 +1,4 @@
+#[allow(unused)]
 use std::time::{Duration, Instant};
 
 use crate::cycle_combinations_tree::DisjointRegisters;

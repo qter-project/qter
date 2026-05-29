@@ -1,4 +1,5 @@
 use std::{
+    collections::BinaryHeap,
     fmt::{self, Debug},
     num::{NonZeroU16, NonZeroU32, NonZeroUsize},
     sync::{
@@ -12,13 +13,13 @@ use std::{
 use core_affinity::CoreId;
 use cpu_time::ThreadTime;
 use humanize_duration::{Truncate, prelude::DurationExt};
-use log::debug;
+use log::{Level, debug, log_enabled};
 
 use crate::{
     cycle_combination_details::CycleCombinationDetails,
     finder::{CycleCombination, PossibleOrder},
     nonemptyvec::{NonemptySlice, NonemptyVec},
-    pareto_front::concurrent_pareto_front::ConcurrentCCParetoFront,
+    pareto_front::CCParetoFront,
     puzzle::OrbitDef,
 };
 
@@ -39,7 +40,6 @@ pub struct CycleCombinationsTreeMutable<const N: usize> {
 
 #[derive(Default)]
 pub struct CycleCombinationsTreeConcurrent<const N: usize> {
-    cycle_combinations: ConcurrentCCParetoFront<N>,
     max_last_register_order_reverse_index: AtomicUsize,
     post_candidate_count: AtomicU32,
 }
@@ -55,9 +55,10 @@ pub struct DisjointRegisters<'a, const N: usize> {
     last_register: &'a PossibleOrder<N>,
 }
 
-struct ThreadInfo {
+struct ThreadInfo<const N: usize> {
     total_mkp_cpu_time: Duration,
     total_mkp_time: Duration,
+    cycle_combinations: CCParetoFront<N>,
 }
 
 struct ProfileInfo {
@@ -176,8 +177,9 @@ fn worker_thread<const N: usize>(
     receiver: mpmc::Receiver<PackedCycleCombinationCandidateQueue<N>>,
     concurrent: Arc<CycleCombinationsTreeConcurrent<N>>,
     exact_register_count: NonZeroU16,
-) -> ThreadInfo {
+) -> ThreadInfo<N> {
     core_affinity::set_for_current(core_id);
+    let mut cycle_combinations = CCParetoFront::default();
     let total_time = Instant::now();
     let cpu_time = ThreadTime::now();
     while let Ok(packed_queue) = receiver.recv() {
@@ -189,7 +191,7 @@ fn worker_thread<const N: usize>(
                 prefix_registers,
                 last_register,
             };
-            if concurrent.cycle_combinations.push_and_dominating_check(
+            if cycle_combinations.push_and_dominating_check(
                 disjoint_registers,
                 |dominating_registers| {
                     concurrent
@@ -216,6 +218,7 @@ fn worker_thread<const N: usize>(
         }
     }
     ThreadInfo {
+        cycle_combinations,
         total_mkp_cpu_time: cpu_time.elapsed(),
         total_mkp_time: total_time.elapsed(),
     }
@@ -302,11 +305,13 @@ unsafe fn search_dfs_helper<const N: usize>(
     }
 
     if send_queue {
-        let now = Instant::now();
+        let maybe_now = log_enabled!(Level::Debug).then(Instant::now);
         let payload = PackedCycleCombinationCandidateQueue {
             prefix_and_last_registers: Box::clone_from_ref(&mutable.prefix_and_last_registers),
         };
-        mutable.alloc_time += now.elapsed();
+        if let Some(now) = maybe_now {
+            mutable.alloc_time += now.elapsed();
+        }
         mutable.sender.send(payload).unwrap();
     }
 }
@@ -390,17 +395,28 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let dfs_cpu_time = cpu_time.elapsed();
 
         drop(mutable.sender);
-        #[allow(clippy::missing_panics_doc)]
-        let (total_mkp_cpu_time, total_mkp_time) = worker_thread_handles.into_iter().fold(
-            (Duration::default(), Duration::default()),
-            |acc, handle| {
-                let thread_info = handle.join().unwrap();
-                (
-                    acc.0 + thread_info.total_mkp_cpu_time,
-                    acc.1 + thread_info.total_mkp_time,
-                )
-            },
-        );
+
+        let mut smallest_fronts = BinaryHeap::new();
+        let mut total_mkp_cpu_time = Duration::default();
+        let mut total_mkp_time = Duration::default();
+        for handle in worker_thread_handles {
+            #[allow(clippy::missing_panics_doc)]
+            let thread_info = handle.join().unwrap();
+
+            total_mkp_cpu_time += thread_info.total_mkp_cpu_time;
+            total_mkp_time += thread_info.total_mkp_time;
+            smallest_fronts.push(thread_info.cycle_combinations);
+        }
+
+        let mut combined_cycle_combinations = CCParetoFront::default();
+        while let Some(mut smallest_front) = smallest_fronts.pop() {
+            if let Some(smaller_front) = smallest_fronts.pop() {
+                smallest_front.merge(smaller_front);
+                smallest_fronts.push(smallest_front);
+            } else {
+                combined_cycle_combinations = smallest_front;
+            }
+        }
 
         let total_time = total_time.elapsed();
 
@@ -432,6 +448,6 @@ impl<const N: usize> CycleCombinationsTree<N> {
 
         debug!("Search tree complete");
         debug!("{profile_info:#?}");
-        exclusive.cycle_combinations.into_sequential().into()
+        combined_cycle_combinations.into()
     }
 }

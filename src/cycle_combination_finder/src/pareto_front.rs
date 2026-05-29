@@ -1,5 +1,7 @@
 //! Build a [Pareto front](https://en.wikipedia.org/wiki/Pareto_front) incrementaly. Based on the [pareto_front](https://crates.io/crates/pareto_front) crate.
 
+use std::cmp::Ordering;
+
 use crate::{
     cycle_combinations_tree::DisjointRegisters,
     finder::{CycleCombination, PossibleOrder},
@@ -9,6 +11,26 @@ use crate::{
 pub struct CCParetoFront<const N: usize> {
     inner: Vec<CycleCombination<N>>,
     index_dominated_elements: Vec<usize>,
+}
+
+impl<const N: usize> Ord for CCParetoFront<N> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.inner.len().cmp(&other.inner.len())
+    }
+}
+
+impl<const N: usize> PartialOrd for CCParetoFront<N> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<const N: usize> Eq for CCParetoFront<N> {}
+
+impl<const N: usize> PartialEq for CCParetoFront<N> {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner.len() == other.inner.len()
+    }
 }
 
 fn dominate<'a, const N: usize>(
