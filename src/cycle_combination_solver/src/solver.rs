@@ -440,6 +440,7 @@ impl<'id, P: PuzzleState<'id>, T: PruningTables<'id, P>> CycleStructureSolver<'i
     ///
     /// The solver will fail if it cannot find a solution. See
     /// `CycleStructureSolverError`.
+    
     pub fn solve<H: PuzzleStateHistory<'id, P>>(
         &self,
     ) -> Result<SolutionsIntoIter<'id, '_, P>, CycleStructureSolverError> {

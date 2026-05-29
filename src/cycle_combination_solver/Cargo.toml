@@ -1,23 +1,22 @@
 [package]
+edition = "2024"
 name = "cycle_combination_solver"
 version = "0.1.0"
-edition = "2024"
 
 [dependencies]
 enum_dispatch = "0.3.13"
-fastrand = "2.3.0"
+fastrand = "2.4.1"
 fxhash = "0.2.1"
-generativity = "1.1.0"
+generativity = "1.2.1"
 heuristic-graph-coloring = "0.1.0"
 humanize-duration.workspace = true
 integer-partitions = "0.1.1"
 itertools.workspace = true
 log.workspace = true
-memoize = "0.4.2"
 num-traits = "0.2.19"
+puzzle_theory.workspace = true
 qter_core.workspace = true
 thiserror.workspace = true
-puzzle_theory.workspace = true
 
 [dev-dependencies]
 pretty_env_logger.workspace = true
