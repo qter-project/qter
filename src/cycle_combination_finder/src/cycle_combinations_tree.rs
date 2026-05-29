@@ -57,7 +57,7 @@ pub struct DisjointRegisters<'a, const N: usize> {
 
 struct ThreadInfo {
     recv_time: Duration,
-    mkp_time: Duration,
+    total_mkp_time: Duration,
 }
 
 struct ProfileInfo {
@@ -80,13 +80,22 @@ impl Debug for ProfileInfo {
                 &format!("{:>21}", "post_candidate_count"),
                 &format!(
                     "{} ({} total)",
-                    self.post_candidate_count,
-                    self.post_candidate_count * u32::try_from(self.num_cores).unwrap()
+                    self.post_candidate_count / u32::try_from(self.num_cores).unwrap(),
+                    self.post_candidate_count
                 ),
             )
             .field(
                 &format!("{:>21}", "total_time"),
-                &format!("{}", self.total_time.human(Truncate::Micro)),
+                &format!("{}", self.total_time.human(Truncate::Millis)),
+            )
+            .field(
+                &format!("{:>21}", "single_cpu_time"),
+                &format!(
+                    "{}",
+                    self.total_time
+                        .mul_f64(self.dfs_percent_cpu + self.mkp_percent_cpu)
+                        .human(Truncate::Millis)
+                ),
             )
             .field(
                 &format!("{:>21}", "dfs_alloc_percent"),
@@ -95,7 +104,7 @@ impl Debug for ProfileInfo {
                     self.dfs_percent_alloc * 100.0,
                     self.total_time
                         .mul_f64(self.dfs_percent_alloc)
-                        .human(Truncate::Micro)
+                        .human(Truncate::Millis)
                 ),
             )
             .field(
@@ -105,7 +114,7 @@ impl Debug for ProfileInfo {
                     self.dfs_percent_cpu * 100.0,
                     self.total_time
                         .mul_f64(self.dfs_percent_cpu)
-                        .human(Truncate::Micro)
+                        .human(Truncate::Millis)
                 ),
             )
             .field(
@@ -115,7 +124,7 @@ impl Debug for ProfileInfo {
                     self.dfs_percent_io * 100.0,
                     self.total_time
                         .mul_f64(self.dfs_percent_io)
-                        .human(Truncate::Micro)
+                        .human(Truncate::Millis)
                 ),
             )
             .field(
@@ -125,7 +134,7 @@ impl Debug for ProfileInfo {
                     self.mkp_percent_cpu * 100.0,
                     self.total_time
                         .mul_f64(self.mkp_percent_cpu)
-                        .human(Truncate::Micro)
+                        .human(Truncate::Millis)
                 ),
             )
             .field(
@@ -135,7 +144,7 @@ impl Debug for ProfileInfo {
                     self.mkp_percent_io * 100.0,
                     self.total_time
                         .mul_f64(self.mkp_percent_io)
-                        .human(Truncate::Micro)
+                        .human(Truncate::Millis)
                 ),
             )
             .field(&format!("{:>21}", "num_cores"), &self.num_cores)
@@ -213,7 +222,7 @@ fn worker_thread<const N: usize>(
     }
     ThreadInfo {
         recv_time,
-        mkp_time: total_time.elapsed().saturating_sub(recv_time),
+        total_mkp_time: total_time.elapsed(),
     }
 }
 
@@ -389,13 +398,18 @@ impl<const N: usize> CycleCombinationsTree<N> {
 
         drop(mutable.sender);
         #[allow(clippy::missing_panics_doc)]
-        let (recv_time, mkp_time) = worker_thread_handles.into_iter().fold(
+        let (recv_time, total_mkp_time) = worker_thread_handles.into_iter().fold(
             (Duration::default(), Duration::default()),
             |acc, handle| {
                 let thread_info = handle.join().unwrap();
-                (acc.0 + thread_info.recv_time, acc.1 + thread_info.mkp_time)
+                (
+                    acc.0 + thread_info.recv_time,
+                    acc.1 + thread_info.total_mkp_time,
+                )
             },
         );
+
+        let total_time = total_time.elapsed();
 
         #[allow(clippy::missing_panics_doc)]
         let exclusive = Arc::into_inner(concurrent).unwrap();
@@ -407,13 +421,13 @@ impl<const N: usize> CycleCombinationsTree<N> {
             (mutable.alloc_time.as_nanos() as f64) / (dfs_time.as_nanos() as f64);
         let dfs_percent_cpu = 1.0 - dfs_percent_io - dfs_percent_alloc;
         #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-        let mkp_percent_io = (recv_time.as_nanos() as f64) / (mkp_time.as_nanos() as f64);
+        let mkp_percent_io = (recv_time.as_nanos() as f64) / (total_mkp_time.as_nanos() as f64);
         let mkp_percent_cpu = 1.0 - mkp_percent_io;
 
         let profile_info = ProfileInfo {
             candidate_count: mutable.candidate_count,
             post_candidate_count: exclusive.post_candidate_count.into_inner(),
-            total_time: total_time.elapsed(),
+            total_time,
             dfs_percent_alloc,
             dfs_percent_cpu,
             dfs_percent_io,
