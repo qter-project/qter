@@ -160,6 +160,15 @@ impl<const N: usize> DisjointRegisters<'_, N> {
             .map(|(prefix_register, _)| prefix_register)
             .chain(std::iter::once(self.last_register))
     }
+
+    #[must_use]
+    pub fn get(&self, i: usize) -> Option<&PossibleOrder<N>> {
+        if i == self.prefix_registers.len() {
+            Some(self.last_register)
+        } else {
+            self.prefix_registers.get(i).map(|(ret, _)| ret)
+        }
+    }
 }
 
 #[allow(unused)]
