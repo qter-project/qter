@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{assert_matches, borrow::Cow};
 
 use bitgauss::BitMatrix;
 
@@ -14,7 +14,7 @@ fn apply_constraints(
     i: usize,
     v: bool,
 ) -> Option<Vec<ParityAssignment>> {
-    assert!(matches!(curr_assignment[i], ParityAssignment::Unassigned));
+    assert_matches!(curr_assignment[i], ParityAssignment::Unassigned);
     for constraint in (0..constraints.rows()).filter_map(|j| {
         let constraint = constraints.row(j);
         if constraint.bit(i) {
@@ -36,7 +36,7 @@ fn apply_constraints(
             // remaining 1s
             0 => unreachable!(),
             1 => {
-                assert!(matches!(curr_assignment[i], ParityAssignment::Unassigned));
+                assert_matches!(curr_assignment[i], ParityAssignment::Unassigned);
                 let expected_v = constraint
                     .iter()
                     .take(curr_assignment.len())
@@ -58,7 +58,7 @@ fn apply_constraints(
                 }
             }
             2 => {
-                assert!(matches!(curr_assignment[i], ParityAssignment::Unassigned));
+                assert_matches!(curr_assignment[i], ParityAssignment::Unassigned);
                 let mut parity = false;
                 let mut other: Option<&mut ParityAssignment> = None;
                 for (j, a) in constraint

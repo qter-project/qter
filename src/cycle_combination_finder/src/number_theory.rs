@@ -1,7 +1,7 @@
 use crate::{FIRST_129_PRIMES, orderexps::OrderExps};
 
 /// Compute all divisors of a number, with every divisor represented as a
-/// [`OrdersExps`].
+/// [`OrderExps`].
 ///
 /// # Panics
 ///

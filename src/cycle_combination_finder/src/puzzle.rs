@@ -325,6 +325,8 @@ impl OrbitDef {
 
 #[cfg(test)]
 mod tests {
+    use std::assert_matches;
+
     use puzzle_theory::puzzle_geometry::parsing::puzzle;
 
     use crate::{
@@ -359,10 +361,10 @@ mod tests {
 
     #[test_log::test]
     fn no_orbits() {
-        assert!(matches!(
+        assert_matches!(
             PuzzleDef::<8>::new(vec![], EvenParityConstraints(vec![])),
             Err(PuzzleDefCreationError::NoOrbits),
-        ));
+        );
         assert!(
             PuzzleDef::<8>::new(
                 vec![PartialOrbitDef {
@@ -377,7 +379,7 @@ mod tests {
 
     #[test_log::test]
     fn too_many_orbits() {
-        assert!(matches!(
+        assert_matches!(
             PuzzleDef::<8>::new(
                 (0..=MAX_ORBIT_COUNT)
                     .map(|_| PartialOrbitDef {
@@ -391,12 +393,12 @@ mod tests {
                 actual: 65537,
                 max: 65536,
             }),
-        ));
+        );
     }
 
     #[test_log::test]
     fn invalid_orientation_count() {
-        assert!(matches!(
+        assert_matches!(
             PuzzleDef::<8>::new(
                 vec![PartialOrbitDef {
                     piece_count: 1.try_into().unwrap(),
@@ -408,8 +410,8 @@ mod tests {
                 EvenParityConstraints(vec![])
             ),
             Err(PuzzleDefCreationError::InvalidOrientationCount(0)),
-        ));
-        assert!(matches!(
+        );
+        assert_matches!(
             PuzzleDef::<8>::new(
                 vec![PartialOrbitDef {
                     piece_count: 1.try_into().unwrap(),
@@ -421,7 +423,7 @@ mod tests {
                 EvenParityConstraints(vec![])
             ),
             Err(PuzzleDefCreationError::InvalidOrientationCount(1)),
-        ));
+        );
         assert!(
             PuzzleDef::<8>::new(
                 vec![PartialOrbitDef {
@@ -439,7 +441,7 @@ mod tests {
 
     #[test_log::test]
     fn orbit_too_many_pieces() {
-        assert!(matches!(
+        assert_matches!(
             PuzzleDef::<8>::new(
                 vec![PartialOrbitDef {
                     piece_count: 23.try_into().unwrap(),
@@ -454,7 +456,7 @@ mod tests {
                 actual: 23,
                 max: 22
             })
-        ));
+        );
         assert!(
             PuzzleDef::<8>::new(
                 vec![PartialOrbitDef {
@@ -472,7 +474,7 @@ mod tests {
 
     #[test_log::test]
     fn orbit_too_much_orientation() {
-        assert!(matches!(
+        assert_matches!(
             PuzzleDef::<8>::new(
                 vec![PartialOrbitDef {
                     piece_count: 1.try_into().unwrap(),
@@ -487,7 +489,7 @@ mod tests {
                 actual: 23,
                 max: 22
             })
-        ));
+        );
         assert!(
             PuzzleDef::<8>::new(
                 vec![PartialOrbitDef {
@@ -505,7 +507,7 @@ mod tests {
 
     #[test_log::test]
     fn constraint_index_out_of_bounds() {
-        assert!(matches!(
+        assert_matches!(
             PuzzleDef::<8>::new(
                 vec![PartialOrbitDef {
                     piece_count: 1.try_into().unwrap(),
@@ -517,7 +519,7 @@ mod tests {
                 EvenParityConstraints(vec![vec![1]]),
             ),
             Err(PuzzleDefCreationError::ConstraintIndexOutOfBounds { max: 0, actual: 1 })
-        ));
+        );
         assert!(
             PuzzleDef::<8>::new(
                 vec![PartialOrbitDef {
@@ -535,7 +537,7 @@ mod tests {
 
     #[test_log::test]
     fn duplicate_indicies() {
-        assert!(matches!(
+        assert_matches!(
             PuzzleDef::<8>::new(
                 vec![PartialOrbitDef {
                     piece_count: 1.try_into().unwrap(),
@@ -547,7 +549,7 @@ mod tests {
                 EvenParityConstraints(vec![vec![0, 0]]),
             ),
             Err(PuzzleDefCreationError::DuplicateIndicies(0))
-        ));
+        );
         assert!(
             PuzzleDef::<8>::new(
                 vec![PartialOrbitDef {

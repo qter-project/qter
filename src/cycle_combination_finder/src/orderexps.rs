@@ -1,4 +1,5 @@
 use std::{
+    assert_matches,
     cmp::Ordering,
     fmt::{self, Debug},
     num::NonZeroU16,
@@ -102,7 +103,7 @@ impl<const N: usize> OrderExps<N> {
     #[inline]
     #[must_use]
     pub fn prime_power_sum_u8_unchecked(&self) -> u8 {
-        assert!(matches!(N, 8 | 16 | 32));
+        assert_matches!(N, 8 | 16 | 32);
         #[allow(clippy::missing_panics_doc, clippy::cast_possible_truncation)]
         (self.0
             * Simd::from_array(
