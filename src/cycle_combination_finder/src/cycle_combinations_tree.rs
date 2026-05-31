@@ -5,7 +5,6 @@ use std::{
     sync::{
         Arc,
         atomic::{self, AtomicU32, AtomicUsize},
-        mpmc,
     },
     time::{Duration, Instant},
 };
@@ -14,6 +13,10 @@ use core_affinity::CoreId;
 use cpu_time::ThreadTime;
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::{Level, debug, log_enabled};
+use ringbuf::{
+    CachingCons, CachingProd, StaticRb,
+    traits::{Consumer, Producer, Split},
+};
 
 use crate::{
     cycle_combination_details::CycleCombinationDetails,
@@ -22,6 +25,11 @@ use crate::{
     pareto_front::CCParetoFront,
     puzzle::OrbitDef,
 };
+
+const WORKER_BUF_SIZE: usize = 10;
+
+type StaticRbProducer<T, const N: usize> = CachingProd<Arc<StaticRb<T, N>>>;
+type StaticRbReceiver<T, const N: usize> = CachingCons<Arc<StaticRb<T, N>>>;
 
 pub struct CycleCombinationsTree<const N: usize> {
     possible_orders_except_one: Vec<PossibleOrder<N>>,
@@ -32,8 +40,9 @@ pub struct CycleCombinationsTree<const N: usize> {
 pub struct CycleCombinationsTreeMutable<const N: usize> {
     prefix_and_last_registers: Vec<(PossibleOrder<N>, usize)>,
     registers: NonemptyVec<PossibleOrder<N>>,
-    sender: mpmc::Sender<PackedCycleCombinationCandidateQueue<N>>,
-
+    senders:
+        Box<[StaticRbProducer<Option<PackedCycleCombinationCandidateQueue<N>>, WORKER_BUF_SIZE>]>,
+    next_sender_index: usize,
     candidate_count: u32,
     alloc_time: Duration,
 }
@@ -180,10 +189,28 @@ fn dbg_registers<const N: usize>(registers: &[PossibleOrder<N>]) -> String {
         .join(", ")
 }
 
+fn push_sender<const N: usize>(
+    sender: &mut StaticRbProducer<Option<PackedCycleCombinationCandidateQueue<N>>, WORKER_BUF_SIZE>,
+    mut payload: Option<PackedCycleCombinationCandidateQueue<N>>,
+) {
+    loop {
+        match sender.try_push(payload) {
+            Ok(()) => break,
+            Err(org) => {
+                payload = org;
+                std::hint::spin_loop();
+            }
+        }
+    }
+}
+
 #[allow(clippy::needless_pass_by_value)]
 fn worker_thread<const N: usize>(
     core_id: CoreId,
-    receiver: mpmc::Receiver<PackedCycleCombinationCandidateQueue<N>>,
+    mut receiver: StaticRbReceiver<
+        Option<PackedCycleCombinationCandidateQueue<N>>,
+        WORKER_BUF_SIZE,
+    >,
     concurrent: Arc<CycleCombinationsTreeConcurrent<N>>,
     exact_register_count: NonZeroU16,
 ) -> ThreadInfo<N> {
@@ -191,7 +218,17 @@ fn worker_thread<const N: usize>(
     let mut cycle_combinations = CCParetoFront::default();
     let total_time = Instant::now();
     let cpu_time = ThreadTime::now();
-    while let Ok(packed_queue) = receiver.recv() {
+    // while let Some(packed_queue) = receiver.pop() {
+    'outer: loop {
+        let packed_queue = loop {
+            match receiver.try_pop() {
+                Some(Some(r)) => break r,
+                Some(None) => break 'outer,
+                None => {
+                    std::hint::spin_loop();
+                }
+            }
+        };
         let (prefix_registers, last_registers) = packed_queue
             .prefix_and_last_registers
             .split_at(usize::from(exact_register_count.get() - 1));
@@ -321,7 +358,15 @@ unsafe fn search_dfs_helper<const N: usize>(
         if let Some(now) = maybe_now {
             mutable.alloc_time += now.elapsed();
         }
-        mutable.sender.send(payload).unwrap();
+        // while let Err(org) = mutable.sender.push(payload) {
+        //     payload = org.0;
+        // }
+        let sender = &mut mutable.senders[mutable.next_sender_index];
+        push_sender(sender, Some(payload));
+        mutable.next_sender_index += 1;
+        if mutable.next_sender_index == mutable.senders.len() {
+            mutable.next_sender_index = 0;
+        }
     }
 }
 
@@ -356,11 +401,25 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let core_ids = core_affinity::get_core_ids().unwrap();
         let num_cores = core_ids.len();
 
-        // We do not use `0` as to allow a buffer for every core to prevent starvation
-        let (sender, receiver) =
-            mpmc::sync_channel::<PackedCycleCombinationCandidateQueue<N>>(core_ids.len() * 10);
-
         let concurrent = Arc::default();
+        let (worker_thread_handles, senders): (Vec<_>, Vec<_>) = core_ids
+            .into_iter()
+            .map(|core_id| {
+                let (sender, receiver) = StaticRb::<
+                    Option<PackedCycleCombinationCandidateQueue<N>>,
+                    WORKER_BUF_SIZE,
+                >::default()
+                .split();
+                let concurrent = Arc::clone(&concurrent);
+                let worker_thread_handle = std::thread::spawn(move || {
+                    worker_thread(core_id, receiver, concurrent, self.exact_register_count)
+                });
+
+                (worker_thread_handle, sender)
+            })
+            .unzip();
+        let worker_thread_handles = worker_thread_handles.into_boxed_slice();
+        let senders = senders.into_boxed_slice();
 
         // We can unwrap because `exact_register_count` is NonZero.
         #[allow(clippy::missing_panics_doc)]
@@ -371,21 +430,11 @@ impl<const N: usize> CycleCombinationsTree<N> {
                 usize::from(self.exact_register_count.get())
             ])
             .unwrap(),
+            senders,
+            next_sender_index: 0,
             candidate_count: 0,
             alloc_time: Duration::default(),
-            sender,
         };
-
-        let worker_thread_handles = core_ids
-            .into_iter()
-            .map(|core_id| {
-                let receiver = receiver.clone();
-                let concurrent = Arc::clone(&concurrent);
-                std::thread::spawn(move || {
-                    worker_thread(core_id, receiver, concurrent, self.exact_register_count)
-                })
-            })
-            .collect::<Vec<_>>();
 
         let total_time = Instant::now();
         let cpu_time = ThreadTime::now();
@@ -403,12 +452,11 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let dfs_time = total_time.elapsed();
         let dfs_cpu_time = cpu_time.elapsed();
 
-        drop(mutable.sender);
-
         let mut smallest_fronts = BinaryHeap::new();
         let mut total_mkp_cpu_time = Duration::default();
         let mut total_mkp_time = Duration::default();
-        for handle in worker_thread_handles {
+        for (handle, mut sender) in worker_thread_handles.into_iter().zip(mutable.senders) {
+            push_sender(&mut sender, None);
             #[allow(clippy::missing_panics_doc)]
             let thread_info = handle.join().unwrap();
 

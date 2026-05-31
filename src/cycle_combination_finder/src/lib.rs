@@ -5,13 +5,11 @@
     clippy::similar_names
 )]
 #![feature(
-    mpmc_channel,
     slice_swap_unchecked,
     portable_simd,
     gen_blocks,
     clone_from_ref,
     split_array,
-    isolate_most_least_significant_one
 )]
 
 use bitgauss::BitMatrix;

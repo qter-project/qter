@@ -212,10 +212,8 @@ impl<const N: usize> CycleCombinationFinder<N> {
             assert_eq!(
                 ret.len(),
                 expected_length,
-                "Expected {} solutions, found {}. First 20 solutions: {:#?}",
-                expected_length,
+                "Expected {expected_length} solutions, found {}. Solutions: {ret:?}",
                 ret.len(),
-                ret.into_iter().take(20).collect::<Vec<_>>(),
             );
             debug!("Successfully found {} solutions", ret.len());
         }
@@ -253,7 +251,7 @@ mod tests {
     fn minx4_optimal_3() {
         let minx4 = MINX4.clone();
         CycleCombinationFinder::from(minx4)
-            .with_register_count(RegisterCount::Exactly(NonZeroU16::new(4).unwrap()))
+            .with_register_count(RegisterCount::Exactly(NonZeroU16::new(3).unwrap()))
             .with_expected_length_assertion(251)
             .find();
     }
