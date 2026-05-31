@@ -13,10 +13,7 @@ use core_affinity::CoreId;
 use cpu_time::ThreadTime;
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::{Level, debug, log_enabled};
-use ringbuf::{
-    CachingCons, CachingProd, StaticRb,
-    traits::{Consumer, Producer, Split},
-};
+use ringbuffer_spsc::{RingBufferReader, RingBufferWriter, ringbuffer};
 
 use crate::{
     cycle_combination_details::CycleCombinationDetails,
@@ -25,11 +22,6 @@ use crate::{
     pareto_front::CCParetoFront,
     puzzle::OrbitDef,
 };
-
-const WORKER_BUF_SIZE: usize = 10;
-
-type StaticRbProducer<T, const N: usize> = CachingProd<Arc<StaticRb<T, N>>>;
-type StaticRbReceiver<T, const N: usize> = CachingCons<Arc<StaticRb<T, N>>>;
 
 pub struct CycleCombinationsTree<const N: usize> {
     possible_orders_except_one: Vec<PossibleOrder<N>>,
@@ -40,8 +32,7 @@ pub struct CycleCombinationsTree<const N: usize> {
 pub struct CycleCombinationsTreeMutable<const N: usize> {
     prefix_and_last_registers: Vec<(PossibleOrder<N>, usize)>,
     registers: NonemptyVec<PossibleOrder<N>>,
-    senders:
-        Box<[StaticRbProducer<Option<PackedCycleCombinationCandidateQueue<N>>, WORKER_BUF_SIZE>]>,
+    senders: Box<[RingBufferWriter<Option<PackedCycleCombinationCandidateQueue<N>>>]>,
     next_sender_index: usize,
     candidate_count: u32,
     alloc_time: Duration,
@@ -190,27 +181,19 @@ fn dbg_registers<const N: usize>(registers: &[PossibleOrder<N>]) -> String {
 }
 
 fn push_sender<const N: usize>(
-    sender: &mut StaticRbProducer<Option<PackedCycleCombinationCandidateQueue<N>>, WORKER_BUF_SIZE>,
+    sender: &mut RingBufferWriter<Option<PackedCycleCombinationCandidateQueue<N>>>,
     mut payload: Option<PackedCycleCombinationCandidateQueue<N>>,
 ) {
-    loop {
-        match sender.try_push(payload) {
-            Ok(()) => break,
-            Err(org) => {
-                payload = org;
-                std::hint::spin_loop();
-            }
-        }
+    while let Some(org) = sender.push(payload) {
+        payload = org;
+        std::hint::spin_loop();
     }
 }
 
 #[allow(clippy::needless_pass_by_value)]
 fn worker_thread<const N: usize>(
     core_id: CoreId,
-    mut receiver: StaticRbReceiver<
-        Option<PackedCycleCombinationCandidateQueue<N>>,
-        WORKER_BUF_SIZE,
-    >,
+    mut receiver: RingBufferReader<Option<PackedCycleCombinationCandidateQueue<N>>>,
     concurrent: Arc<CycleCombinationsTreeConcurrent<N>>,
     exact_register_count: NonZeroU16,
 ) -> ThreadInfo<N> {
@@ -221,7 +204,7 @@ fn worker_thread<const N: usize>(
     // while let Some(packed_queue) = receiver.pop() {
     'outer: loop {
         let packed_queue = loop {
-            match receiver.try_pop() {
+            match receiver.pull() {
                 Some(Some(r)) => break r,
                 Some(None) => break 'outer,
                 None => {
@@ -405,11 +388,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let (worker_thread_handles, senders): (Vec<_>, Vec<_>) = core_ids
             .into_iter()
             .map(|core_id| {
-                let (sender, receiver) = StaticRb::<
-                    Option<PackedCycleCombinationCandidateQueue<N>>,
-                    WORKER_BUF_SIZE,
-                >::default()
-                .split();
+                let (sender, receiver) = ringbuffer(16);
                 let concurrent = Arc::clone(&concurrent);
                 let worker_thread_handle = std::thread::spawn(move || {
                     worker_thread(core_id, receiver, concurrent, self.exact_register_count)

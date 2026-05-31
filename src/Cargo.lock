@@ -640,7 +640,7 @@ dependencies = [
  "num-integer",
  "puzzle_theory",
  "rayon",
- "ringbuf",
+ "ringbuffer-spsc",
  "test-log",
  "thiserror",
  "union-find",
@@ -2096,14 +2096,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "ringbuf"
-version = "0.5.0"
+name = "ringbuffer-spsc"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d3ecbcab081b935fb9c618b07654924f27686b4aac8818e700580a83eedcb7f"
+checksum = "23463bd9305e6424c22a2e8a41ffd90fc0426964fd0485d731f4320a46aca66a"
 dependencies = [
  "crossbeam-utils",
- "portable-atomic",
- "portable-atomic-util",
 ]
 
 [[package]]
