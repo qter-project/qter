@@ -2,11 +2,7 @@ use std::{
     collections::BinaryHeap,
     fmt::{self, Debug},
     num::{NonZeroU16, NonZeroU32, NonZeroUsize},
-    sync::{
-        Arc,
-        atomic::{self, AtomicU32, AtomicUsize},
-        mpmc,
-    },
+    sync::{Arc, atomic::{self, AtomicUsize}, mpmc},
     time::{Duration, Instant},
 };
 
@@ -41,7 +37,6 @@ pub struct CycleCombinationsTreeMutable<const N: usize> {
 #[derive(Default)]
 pub struct CycleCombinationsTreeConcurrent<const N: usize> {
     max_last_register_order_reverse_index: AtomicUsize,
-    post_candidate_count: AtomicU32,
 }
 
 #[derive(Debug, Clone)]
@@ -58,6 +53,7 @@ pub struct DisjointRegisters<'a, const N: usize> {
 struct ThreadInfo<const N: usize> {
     total_mkp_cpu_time: Duration,
     total_mkp_time: Duration,
+    post_candiate_count: u32,
     cycle_combinations: CCParetoFront<N>,
 }
 
@@ -189,6 +185,7 @@ fn worker_thread<const N: usize>(
 ) -> ThreadInfo<N> {
     core_affinity::set_for_current(core_id);
     let mut cycle_combinations = CCParetoFront::default();
+    let mut post_candidate_count = 0;
     let total_time = Instant::now();
     let cpu_time = ThreadTime::now();
     while let Ok(packed_queue) = receiver.recv() {
@@ -203,9 +200,7 @@ fn worker_thread<const N: usize>(
             if cycle_combinations.push_and_dominating_check(
                 disjoint_registers,
                 |dominating_registers| {
-                    concurrent
-                        .post_candidate_count
-                        .fetch_add(1, atomic::Ordering::Relaxed);
+                    post_candidate_count += 1;
                     CycleCombinationDetails::new(dominating_registers).map(|details| {
                         CycleCombination {
                             registers: dominating_registers.iter().cloned().collect::<Box<_>>(),
@@ -230,6 +225,7 @@ fn worker_thread<const N: usize>(
         cycle_combinations,
         total_mkp_cpu_time: cpu_time.elapsed(),
         total_mkp_time: total_time.elapsed(),
+        post_candiate_count: 0,
     }
 }
 
@@ -408,12 +404,14 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let mut smallest_fronts = BinaryHeap::new();
         let mut total_mkp_cpu_time = Duration::default();
         let mut total_mkp_time = Duration::default();
+        let mut total_post_candidate_count = 0;
         for handle in worker_thread_handles {
             #[allow(clippy::missing_panics_doc)]
             let thread_info = handle.join().unwrap();
 
             total_mkp_cpu_time += thread_info.total_mkp_cpu_time;
             total_mkp_time += thread_info.total_mkp_time;
+            total_post_candidate_count += thread_info.post_candiate_count;
             smallest_fronts.push(thread_info.cycle_combinations);
         }
 
@@ -445,7 +443,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
 
         let profile_info = ProfileInfo {
             candidate_count: mutable.candidate_count,
-            post_candidate_count: exclusive.post_candidate_count.into_inner(),
+            post_candidate_count: total_post_candidate_count,
             total_time,
             dfs_percent_alloc,
             dfs_percent_cpu,
