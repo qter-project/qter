@@ -640,7 +640,6 @@ dependencies = [
  "num-integer",
  "puzzle_theory",
  "rayon",
- "ringbuf-blocking",
  "test-log",
  "thiserror",
  "union-find",
@@ -2093,26 +2092,6 @@ dependencies = [
  "libc",
  "untrusted",
  "windows-sys 0.52.0",
-]
-
-[[package]]
-name = "ringbuf"
-version = "0.4.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe47b720588c8702e34b5979cb3271a8b1842c7cb6f57408efa70c779363488c"
-dependencies = [
- "crossbeam-utils",
- "portable-atomic",
- "portable-atomic-util",
-]
-
-[[package]]
-name = "ringbuf-blocking"
-version = "0.1.0-rc.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de08051bc901a39feec48156e30a98e4a9bf69b8cad00e3aa57c475b799c73ef"
-dependencies = [
- "ringbuf",
 ]
 
 [[package]]

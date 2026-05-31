@@ -16,7 +16,6 @@ log.workspace = true
 num-integer = "0.1.46"
 puzzle_theory.workspace = true
 rayon = "1.12.0"
-ringbuf-blocking = "0.1.0-rc.6"
 thiserror.workspace = true
 union-find = { git = "https://github.com/qter-project/union-find-rs" }
 
