@@ -9,6 +9,7 @@
 
 ## CCF
 
+- sync trees together
 - what is possible_orders_except_one is empty? OOB?
 - don't use PossibleOrder wrapper; get rid of min_piece_count memory overhead
 - slab allocator

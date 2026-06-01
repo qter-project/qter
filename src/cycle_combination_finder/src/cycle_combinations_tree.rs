@@ -2,7 +2,11 @@ use std::{
     collections::BinaryHeap,
     fmt::{self, Debug},
     num::{NonZeroU16, NonZeroU32, NonZeroUsize},
-    sync::{Arc, atomic::{self, AtomicUsize}, mpmc},
+    sync::{
+        Arc,
+        atomic::{self, AtomicUsize},
+        mpmc,
+    },
     time::{Duration, Instant},
 };
 
@@ -440,15 +444,22 @@ impl<const N: usize> CycleCombinationsTree<N> {
             as f64)
             / ((self.possible_orders_except_one.len() - 1) as f64);
         #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-        let dfs_percent_cpu = (dfs_cpu_time.as_nanos() as f64) / (dfs_time.as_nanos() as f64);
-        let dfs_percent_io = 1.0 - dfs_percent_cpu;
+        let dfs_percent_cpu = (dfs_cpu_time.as_nanos() as f64) / (total_time.as_nanos() as f64);
         #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
         let dfs_percent_alloc =
-            (mutable.alloc_time.as_nanos() as f64) / (dfs_time.as_nanos() as f64);
+            (mutable.alloc_time.as_nanos() as f64) / (total_time.as_nanos() as f64);
         #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-        let mkp_percent_cpu =
-            (total_mkp_cpu_time.as_nanos() as f64) / (total_mkp_time.as_nanos() as f64);
-        let mkp_percent_io = 1.0 - mkp_percent_cpu;
+        let dfs_percent_io = (dfs_time
+            .saturating_sub(dfs_cpu_time)
+            .saturating_sub(mutable.alloc_time)
+            .as_nanos() as f64)
+            / (total_time.as_nanos() as f64);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+        let mkp_percent_cpu = (total_mkp_cpu_time.as_nanos() as f64)
+            / (total_time.as_nanos() as f64 * num_cores as f64);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+        let mkp_percent_io = (total_mkp_time.saturating_sub(total_mkp_cpu_time).as_nanos() as f64)
+            / (total_time.as_nanos() as f64 * num_cores as f64);
 
         let profile_info = ProfileInfo {
             candidate_count: mutable.candidate_count,
