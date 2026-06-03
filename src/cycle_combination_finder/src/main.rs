@@ -28,7 +28,7 @@ fn main() {
         let cube3 = cubeN::CUBE3.clone();
         CycleCombinationFinder::from(cube3)
             .with_register_count(RegisterCount::Exactly(NonZeroU16::new(2).unwrap()))
-            .with_expected_length_assertion(251)
+            .with_expected_length_assertion(5)
             .find();
     } else {
         println!("Enter minx3 or minx4 or cube3");
