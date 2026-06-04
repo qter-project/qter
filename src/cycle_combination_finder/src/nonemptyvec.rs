@@ -6,8 +6,17 @@ use std::{
 #[derive(Clone, Debug)]
 pub struct NonemptyVec<T>(Vec<T>);
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 pub struct NonemptySlice<'a, T>(&'a [T]);
+
+impl<T> Clone for NonemptySlice<'_, T> {
+    #[inline]
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T> Copy for NonemptySlice<'_, T> {}
 
 impl<T> TryFrom<Vec<T>> for NonemptyVec<T> {
     type Error = ();
@@ -80,5 +89,12 @@ impl<T> NonemptyVec<T> {
     #[must_use]
     pub fn as_slice(&self) -> NonemptySlice<'_, T> {
         NonemptySlice(&self.0)
+    }
+}
+
+impl<'a, T> NonemptySlice<'a, T> {
+    #[must_use]
+    pub fn split_first(self) -> (&'a T, &'a [T]) {
+        unsafe { self.0.split_first().unwrap_unchecked() }
     }
 }

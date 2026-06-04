@@ -4,7 +4,7 @@ use std::{
     num::{NonZeroU16, NonZeroU32, NonZeroUsize},
     sync::{
         Arc,
-        atomic::{self, AtomicU32, AtomicUsize},
+        atomic::{self, AtomicUsize},
         mpmc,
     },
     time::{Duration, Instant},
@@ -189,7 +189,7 @@ pub fn dbg_registers<const N: usize>(
 }
 
 #[must_use]
-pub fn dbg_registers_iter<'a, const N: usize>(
+pub fn dbg_registers_iter<const N: usize>(
     registers_iter: impl IntoIterator<Item = impl IntoIterator<Item = PossibleOrder<N>>>,
 ) -> String {
     registers_iter
@@ -259,16 +259,27 @@ fn worker_thread<const N: usize>(
 unsafe fn search_dfs_helper<const N: usize>(
     mutable: &mut CycleCombinationsTreeMutable<N>,
     concurrent: &Arc<CycleCombinationsTreeConcurrent<N>>,
-    possible_orders: &[PossibleOrder<N>],
+    possible_orders: NonemptySlice<'_, PossibleOrder<N>>,
     remaining_register_count: NonZeroUsize,
     remaining_piece_count: NonZeroU32,
 ) {
     let register_index = mutable.registers.len().get() - remaining_register_count.get();
     let mut curr_possible_orders = possible_orders;
     let maybe_next_remaining_register_count = NonZeroUsize::new(remaining_register_count.get() - 1);
-    let mut send_queue = false;
-    while let Some((possible_order, next_possible_orders)) = curr_possible_orders.split_first() {
-        if register_index <= 1
+    if maybe_next_remaining_register_count.is_none() {
+        mutable.prefix_and_last_registers.clear();
+        mutable.prefix_and_last_registers.extend(
+            mutable
+                .registers
+                .split_last()
+                .1
+                .iter()
+                .map(|register| (register.clone(), 0)),
+        );
+    }
+    loop {
+        let (possible_order, next_possible_orders) = curr_possible_orders.split_first();
+        if register_index == 0
             && next_possible_orders.len()
                 <= concurrent
                     .max_last_register_order_reverse_index
@@ -277,62 +288,53 @@ unsafe fn search_dfs_helper<const N: usize>(
             break;
         }
 
-        let Some(next_remaining_piece_count) = remaining_piece_count
+        if let Some(next_remaining_piece_count) = remaining_piece_count
             .get()
             .checked_sub(possible_order.min_piece_count.get())
-        else {
-            curr_possible_orders = next_possible_orders;
-            continue;
-        };
-
-        if let Some(next_remaining_register_count) = maybe_next_remaining_register_count {
-            if let Some(next_remaining_piece_count) = NonZeroU32::new(next_remaining_piece_count) {
-                // SAFETY: caller guarantees `mutable.registers.len()` <=
-                // `remaining_register_count`, and `remaining_register_count` != 0.
-                // `register_index` must thus be in bounds of `mutable.registers`.
-                let old = std::mem::replace(
-                    unsafe { mutable.registers.get_unchecked_mut(register_index) },
-                    possible_order.clone(),
-                );
-                // SAFETY: `remaining_register_count` only ever decreases.
-                unsafe {
-                    search_dfs_helper(
-                        mutable,
-                        concurrent,
-                        curr_possible_orders,
-                        next_remaining_register_count,
-                        next_remaining_piece_count,
+        {
+            if let Some(next_remaining_register_count) = maybe_next_remaining_register_count {
+                if let Some(next_remaining_piece_count) =
+                    NonZeroU32::new(next_remaining_piece_count)
+                {
+                    // SAFETY: caller guarantees `mutable.registers.len()` <=
+                    // `remaining_register_count`, and `remaining_register_count` != 0.
+                    // `register_index` must thus be in bounds of `mutable.registers`.
+                    let old = std::mem::replace(
+                        unsafe { mutable.registers.get_unchecked_mut(register_index) },
+                        possible_order.clone(),
                     );
+                    // SAFETY: `remaining_register_count` only ever decreases.
+                    unsafe {
+                        search_dfs_helper(
+                            mutable,
+                            concurrent,
+                            curr_possible_orders,
+                            next_remaining_register_count,
+                            next_remaining_piece_count,
+                        );
+                    }
+                    // SAFETY: see above.
+                    *unsafe { mutable.registers.get_unchecked_mut(register_index) } = old;
                 }
-                // SAFETY: see above.
-                *unsafe { mutable.registers.get_unchecked_mut(register_index) } = old;
-            }
-        } else {
-            mutable.candidate_count += 1;
+            } else {
+                mutable.candidate_count += 1;
 
-            if !send_queue {
-                // Initialize in here because a puzzle with no orientations at all can have a
-                // possible order that is not one, which may cause no solutions to be found at
-                // this leaf node
-                mutable.prefix_and_last_registers.clear();
-                mutable.prefix_and_last_registers.extend(
-                    mutable
-                        .registers
-                        .split_last()
-                        .1
-                        .iter()
-                        .map(|register| (register.clone(), 0)),
-                );
-                send_queue = true;
+                mutable
+                    .prefix_and_last_registers
+                    .push((possible_order.clone(), next_possible_orders.len()));
             }
-            mutable
-                .prefix_and_last_registers
-                .push((possible_order.clone(), next_possible_orders.len()));
         }
-        curr_possible_orders = next_possible_orders;
+        match NonemptySlice::try_from(next_possible_orders) {
+            Ok(ret) => {
+                curr_possible_orders = ret;
+            }
+            Err(()) => {
+                break;
+            }
+        }
     }
 
-    if send_queue {
+    if maybe_next_remaining_register_count.is_none() {
         let maybe_now = log_enabled!(Level::Debug).then(Instant::now);
         let payload = PackedCycleCombinationCandidateQueue {
             prefix_and_last_registers: Box::clone_from_ref(&mutable.prefix_and_last_registers),
@@ -359,13 +361,23 @@ unsafe fn search_dfs_helper_helper<const N: usize>(
         .map(|(thread_index, core_id)| {
             core_affinity::set_for_current(core_id);
             let mut mutable = mutable.clone();
-            let concurrent = concurrent.clone();
+            let concurrent = Arc::clone(concurrent);
             let possible_orders = Arc::clone(possible_orders);
             std::thread::spawn(move || {
                 let remaining_register_count = mutable.registers.len();
                 let maybe_next_remaining_register_count =
                     NonZeroUsize::new(remaining_register_count.get() - 1);
-                let mut send_queue = false;
+                if maybe_next_remaining_register_count.is_none() {
+                    mutable.prefix_and_last_registers.clear();
+                    mutable.prefix_and_last_registers.extend(
+                        mutable
+                            .registers
+                            .split_last()
+                            .1
+                            .iter()
+                            .map(|register| (register.clone(), 0)),
+                    );
+                }
                 for (i, possible_order) in possible_orders
                     .iter()
                     .enumerate()
@@ -392,53 +404,29 @@ unsafe fn search_dfs_helper_helper<const N: usize>(
                     {
                         if let Some(next_remaining_piece_count) =
                             NonZeroU32::new(next_remaining_piece_count)
+                            && let Ok(next_possible_orders) =
+                                NonemptySlice::try_from(&possible_orders[i..])
                         {
-                            // SAFETY: caller guarantees `mutable.registers.len()` <=
-                            // `remaining_register_count`, and `remaining_register_count` != 0.
-                            // `register_index` must thus be in bounds of `mutable.registers`.
-                            let old = std::mem::replace(
-                                mutable.registers.first_mut(),
-                                possible_order.clone(),
-                            );
-                            // SAFETY: `remaining_register_count` only ever decreases.
+                            *mutable.registers.first_mut() = possible_order.clone();
                             unsafe {
                                 search_dfs_helper(
                                     &mut mutable,
                                     &concurrent,
-                                    &possible_orders[i..],
+                                    next_possible_orders,
                                     next_remaining_register_count,
                                     next_remaining_piece_count,
                                 );
                             }
-                            // SAFETY: see above.
-                            *mutable.registers.first_mut() = old;
                         }
                     } else {
                         mutable.candidate_count += 1;
-
-                        if !send_queue {
-                            // Initialize in here because a puzzle with no orientations at all can
-                            // have a possible order that is not one,
-                            // which may cause no solutions to be found
-                            // at this leaf node
-                            mutable.prefix_and_last_registers.clear();
-                            mutable.prefix_and_last_registers.extend(
-                                mutable
-                                    .registers
-                                    .split_last()
-                                    .1
-                                    .iter()
-                                    .map(|register| (register.clone(), 0)),
-                            );
-                            send_queue = true;
-                        }
                         mutable
                             .prefix_and_last_registers
                             .push((possible_order.clone(), next_possible_orders_len));
                     }
                 }
 
-                if send_queue {
+                if maybe_next_remaining_register_count.is_none() {
                     let maybe_now = log_enabled!(Level::Debug).then(Instant::now);
                     let payload = PackedCycleCombinationCandidateQueue {
                         prefix_and_last_registers: Box::clone_from_ref(
