@@ -9,7 +9,7 @@ use crate::{
 
 #[derive(Debug, Default)]
 pub struct CCParetoFront<const N: usize> {
-    inner: Vec<CycleCombination<N>>,
+    pub(crate) inner: Vec<CycleCombination<N>>,
     index_dominated_elements: Vec<usize>,
 }
 
@@ -83,7 +83,7 @@ impl<const N: usize> CCParetoFront<N> {
         mut dominating_check: impl FnMut(DisjointRegisters<N>) -> Option<CycleCombination<N>>,
     ) -> bool {
         for (i, member) in self.inner.iter().enumerate() {
-            if dominate(&member.registers, registers.iter(), true) {
+            if dominate(&member.registers, registers.iter(), false) {
                 // `new_element` is dominated by `element`, it is thus not part of the Pareto
                 // front swap `element` with the previous element in order to
                 // percolate the best elements to the top NOTE: in my benchmarks

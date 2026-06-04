@@ -1,4 +1,7 @@
-use std::ops::{Deref, DerefMut};
+use std::{
+    num::NonZeroUsize,
+    ops::{Deref, DerefMut},
+};
 
 #[derive(Clone, Debug)]
 pub struct NonemptyVec<T>(Vec<T>);
@@ -54,9 +57,18 @@ impl<T> Deref for NonemptySlice<'_, T> {
 
 impl<T> NonemptyVec<T> {
     #[must_use]
+    pub fn len(&self) -> NonZeroUsize {
+        unsafe { NonZeroUsize::new_unchecked(self.0.len()) }
+    }
+
+    #[must_use]
     pub fn split_last(&self) -> (&T, &[T]) {
         // SAFETY: this collection has at least one element
         unsafe { self.0.split_last().unwrap_unchecked() }
+    }
+
+    pub fn first_mut(&mut self) -> &mut T {
+        unsafe { self.0.first_mut().unwrap_unchecked() }
     }
 
     #[must_use]

@@ -2,6 +2,7 @@ use std::{
     cmp::Ordering,
     num::{NonZeroU16, NonZeroU32},
     ops::Deref,
+    sync::Arc,
     time::Instant,
 };
 
@@ -10,8 +11,10 @@ use log::{debug, trace};
 
 use crate::{
     cycle_combination_details::CycleCombinationDetails,
-    cycle_combinations_tree::CycleCombinationsTree, min_piece_count::MinPieceCount,
-    orderexps::OrderExps, puzzle::PuzzleDef,
+    cycle_combinations_tree::{CycleCombinationsTree, dbg_registers},
+    min_piece_count::MinPieceCount,
+    orderexps::OrderExps,
+    puzzle::PuzzleDef,
 };
 
 #[derive(Clone, Copy, Default)]
@@ -179,17 +182,17 @@ impl<const N: usize> CycleCombinationFinder<N> {
             now.elapsed().human(Truncate::Micro)
         );
         possible_orders_except_one.sort_unstable_by(|a, b| b.order.cmp(&a.order));
-        trace!(
-            "{}",
-            possible_orders_except_one
-                .iter()
-                .map(|a| format!("({:?}, {})", a.order, a.min_piece_count))
-                .collect::<Vec<_>>()
-                .join("\n")
-        );
+        // trace!(
+        //     "{}",
+        //     possible_orders_except_one
+        //         .iter()
+        //         .map(|a| format!("({:?}, {})", a.order, a.min_piece_count))
+        //         .collect::<Vec<_>>()
+        //         .join(" ")
+        // );
         CycleCombinationsTree::new(
             exact_register_count,
-            possible_orders_except_one,
+            Arc::from(possible_orders_except_one.into_boxed_slice()),
             self.puzzle_def.orbit_defs(),
         )
         .search_dfs()
@@ -208,17 +211,23 @@ impl<const N: usize> CycleCombinationFinder<N> {
             Optimality::Equivalent => unimplemented!(),
             Optimality::Optimal => self.find_optimal(self.config.register_count),
         };
+        ret.sort_unstable();
         if let Some(expected_length) = self.config.maybe_expected_length {
             assert_eq!(
                 ret.len(),
                 expected_length,
-                "Expected {expected_length} solutions, found {}. First 20 solutions: {:#?}",
+                // "Expected {expected_length} solutions, found {}. Solutions: {ret:?}",
+                // ret.len(),
+                "Expected {expected_length} solutions, found {}. Solutions: {}",
                 ret.len(),
-                ret.into_iter().take(20).collect::<Vec<_>>(),
+                ret.into_iter()
+                    .map(|i| dbg_registers(i.registers))
+                    .collect::<Vec<_>>()
+                    .join("\n")
             );
             debug!("Successfully found {} solutions", ret.len());
+            trace!("{ret:?}");
         }
-        ret.sort_unstable();
         ret
     }
 }
@@ -253,7 +262,7 @@ mod tests {
         let minx4 = MINX4.clone();
         CycleCombinationFinder::from(minx4)
             .with_register_count(RegisterCount::Exactly(NonZeroU16::new(3).unwrap()))
-            .with_expected_length_assertion(251)
+            .with_expected_length_assertion(249)
             .find();
     }
 

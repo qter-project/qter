@@ -15,14 +15,14 @@ fn main() {
     if p == "minx3" {
         let minx3 = minxN::MINX3.clone();
         CycleCombinationFinder::from(minx3)
-            .with_register_count(RegisterCount::Exactly(NonZeroU16::new(4).unwrap()))
-            .with_expected_length_assertion(347)
+            .with_register_count(RegisterCount::Exactly(NonZeroU16::new(2).unwrap()))
+            .with_expected_length_assertion(338)
             .find();
     } else if p == "minx4" {
         let minx4 = minxN::MINX4.clone();
         CycleCombinationFinder::from(minx4)
             .with_register_count(RegisterCount::Exactly(NonZeroU16::new(3).unwrap()))
-            .with_expected_length_assertion(251)
+            .with_expected_length_assertion(249)
             .find();
     } else if p == "cube3" {
         let cube3 = cubeN::CUBE3.clone();

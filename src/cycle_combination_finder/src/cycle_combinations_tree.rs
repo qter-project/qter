@@ -4,7 +4,7 @@ use std::{
     num::{NonZeroU16, NonZeroU32, NonZeroUsize},
     sync::{
         Arc,
-        atomic::{self, AtomicUsize},
+        atomic::{self, AtomicU32, AtomicUsize},
         mpmc,
     },
     time::{Duration, Instant},
@@ -13,7 +13,7 @@ use std::{
 use core_affinity::CoreId;
 use cpu_time::ThreadTime;
 use humanize_duration::{Truncate, prelude::DurationExt};
-use log::{Level, debug, log_enabled};
+use log::{Level, debug, log_enabled, trace};
 
 use crate::{
     cycle_combination_details::CycleCombinationDetails,
@@ -24,11 +24,12 @@ use crate::{
 };
 
 pub struct CycleCombinationsTree<const N: usize> {
-    possible_orders_except_one: Vec<PossibleOrder<N>>,
+    possible_orders_except_one: Arc<[PossibleOrder<N>]>,
     exact_register_count: NonZeroU16,
     exact_piece_count: NonZeroU32,
 }
 
+#[derive(Clone)]
 pub struct CycleCombinationsTreeMutable<const N: usize> {
     prefix_and_last_registers: Vec<(PossibleOrder<N>, usize)>,
     registers: NonemptyVec<PossibleOrder<N>>,
@@ -54,7 +55,7 @@ pub struct DisjointRegisters<'a, const N: usize> {
     last_register: &'a PossibleOrder<N>,
 }
 
-struct ThreadInfo<const N: usize> {
+struct DetailsThreadInfo<const N: usize> {
     total_mkp_cpu_time: Duration,
     total_mkp_time: Duration,
     post_candidate_count: u32,
@@ -176,13 +177,26 @@ impl<const N: usize> DisjointRegisters<'_, N> {
     }
 }
 
-#[allow(unused)]
-fn dbg_registers<const N: usize>(registers: &[PossibleOrder<N>]) -> String {
+#[must_use]
+pub fn dbg_registers<const N: usize>(
+    registers: impl IntoIterator<Item = PossibleOrder<N>>,
+) -> String {
     registers
-        .iter()
-        .map(|x| u64::try_from(x.order.as_bigint()).unwrap().to_string())
+        .into_iter()
+        .map(|x| x.order.as_bigint().to_string())
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+#[must_use]
+pub fn dbg_registers_iter<'a, const N: usize>(
+    registers_iter: impl IntoIterator<Item = impl IntoIterator<Item = PossibleOrder<N>>>,
+) -> String {
+    registers_iter
+        .into_iter()
+        .map(dbg_registers)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[allow(clippy::needless_pass_by_value)]
@@ -191,7 +205,7 @@ fn worker_thread<const N: usize>(
     receiver: mpmc::Receiver<PackedCycleCombinationCandidateQueue<N>>,
     concurrent: Arc<CycleCombinationsTreeConcurrent<N>>,
     exact_register_count: NonZeroU16,
-) -> ThreadInfo<N> {
+) -> DetailsThreadInfo<N> {
     core_affinity::set_for_current(core_id);
     let mut cycle_combinations = CCParetoFront::default();
     let mut post_candidate_count = 0;
@@ -223,14 +237,14 @@ fn worker_thread<const N: usize>(
                 // solutions. If something is the maximum in our atomic variable,
                 // then it must either be in the front or the atomic variable is an
                 // underestimate, which is permitted since our bound is admissible
-                concurrent
-                    .max_last_register_order_reverse_index
-                    .fetch_max(last_register_order_reverse_index, atomic::Ordering::Relaxed);
+                // concurrent
+                //     .max_last_register_order_reverse_index
+                //     .fetch_max(last_register_order_reverse_index, atomic::Ordering::Relaxed);
                 break;
             }
         }
     }
-    ThreadInfo {
+    DetailsThreadInfo {
         cycle_combinations,
         total_mkp_cpu_time: cpu_time.elapsed(),
         total_mkp_time: total_time.elapsed(),
@@ -249,7 +263,7 @@ unsafe fn search_dfs_helper<const N: usize>(
     remaining_register_count: NonZeroUsize,
     remaining_piece_count: NonZeroU32,
 ) {
-    let register_index = mutable.registers.len() - remaining_register_count.get();
+    let register_index = mutable.registers.len().get() - remaining_register_count.get();
     let mut curr_possible_orders = possible_orders;
     let maybe_next_remaining_register_count = NonZeroUsize::new(remaining_register_count.get() - 1);
     let mut send_queue = false;
@@ -330,11 +344,128 @@ unsafe fn search_dfs_helper<const N: usize>(
     }
 }
 
+// TODO: construct mutable in each thread
+unsafe fn search_dfs_helper_helper<const N: usize>(
+    core_ids: Vec<CoreId>,
+    mutable: CycleCombinationsTreeMutable<N>,
+    concurrent: &Arc<CycleCombinationsTreeConcurrent<N>>,
+    possible_orders: &Arc<[PossibleOrder<N>]>,
+    exact_piece_count: NonZeroU32,
+) -> impl Iterator<Item = CycleCombinationsTreeMutable<N>> + use<N> {
+    let core_ids_len = core_ids.len();
+    let tree_thread_handles = core_ids
+        .into_iter()
+        .enumerate()
+        .map(|(thread_index, core_id)| {
+            core_affinity::set_for_current(core_id);
+            let mut mutable = mutable.clone();
+            let concurrent = concurrent.clone();
+            let possible_orders = Arc::clone(possible_orders);
+            std::thread::spawn(move || {
+                let remaining_register_count = mutable.registers.len();
+                let maybe_next_remaining_register_count =
+                    NonZeroUsize::new(remaining_register_count.get() - 1);
+                let mut send_queue = false;
+                for (i, possible_order) in possible_orders
+                    .iter()
+                    .enumerate()
+                    .skip(thread_index)
+                    .step_by(core_ids_len)
+                {
+                    let next_possible_orders_len = possible_orders.len() - i - 1;
+                    if next_possible_orders_len
+                        <= concurrent
+                            .max_last_register_order_reverse_index
+                            .load(atomic::Ordering::Relaxed)
+                    {
+                        break;
+                    }
+
+                    let Some(next_remaining_piece_count) = exact_piece_count
+                        .get()
+                        .checked_sub(possible_order.min_piece_count.get())
+                    else {
+                        continue;
+                    };
+
+                    if let Some(next_remaining_register_count) = maybe_next_remaining_register_count
+                    {
+                        if let Some(next_remaining_piece_count) =
+                            NonZeroU32::new(next_remaining_piece_count)
+                        {
+                            // SAFETY: caller guarantees `mutable.registers.len()` <=
+                            // `remaining_register_count`, and `remaining_register_count` != 0.
+                            // `register_index` must thus be in bounds of `mutable.registers`.
+                            let old = std::mem::replace(
+                                mutable.registers.first_mut(),
+                                possible_order.clone(),
+                            );
+                            // SAFETY: `remaining_register_count` only ever decreases.
+                            unsafe {
+                                search_dfs_helper(
+                                    &mut mutable,
+                                    &concurrent,
+                                    &possible_orders[i..],
+                                    next_remaining_register_count,
+                                    next_remaining_piece_count,
+                                );
+                            }
+                            // SAFETY: see above.
+                            *mutable.registers.first_mut() = old;
+                        }
+                    } else {
+                        mutable.candidate_count += 1;
+
+                        if !send_queue {
+                            // Initialize in here because a puzzle with no orientations at all can
+                            // have a possible order that is not one,
+                            // which may cause no solutions to be found
+                            // at this leaf node
+                            mutable.prefix_and_last_registers.clear();
+                            mutable.prefix_and_last_registers.extend(
+                                mutable
+                                    .registers
+                                    .split_last()
+                                    .1
+                                    .iter()
+                                    .map(|register| (register.clone(), 0)),
+                            );
+                            send_queue = true;
+                        }
+                        mutable
+                            .prefix_and_last_registers
+                            .push((possible_order.clone(), next_possible_orders_len));
+                    }
+                }
+
+                if send_queue {
+                    let maybe_now = log_enabled!(Level::Debug).then(Instant::now);
+                    let payload = PackedCycleCombinationCandidateQueue {
+                        prefix_and_last_registers: Box::clone_from_ref(
+                            &mutable.prefix_and_last_registers,
+                        ),
+                    };
+                    if let Some(now) = maybe_now {
+                        mutable.alloc_time += now.elapsed();
+                    }
+                    mutable.sender.send(payload).unwrap();
+                }
+
+                mutable
+            })
+        })
+        .collect::<Vec<_>>();
+    drop(mutable);
+    tree_thread_handles
+        .into_iter()
+        .map(|tree_thread_handle| tree_thread_handle.join().unwrap())
+}
+
 impl<const N: usize> CycleCombinationsTree<N> {
     #[must_use]
     pub fn new(
         exact_register_count: NonZeroU16,
-        possible_orders_except_one: Vec<PossibleOrder<N>>,
+        possible_orders_except_one: Arc<[PossibleOrder<N>]>,
         orbit_defs: NonemptySlice<'_, OrbitDef>,
     ) -> Self {
         #[allow(clippy::missing_panics_doc)]
@@ -369,7 +500,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
 
         // We can unwrap because `exact_register_count` is NonZero.
         #[allow(clippy::missing_panics_doc)]
-        let mut mutable = CycleCombinationsTreeMutable {
+        let mutable = CycleCombinationsTreeMutable {
             prefix_and_last_registers: vec![],
             registers: NonemptyVec::try_from(vec![
                 PossibleOrder::initialized();
@@ -382,8 +513,8 @@ impl<const N: usize> CycleCombinationsTree<N> {
         };
 
         let worker_thread_handles = core_ids
-            .into_iter()
-            .map(|core_id| {
+            .iter()
+            .map(|&core_id| {
                 let receiver = receiver.clone();
                 let concurrent = Arc::clone(&concurrent);
                 std::thread::spawn(move || {
@@ -395,20 +526,25 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let total_time = Instant::now();
         let cpu_time = ThreadTime::now();
 
-        unsafe {
-            search_dfs_helper(
-                &mut mutable,
+        let mutables = unsafe {
+            search_dfs_helper_helper(
+                core_ids,
+                mutable,
                 &concurrent,
                 &self.possible_orders_except_one,
-                NonZeroUsize::from(self.exact_register_count),
                 self.exact_piece_count,
-            );
-        }
+            )
+        };
 
         let dfs_time = total_time.elapsed();
         let dfs_cpu_time = cpu_time.elapsed();
 
-        drop(mutable.sender);
+        let mut candidate_count = 0;
+        let mut alloc_time = Duration::default();
+        for mutable in mutables {
+            candidate_count += mutable.candidate_count;
+            alloc_time += mutable.alloc_time;
+        }
 
         let mut smallest_fronts = BinaryHeap::new();
         let mut total_mkp_cpu_time = Duration::default();
@@ -425,6 +561,21 @@ impl<const N: usize> CycleCombinationsTree<N> {
         }
 
         let mut combined_cycle_combinations = CCParetoFront::default();
+        trace!(
+            "{}",
+            smallest_fronts
+                .iter()
+                .filter_map(|x| {
+                    let s = dbg_registers_iter(
+                        x.inner
+                            .iter()
+                            .map(|combination| combination.registers.iter().cloned()),
+                    );
+                    if s.is_empty() { None } else { Some(s) }
+                })
+                .collect::<Vec<_>>()
+                .join("\n\n")
+        );
         while let Some(mut smallest_front) = smallest_fronts.pop() {
             if let Some(smaller_front) = smallest_fronts.pop() {
                 smallest_front.merge(smaller_front);
@@ -446,12 +597,11 @@ impl<const N: usize> CycleCombinationsTree<N> {
         #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
         let dfs_percent_cpu = (dfs_cpu_time.as_nanos() as f64) / (total_time.as_nanos() as f64);
         #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-        let dfs_percent_alloc =
-            (mutable.alloc_time.as_nanos() as f64) / (total_time.as_nanos() as f64);
+        let dfs_percent_alloc = (alloc_time.as_nanos() as f64) / (total_time.as_nanos() as f64);
         #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
         let dfs_percent_io = (dfs_time
             .saturating_sub(dfs_cpu_time)
-            .saturating_sub(mutable.alloc_time)
+            .saturating_sub(alloc_time)
             .as_nanos() as f64)
             / (total_time.as_nanos() as f64);
         #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
@@ -462,7 +612,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
             / (total_time.as_nanos() as f64 * num_cores as f64);
 
         let profile_info = ProfileInfo {
-            candidate_count: mutable.candidate_count,
+            candidate_count,
             post_candidate_count: total_post_candidate_count,
             pruned_orders_percentage,
             total_time,

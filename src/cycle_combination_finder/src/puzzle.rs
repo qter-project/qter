@@ -212,7 +212,7 @@ impl<const N: usize> PuzzleDef<N> {
         )
         .map_err(|()| PuzzleDefCreationError::NoOrbits)?;
 
-        let cols = orbit_defs.len();
+        let cols = orbit_defs.len().get();
         let rows = raw_even_parity_constraints.len();
         let mut even_parity_constraints = BitMatrix::zeros(rows, cols);
         for (i, even_parity_constraint) in raw_even_parity_constraints.into_iter().enumerate() {
