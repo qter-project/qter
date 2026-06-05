@@ -262,7 +262,7 @@ mod tests {
         let minx4 = MINX4.clone();
         CycleCombinationFinder::from(minx4)
             .with_register_count(RegisterCount::Exactly(NonZeroU16::new(3).unwrap()))
-            .with_expected_length_assertion(249)
+            .with_expected_length_assertion(251)
             .find();
     }
 

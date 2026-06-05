@@ -237,9 +237,9 @@ fn worker_thread<const N: usize>(
                 // solutions. If something is the maximum in our atomic variable,
                 // then it must either be in the front or the atomic variable is an
                 // underestimate, which is permitted since our bound is admissible
-                // concurrent
-                //     .max_last_register_order_reverse_index
-                //     .fetch_max(last_register_order_reverse_index, atomic::Ordering::Relaxed);
+                concurrent
+                    .max_last_register_order_reverse_index
+                    .fetch_max(last_register_order_reverse_index, atomic::Ordering::Relaxed);
                 break;
             }
         }
