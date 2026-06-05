@@ -38,9 +38,14 @@ pub struct PossibleOrder<const N: usize> {
 }
 
 #[derive(Debug)]
-pub struct CycleCombination<const N: usize> {
-    pub(crate) registers: Box<[PossibleOrder<N>]>,
-    pub(crate) details: CycleCombinationDetails<N>,
+pub(crate) struct CycleCombination {
+    pub(crate) registers: Box<[usize]>,
+    pub(crate) details: CycleCombinationDetails,
+}
+
+pub struct CycleCombinations<const N: usize> {
+    data: Box<[CycleCombination]>,
+    possible_orders_except_one: Arc<[PossibleOrder<N>]>,
 }
 
 pub struct CycleCombinationFinder<const N: usize> {
@@ -56,67 +61,38 @@ pub struct CycleCombinationFinderConfig {
     maybe_expected_length: Option<usize>,
 }
 
-impl<const N: usize> PossibleOrder<N> {
-    #[must_use]
-    pub fn initialized() -> Self {
-        #[allow(clippy::missing_panics_doc)]
-        PossibleOrder {
-            order: OrderExps::one(),
-            min_piece_count: 1.try_into().unwrap(),
-        }
-    }
-}
-
-impl<const N: usize> Ord for PossibleOrder<N> {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.order.cmp(&other.order)
-    }
-}
-
-impl<const N: usize> PartialOrd for PossibleOrder<N> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<const N: usize> Eq for PossibleOrder<N> {}
-
-impl<const N: usize> PartialEq for PossibleOrder<N> {
-    fn eq(&self, other: &Self) -> bool {
-        self.order == other.order
-    }
-}
-
-impl<const N: usize> Ord for CycleCombination<N> {
+impl Ord for CycleCombination {
     fn cmp(&self, other: &Self) -> Ordering {
         self.registers.iter().cmp(&other.registers)
     }
 }
 
-impl<const N: usize> PartialOrd for CycleCombination<N> {
+impl PartialOrd for CycleCombination {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<const N: usize> Eq for CycleCombination<N> {}
+impl Eq for CycleCombination {}
 
-impl<const N: usize> PartialEq for CycleCombination<N> {
+impl PartialEq for CycleCombination {
     fn eq(&self, other: &Self) -> bool {
         self.registers == other.registers
     }
 }
 
-impl<const N: usize> CycleCombination<N> {
-    pub fn registers(&self) -> impl Iterator<Item = &OrderExps<N>> {
-        self.registers
-            .iter()
-            .map(|PossibleOrder { order, .. }| order)
+impl<const N: usize> CycleCombinations<N> {
+    pub fn registers(&self) -> impl Iterator<Item = impl Iterator<Item = &OrderExps<N>>> {
+        self.data.iter().map(|x| {
+            x.registers
+                .iter()
+                .map(|&i| &self.possible_orders_except_one[i].order)
+        })
     }
 }
 
-impl<const N: usize> Deref for CycleCombination<N> {
-    type Target = CycleCombinationDetails<N>;
+impl Deref for CycleCombination {
+    type Target = CycleCombinationDetails;
 
     fn deref(&self) -> &Self::Target {
         &self.details
@@ -157,7 +133,10 @@ impl<const N: usize> CycleCombinationFinder<N> {
         self
     }
 
-    fn find_optimal(&self, register_count: RegisterCount) -> Vec<CycleCombination<N>> {
+    fn find_optimal(
+        &self,
+        register_count: RegisterCount,
+    ) -> (Vec<CycleCombination>, Arc<[PossibleOrder<N>]>) {
         let RegisterCount::Exactly(exact_register_count) = register_count else {
             panic!("expected exactly variant for now");
         };
@@ -181,15 +160,15 @@ impl<const N: usize> CycleCombinationFinder<N> {
             "All min piece counts in {}",
             now.elapsed().human(Truncate::Micro)
         );
-        possible_orders_except_one.sort_unstable();
-        trace!(
-            "{}",
-            possible_orders_except_one
-                .iter()
-                .map(|a| format!("{:?}", a.order))
-                .collect::<Vec<_>>()
-                .join(" ")
-        );
+        possible_orders_except_one.sort_unstable_by(|a, b| a.order.cmp(&b.order));
+        // trace!(
+        //     "{}",
+        //     possible_orders_except_one
+        //         .iter()
+        //         .map(|a| format!("{:?}", a.order))
+        //         .collect::<Vec<_>>()
+        //         .join(" ")
+        // );
         CycleCombinationsTree::new(
             exact_register_count,
             Arc::from(possible_orders_except_one.into_boxed_slice()),
@@ -206,29 +185,36 @@ impl<const N: usize> CycleCombinationFinder<N> {
     /// [`Self::with_expected_length_assertion`] and the solutions length
     /// mismatches.
     #[allow(clippy::must_use_candidate)]
-    pub fn find(&self) -> Vec<CycleCombination<N>> {
-        let mut ret = match self.config.optimality {
+    pub fn find(&self) -> CycleCombinations<N> {
+        let (mut cycle_combinations, possible_orders_except_one) = match self.config.optimality {
             Optimality::Equivalent => unimplemented!(),
             Optimality::Optimal => self.find_optimal(self.config.register_count),
         };
-        ret.sort_unstable();
+        if self.config.sorted {
+            cycle_combinations.sort_unstable();
+        }
+        let cycle_combinations = cycle_combinations.into_boxed_slice();
         if let Some(expected_length) = self.config.maybe_expected_length {
             assert_eq!(
-                ret.len(),
+                cycle_combinations.len(),
                 expected_length,
                 // "Expected {expected_length} solutions, found {}. Solutions: {ret:?}",
                 // ret.len(),
                 "Expected {expected_length} solutions, found {}. Solutions: {}",
-                ret.len(),
-                ret.into_iter()
-                    .map(|i| dbg_registers(i.registers))
+                cycle_combinations.len(),
+                cycle_combinations
+                    .into_iter()
+                    .map(|i| dbg_registers(i.registers, &possible_orders_except_one))
                     .collect::<Vec<_>>()
                     .join("\n")
             );
-            debug!("Successfully found {} solutions", ret.len());
-            trace!("{ret:?}");
+            debug!("Successfully found {} solutions", cycle_combinations.len());
+            trace!("{cycle_combinations:?}");
         }
-        ret
+        CycleCombinations {
+            data: cycle_combinations,
+            possible_orders_except_one,
+        }
     }
 }
 
@@ -237,7 +223,7 @@ mod tests {
     use std::num::NonZeroU16;
 
     use crate::{
-        finder::{CycleCombination, CycleCombinationFinder, RegisterCount},
+        finder::{CycleCombinationFinder, CycleCombinations, RegisterCount},
         puzzle::{
             cubeN::CUBE3,
             minxN::{MINX3, MINX4},
@@ -245,16 +231,17 @@ mod tests {
     };
 
     #[allow(unused)]
-    fn cycles<const N: usize>(cycle_combinations: Vec<CycleCombination<N>>) -> Vec<Vec<u64>> {
-        cycle_combinations
-            .into_iter()
+    fn cycles<const N: usize>(cycle_combinations: CycleCombinations<N>) -> Vec<Vec<u64>> {
+        let cycles = cycle_combinations
+            .registers()
             .map(|cycle_combination| {
                 cycle_combination
-                    .registers()
                     .map(|register| register.as_bigint().try_into().unwrap())
                     .collect::<Vec<u64>>()
             })
-            .collect::<Vec<_>>()
+            .collect::<Vec<_>>();
+        drop(cycle_combinations);
+        cycles
     }
 
     #[test_log::test]

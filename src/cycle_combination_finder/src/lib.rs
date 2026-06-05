@@ -10,7 +10,7 @@
     portable_simd,
     gen_blocks,
     clone_from_ref,
-    split_array,
+    split_array
 )]
 
 use bitgauss::BitMatrix;
