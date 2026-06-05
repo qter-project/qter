@@ -97,4 +97,9 @@ impl<'a, T> NonemptySlice<'a, T> {
     pub fn split_first(self) -> (&'a T, &'a [T]) {
         unsafe { self.0.split_first().unwrap_unchecked() }
     }
+    
+    #[must_use]
+    pub fn split_last(self) -> (&'a T, &'a [T]) {
+        unsafe { self.0.split_last().unwrap_unchecked() }
+    }
 }

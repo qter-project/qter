@@ -41,7 +41,7 @@ pub struct CycleCombinationsTreeMutable<const N: usize> {
 
 #[derive(Default)]
 pub struct CycleCombinationsTreeConcurrent<const N: usize> {
-    max_last_register_order_reverse_index: AtomicUsize,
+    max_last_register_order_index: AtomicUsize,
 }
 
 #[derive(Debug, Clone)]
@@ -215,7 +215,7 @@ fn worker_thread<const N: usize>(
         let (prefix_registers, last_registers) = packed_queue
             .prefix_and_last_registers
             .split_at(usize::from(exact_register_count.get() - 1));
-        for &(ref last_register, last_register_order_reverse_index) in last_registers {
+        for &(ref last_register, last_register_order_index) in last_registers {
             let disjoint_registers = DisjointRegisters {
                 prefix_registers,
                 last_register,
@@ -238,8 +238,8 @@ fn worker_thread<const N: usize>(
                 // then it must either be in the front or the atomic variable is an
                 // underestimate, which is permitted since our bound is admissible
                 concurrent
-                    .max_last_register_order_reverse_index
-                    .fetch_max(last_register_order_reverse_index, atomic::Ordering::Relaxed);
+                    .max_last_register_order_index
+                    .fetch_max(last_register_order_index, atomic::Ordering::Relaxed);
                 break;
             }
         }
@@ -278,11 +278,11 @@ unsafe fn search_dfs_helper<const N: usize>(
         );
     }
     loop {
-        let (possible_order, next_possible_orders) = curr_possible_orders.split_first();
+        let (possible_order, next_possible_orders) = curr_possible_orders.split_last();
         if register_index == 0
             && next_possible_orders.len()
                 <= concurrent
-                    .max_last_register_order_reverse_index
+                    .max_last_register_order_index
                     .load(atomic::Ordering::Relaxed)
         {
             break;
@@ -381,14 +381,13 @@ unsafe fn search_dfs_helper_helper<const N: usize>(
                 for (i, possible_order) in possible_orders
                     .iter()
                     .enumerate()
+                    .rev()
                     .skip(thread_index)
                     .step_by(core_ids_len)
                 {
-                    let next_possible_orders_len = possible_orders.len() - i - 1;
-                    if next_possible_orders_len
-                        <= concurrent
-                            .max_last_register_order_reverse_index
-                            .load(atomic::Ordering::Relaxed)
+                    if i <= concurrent
+                        .max_last_register_order_index
+                        .load(atomic::Ordering::Relaxed)
                     {
                         break;
                     }
@@ -405,7 +404,7 @@ unsafe fn search_dfs_helper_helper<const N: usize>(
                         if let Some(next_remaining_piece_count) =
                             NonZeroU32::new(next_remaining_piece_count)
                             && let Ok(next_possible_orders) =
-                                NonemptySlice::try_from(&possible_orders[i..])
+                                NonemptySlice::try_from(&possible_orders[..=i])
                         {
                             *mutable.registers.first_mut() = possible_order.clone();
                             unsafe {
@@ -422,7 +421,7 @@ unsafe fn search_dfs_helper_helper<const N: usize>(
                         mutable.candidate_count += 1;
                         mutable
                             .prefix_and_last_registers
-                            .push((possible_order.clone(), next_possible_orders_len));
+                            .push((possible_order.clone(), i));
                     }
                 }
 
@@ -579,7 +578,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let exclusive = Arc::into_inner(concurrent).unwrap();
 
         #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-        let pruned_orders_percentage = (exclusive.max_last_register_order_reverse_index.into_inner()
+        let pruned_orders_percentage = (exclusive.max_last_register_order_index.into_inner()
             as f64)
             / ((self.possible_orders_except_one.len() - 1) as f64);
         #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]

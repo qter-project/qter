@@ -181,15 +181,15 @@ impl<const N: usize> CycleCombinationFinder<N> {
             "All min piece counts in {}",
             now.elapsed().human(Truncate::Micro)
         );
-        possible_orders_except_one.sort_unstable_by(|a, b| b.order.cmp(&a.order));
-        // trace!(
-        //     "{}",
-        //     possible_orders_except_one
-        //         .iter()
-        //         .map(|a| format!("({:?}, {})", a.order, a.min_piece_count))
-        //         .collect::<Vec<_>>()
-        //         .join(" ")
-        // );
+        possible_orders_except_one.sort_unstable();
+        trace!(
+            "{}",
+            possible_orders_except_one
+                .iter()
+                .map(|a| format!("{:?}", a.order))
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
         CycleCombinationsTree::new(
             exact_register_count,
             Arc::from(possible_orders_except_one.into_boxed_slice()),
