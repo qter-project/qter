@@ -33,19 +33,25 @@ impl PartialEq for CCParetoFront {
 fn dominate(
     dominating: impl IntoIterator<Item = usize>,
     to_dominate: impl IntoIterator<Item = usize>,
-    skip_first: bool,
 ) -> bool {
-    // TODO: be more confident split_firsts are valid
-    // TODO: uncomment
-    // sanity check
-    // debug_assert_eq!(dominating.len(), to_dominate.len());
-    // debug_assert!(!skip_first || dominating[0].order >= to_dominate[0].order);
-
-    dominating
-        .into_iter()
-        .zip(to_dominate)
-        .skip(usize::from(skip_first))
-        .all(|(d, t)| d >= t)
+    if cfg!(debug_assertions) {
+        let mut dominating_iter = dominating.into_iter();
+        let mut to_dominate_iter = to_dominate.into_iter();
+        loop {
+            match (dominating_iter.next(), to_dominate_iter.next()) {
+                (Some(d), Some(t)) => {
+                    if d < t {
+                        return false;
+                    }
+                }
+                (None, None) => break,
+                _ => panic!("mismatched lengths"),
+            }
+        }
+        true
+    } else {
+        dominating.into_iter().zip(to_dominate).all(|(d, t)| d >= t)
+    }
 }
 
 impl CCParetoFront {
@@ -60,11 +66,7 @@ impl CCParetoFront {
         }
         let mut len = 0;
         for (i, member) in self.inner.iter().enumerate().skip(start) {
-            if dominate(
-                registers.iter().copied(),
-                member.registers.iter().copied(),
-                false,
-            ) {
+            if dominate(registers.iter().copied(), member.registers.iter().copied()) {
                 self.index_dominated_elements[len] = i;
                 len += 1;
             }
@@ -84,7 +86,7 @@ impl CCParetoFront {
         mut dominating_check: impl FnMut(DisjointRegisters) -> Option<CycleCombination>,
     ) -> bool {
         for (i, member) in self.inner.iter().enumerate() {
-            if dominate(member.registers.iter().copied(), registers.iter(), false) {
+            if dominate(member.registers.iter().copied(), registers.iter()) {
                 // `new_element` is dominated by `element`, it is thus not part of the Pareto
                 // front swap `element` with the previous element in order to
                 // percolate the best elements to the top NOTE: in my benchmarks
@@ -98,7 +100,7 @@ impl CCParetoFront {
                     }
                 }
                 return false;
-            } else if dominate(registers.iter(), member.registers.iter().copied(), false)
+            } else if dominate(registers.iter(), member.registers.iter().copied())
                 && let Some(cycle_combination) = (dominating_check)(registers)
             {
                 // `new_element` dominates `element`, it is thus part of the Pareto front
@@ -122,22 +124,14 @@ impl CCParetoFront {
 
     fn remove_dominated(&mut self, registers: &[usize]) -> bool {
         for (i, member) in self.inner.iter().enumerate() {
-            if dominate(
-                member.registers.iter().copied(),
-                registers.iter().copied(),
-                false,
-            ) {
+            if dominate(member.registers.iter().copied(), registers.iter().copied()) {
                 if i > 0 {
                     unsafe {
                         self.inner.swap_unchecked(i, i - 1);
                     }
                 }
                 return false;
-            } else if dominate(
-                registers.iter().copied(),
-                member.registers.iter().copied(),
-                false,
-            ) {
+            } else if dominate(registers.iter().copied(), member.registers.iter().copied()) {
                 self.inner.swap_remove(i);
                 self.remove_dominated_starting_at(registers, i);
                 return true;
