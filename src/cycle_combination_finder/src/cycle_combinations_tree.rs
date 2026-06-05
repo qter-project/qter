@@ -34,9 +34,7 @@ struct CycleCombinationsTreeMutable {
     prefix_and_last_registers: Vec<usize>,
     registers: NonemptyVec<usize>,
     sender: mpmc::Sender<PackedCycleCombinationCandidateQueue>,
-
-    candidate_count: u32,
-    alloc_time: Duration,
+    tree_thread_info: TreeThreadInfo,
 }
 
 #[derive(Default)]
@@ -60,6 +58,12 @@ struct DetailsThreadInfo {
     total_mkp_time: Duration,
     post_candidate_count: u32,
     cycle_combinations: CCParetoFront,
+}
+
+#[derive(Default, Clone)]
+struct TreeThreadInfo {
+    candidate_count: u32,
+    alloc_time: Duration,
 }
 
 struct ProfileInfo {
@@ -314,7 +318,7 @@ unsafe fn search_dfs_helper<const N: usize>(
                     *unsafe { mutable.registers.get_unchecked_mut(register_index) } = old;
                 }
             } else {
-                mutable.candidate_count += 1;
+                mutable.tree_thread_info.candidate_count += 1;
 
                 mutable.prefix_and_last_registers.push(i);
             }
@@ -335,7 +339,7 @@ unsafe fn search_dfs_helper<const N: usize>(
             prefix_and_last_registers: Box::clone_from_ref(&mutable.prefix_and_last_registers),
         };
         if let Some(now) = maybe_now {
-            mutable.alloc_time += now.elapsed();
+            mutable.tree_thread_info.alloc_time += now.elapsed();
         }
         mutable.sender.send(payload).unwrap();
     }
@@ -348,7 +352,7 @@ unsafe fn search_dfs_helper_helper<const N: usize>(
     concurrent: &Arc<CycleCombinationsTreeConcurrent>,
     possible_orders_except_one: &Arc<[PossibleOrder<N>]>,
     exact_piece_count: NonZeroU32,
-) -> impl Iterator<Item = CycleCombinationsTreeMutable> {
+) -> impl Iterator<Item = TreeThreadInfo> {
     let core_ids_len = core_ids.len();
     let tree_thread_handles = core_ids
         .into_iter()
@@ -408,7 +412,7 @@ unsafe fn search_dfs_helper_helper<const N: usize>(
                             }
                         }
                     } else {
-                        mutable.candidate_count += 1;
+                        mutable.tree_thread_info.candidate_count += 1;
                         mutable.prefix_and_last_registers.push(i);
                     }
                 }
@@ -421,12 +425,12 @@ unsafe fn search_dfs_helper_helper<const N: usize>(
                         ),
                     };
                     if let Some(now) = maybe_now {
-                        mutable.alloc_time += now.elapsed();
+                        mutable.tree_thread_info.alloc_time += now.elapsed();
                     }
                     mutable.sender.send(payload).unwrap();
                 }
 
-                mutable
+                mutable.tree_thread_info
             })
         })
         .collect::<Vec<_>>();
@@ -479,9 +483,8 @@ impl<const N: usize> CycleCombinationsTree<N> {
             prefix_and_last_registers: vec![],
             registers: NonemptyVec::try_from(vec![0; usize::from(self.exact_register_count.get())])
                 .unwrap(),
-            candidate_count: 0,
-            alloc_time: Duration::default(),
             sender,
+            tree_thread_info: TreeThreadInfo::default(),
         };
 
         let worker_thread_handles = core_ids
@@ -505,7 +508,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let total_time = Instant::now();
         let cpu_time = ThreadTime::now();
 
-        let mutables = unsafe {
+        let tree_thread_infos = unsafe {
             search_dfs_helper_helper(
                 core_ids,
                 mutable,
@@ -518,12 +521,15 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let dfs_time = total_time.elapsed();
         let dfs_cpu_time = cpu_time.elapsed();
 
-        let mut candidate_count = 0;
-        let mut alloc_time = Duration::default();
-        for mutable in mutables {
-            candidate_count += mutable.candidate_count;
-            alloc_time += mutable.alloc_time;
-        }
+        let (candidate_count, alloc_time) = tree_thread_infos.into_iter().fold(
+            (0, Duration::default()),
+            |(acc_candidate_count, acc_alloc_time), tree_thread_info| {
+                (
+                    acc_candidate_count + tree_thread_info.candidate_count,
+                    acc_alloc_time + tree_thread_info.alloc_time,
+                )
+            },
+        );
 
         let mut smallest_fronts = BinaryHeap::new();
         let mut total_mkp_cpu_time = Duration::default();
