@@ -82,6 +82,17 @@ struct ProfileInfo {
     num_cores: usize,
 }
 
+impl CycleCombinationsTreeMutable {
+    fn exact_register_count(&self) -> NonZeroU16 {
+        // Cast truncation is fine because `self.registers` is the length of the number
+        // of registers, which is a `NonZeruU16`
+        #[allow(clippy::cast_possible_truncation)]
+        unsafe {
+            NonZeroU16::new_unchecked(self.registers.len().get() as u16)
+        }
+    }
+}
+
 impl Debug for ProfileInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         #[allow(clippy::cast_precision_loss)]
@@ -264,12 +275,12 @@ unsafe fn search_dfs_helper<const N: usize>(
     mutable: &mut CycleCombinationsTreeMutable,
     concurrent: &Arc<CycleCombinationsTreeConcurrent>,
     possible_orders: NonemptySlice<'_, PossibleOrder<N>>,
-    remaining_register_count: NonZeroUsize,
+    remaining_register_count: NonZeroU16,
     remaining_piece_count: NonZeroU32,
 ) {
-    let register_index = mutable.registers.len().get() - remaining_register_count.get();
+    let register_index = mutable.exact_register_count().get() - remaining_register_count.get();
     let mut curr_possible_orders = possible_orders;
-    let maybe_next_remaining_register_count = NonZeroUsize::new(remaining_register_count.get() - 1);
+    let maybe_next_remaining_register_count = NonZeroU16::new(remaining_register_count.get() - 1);
     if maybe_next_remaining_register_count.is_none() {
         mutable.prefix_and_last_registers.clear();
         mutable
@@ -299,7 +310,7 @@ unsafe fn search_dfs_helper<const N: usize>(
                     // `remaining_register_count`, and `remaining_register_count` != 0.
                     // `register_index` must thus be in bounds of `mutable.registers`.
                     let old = std::mem::replace(
-                        unsafe { mutable.registers.get_unchecked_mut(register_index) },
+                        unsafe { mutable.registers.get_unchecked_mut(register_index as usize) },
                         i,
                     );
                     // SAFETY: `remaining_register_count` only ever decreases.
@@ -313,7 +324,7 @@ unsafe fn search_dfs_helper<const N: usize>(
                         );
                     }
                     // SAFETY: see above.
-                    *unsafe { mutable.registers.get_unchecked_mut(register_index) } = old;
+                    *unsafe { mutable.registers.get_unchecked_mut(register_index as usize) } = old;
                 }
             } else {
                 mutable.prefix_and_last_registers.push(i);
@@ -364,9 +375,9 @@ unsafe fn search_dfs_helper_helper<const N: usize>(
                 let real_time = Instant::now();
                 let cpu_time = ThreadTime::now();
 
-                let remaining_register_count = mutable.registers.len();
+                let exact_register_count = mutable.exact_register_count();
                 let maybe_next_remaining_register_count =
-                    NonZeroUsize::new(remaining_register_count.get() - 1);
+                    NonZeroU16::new(exact_register_count.get() - 1);
                 if maybe_next_remaining_register_count.is_none() {
                     mutable.prefix_and_last_registers.clear();
                     mutable
