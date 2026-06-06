@@ -1,7 +1,7 @@
 use std::{
     collections::BinaryHeap,
     fmt::{self, Debug},
-    num::{NonZeroU16, NonZeroU32, NonZeroUsize},
+    num::{NonZeroU16, NonZeroU32},
     sync::{
         Arc,
         atomic::{self, AtomicUsize},
@@ -35,7 +35,7 @@ struct CycleCombinationsTreeMutable {
     registers: NonemptyVec<usize>,
     sender: mpmc::Sender<PackedCycleCombinationCandidateQueue>,
     alloc_time: Duration,
-    candidate_count: u32,
+    candidate_count: u64,
 }
 
 #[derive(Default)]
@@ -57,7 +57,7 @@ pub struct DisjointRegisters<'a> {
 struct DetailsThreadInfo {
     mkp_real_time: Duration,
     mkp_cpu_time: Duration,
-    post_candidate_count: u32,
+    post_candidate_count: u64,
     cycle_combinations: CCParetoFront,
 }
 
@@ -66,12 +66,12 @@ struct TreeThreadInfo {
     real_time: Duration,
     cpu_time: Duration,
     alloc_time: Duration,
-    candidate_count: u32,
+    candidate_count: u64,
 }
 
 struct ProfileInfo {
-    candidate_count: u32,
-    post_candidate_count: u32,
+    candidate_count: u64,
+    post_candidate_count: u64,
     pruned_orders_percentage: f64,
     real_time: Duration,
     dfs_alloc_time: Duration,
@@ -104,7 +104,7 @@ impl Debug for ProfileInfo {
                 &format!("{:>25}", "post_candidate_count"),
                 &format!(
                     "{} ({} total)",
-                    self.post_candidate_count / u32::try_from(self.num_cores).unwrap(),
+                    self.post_candidate_count / u64::try_from(self.num_cores).unwrap(),
                     self.post_candidate_count
                 ),
             )
@@ -342,7 +342,7 @@ unsafe fn search_dfs_helper<const N: usize>(
 
     if maybe_next_remaining_register_count.is_none() {
         mutable.candidate_count +=
-            (mutable.prefix_and_last_registers.len() + 1 - mutable.registers.len().get()) as u32;
+            (mutable.prefix_and_last_registers.len() + 1 - mutable.registers.len().get()) as u64;
         let maybe_now = log_enabled!(Level::Debug).then(Instant::now);
         let payload = PackedCycleCombinationCandidateQueue {
             prefix_and_last_registers: Box::clone_from_ref(&mutable.prefix_and_last_registers),
@@ -432,7 +432,7 @@ unsafe fn search_dfs_helper_helper<const N: usize>(
                 if maybe_next_remaining_register_count.is_none() {
                     mutable.candidate_count += (mutable.prefix_and_last_registers.len() + 1
                         - mutable.registers.len().get())
-                        as u32;
+                        as u64;
                     let maybe_now = log_enabled!(Level::Debug).then(Instant::now);
                     let payload = PackedCycleCombinationCandidateQueue {
                         prefix_and_last_registers: Box::clone_from_ref(
