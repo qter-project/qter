@@ -9,6 +9,7 @@
 
 ## CCF
 
+- optimize mutable.tree_thread_info.candidate_count += 1;
 - fix profiling
 - fix register_index <= 1
 - use u16 instead of usize to track register index
