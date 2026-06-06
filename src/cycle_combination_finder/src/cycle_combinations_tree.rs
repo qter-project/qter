@@ -316,7 +316,6 @@ unsafe fn search_dfs_helper<const N: usize>(
                     *unsafe { mutable.registers.get_unchecked_mut(register_index) } = old;
                 }
             } else {
-                mutable.candidate_count += 1;
                 mutable.prefix_and_last_registers.push(i);
             }
         }
@@ -331,6 +330,8 @@ unsafe fn search_dfs_helper<const N: usize>(
     }
 
     if maybe_next_remaining_register_count.is_none() {
+        mutable.candidate_count +=
+            (mutable.prefix_and_last_registers.len() + 1 - mutable.registers.len().get()) as u32;
         let maybe_now = log_enabled!(Level::Debug).then(Instant::now);
         let payload = PackedCycleCombinationCandidateQueue {
             prefix_and_last_registers: Box::clone_from_ref(&mutable.prefix_and_last_registers),
@@ -393,31 +394,34 @@ unsafe fn search_dfs_helper_helper<const N: usize>(
                         continue;
                     };
 
-                    if let Some(next_remaining_register_count) = maybe_next_remaining_register_count
-                    {
-                        if let Some(next_remaining_piece_count) =
-                            NonZeroU32::new(next_remaining_piece_count)
-                            && let Ok(next_possible_orders) =
-                                NonemptySlice::try_from(&possible_orders_except_one[..=i])
-                        {
-                            *mutable.registers.first_mut() = i;
-                            unsafe {
-                                search_dfs_helper(
-                                    &mut mutable,
-                                    &concurrent,
-                                    next_possible_orders,
-                                    next_remaining_register_count,
-                                    next_remaining_piece_count,
-                                );
-                            }
-                        }
-                    } else {
-                        mutable.candidate_count += 1;
+                    let Some(next_remaining_register_count) = maybe_next_remaining_register_count
+                    else {
                         mutable.prefix_and_last_registers.push(i);
+                        continue;
+                    };
+
+                    if let Some(next_remaining_piece_count) =
+                        NonZeroU32::new(next_remaining_piece_count)
+                        && let Ok(next_possible_orders) =
+                            NonemptySlice::try_from(&possible_orders_except_one[..=i])
+                    {
+                        *mutable.registers.first_mut() = i;
+                        unsafe {
+                            search_dfs_helper(
+                                &mut mutable,
+                                &concurrent,
+                                next_possible_orders,
+                                next_remaining_register_count,
+                                next_remaining_piece_count,
+                            );
+                        }
                     }
                 }
 
                 if maybe_next_remaining_register_count.is_none() {
+                    mutable.candidate_count += (mutable.prefix_and_last_registers.len() + 1
+                        - mutable.registers.len().get())
+                        as u32;
                     let maybe_now = log_enabled!(Level::Debug).then(Instant::now);
                     let payload = PackedCycleCombinationCandidateQueue {
                         prefix_and_last_registers: Box::clone_from_ref(
