@@ -9,11 +9,9 @@
 
 ## CCF
 
-- profiling logic if log_enabled!(debug)
-- fix register_index <= 1
-- use u16 instead of usize to track register index
-- better log tracing messages
 - why wasn't old version catching 520520 360360 180180
+- fix register_index <= 1
+- better log tracing messages
 - what if possible_orders_except_one is empty? OOB?
 - NonemptyVec([PossibleOrder { order: 116454478140, min_piece_count: 137 }, PossibleOrder { order: 6, min_piece_count: 2 }, PossibleOrder { order: 3, min_piece_count: 1 }]) followed by NonemptyVec([PossibleOrder { order: 82990547640, min_piece_count: 137 }, PossibleOrder { order: 6, min_piece_count: 2 }, PossibleOrder { order: 3, min_piece_count: 1 }])
 - pareto front strategies:

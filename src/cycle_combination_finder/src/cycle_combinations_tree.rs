@@ -91,6 +91,25 @@ impl CycleCombinationsTreeMutable {
             NonZeroU16::new_unchecked(self.registers.len().get() as u16)
         }
     }
+
+    fn send_queue(&mut self) {
+        if log_enabled!(Level::Debug) {
+            self.candidate_count +=
+                (self.prefix_and_last_registers.len() + 1 - self.registers.len().get()) as u64;
+            let now = Instant::now();
+            let payload = PackedCycleCombinationCandidateQueue {
+                prefix_and_last_registers: Box::clone_from_ref(&self.prefix_and_last_registers),
+            };
+            self.alloc_time += now.elapsed();
+            self.sender.send(payload).unwrap();
+        } else {
+            self.sender
+                .send(PackedCycleCombinationCandidateQueue {
+                    prefix_and_last_registers: Box::clone_from_ref(&self.prefix_and_last_registers),
+                })
+                .unwrap();
+        }
+    }
 }
 
 impl Debug for ProfileInfo {
@@ -267,6 +286,83 @@ fn details_thread<const N: usize>(
     }
 }
 
+#[allow(clippy::needless_pass_by_value)]
+fn dfs_thread<const N: usize>(
+    core_id: CoreId,
+    thread_index: usize,
+    num_cores: usize,
+    exact_piece_count: NonZeroU32,
+    mut mutable: CycleCombinationsTreeMutable,
+    concurrent: Arc<CycleCombinationsTreeConcurrent>,
+    possible_orders_except_one: Arc<[PossibleOrder<N>]>,
+) -> TreeThreadInfo {
+    core_affinity::set_for_current(core_id);
+    let real_time = Instant::now();
+    let cpu_time = ThreadTime::now();
+
+    let exact_register_count = mutable.exact_register_count();
+    let maybe_next_remaining_register_count = NonZeroU16::new(exact_register_count.get() - 1);
+    if maybe_next_remaining_register_count.is_none() {
+        mutable.prefix_and_last_registers.clear();
+        mutable
+            .prefix_and_last_registers
+            .extend(mutable.registers.split_last().1.iter().copied());
+    }
+    for (i, possible_order) in possible_orders_except_one
+        .iter()
+        .enumerate()
+        .rev()
+        .skip(thread_index)
+        .step_by(num_cores)
+    {
+        if i <= concurrent
+            .max_last_register_order
+            .load(atomic::Ordering::Relaxed)
+        {
+            break;
+        }
+
+        let Some(next_remaining_piece_count) = exact_piece_count
+            .get()
+            .checked_sub(possible_order.min_piece_count.get())
+        else {
+            continue;
+        };
+
+        let Some(next_remaining_register_count) = maybe_next_remaining_register_count else {
+            mutable.prefix_and_last_registers.push(i);
+            continue;
+        };
+
+        if let Some(next_remaining_piece_count) = NonZeroU32::new(next_remaining_piece_count)
+            && let Ok(next_possible_orders) =
+                NonemptySlice::try_from(&possible_orders_except_one[..=i])
+        {
+            *mutable.registers.first_mut() = i;
+            unsafe {
+                search_dfs_helper(
+                    &mut mutable,
+                    &concurrent,
+                    next_possible_orders,
+                    next_remaining_register_count,
+                    next_remaining_piece_count,
+                );
+            }
+        }
+    }
+
+    if maybe_next_remaining_register_count.is_none() {
+        mutable.send_queue();
+    }
+
+    TreeThreadInfo {
+        real_time: real_time.elapsed(),
+        cpu_time: cpu_time.elapsed(),
+        alloc_time: mutable.alloc_time,
+        candidate_count: mutable.candidate_count,
+    }
+}
+
 /// # Safety
 ///
 /// `remaining_register_count` must be less than or equal to
@@ -341,123 +437,8 @@ unsafe fn search_dfs_helper<const N: usize>(
     }
 
     if maybe_next_remaining_register_count.is_none() {
-        mutable.candidate_count +=
-            (mutable.prefix_and_last_registers.len() + 1 - mutable.registers.len().get()) as u64;
-        let maybe_now = log_enabled!(Level::Debug).then(Instant::now);
-        let payload = PackedCycleCombinationCandidateQueue {
-            prefix_and_last_registers: Box::clone_from_ref(&mutable.prefix_and_last_registers),
-        };
-        if let Some(now) = maybe_now {
-            mutable.alloc_time += now.elapsed();
-        }
-        mutable.sender.send(payload).unwrap();
+        mutable.send_queue();
     }
-}
-
-// TODO: construct mutable in each thread
-unsafe fn search_dfs_helper_helper<const N: usize>(
-    core_ids: Vec<CoreId>,
-    mutable: CycleCombinationsTreeMutable,
-    concurrent: &Arc<CycleCombinationsTreeConcurrent>,
-    possible_orders_except_one: &Arc<[PossibleOrder<N>]>,
-    exact_piece_count: NonZeroU32,
-) -> impl Iterator<Item = TreeThreadInfo> {
-    let core_ids_len = core_ids.len();
-    let tree_thread_handles = core_ids
-        .into_iter()
-        .enumerate()
-        .map(|(thread_index, core_id)| {
-            core_affinity::set_for_current(core_id);
-            let mut mutable = mutable.clone();
-            let concurrent = Arc::clone(concurrent);
-            let possible_orders_except_one = Arc::clone(possible_orders_except_one);
-            std::thread::spawn(move || {
-                let real_time = Instant::now();
-                let cpu_time = ThreadTime::now();
-
-                let exact_register_count = mutable.exact_register_count();
-                let maybe_next_remaining_register_count =
-                    NonZeroU16::new(exact_register_count.get() - 1);
-                if maybe_next_remaining_register_count.is_none() {
-                    mutable.prefix_and_last_registers.clear();
-                    mutable
-                        .prefix_and_last_registers
-                        .extend(mutable.registers.split_last().1.iter().copied());
-                }
-                for (i, possible_order) in possible_orders_except_one
-                    .iter()
-                    .enumerate()
-                    .rev()
-                    .skip(thread_index)
-                    .step_by(core_ids_len)
-                {
-                    if i <= concurrent
-                        .max_last_register_order
-                        .load(atomic::Ordering::Relaxed)
-                    {
-                        break;
-                    }
-
-                    let Some(next_remaining_piece_count) = exact_piece_count
-                        .get()
-                        .checked_sub(possible_order.min_piece_count.get())
-                    else {
-                        continue;
-                    };
-
-                    let Some(next_remaining_register_count) = maybe_next_remaining_register_count
-                    else {
-                        mutable.prefix_and_last_registers.push(i);
-                        continue;
-                    };
-
-                    if let Some(next_remaining_piece_count) =
-                        NonZeroU32::new(next_remaining_piece_count)
-                        && let Ok(next_possible_orders) =
-                            NonemptySlice::try_from(&possible_orders_except_one[..=i])
-                    {
-                        *mutable.registers.first_mut() = i;
-                        unsafe {
-                            search_dfs_helper(
-                                &mut mutable,
-                                &concurrent,
-                                next_possible_orders,
-                                next_remaining_register_count,
-                                next_remaining_piece_count,
-                            );
-                        }
-                    }
-                }
-
-                if maybe_next_remaining_register_count.is_none() {
-                    mutable.candidate_count += (mutable.prefix_and_last_registers.len() + 1
-                        - mutable.registers.len().get())
-                        as u64;
-                    let maybe_now = log_enabled!(Level::Debug).then(Instant::now);
-                    let payload = PackedCycleCombinationCandidateQueue {
-                        prefix_and_last_registers: Box::clone_from_ref(
-                            &mutable.prefix_and_last_registers,
-                        ),
-                    };
-                    if let Some(now) = maybe_now {
-                        mutable.alloc_time += now.elapsed();
-                    }
-                    mutable.sender.send(payload).unwrap();
-                }
-
-                TreeThreadInfo {
-                    real_time: real_time.elapsed(),
-                    cpu_time: cpu_time.elapsed(),
-                    alloc_time: mutable.alloc_time,
-                    candidate_count: mutable.candidate_count,
-                }
-            })
-        })
-        .collect::<Vec<_>>();
-    drop(mutable);
-    tree_thread_handles
-        .into_iter()
-        .map(|tree_thread_handle| tree_thread_handle.join().unwrap())
 }
 
 impl<const N: usize> CycleCombinationsTree<N> {
@@ -528,21 +509,37 @@ impl<const N: usize> CycleCombinationsTree<N> {
 
         let real_time = Instant::now();
 
-        let tree_thread_infos = unsafe {
-            search_dfs_helper_helper(
-                core_ids,
-                mutable,
-                &concurrent,
-                &self.possible_orders_except_one,
-                self.exact_piece_count,
-            )
-        };
+        let exact_piece_count = self.exact_piece_count;
+        let tree_thread_handles = core_ids
+            .into_iter()
+            .enumerate()
+            .map(|(thread_index, core_id)| {
+                let mutable = mutable.clone();
+                let concurrent = Arc::clone(&concurrent);
+                let possible_orders_except_one = Arc::clone(&self.possible_orders_except_one);
+                std::thread::spawn(move || {
+                    dfs_thread(
+                        core_id,
+                        thread_index,
+                        num_cores,
+                        exact_piece_count,
+                        mutable,
+                        concurrent,
+                        possible_orders_except_one,
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+        drop(mutable);
 
         let mut candidate_count = 0;
         let mut dfs_real_time = Duration::default();
         let mut dfs_cpu_time = Duration::default();
         let mut dfs_alloc_time = Duration::default();
-        for tree_thread_info in tree_thread_infos {
+        for tree_thread_info in tree_thread_handles
+            .into_iter()
+            .map(|tree_thread_handle| tree_thread_handle.join().unwrap())
+        {
             candidate_count += tree_thread_info.candidate_count;
             dfs_real_time += tree_thread_info.real_time;
             dfs_cpu_time += tree_thread_info.cpu_time;
