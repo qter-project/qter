@@ -2,6 +2,8 @@
 
 #show: book-page.with(title: "QterOS and Software Setup")
 
+TODO: QterOS never actually got implemented; this is not actually how you would set up everything
+
 NOTE: Do this extremely far in advance
 
 = QterOS installation
