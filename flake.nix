@@ -43,10 +43,10 @@
           udev
           alsa-lib-with-plugins
           vulkan-loader
-          xorg.libX11
-          xorg.libXcursor
-          xorg.libXi
-          xorg.libXrandr # To use the x11 feature
+          libx11
+          libxcursor
+          libxi
+          libxrandr # To use the x11 feature
           libxkbcommon
           wayland # To use the wayland feature
         ];
@@ -79,14 +79,15 @@
               typescript
               wasm-pack
 
-              (gap.overrideAttrs (o: {
-                version = "4.13.1";
-                patches = [ ];
-                src = fetchurl {
-                  url = "https://github.com/gap-system/gap/releases/download/v4.13.1/gap-4.13.1.tar.gz";
-                  sha256 = "sha256-l5Tb26b7mY4KLQqoziH8iEitPT+cyZk7C44gvn4dvro=";
-                };
-              }))
+              # (gap.overrideAttrs (o: {
+              #   version = "4.13.1";
+              #   patches = [ ];
+              #   src = fetchurl {
+              #     url = "https://github.com/gap-system/gap/releases/download/v4.13.1/gap-4.13.1.tar.gz";
+              #     sha256 = "sha256-l5Tb26b7mY4KLQqoziH8iEitPT+cyZk7C44gvn4dvro=";
+              #   };
+              # }))
+              gap
 
               (python3.withPackages (
                 p: with p; [
