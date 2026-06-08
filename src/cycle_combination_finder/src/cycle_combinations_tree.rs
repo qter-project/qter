@@ -308,6 +308,7 @@ fn dfs_thread<const N: usize>(
             .prefix_and_last_registers
             .extend(mutable.registers.split_last().1.iter().copied());
     }
+    let mut old_bucket = 0;
     for (i, possible_order) in possible_orders_except_one
         .iter()
         .enumerate()
@@ -315,6 +316,20 @@ fn dfs_thread<const N: usize>(
         .skip(thread_index)
         .step_by(num_cores)
     {
+        if thread_index == 0 {
+            #[allow(
+                clippy::cast_sign_loss,
+                clippy::cast_possible_truncation,
+                clippy::cast_precision_loss
+            )]
+            let new_percent = 1.0 - (i as f64) / (possible_orders_except_one.len() as f64);
+            #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+            let new_bucket = (new_percent * 20.0).floor() as u8;
+            if new_bucket > old_bucket {
+                debug!("DFS: {}% complete", (new_percent * 100.0).round_ties_even());
+                old_bucket = new_bucket;
+            }
+        }
         if i <= max_last_register_orders[thread_index].load(atomic::Ordering::Relaxed) {
             break;
         }
