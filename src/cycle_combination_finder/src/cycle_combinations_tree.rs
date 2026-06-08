@@ -316,22 +316,25 @@ fn dfs_thread<const N: usize>(
         .skip(thread_index)
         .step_by(num_cores)
     {
+        let max_last_register_order =
+            max_last_register_orders[thread_index].load(atomic::Ordering::Relaxed);
+        if i <= max_last_register_order {
+            break;
+        }
         if thread_index == 0 {
             #[allow(
                 clippy::cast_sign_loss,
                 clippy::cast_possible_truncation,
                 clippy::cast_precision_loss
             )]
-            let new_percent = 1.0 - (i as f64) / (possible_orders_except_one.len() as f64);
+            let new_percent = ((possible_orders_except_one.len() - i) as f64)
+                / ((possible_orders_except_one.len() - max_last_register_order) as f64);
             #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
             let new_bucket = (new_percent * 20.0).floor() as u8;
             if new_bucket > old_bucket {
-                debug!("DFS: {}% complete", (new_percent * 100.0).round_ties_even());
+                debug!("DFS: {}% complete", (new_percent * 100.0).floor());
                 old_bucket = new_bucket;
             }
-        }
-        if i <= max_last_register_orders[thread_index].load(atomic::Ordering::Relaxed) {
-            break;
         }
 
         let Some(next_remaining_piece_count) = exact_piece_count
