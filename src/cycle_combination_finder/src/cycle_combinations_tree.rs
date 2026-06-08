@@ -12,6 +12,7 @@ use std::{
 
 use core_affinity::CoreId;
 use cpu_time::ThreadTime;
+use crossbeam_utils::CachePadded;
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::{Level, debug, log_enabled, trace};
 
@@ -39,9 +40,7 @@ struct CycleCombinationsTreeMutable {
 }
 
 #[derive(Default)]
-pub struct CycleCombinationsTreeConcurrent {
-    max_last_register_order: AtomicUsize,
-}
+pub struct CycleCombinationsTreeConcurrent {}
 
 #[derive(Debug, Clone)]
 struct PackedCycleCombinationCandidateQueue {
@@ -95,7 +94,7 @@ impl CycleCombinationsTreeMutable {
     fn send_queue(&mut self) {
         if log_enabled!(Level::Debug) {
             self.candidate_count +=
-                (self.prefix_and_last_registers.len() + 1 - self.registers.len().get()) as u64;
+                (self.prefix_and_last_registers.len() - self.registers.len().get()) as u64;
             let now = Instant::now();
             let payload = PackedCycleCombinationCandidateQueue {
                 prefix_and_last_registers: Box::clone_from_ref(&self.prefix_and_last_registers),
@@ -237,7 +236,7 @@ pub fn dbg_registers_iter<const N: usize>(
 fn details_thread<const N: usize>(
     core_id: CoreId,
     receiver: mpmc::Receiver<PackedCycleCombinationCandidateQueue>,
-    concurrent: Arc<CycleCombinationsTreeConcurrent>,
+    max_last_register_orders: Arc<[CachePadded<AtomicUsize>]>,
     possible_orders_except_one: Arc<[PossibleOrder<N>]>,
     exact_register_count: NonZeroU16,
 ) -> DetailsThreadInfo {
@@ -247,9 +246,11 @@ fn details_thread<const N: usize>(
     let real_time = Instant::now();
     let cpu_time = ThreadTime::now();
     while let Ok(packed_queue) = receiver.recv() {
-        let (prefix_registers, last_registers) = packed_queue
+        let (thread_index_and_prefix_registers, last_registers) = packed_queue
             .prefix_and_last_registers
-            .split_at(usize::from(exact_register_count.get() - 1));
+            .split_at(usize::from(exact_register_count.get()));
+        let (&thread_index, prefix_registers) =
+            thread_index_and_prefix_registers.split_first().unwrap();
         for &last_register in last_registers {
             let disjoint_registers = DisjointRegisters {
                 prefix_registers,
@@ -271,8 +272,7 @@ fn details_thread<const N: usize>(
                 // solutions. If something is the maximum in our atomic variable,
                 // then it must either be in the front or the atomic variable is an
                 // underestimate, which is permitted since our bound is admissible
-                concurrent
-                    .max_last_register_order
+                max_last_register_orders[thread_index]
                     .fetch_max(last_register, atomic::Ordering::Relaxed);
                 break;
             }
@@ -293,7 +293,7 @@ fn dfs_thread<const N: usize>(
     num_cores: usize,
     exact_piece_count: NonZeroU32,
     mut mutable: CycleCombinationsTreeMutable,
-    concurrent: Arc<CycleCombinationsTreeConcurrent>,
+    max_last_register_orders: Arc<[CachePadded<AtomicUsize>]>,
     possible_orders_except_one: Arc<[PossibleOrder<N>]>,
 ) -> TreeThreadInfo {
     core_affinity::set_for_current(core_id);
@@ -303,7 +303,7 @@ fn dfs_thread<const N: usize>(
     let exact_register_count = mutable.exact_register_count();
     let maybe_next_remaining_register_count = NonZeroU16::new(exact_register_count.get() - 1);
     if maybe_next_remaining_register_count.is_none() {
-        mutable.prefix_and_last_registers.clear();
+        mutable.prefix_and_last_registers.truncate(1);
         mutable
             .prefix_and_last_registers
             .extend(mutable.registers.split_last().1.iter().copied());
@@ -315,10 +315,7 @@ fn dfs_thread<const N: usize>(
         .skip(thread_index)
         .step_by(num_cores)
     {
-        if i <= concurrent
-            .max_last_register_order
-            .load(atomic::Ordering::Relaxed)
-        {
+        if i <= max_last_register_orders[thread_index].load(atomic::Ordering::Relaxed) {
             break;
         }
 
@@ -341,8 +338,9 @@ fn dfs_thread<const N: usize>(
             *mutable.registers.first_mut() = i;
             unsafe {
                 search_dfs_helper(
+                    thread_index,
                     &mut mutable,
-                    &concurrent,
+                    &max_last_register_orders,
                     next_possible_orders,
                     next_remaining_register_count,
                     next_remaining_piece_count,
@@ -368,8 +366,9 @@ fn dfs_thread<const N: usize>(
 /// `remaining_register_count` must be less than or equal to
 /// `mutable.registers.len()`.
 unsafe fn search_dfs_helper<const N: usize>(
+    thread_index: usize,
     mutable: &mut CycleCombinationsTreeMutable,
-    concurrent: &Arc<CycleCombinationsTreeConcurrent>,
+    max_last_register_orders: &Arc<[CachePadded<AtomicUsize>]>,
     possible_orders: NonemptySlice<'_, PossibleOrder<N>>,
     remaining_register_count: NonZeroU16,
     remaining_piece_count: NonZeroU32,
@@ -378,7 +377,7 @@ unsafe fn search_dfs_helper<const N: usize>(
     let mut curr_possible_orders = possible_orders;
     let maybe_next_remaining_register_count = NonZeroU16::new(remaining_register_count.get() - 1);
     if maybe_next_remaining_register_count.is_none() {
-        mutable.prefix_and_last_registers.clear();
+        mutable.prefix_and_last_registers.truncate(1);
         mutable
             .prefix_and_last_registers
             .extend(mutable.registers.split_last().1.iter().copied());
@@ -386,10 +385,8 @@ unsafe fn search_dfs_helper<const N: usize>(
     loop {
         let (possible_order, next_possible_orders) = curr_possible_orders.split_last();
         let i = next_possible_orders.len();
-        if register_index == 0
-            && i <= concurrent
-                .max_last_register_order
-                .load(atomic::Ordering::Relaxed)
+        if register_index <= 1
+            && i <= max_last_register_orders[thread_index].load(atomic::Ordering::Relaxed)
         {
             break;
         }
@@ -412,8 +409,9 @@ unsafe fn search_dfs_helper<const N: usize>(
                     // SAFETY: `remaining_register_count` only ever decreases.
                     unsafe {
                         search_dfs_helper(
+                            thread_index,
                             mutable,
-                            concurrent,
+                            max_last_register_orders,
                             curr_possible_orders,
                             next_remaining_register_count,
                             next_remaining_piece_count,
@@ -476,7 +474,11 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let (sender, receiver) =
             mpmc::sync_channel::<PackedCycleCombinationCandidateQueue>(core_ids.len() * 10);
 
-        let concurrent = Arc::default();
+        let max_last_register_orders = Arc::from(
+            (0..num_cores)
+                .map(|_| CachePadded::default())
+                .collect::<Box<[_]>>(),
+        );
 
         // We can unwrap because `exact_register_count` is NonZero.
         #[allow(clippy::missing_panics_doc)]
@@ -493,13 +495,13 @@ impl<const N: usize> CycleCombinationsTree<N> {
             .iter()
             .map(|&core_id| {
                 let receiver = receiver.clone();
-                let concurrent = Arc::clone(&concurrent);
+                let max_last_register_orders = Arc::clone(&max_last_register_orders);
                 let possible_orders_except_one = Arc::clone(&self.possible_orders_except_one);
                 std::thread::spawn(move || {
                     details_thread(
                         core_id,
                         receiver,
-                        concurrent,
+                        max_last_register_orders,
                         possible_orders_except_one,
                         self.exact_register_count,
                     )
@@ -514,8 +516,9 @@ impl<const N: usize> CycleCombinationsTree<N> {
             .into_iter()
             .enumerate()
             .map(|(thread_index, core_id)| {
-                let mutable = mutable.clone();
-                let concurrent = Arc::clone(&concurrent);
+                let mut mutable = mutable.clone();
+                mutable.prefix_and_last_registers.push(thread_index);
+                let concurrent = Arc::clone(&max_last_register_orders);
                 let possible_orders_except_one = Arc::clone(&self.possible_orders_except_one);
                 std::thread::spawn(move || {
                     dfs_thread(
@@ -588,13 +591,13 @@ impl<const N: usize> CycleCombinationsTree<N> {
 
         let real_time = real_time.elapsed();
 
-        #[allow(clippy::missing_panics_doc)]
-        let exclusive = Arc::into_inner(concurrent).unwrap();
-
         #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-        let pruned_orders_percentage = ((exclusive.max_last_register_order.into_inner() + 1)
-            as f64)
-            / (self.possible_orders_except_one.len() as f64);
+        let pruned_orders_percentage = ((max_last_register_orders
+            .iter()
+            .map(|max_last_register_order| max_last_register_order.load(atomic::Ordering::Relaxed))
+            .sum::<usize>()) as f64)
+            / ((self.possible_orders_except_one.len() * num_cores) as f64);
+
         let dfs_io_time = dfs_real_time
             .saturating_sub(dfs_cpu_time)
             .saturating_sub(dfs_alloc_time);

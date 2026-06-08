@@ -9,8 +9,8 @@
 
 ## CCF
 
+- try <= 2
 - why wasn't old version catching 520520 360360 180180
-- fix register_index <= 1
 - better log tracing messages
 - what if possible_orders_except_one is empty? OOB?
 - NonemptyVec([PossibleOrder { order: 116454478140, min_piece_count: 137 }, PossibleOrder { order: 6, min_piece_count: 2 }, PossibleOrder { order: 3, min_piece_count: 1 }]) followed by NonemptyVec([PossibleOrder { order: 82990547640, min_piece_count: 137 }, PossibleOrder { order: 6, min_piece_count: 2 }, PossibleOrder { order: 3, min_piece_count: 1 }])
@@ -35,9 +35,7 @@
 - after MVP
   - max diff ratio setting. prevents solutions like 720720, 2, 2
   - max solutions per register count setting
-  - SubOptimal Optimality which uses the naive pareto front dominate approach; could also assume a lesser min piece count threshold
-  - can register_index <= 1 be better?
-  - respond on github
+  - SubOptimal Optimality which uses the naive pareto front dominate approach; could also assume a lesser min piece count threshold; uses naive register_index <= 1
   - reuse possible orders list if two orbits are the same
   - throw out order case if we ever compute it has a non-+1 orientation factor
 

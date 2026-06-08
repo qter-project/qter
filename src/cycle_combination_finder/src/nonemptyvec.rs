@@ -87,7 +87,14 @@ impl<T> NonemptyVec<T> {
     }
 
     #[must_use]
+    pub fn first(&self) -> &T {
+        // SAFETY: this collection has at least one element
+        unsafe { self.0.first().unwrap_unchecked() }
+    }
+
+    #[must_use]
     pub fn as_slice(&self) -> NonemptySlice<'_, T> {
+        // Construction is allowed because this collection has at least one element
         NonemptySlice(&self.0)
     }
 }
@@ -95,11 +102,13 @@ impl<T> NonemptyVec<T> {
 impl<'a, T> NonemptySlice<'a, T> {
     #[must_use]
     pub fn split_first(self) -> (&'a T, &'a [T]) {
+        // SAFETY: this collection has at least one element
         unsafe { self.0.split_first().unwrap_unchecked() }
     }
 
     #[must_use]
     pub fn split_last(self) -> (&'a T, &'a [T]) {
+        // SAFETY: this collection has at least one element
         unsafe { self.0.split_last().unwrap_unchecked() }
     }
 }
