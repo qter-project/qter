@@ -249,7 +249,7 @@ fn details_thread<const N: usize>(
     while let Ok(packed_queue) = receiver.recv() {
         let (prefix_registers, last_registers) = packed_queue
             .prefix_and_last_registers
-            .split_at(usize::from(exact_register_count.get()));
+            .split_at(usize::from(exact_register_count.get() - 1));
         for &last_register in last_registers {
             let disjoint_registers = DisjointRegisters {
                 prefix_registers,
