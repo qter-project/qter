@@ -272,6 +272,15 @@ mod tests {
     }
 
     #[test_log::test]
+    fn cube3_optimal_4() {
+        let puzzle = CUBE3.clone();
+        CycleCombinationFinder::from(puzzle)
+            .with_register_count(RegisterCount::Exactly(NonZeroU16::new(4).unwrap()))
+            .with_expected_length_assertion(50)
+            .find();
+    }
+
+    #[test_log::test]
     fn cube3_optimal_3() {
         let puzzle = CUBE3.clone();
         CycleCombinationFinder::from(puzzle)
