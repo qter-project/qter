@@ -9,7 +9,6 @@
 
 ## CCF
 
-- profile when details thread breaks
 - try <= 2
 - better log tracing messages
 - what if possible_orders_except_one is empty? OOB?

@@ -128,9 +128,9 @@ impl Debug for ProfileInfo {
             .field(
                 &format!("{:>25}", "post_candidate_count"),
                 &format!(
-                    "{} ({} total)",
+                    "{} ({} / thread)",
+                    self.post_candidate_count,
                     self.post_candidate_count / u64::try_from(self.num_cores).unwrap(),
-                    self.post_candidate_count
                 ),
             )
             .field(
