@@ -9,8 +9,8 @@
 
 ## CCF
 
+- profile when details thread breaks
 - try <= 2
-- why wasn't old version catching 520520 360360 180180
 - better log tracing messages
 - what if possible_orders_except_one is empty? OOB?
 - NonemptyVec([PossibleOrder { order: 116454478140, min_piece_count: 137 }, PossibleOrder { order: 6, min_piece_count: 2 }, PossibleOrder { order: 3, min_piece_count: 1 }]) followed by NonemptyVec([PossibleOrder { order: 82990547640, min_piece_count: 137 }, PossibleOrder { order: 6, min_piece_count: 2 }, PossibleOrder { order: 3, min_piece_count: 1 }])

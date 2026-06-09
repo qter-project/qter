@@ -57,6 +57,7 @@ pub struct DisjointRegisters<'a> {
 struct DetailsThreadInfo {
     mkp_real_time: Duration,
     mkp_cpu_time: Duration,
+    processed_candidate_count: u64,
     post_candidate_count: u64,
     cycle_combinations: CCParetoFront,
 }
@@ -71,6 +72,7 @@ struct TreeThreadInfo {
 
 struct ProfileInfo {
     candidate_count: u64,
+    processed_candidate_count: u64,
     post_candidate_count: u64,
     pruned_orders_percentage: f64,
     real_time: Duration,
@@ -85,7 +87,7 @@ struct ProfileInfo {
 impl CycleCombinationsTreeMutable {
     fn exact_register_count(&self) -> NonZeroU16 {
         // Cast truncation is fine because `self.registers` is the length of the number
-        // of registers, which is a `NonZeruU16`
+        // of registers, which is a `NonZeroU16`
         #[allow(clippy::cast_possible_truncation)]
         unsafe {
             NonZeroU16::new_unchecked(self.registers.len().get() as u16)
@@ -119,6 +121,10 @@ impl Debug for ProfileInfo {
         let cpu_time = self.real_time.mul_f64(num_cores);
         f.debug_struct("ProfileInfo")
             .field(&format!("{:>25}", "candidate_count"), &self.candidate_count)
+            .field(
+                &format!("{:>25}", "processed_candidate_count"),
+                &self.processed_candidate_count,
+            )
             .field(
                 &format!("{:>25}", "post_candidate_count"),
                 &format!(
@@ -246,6 +252,7 @@ fn details_thread<const N: usize>(
     let mut post_candidate_count = 0;
     let real_time = Instant::now();
     let cpu_time = ThreadTime::now();
+    let mut processed_candidate_count = 0;
     while let Ok(packed_queue) = receiver.recv() {
         let (thread_index_and_prefix_registers, last_registers) = packed_queue
             .prefix_and_last_registers
@@ -253,6 +260,7 @@ fn details_thread<const N: usize>(
         let (&thread_index, prefix_registers) =
             thread_index_and_prefix_registers.split_first().unwrap();
         for &last_register in last_registers {
+            processed_candidate_count += 1;
             let disjoint_registers = DisjointRegisters {
                 prefix_registers,
                 last_register,
@@ -296,10 +304,11 @@ fn details_thread<const N: usize>(
         }
     }
     DetailsThreadInfo {
-        cycle_combinations,
         mkp_cpu_time: cpu_time.elapsed(),
         mkp_real_time: real_time.elapsed(),
+        processed_candidate_count,
         post_candidate_count,
+        cycle_combinations,
     }
 }
 
@@ -524,10 +533,11 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let mut dfs_cpu_time = Duration::default();
         let mut dfs_alloc_time = Duration::default();
 
-        let mut smallest_fronts = BinaryHeap::new();
-        let mut mkp_cpu_time = Duration::default();
         let mut mkp_real_time = Duration::default();
+        let mut mkp_cpu_time = Duration::default();
+        let mut processed_candidate_count = 0;
         let mut post_candidate_count = 0;
+        let mut smallest_fronts = BinaryHeap::new();
 
         let max_last_register_orders: Arc<[CachePadded<(AtomicUsize, AtomicUsize)>]> = Arc::from(
             (0..num_cores)
@@ -589,6 +599,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
 
                 mkp_cpu_time += details_thread_info.mkp_cpu_time;
                 mkp_real_time += details_thread_info.mkp_real_time;
+                processed_candidate_count += details_thread_info.processed_candidate_count;
                 post_candidate_count += details_thread_info.post_candidate_count;
                 smallest_fronts.push(details_thread_info.cycle_combinations);
             }
@@ -638,6 +649,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
 
         let profile_info = ProfileInfo {
             candidate_count,
+            processed_candidate_count,
             post_candidate_count,
             pruned_orders_percentage,
             real_time,
