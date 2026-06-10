@@ -8,7 +8,6 @@ bitgauss = { git = "https://github.com/qter-project/bitgauss" }
 bumpalo = { version = "3.20.3", features = ["allocator_api"] }
 core_affinity = "0.8.3"
 cpu-time = "1.0.0"
-crossbeam-utils = "0.8.21"
 dashmap = { version = "6.2.1", features = ["rayon"] }
 env_logger = "0.11.10"
 fxhash = "0.2.1"

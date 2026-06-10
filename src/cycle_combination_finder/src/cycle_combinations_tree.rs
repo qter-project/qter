@@ -13,7 +13,6 @@ use std::{
 
 use core_affinity::CoreId;
 use cpu_time::ThreadTime;
-use crossbeam_utils::CachePadded;
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::{Level, debug, log_enabled, trace};
 
@@ -237,7 +236,7 @@ pub fn dbg_registers_iter<const N: usize>(
 fn details_thread<const N: usize>(
     core_id: CoreId,
     receiver: mpmc::Receiver<PackedCycleCombinationCandidateQueue>,
-    max_last_register_orders: Arc<[CachePadded<(AtomicUsize, AtomicUsize)>]>,
+    max_last_register_orders: Arc<[(AtomicUsize, AtomicUsize)]>,
     possible_orders_except_one: &[PossibleOrder<N>],
     exact_register_count: NonZeroU16,
 ) -> DetailsThreadInfo {
@@ -313,7 +312,7 @@ fn dfs_thread<const N: usize>(
     num_cores: usize,
     exact_piece_count: NonZeroU32,
     mut mutable: CycleCombinationsTreeMutable,
-    max_last_register_orders: &CachePadded<(AtomicUsize, AtomicUsize)>,
+    max_last_register_orders: &(AtomicUsize, AtomicUsize),
     possible_orders_except_one: &[PossibleOrder<N>],
 ) -> TreeThreadInfo {
     core_affinity::set_for_current(core_id);
@@ -533,9 +532,9 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let mut post_candidate_count = 0;
         let mut smallest_fronts = BinaryHeap::new();
 
-        let max_last_register_orders: Arc<[CachePadded<(AtomicUsize, AtomicUsize)>]> = Arc::from(
+        let max_last_register_orders: Arc<[(AtomicUsize, AtomicUsize)]> = Arc::from(
             (0..num_cores)
-                .map(|_| CachePadded::default())
+                .map(|_| (AtomicUsize::default(), AtomicUsize::default()))
                 .collect::<Box<[_]>>(),
         );
         let real_time = Instant::now();
