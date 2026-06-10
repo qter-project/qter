@@ -33,20 +33,15 @@ pub(crate) struct CycleCombinationsTree<const N: usize> {
 
 #[derive(Clone)]
 struct CycleCombinationsTreeMutable {
-    prefix_and_last_registers: Vec<usize>,
+    packed_queue: Vec<usize>,
     registers: NonemptyVec<usize>,
     sender: mpmc::Sender<PackedCycleCombinationCandidateQueue>,
     alloc_time: Duration,
     candidate_count: u64,
 }
 
-#[derive(Default)]
-pub struct CycleCombinationsTreeConcurrent {}
-
 #[derive(Debug, Clone)]
-struct PackedCycleCombinationCandidateQueue {
-    prefix_and_last_registers: Box<[usize]>,
-}
+struct PackedCycleCombinationCandidateQueue(Box<[usize]>);
 
 #[derive(Clone, Copy)]
 pub struct DisjointRegisters<'a> {
@@ -97,18 +92,17 @@ impl CycleCombinationsTreeMutable {
     fn send_queue(&mut self) {
         if log_enabled!(Level::Debug) {
             self.candidate_count +=
-                (self.prefix_and_last_registers.len() - self.registers.len().get()) as u64;
+                (self.packed_queue.len() - usize::from(self.exact_register_count().get())) as u64;
             let now = Instant::now();
-            let payload = PackedCycleCombinationCandidateQueue {
-                prefix_and_last_registers: Box::clone_from_ref(&self.prefix_and_last_registers),
-            };
+            let payload =
+                PackedCycleCombinationCandidateQueue(Box::clone_from_ref(&self.packed_queue));
             self.alloc_time += now.elapsed();
             self.sender.send(payload).unwrap();
         } else {
             self.sender
-                .send(PackedCycleCombinationCandidateQueue {
-                    prefix_and_last_registers: Box::clone_from_ref(&self.prefix_and_last_registers),
-                })
+                .send(PackedCycleCombinationCandidateQueue(Box::clone_from_ref(
+                    &self.packed_queue,
+                )))
                 .unwrap();
         }
     }
@@ -249,13 +243,13 @@ fn details_thread<const N: usize>(
 ) -> DetailsThreadInfo {
     core_affinity::set_for_current(core_id);
     let mut cycle_combinations = CCParetoFront::default();
+    let mut processed_candidate_count = 0;
     let mut post_candidate_count = 0;
     let real_time = Instant::now();
     let cpu_time = ThreadTime::now();
-    let mut processed_candidate_count = 0;
     while let Ok(packed_queue) = receiver.recv() {
         let (thread_index_and_prefix_registers, last_registers) = packed_queue
-            .prefix_and_last_registers
+            .0
             .split_at(usize::from(exact_register_count.get()));
         let (&thread_index, prefix_registers) =
             thread_index_and_prefix_registers.split_first().unwrap();
@@ -329,9 +323,9 @@ fn dfs_thread<const N: usize>(
     let exact_register_count = mutable.exact_register_count();
     let maybe_next_remaining_register_count = NonZeroU16::new(exact_register_count.get() - 1);
     if maybe_next_remaining_register_count.is_none() {
-        mutable.prefix_and_last_registers.truncate(1);
+        mutable.packed_queue.truncate(1);
         mutable
-            .prefix_and_last_registers
+            .packed_queue
             .extend(mutable.registers.split_last().1.iter().copied());
     }
     let mut old_bucket = 0;
@@ -370,7 +364,7 @@ fn dfs_thread<const N: usize>(
         };
 
         let Some(next_remaining_register_count) = maybe_next_remaining_register_count else {
-            mutable.prefix_and_last_registers.push(i);
+            mutable.packed_queue.push(i);
             continue;
         };
 
@@ -418,9 +412,9 @@ unsafe fn search_dfs_helper<const N: usize>(
     let mut curr_possible_orders = possible_orders;
     let maybe_next_remaining_register_count = NonZeroU16::new(remaining_register_count.get() - 1);
     if maybe_next_remaining_register_count.is_none() {
-        mutable.prefix_and_last_registers.truncate(1);
+        mutable.packed_queue.truncate(1);
         mutable
-            .prefix_and_last_registers
+            .packed_queue
             .extend(mutable.registers.split_last().1.iter().copied());
     }
     loop {
@@ -464,7 +458,7 @@ unsafe fn search_dfs_helper<const N: usize>(
                     *unsafe { mutable.registers.get_unchecked_mut(register_index as usize) } = old;
                 }
             } else {
-                mutable.prefix_and_last_registers.push(i);
+                mutable.packed_queue.push(i);
             }
         }
         match NonemptySlice::try_from(next_possible_orders) {
@@ -520,7 +514,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
         // We can unwrap because `exact_register_count` is NonZero.
         #[allow(clippy::missing_panics_doc)]
         let mutable = CycleCombinationsTreeMutable {
-            prefix_and_last_registers: vec![],
+            packed_queue: vec![],
             registers: NonemptyVec::try_from(vec![0; usize::from(self.exact_register_count.get())])
                 .unwrap(),
             sender,
@@ -554,7 +548,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
                 .zip(max_last_register_orders.iter())
                 .map(|((thread_index, core_id), max_last_register_order)| {
                     let mut mutable = mutable.clone();
-                    mutable.prefix_and_last_registers.push(thread_index);
+                    mutable.packed_queue.push(thread_index);
                     let tree_thread_handle = s.spawn(move || {
                         dfs_thread(
                             core_id,
