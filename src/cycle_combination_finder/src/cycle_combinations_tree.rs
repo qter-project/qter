@@ -237,7 +237,7 @@ pub fn dbg_registers_iter<const N: usize>(
 fn details_thread<const N: usize>(
     core_id: CoreId,
     receiver: mpmc::Receiver<PackedCycleCombinationCandidateQueue>,
-    max_last_register_orders: Arc<[CachePadded<(AtomicUsize, AtomicUsize)>]>,
+    max_last_register_orders: Arc<[Box<[CachePadded<AtomicUsize>]>]>,
     possible_orders_except_one: &[PossibleOrder<N>],
     exact_register_count: NonZeroU16,
 ) -> DetailsThreadInfo {
@@ -275,19 +275,18 @@ fn details_thread<const N: usize>(
                 // solutions. If something is the maximum in our atomic variable,
                 // then it must either be in the front or the atomic variable is an
                 // underestimate, which is permitted since our bound is admissible
-                let old_max_last_register_order = max_last_register_orders[thread_index]
-                    .0
+                let old_max_last_register_order = max_last_register_orders[thread_index][0]
                     .fetch_max(last_register, atomic::Ordering::Relaxed);
                 match last_register.cmp(&old_max_last_register_order) {
                     Ordering::Less => (),
                     Ordering::Equal => {
-                        max_last_register_orders[thread_index].1.fetch_max(
+                        max_last_register_orders[thread_index][1].fetch_max(
                             disjoint_registers.get(1).unwrap(),
                             atomic::Ordering::Relaxed,
                         );
                     }
                     Ordering::Greater => {
-                        max_last_register_orders[thread_index].1.store(
+                        max_last_register_orders[thread_index][1].store(
                             disjoint_registers.get(1).unwrap(),
                             atomic::Ordering::Relaxed,
                         );
@@ -313,7 +312,8 @@ fn dfs_thread<const N: usize>(
     num_cores: usize,
     exact_piece_count: NonZeroU32,
     mut mutable: CycleCombinationsTreeMutable,
-    max_last_register_orders: &CachePadded<(AtomicUsize, AtomicUsize)>,
+    // max_last_register_orders: &<(AtomicUsize, AtomicUsize)>,
+    max_last_register_orders: &[CachePadded<AtomicUsize>],
     possible_orders_except_one: &[PossibleOrder<N>],
 ) -> TreeThreadInfo {
     core_affinity::set_for_current(core_id);
@@ -336,7 +336,7 @@ fn dfs_thread<const N: usize>(
         .skip(thread_index)
         .step_by(num_cores)
     {
-        let max_last_register_order = max_last_register_orders.0.load(atomic::Ordering::Relaxed);
+        let max_last_register_order = max_last_register_orders[0].load(atomic::Ordering::Relaxed);
         if i <= max_last_register_order {
             break;
         }
@@ -403,7 +403,7 @@ fn dfs_thread<const N: usize>(
 /// `mutable.registers.len()`.
 unsafe fn search_dfs_helper<const N: usize>(
     mutable: &mut CycleCombinationsTreeMutable,
-    max_last_register_order: &(AtomicUsize, AtomicUsize),
+    max_last_register_order: &[CachePadded<AtomicUsize>],
     possible_orders: NonemptySlice<'_, PossibleOrder<N>>,
     remaining_register_count: NonZeroU16,
     remaining_piece_count: NonZeroU32,
@@ -423,8 +423,8 @@ unsafe fn search_dfs_helper<const N: usize>(
         if (register_index == 1
             || register_index == 2
                 && mutable.registers[1]
-                    <= max_last_register_order.1.load(atomic::Ordering::Relaxed))
-            && i <= max_last_register_order.0.load(atomic::Ordering::Relaxed)
+                    <= max_last_register_order[1].load(atomic::Ordering::Relaxed))
+            && i <= max_last_register_order[0].load(atomic::Ordering::Relaxed)
         {
             break;
         }
@@ -533,9 +533,9 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let mut post_candidate_count = 0;
         let mut smallest_fronts = BinaryHeap::new();
 
-        let max_last_register_orders: Arc<[CachePadded<(AtomicUsize, AtomicUsize)>]> = Arc::from(
+        let max_last_register_orders: Arc<[Box<[CachePadded<AtomicUsize>]>]> = Arc::from(
             (0..num_cores)
-                .map(|_| CachePadded::default())
+                .map(|_| vec![CachePadded::default(), CachePadded::default()].into_boxed_slice())
                 .collect::<Box<[_]>>(),
         );
         let real_time = Instant::now();
@@ -631,7 +631,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let pruned_orders_percentage = (max_last_register_orders
             .iter()
             .map(|max_last_register_order| {
-                max_last_register_order.0.load(atomic::Ordering::Relaxed)
+                max_last_register_order[0].load(atomic::Ordering::Relaxed)
             })
             .sum::<usize>() as f64)
             / ((self.possible_orders_except_one.len() * num_cores) as f64);
