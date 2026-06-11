@@ -5,6 +5,8 @@
     clippy::similar_names
 )]
 #![feature(
+    nonpoison_mutex,
+    sync_nonpoison,
     mpmc_channel,
     slice_swap_unchecked,
     portable_simd,
