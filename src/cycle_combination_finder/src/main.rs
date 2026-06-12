@@ -4,13 +4,23 @@ use cycle_combination_finder::{
     finder::{CycleCombinationFinder, RegisterCount},
     puzzle::{cubeN, minxN},
 };
+use log::debug;
 
 fn main() {
+    env_logger::init();
+    let custom = minxN::CUSTOM.clone();
+    let a = CycleCombinationFinder::from(custom)
+        .with_register_count(RegisterCount::Exactly(NonZeroU16::new(6).unwrap()))
+        .with_expected_length_assertion(249);
+    loop {
+        a.find().unwrap();
+        debug!("Success");
+    }
+
     let Some(p) = std::env::args().nth(1) else {
         println!("Enter minx3 or minx4 or cube3");
         return;
     };
-    env_logger::init();
 
     if p == "minx3" {
         let minx3 = minxN::MINX3.clone();
