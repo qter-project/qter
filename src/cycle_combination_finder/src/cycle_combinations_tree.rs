@@ -3,19 +3,15 @@ use std::{
     collections::BinaryHeap,
     fmt::{self, Debug},
     num::{NonZeroU16, NonZeroU32},
-    sync::{
-        Arc,
-        atomic::{self, AtomicU32},
-        mpmc,
-    },
+    sync::{Arc, mpmc},
     time::{Duration, Instant},
 };
 
 use core_affinity::CoreId;
 use cpu_time::ThreadTime;
-use crossbeam_utils::CachePadded;
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::{Level, debug, log_enabled, trace};
+use seqlock::SeqLock;
 
 use crate::{
     cycle_combination_details::CycleCombinationDetails,
@@ -237,7 +233,7 @@ pub fn dbg_registers_iter<const N: usize>(
 fn details_thread<const N: usize>(
     core_id: CoreId,
     receiver: mpmc::Receiver<PackedCycleCombinationCandidateQueue>,
-    max_last_register_orders: Arc<[Box<[CachePadded<AtomicU32>]>]>,
+    max_last_register_orders: Arc<[SeqLock<[u32; 8]>]>,
     possible_orders_except_one: &[PossibleOrder<N>],
     exact_register_count: NonZeroU16,
 ) -> DetailsThreadInfo {
@@ -276,39 +272,37 @@ fn details_thread<const N: usize>(
                 // solutions. If something is the maximum in our atomic variable,
                 // then it must either be in the front or the atomic variable is an
                 // underestimate, which is permitted since our bound is admissible
-                let old_max_last_register_order = max_last_register_orders[thread_index][0]
-                    .fetch_max(last_register, atomic::Ordering::Relaxed);
-                match last_register.cmp(&old_max_last_register_order) {
+                let mut max_last_register_order =
+                    max_last_register_orders[thread_index].lock_write();
+                let mut max_last_register_order = max_last_register_order
+                    .iter_mut()
+                    .enumerate()
+                    .take(prefix_registers.len());
+                let old_max_last_register_order = max_last_register_order.next().unwrap().1;
+                match last_register.cmp(old_max_last_register_order) {
                     Ordering::Less => (),
                     Ordering::Equal => {
                         let mut f = false;
-                        for (i, m) in max_last_register_orders[thread_index]
-                            .iter()
-                            .enumerate()
-                            .skip(1)
-                        {
+                        for (i, m) in max_last_register_order {
                             let j = prefix_registers[i];
                             if f {
-                                m.store(j, atomic::Ordering::Relaxed);
+                                *m = j;
                                 continue;
                             }
-                            match j.cmp(&m.load(atomic::Ordering::Relaxed)) {
+                            match j.cmp(m) {
                                 Ordering::Less => break,
                                 Ordering::Equal => (),
                                 Ordering::Greater => {
                                     f = true;
-                                    m.store(j, atomic::Ordering::Relaxed);
+                                    *m = j;
                                 }
                             }
                         }
                     }
                     Ordering::Greater => {
-                        for (i, m) in max_last_register_orders[thread_index]
-                            .iter()
-                            .enumerate()
-                            .skip(1)
-                        {
-                            m.store(prefix_registers[i], atomic::Ordering::Relaxed);
+                        *old_max_last_register_order = last_register;
+                        for (i, m) in max_last_register_order {
+                            *m = prefix_registers[i];
                         }
                     }
                 }
@@ -332,8 +326,7 @@ fn dfs_thread<const N: usize>(
     num_cores: usize,
     exact_piece_count: NonZeroU32,
     mut mutable: CycleCombinationsTreeMutable,
-    // max_last_register_orders: &<(AtomicUsize, AtomicUsize)>,
-    max_last_register_orders: &[CachePadded<AtomicU32>],
+    max_last_register_orders: &SeqLock<[u32; 8]>,
     possible_orders_except_one: &[PossibleOrder<N>],
 ) -> TreeThreadInfo {
     core_affinity::set_for_current(core_id);
@@ -359,7 +352,7 @@ fn dfs_thread<const N: usize>(
         // We validated `possible_orders` to be of len `u32` or less
         #[allow(clippy::cast_possible_truncation)]
         let i_u32 = i as u32;
-        let max_last_register_order = max_last_register_orders[0].load(atomic::Ordering::Relaxed);
+        let max_last_register_order = max_last_register_orders.read()[0];
         if i_u32 <= max_last_register_order {
             break;
         }
@@ -423,7 +416,7 @@ fn dfs_thread<const N: usize>(
 /// `mutable.registers.len()`.
 unsafe fn search_dfs_helper<const N: usize>(
     mutable: &mut CycleCombinationsTreeMutable,
-    max_last_register_order: &[CachePadded<AtomicU32>],
+    max_last_register_order: &SeqLock<[u32; 8]>,
     possible_orders: NonemptySlice<'_, PossibleOrder<N>>,
     remaining_register_count: NonZeroU16,
     remaining_piece_count: NonZeroU32,
@@ -442,11 +435,8 @@ unsafe fn search_dfs_helper<const N: usize>(
         // We validated `possible_orders` to be of len `u32` or less
         #[allow(clippy::cast_possible_truncation)]
         let i = next_possible_orders.len() as u32;
-        if i <= max_last_register_order[0].load(atomic::Ordering::Relaxed)
-            && (1..register_index).all(|j| {
-                mutable.registers[j as usize]
-                    <= max_last_register_order[j as usize].load(atomic::Ordering::Relaxed)
-            })
+        let l = max_last_register_order.read();
+        if i <= l[0] && (1..register_index).all(|j| mutable.registers[j as usize] <= l[j as usize])
         {
             break;
         }
@@ -555,13 +545,9 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let mut post_candidate_count = 0;
         let mut smallest_fronts = BinaryHeap::new();
 
-        let max_last_register_orders: Arc<[Box<[CachePadded<AtomicU32>]>]> = Arc::from(
+        let max_last_register_orders: Arc<[SeqLock<[u32; 8]>]> = Arc::from(
             (0..num_cores)
-                .map(|_| {
-                    (0..self.exact_register_count.get() - 1)
-                        .map(|_| CachePadded::default())
-                        .collect::<Box<[_]>>()
-                })
+                .map(|_| SeqLock::new([0u32; 8]))
                 .collect::<Box<[_]>>(),
         );
         let real_time = Instant::now();
@@ -658,9 +644,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
         #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
         let pruned_orders_percentage = (max_last_register_orders
             .iter()
-            .map(|max_last_register_order| {
-                u64::from(max_last_register_order[0].load(atomic::Ordering::Relaxed))
-            })
+            .map(|max_last_register_order| u64::from(max_last_register_order.read()[0]))
             .sum::<u64>() as f64)
             / ((self.possible_orders_except_one.len() * num_cores) as f64);
 

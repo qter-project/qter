@@ -282,6 +282,16 @@ mod tests {
             .find()
             .unwrap();
     }
+    
+    #[test_log::test]
+    fn minx3_optimal_5() {
+        let minx3 = MINX3.clone();
+        CycleCombinationFinder::from(minx3)
+            .with_register_count(RegisterCount::Exactly(NonZeroU16::new(5).unwrap()))
+            .with_expected_length_assertion(1052)
+            .find()
+            .unwrap();
+    }
 
     #[test_log::test]
     fn minx3_optimal_4() {
