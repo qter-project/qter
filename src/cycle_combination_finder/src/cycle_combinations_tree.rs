@@ -274,17 +274,14 @@ fn details_thread<const N: usize>(
                 // underestimate, which is permitted since our bound is admissible
                 let mut max_last_register_order =
                     max_last_register_orders[thread_index].lock_write();
-                let mut max_last_register_order = max_last_register_order
-                    .iter_mut()
-                    .enumerate()
-                    .take(prefix_registers.len());
-                let old_max_last_register_order = max_last_register_order.next().unwrap().1;
+                let mut max_last_register_order =
+                    max_last_register_order.iter_mut().zip(prefix_registers);
+                let old_max_last_register_order = max_last_register_order.next().unwrap().0;
                 match last_register.cmp(old_max_last_register_order) {
                     Ordering::Less => (),
                     Ordering::Equal => {
                         let mut f = false;
-                        for (i, m) in max_last_register_order {
-                            let j = prefix_registers[i];
+                        for (m, &j) in max_last_register_order {
                             if f {
                                 *m = j;
                                 continue;
@@ -301,8 +298,8 @@ fn details_thread<const N: usize>(
                     }
                     Ordering::Greater => {
                         *old_max_last_register_order = last_register;
-                        for (i, m) in max_last_register_order {
-                            *m = prefix_registers[i];
+                        for (m, &j) in max_last_register_order {
+                            *m = j;
                         }
                     }
                 }

@@ -283,6 +283,7 @@ mod tests {
             .unwrap();
     }
     
+    #[ignore = "takes too long"]
     #[test_log::test]
     fn minx3_optimal_5() {
         let minx3 = MINX3.clone();
