@@ -5,7 +5,7 @@ use std::{
     num::{NonZeroU16, NonZeroU32},
     sync::{
         Arc,
-        atomic::{self, AtomicUsize},
+        atomic::{self, AtomicU32},
         mpmc,
     },
     time::{Duration, Instant},
@@ -33,20 +33,20 @@ pub(crate) struct CycleCombinationsTree<const N: usize> {
 
 #[derive(Clone)]
 struct CycleCombinationsTreeMutable {
-    packed_queue: Vec<usize>,
-    registers: NonemptyVec<usize>,
+    packed_queue: Vec<u32>,
+    registers: NonemptyVec<u32>,
     sender: mpmc::Sender<PackedCycleCombinationCandidateQueue>,
     alloc_time: Duration,
     candidate_count: u64,
 }
 
 #[derive(Debug, Clone)]
-struct PackedCycleCombinationCandidateQueue(Box<[usize]>);
+struct PackedCycleCombinationCandidateQueue(Box<[u32]>);
 
 #[derive(Clone, Copy)]
 pub struct DisjointRegisters<'a> {
-    prefix_registers: &'a [usize],
-    last_register: usize,
+    prefix_registers: &'a [u32],
+    last_register: u32,
 }
 
 struct DetailsThreadInfo {
@@ -192,7 +192,7 @@ impl Debug for ProfileInfo {
 }
 
 impl DisjointRegisters<'_> {
-    pub fn iter(&self) -> impl Iterator<Item = usize> {
+    pub fn iter(&self) -> impl Iterator<Item = u32> {
         self.prefix_registers
             .iter()
             .copied()
@@ -200,7 +200,7 @@ impl DisjointRegisters<'_> {
     }
 
     #[must_use]
-    pub fn get(&self, i: usize) -> Option<usize> {
+    pub fn get(&self, i: usize) -> Option<u32> {
         if i == self.prefix_registers.len() {
             Some(self.last_register)
         } else {
@@ -211,19 +211,19 @@ impl DisjointRegisters<'_> {
 
 #[must_use]
 pub fn dbg_registers<const N: usize>(
-    registers: impl IntoIterator<Item = usize>,
+    registers: impl IntoIterator<Item = u32>,
     possible_orders: &[PossibleOrder<N>],
 ) -> String {
     registers
         .into_iter()
-        .map(|x| possible_orders[x].order.as_bigint().to_string())
+        .map(|x| possible_orders[x as usize].order.as_bigint().to_string())
         .collect::<Vec<_>>()
         .join(", ")
 }
 
 #[must_use]
 pub fn dbg_registers_iter<const N: usize>(
-    registers_iter: impl IntoIterator<Item = impl IntoIterator<Item = usize>>,
+    registers_iter: impl IntoIterator<Item = impl IntoIterator<Item = u32>>,
     possible_orders: &[PossibleOrder<N>],
 ) -> String {
     registers_iter
@@ -237,7 +237,7 @@ pub fn dbg_registers_iter<const N: usize>(
 fn details_thread<const N: usize>(
     core_id: CoreId,
     receiver: mpmc::Receiver<PackedCycleCombinationCandidateQueue>,
-    max_last_register_orders: Arc<[Box<[CachePadded<AtomicUsize>]>]>,
+    max_last_register_orders: Arc<[Box<[CachePadded<AtomicU32>]>]>,
     possible_orders_except_one: &[PossibleOrder<N>],
     exact_register_count: NonZeroU16,
 ) -> DetailsThreadInfo {
@@ -253,6 +253,7 @@ fn details_thread<const N: usize>(
             .split_at(usize::from(exact_register_count.get()));
         let (&thread_index, prefix_registers) =
             thread_index_and_prefix_registers.split_first().unwrap();
+        let thread_index = thread_index as usize;
         for &last_register in last_registers {
             processed_candidate_count += 1;
             let disjoint_registers = DisjointRegisters {
@@ -313,7 +314,7 @@ fn dfs_thread<const N: usize>(
     exact_piece_count: NonZeroU32,
     mut mutable: CycleCombinationsTreeMutable,
     // max_last_register_orders: &<(AtomicUsize, AtomicUsize)>,
-    max_last_register_orders: &[CachePadded<AtomicUsize>],
+    max_last_register_orders: &[CachePadded<AtomicU32>],
     possible_orders_except_one: &[PossibleOrder<N>],
 ) -> TreeThreadInfo {
     core_affinity::set_for_current(core_id);
@@ -336,18 +337,18 @@ fn dfs_thread<const N: usize>(
         .skip(thread_index)
         .step_by(num_cores)
     {
+        // We validated `possible_orders` to be of len `u32` or less
+        #[allow(clippy::cast_possible_truncation)]
+        let i_u32 = i as u32;
         let max_last_register_order = max_last_register_orders[0].load(atomic::Ordering::Relaxed);
-        if i <= max_last_register_order {
+        if i_u32 <= max_last_register_order {
             break;
         }
         if thread_index == 0 {
-            #[allow(
-                clippy::cast_sign_loss,
-                clippy::cast_possible_truncation,
-                clippy::cast_precision_loss
-            )]
-            let new_percent = ((possible_orders_except_one.len() - i) as f64)
-                / ((possible_orders_except_one.len() - max_last_register_order) as f64);
+            // We validated `possible_orders` to be of len `u32` or less
+            #[allow(clippy::cast_possible_truncation)]
+            let len = possible_orders_except_one.len() as u32;
+            let new_percent = f64::from(len - i_u32) / f64::from(len - max_last_register_order);
             #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
             let new_bucket = (new_percent * 20.0).floor() as u8;
             if new_bucket > old_bucket {
@@ -364,7 +365,7 @@ fn dfs_thread<const N: usize>(
         };
 
         let Some(next_remaining_register_count) = maybe_next_remaining_register_count else {
-            mutable.packed_queue.push(i);
+            mutable.packed_queue.push(i_u32);
             continue;
         };
 
@@ -372,7 +373,7 @@ fn dfs_thread<const N: usize>(
             && let Ok(next_possible_orders) =
                 NonemptySlice::try_from(&possible_orders_except_one[..=i])
         {
-            *mutable.registers.first_mut() = i;
+            *mutable.registers.first_mut() = i_u32;
             unsafe {
                 search_dfs_helper(
                     &mut mutable,
@@ -403,7 +404,7 @@ fn dfs_thread<const N: usize>(
 /// `mutable.registers.len()`.
 unsafe fn search_dfs_helper<const N: usize>(
     mutable: &mut CycleCombinationsTreeMutable,
-    max_last_register_order: &[CachePadded<AtomicUsize>],
+    max_last_register_order: &[CachePadded<AtomicU32>],
     possible_orders: NonemptySlice<'_, PossibleOrder<N>>,
     remaining_register_count: NonZeroU16,
     remaining_piece_count: NonZeroU32,
@@ -419,7 +420,9 @@ unsafe fn search_dfs_helper<const N: usize>(
     }
     loop {
         let (possible_order, next_possible_orders) = curr_possible_orders.split_last();
-        let i = next_possible_orders.len();
+        // We validated `possible_orders` to be of len `u32` or less
+        #[allow(clippy::cast_possible_truncation)]
+        let i = next_possible_orders.len() as u32;
         if (register_index == 1
             || register_index == 2
                 && mutable.registers[1]
@@ -533,7 +536,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let mut post_candidate_count = 0;
         let mut smallest_fronts = BinaryHeap::new();
 
-        let max_last_register_orders: Arc<[Box<[CachePadded<AtomicUsize>]>]> = Arc::from(
+        let max_last_register_orders: Arc<[Box<[CachePadded<AtomicU32>]>]> = Arc::from(
             (0..num_cores)
                 .map(|_| vec![CachePadded::default(), CachePadded::default()].into_boxed_slice())
                 .collect::<Box<[_]>>(),
@@ -548,7 +551,9 @@ impl<const N: usize> CycleCombinationsTree<N> {
                 .zip(max_last_register_orders.iter())
                 .map(|((thread_index, core_id), max_last_register_order)| {
                     let mut mutable = mutable.clone();
-                    mutable.packed_queue.push(thread_index);
+                    // We validated `possible_orders` to be of len `u32` or less
+                    #[allow(clippy::cast_possible_truncation)]
+                    mutable.packed_queue.push(thread_index as u32);
                     let tree_thread_handle = s.spawn(move || {
                         dfs_thread(
                             core_id,
@@ -631,9 +636,9 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let pruned_orders_percentage = (max_last_register_orders
             .iter()
             .map(|max_last_register_order| {
-                max_last_register_order[0].load(atomic::Ordering::Relaxed)
+                u64::from(max_last_register_order[0].load(atomic::Ordering::Relaxed))
             })
-            .sum::<usize>() as f64)
+            .sum::<u64>() as f64)
             / ((self.possible_orders_except_one.len() * num_cores) as f64);
 
         let dfs_io_time = dfs_real_time

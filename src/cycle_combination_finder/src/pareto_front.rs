@@ -31,8 +31,8 @@ impl PartialEq for CCParetoFront {
 }
 
 fn dominate(
-    dominating: impl IntoIterator<Item = usize>,
-    to_dominate: impl IntoIterator<Item = usize>,
+    dominating: impl IntoIterator<Item = u32>,
+    to_dominate: impl IntoIterator<Item = u32>,
 ) -> bool {
     if cfg!(debug_assertions) {
         let mut dominating_iter = dominating.into_iter();
@@ -57,7 +57,7 @@ fn dominate(
 impl CCParetoFront {
     /// Removes all elements in the front that are dominated by `new_element`,
     /// starting at index `index_start`.
-    fn remove_dominated_starting_at(&mut self, registers: &[usize], start: usize) {
+    fn remove_dominated_starting_at(&mut self, registers: &[u32], start: usize) {
         // lists all elements dominated by `new_element`, starting at index
         // `index_start`
         let available_elements = self.inner.len().saturating_sub(start);
@@ -122,7 +122,7 @@ impl CCParetoFront {
         }
     }
 
-    fn remove_dominated(&mut self, registers: &[usize]) -> bool {
+    fn remove_dominated(&mut self, registers: &[u32]) -> bool {
         for (i, member) in self.inner.iter().enumerate() {
             if dominate(member.registers.iter().copied(), registers.iter().copied()) {
                 if i > 0 {

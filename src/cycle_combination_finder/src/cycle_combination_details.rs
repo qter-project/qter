@@ -25,7 +25,12 @@ impl CycleCombinationDetails {
         if registers
             .iter()
             .map(|register| {
-                u64::try_from(possible_orders_except_one[register].order.as_bigint()).unwrap()
+                u64::try_from(
+                    possible_orders_except_one[register as usize]
+                        .order
+                        .as_bigint(),
+                )
+                .unwrap()
             })
             .sum::<u64>()
             .is_multiple_of(28)

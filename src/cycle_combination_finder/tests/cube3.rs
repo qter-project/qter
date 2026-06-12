@@ -17,7 +17,8 @@ fn optimal_2() {
     let cycle_combinations = CycleCombinationFinder::from(cube3)
         .with_register_count(RegisterCount::Exactly(NonZeroU16::new(2).unwrap()))
         .with_sorted(true)
-        .find();
+        .find()
+        .unwrap();
     assert_eq!(
         cycles(cycle_combinations),
         vec![
@@ -39,7 +40,8 @@ fn optimal_3() {
     let cycle_combinations = CycleCombinationFinder::from(cube3)
         .with_register_count(RegisterCount::Exactly(NonZeroU16::new(3).unwrap()))
         .with_sorted(true)
-        .find();
+        .find()
+        .unwrap();
     assert_eq!(
         cycles(cycle_combinations),
         vec![
@@ -62,7 +64,8 @@ fn optimal_4() {
     let cycle_combinations = CycleCombinationFinder::from(cube3)
         .with_register_count(RegisterCount::Exactly(NonZeroU16::new(4).unwrap()))
         .with_sorted(true)
-        .find();
+        .find()
+        .unwrap();
     assert_eq!(
         cycles(cycle_combinations),
         vec![
@@ -81,7 +84,8 @@ fn optimal_5() {
     let cycle_combinations = CycleCombinationFinder::from(cube3)
         .with_register_count(RegisterCount::Exactly(NonZeroU16::new(5).unwrap()))
         .with_sorted(true)
-        .find();
+        .find()
+        .unwrap();
     assert_eq!(
         cycles(cycle_combinations),
         vec![
@@ -101,7 +105,8 @@ fn equivalent_2() {
         .with_register_count(RegisterCount::Exactly(NonZeroU16::new(2).unwrap()))
         .with_optimality(Optimality::Equivalent)
         .with_sorted(true)
-        .find();
+        .find()
+        .unwrap();
     assert_eq!(cycles(cycle_combinations), vec![vec![90, 90]]);
 }
 
@@ -112,6 +117,7 @@ fn equivalent_3() {
         .with_register_count(RegisterCount::Exactly(NonZeroU16::new(3).unwrap()))
         .with_optimality(Optimality::Equivalent)
         .with_sorted(true)
-        .find();
+        .find()
+        .unwrap();
     assert_eq!(cycles(cycle_combinations), vec![vec![30, 30, 30]]);
 }

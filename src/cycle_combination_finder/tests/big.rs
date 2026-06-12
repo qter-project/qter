@@ -17,7 +17,8 @@ fn optimal_2() {
     let cycle_combinations = CycleCombinationFinder::from(big)
         .with_register_count(RegisterCount::Exactly(NonZeroU16::new(2).unwrap()))
         .with_sorted(true)
-        .find();
+        .find()
+        .unwrap();
     assert_eq!(
         cycles(cycle_combinations),
         vec![

@@ -1,8 +1,13 @@
-use std::{borrow::Cow, cmp::Ordering};
+use std::{
+    borrow::Cow,
+    cmp::Ordering,
+    sync::atomic::{self, AtomicUsize},
+};
 
 use bitgauss::BitMatrix;
 use dashmap::DashSet;
 use fxhash::{FxBuildHasher, FxHashMap, FxHashSet};
+use log::debug;
 use rayon::prelude::*;
 
 use crate::{
@@ -422,6 +427,7 @@ impl<const N: usize> PuzzleDef<N> {
         }
 
         let possible_orders = OrdersDashSet::default();
+        let a = AtomicUsize::new(possible_assignments_symbols.len());
         possible_assignments_symbols
             .into_par_iter()
             .for_each(|possible_assignment_symbols| {
@@ -456,13 +462,16 @@ impl<const N: usize> PuzzleDef<N> {
                         }
                     }
                 }
+                a.fetch_sub(1, atomic::Ordering::Relaxed);
+                let b = a.load(atomic::Ordering::Relaxed);
+                debug!("{b} remaining");
             });
 
         LcmOrders::CombinedOrders(possible_orders)
     }
 
     #[must_use]
-    pub fn possible_orders(&self) -> OrdersDashSet<N> {
+    pub fn possible_orders(&self) -> Option<OrdersDashSet<N>> {
         let all_combined = self
             .connected_components()
             .par_iter()
@@ -473,9 +482,14 @@ impl<const N: usize> PuzzleDef<N> {
                 || Cow::Owned(LcmOrders::OrbitOrders(OrdersSet::default())),
                 combine,
             );
-        match all_combined.into_owned() {
+        let all_combined = match all_combined.into_owned() {
             LcmOrders::CombinedOrders(all_combined) => all_combined,
             LcmOrders::OrbitOrders(all_combined) => all_combined.into_iter().collect(),
+        };
+        if u32::try_from(all_combined.len()).is_ok() {
+            Some(all_combined)
+        } else {
+            None
         }
     }
 }
@@ -1134,7 +1148,7 @@ mod puzzle {
         expected_highest_ten: &[Int<U>; 10],
     ) {
         let start = Instant::now();
-        let possible_orders = puzzle_def.possible_orders();
+        let possible_orders = puzzle_def.possible_orders().unwrap();
         info!(
             "Possible puzzle orders for {puzzle_def:?} in {}",
             start.elapsed().human(Truncate::Micro)

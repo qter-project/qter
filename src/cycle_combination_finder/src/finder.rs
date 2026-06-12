@@ -8,6 +8,7 @@ use std::{
 
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::{debug, trace};
+use thiserror::Error;
 
 use crate::{
     cycle_combination_details::CycleCombinationDetails,
@@ -39,13 +40,22 @@ pub struct PossibleOrder<const N: usize> {
 
 #[derive(Debug)]
 pub(crate) struct CycleCombination {
-    pub(crate) registers: Box<[usize]>,
+    pub(crate) registers: Box<[u32]>,
     pub(crate) details: CycleCombinationDetails,
 }
 
 pub struct CycleCombinations<const N: usize> {
     data: Box<[CycleCombination]>,
     possible_orders_except_one: Arc<[PossibleOrder<N>]>,
+}
+
+#[derive(Error, Debug)]
+pub enum CycleCombinationFinderError {
+    #[error(
+        "This puzzle has too many orders. This is a hint that your puzzle is anyways too large \
+         for the CCF to finish computing in a reasonable amount of time."
+    )]
+    PuzzleTooManyOrders,
 }
 
 pub struct CycleCombinationFinder<const N: usize> {
@@ -86,7 +96,7 @@ impl<const N: usize> CycleCombinations<N> {
         self.data.iter().map(|x| {
             x.registers
                 .iter()
-                .map(|&i| &self.possible_orders_except_one[i].order)
+                .map(|&i| &self.possible_orders_except_one[i as usize].order)
         })
     }
 }
@@ -136,12 +146,16 @@ impl<const N: usize> CycleCombinationFinder<N> {
     fn find_optimal(
         &self,
         register_count: RegisterCount,
-    ) -> (Vec<CycleCombination>, Arc<[PossibleOrder<N>]>) {
+    ) -> Result<(Vec<CycleCombination>, Arc<[PossibleOrder<N>]>), CycleCombinationFinderError> {
         let RegisterCount::Exactly(exact_register_count) = register_count else {
             panic!("expected exactly variant for now");
         };
 
-        let possible_orders_except_one = self.puzzle_def.possible_orders();
+        // TODO: proper error
+        let possible_orders_except_one = self
+            .puzzle_def
+            .possible_orders()
+            .ok_or(CycleCombinationFinderError::PuzzleTooManyOrders)?;
         possible_orders_except_one.remove(&OrderExps::one());
 
         let now = Instant::now();
@@ -169,15 +183,20 @@ impl<const N: usize> CycleCombinationFinder<N> {
         //         .collect::<Vec<_>>()
         //         .join(" ")
         // );
-        CycleCombinationsTree::new(
+        Ok(CycleCombinationsTree::new(
             exact_register_count,
             Arc::from(possible_orders_except_one.into_boxed_slice()),
             self.puzzle_def.orbit_defs(),
         )
-        .search_dfs()
+        .search_dfs())
     }
 
     /// Search for CCF solutions in parallel.
+    ///
+    /// # Errors
+    ///
+    /// Errors if the puzzle specified during initialization has too many orders
+    /// of elements. In other words, if your puzzle is unreasonably large.
     ///
     /// # Panics
     ///
@@ -185,10 +204,10 @@ impl<const N: usize> CycleCombinationFinder<N> {
     /// [`Self::with_expected_length_assertion`] and the solutions length
     /// mismatches.
     #[allow(clippy::must_use_candidate)]
-    pub fn find(&self) -> CycleCombinations<N> {
+    pub fn find(&self) -> Result<CycleCombinations<N>, CycleCombinationFinderError> {
         let (mut cycle_combinations, possible_orders_except_one) = match self.config.optimality {
             Optimality::Equivalent => unimplemented!(),
-            Optimality::Optimal => self.find_optimal(self.config.register_count),
+            Optimality::Optimal => self.find_optimal(self.config.register_count)?,
         };
         if self.config.sorted {
             cycle_combinations.sort_unstable();
@@ -211,10 +230,10 @@ impl<const N: usize> CycleCombinationFinder<N> {
             debug!("Successfully found {} solutions", cycle_combinations.len());
             trace!("{cycle_combinations:?}");
         }
-        CycleCombinations {
+        Ok(CycleCombinations {
             data: cycle_combinations,
             possible_orders_except_one,
-        }
+        })
     }
 }
 
@@ -226,7 +245,7 @@ mod tests {
         finder::{CycleCombinationFinder, CycleCombinations, RegisterCount},
         puzzle::{
             cubeN::CUBE3,
-            minxN::{MINX3, MINX4},
+            minxN::{MINX3, MINX4, MINX5},
         },
     };
 
@@ -245,12 +264,23 @@ mod tests {
     }
 
     #[test_log::test]
+    fn minx5_optimal_3() {
+        let minx5 = MINX5.clone();
+        CycleCombinationFinder::from(minx5)
+            .with_register_count(RegisterCount::Exactly(NonZeroU16::new(3).unwrap()))
+            .with_expected_length_assertion(251)
+            .find()
+            .unwrap();
+    }
+
+    #[test_log::test]
     fn minx4_optimal_3() {
         let minx4 = MINX4.clone();
         CycleCombinationFinder::from(minx4)
             .with_register_count(RegisterCount::Exactly(NonZeroU16::new(3).unwrap()))
             .with_expected_length_assertion(251)
-            .find();
+            .find()
+            .unwrap();
     }
 
     #[test_log::test]
@@ -259,7 +289,8 @@ mod tests {
         CycleCombinationFinder::from(minx3)
             .with_register_count(RegisterCount::Exactly(NonZeroU16::new(4).unwrap()))
             .with_expected_length_assertion(347)
-            .find();
+            .find()
+            .unwrap();
     }
 
     #[test_log::test]
@@ -268,7 +299,8 @@ mod tests {
         CycleCombinationFinder::from(minx3)
             .with_register_count(RegisterCount::Exactly(NonZeroU16::new(3).unwrap()))
             .with_expected_length_assertion(64)
-            .find();
+            .find()
+            .unwrap();
     }
 
     #[test_log::test]
@@ -277,7 +309,8 @@ mod tests {
         CycleCombinationFinder::from(puzzle)
             .with_register_count(RegisterCount::Exactly(NonZeroU16::new(4).unwrap()))
             .with_expected_length_assertion(50)
-            .find();
+            .find()
+            .unwrap();
     }
 
     #[test_log::test]
@@ -286,7 +319,8 @@ mod tests {
         CycleCombinationFinder::from(puzzle)
             .with_register_count(RegisterCount::Exactly(NonZeroU16::new(3).unwrap()))
             .with_expected_length_assertion(17)
-            .find();
+            .find()
+            .unwrap();
     }
 
     #[test_log::test]
@@ -295,6 +329,7 @@ mod tests {
         CycleCombinationFinder::from(puzzle)
             .with_register_count(RegisterCount::Exactly(NonZeroU16::new(2).unwrap()))
             .with_expected_length_assertion(5)
-            .find();
+            .find()
+            .unwrap();
     }
 }
