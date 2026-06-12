@@ -281,16 +281,35 @@ fn details_thread<const N: usize>(
                 match last_register.cmp(&old_max_last_register_order) {
                     Ordering::Less => (),
                     Ordering::Equal => {
-                        max_last_register_orders[thread_index][1].fetch_max(
-                            disjoint_registers.get(1).unwrap(),
-                            atomic::Ordering::Relaxed,
-                        );
+                        let mut f = false;
+                        for (i, m) in max_last_register_orders[thread_index]
+                            .iter()
+                            .enumerate()
+                            .skip(1)
+                        {
+                            let j = prefix_registers[i];
+                            if f {
+                                m.store(j, atomic::Ordering::Relaxed);
+                                continue;
+                            }
+                            match j.cmp(&m.load(atomic::Ordering::Relaxed)) {
+                                Ordering::Less => break,
+                                Ordering::Equal => (),
+                                Ordering::Greater => {
+                                    f = true;
+                                    m.store(j, atomic::Ordering::Relaxed);
+                                }
+                            }
+                        }
                     }
                     Ordering::Greater => {
-                        max_last_register_orders[thread_index][1].store(
-                            disjoint_registers.get(1).unwrap(),
-                            atomic::Ordering::Relaxed,
-                        );
+                        for (i, m) in max_last_register_orders[thread_index]
+                            .iter()
+                            .enumerate()
+                            .skip(1)
+                        {
+                            m.store(prefix_registers[i], atomic::Ordering::Relaxed);
+                        }
                     }
                 }
                 break;
@@ -423,11 +442,11 @@ unsafe fn search_dfs_helper<const N: usize>(
         // We validated `possible_orders` to be of len `u32` or less
         #[allow(clippy::cast_possible_truncation)]
         let i = next_possible_orders.len() as u32;
-        if (register_index == 1
-            || register_index == 2
-                && mutable.registers[1]
-                    <= max_last_register_order[1].load(atomic::Ordering::Relaxed))
-            && i <= max_last_register_order[0].load(atomic::Ordering::Relaxed)
+        if i <= max_last_register_order[0].load(atomic::Ordering::Relaxed)
+            && (1..register_index).all(|j| {
+                mutable.registers[j as usize]
+                    <= max_last_register_order[j as usize].load(atomic::Ordering::Relaxed)
+            })
         {
             break;
         }
@@ -538,7 +557,11 @@ impl<const N: usize> CycleCombinationsTree<N> {
 
         let max_last_register_orders: Arc<[Box<[CachePadded<AtomicU32>]>]> = Arc::from(
             (0..num_cores)
-                .map(|_| vec![CachePadded::default(), CachePadded::default()].into_boxed_slice())
+                .map(|_| {
+                    (0..self.exact_register_count.get() - 1)
+                        .map(|_| CachePadded::default())
+                        .collect::<Box<[_]>>()
+                })
                 .collect::<Box<[_]>>(),
         );
         let real_time = Instant::now();
