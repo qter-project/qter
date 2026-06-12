@@ -12,6 +12,6 @@ fn main() {
     let ccf = CycleCombinationFinder::from(puzzle);
     ccf.find(CycleCombinationFinderConfig {
         optimality: Optimality::Optimal,
-        register_count: RegisterCount::Exactly(NonZeroU16::new(3).unwrap()),
+        register_count: RegisterCount::Exactly(NonZeroU16::new(5).unwrap()),
     });
 }
