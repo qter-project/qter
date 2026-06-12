@@ -1136,7 +1136,7 @@ mod puzzle {
     use crate::puzzle::{
         PuzzleDef,
         cubeN::{CUBE2, CUBE3, CUBE4, CUBE5, CUBE6, CUBE7, CUBE8},
-        minxN::{MINX3, MINX4, MINX5, MINX6},
+        minxN::{MINX2, MINX3, MINX4, MINX5, MINX6},
         misc::{BIG1, BIG2, BIG3},
     };
 
@@ -1260,6 +1260,15 @@ mod puzzle {
                 ],
             );
         }
+    }
+
+    #[test_log::test]
+    fn minx2() {
+        test_possible_orders(
+            &MINX2,
+            89,
+            [315, 330, 360, 378, 396, 420, 495, 504, 540, 630],
+        );
     }
 
     #[test_log::test]

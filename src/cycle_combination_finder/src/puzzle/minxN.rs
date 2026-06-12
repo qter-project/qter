@@ -4,6 +4,20 @@ use crate::puzzle::{
     EvenParityConstraints, OrientationStatus, OrientationSumConstraint, PartialOrbitDef, PuzzleDef,
 };
 
+pub static MINX2: LazyLock<PuzzleDef<8>> = LazyLock::new(|| {
+    PuzzleDef::new(
+        vec![PartialOrbitDef {
+            piece_count: 20.try_into().unwrap(),
+            orientation: OrientationStatus::CanOrient {
+                count: 3,
+                sum_constraint: OrientationSumConstraint::Zero,
+            },
+        }],
+        EvenParityConstraints(vec![vec![0]]),
+    )
+    .unwrap()
+});
+
 pub static MINX3: LazyLock<PuzzleDef<16>> = LazyLock::new(|| {
     PuzzleDef::new(
         vec![
