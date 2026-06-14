@@ -1,0 +1,5 @@
+# [build]
+# rustflags = [
+#     "-C", "target-cpu=native",
+#     "--cfg", "portable_atomic_no_outline_atomics"
+# ]
