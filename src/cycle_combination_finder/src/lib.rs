@@ -5,6 +5,7 @@
     clippy::similar_names
 )]
 #![feature(
+    slice_ptr_get,
     mpmc_channel,
     slice_swap_unchecked,
     portable_simd,

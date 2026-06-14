@@ -3,7 +3,11 @@ use std::{
     collections::BinaryHeap,
     fmt::{self, Debug},
     num::{NonZeroU16, NonZeroU32},
-    sync::{Arc, atomic, mpmc},
+    sync::{
+        Arc,
+        atomic::{self, AtomicPtr},
+        mpmc,
+    },
     time::{Duration, Instant},
 };
 
@@ -12,7 +16,6 @@ use cpu_time::ThreadTime;
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::{Level, debug, log_enabled, trace};
 use portable_atomic::AtomicU128;
-use seqlock::SeqLock;
 
 use crate::{
     cycle_combination_details::CycleCombinationDetails,
@@ -41,7 +44,7 @@ struct CycleCombinationsTreeMutable {
 struct PackedCycleCombinationCandidateQueue(Box<[u32]>);
 
 enum ParetoEfficientPruning {
-    GFiveReg(SeqLock<[u32; 8]>),
+    GFiveReg(AtomicPtr<u32>),
     LEFiveReg(AtomicU128),
 }
 
@@ -280,36 +283,59 @@ fn details_thread<const N: usize>(
                 // underestimate, which is permitted since our bound is admissible
                 match &max_last_register_orders[thread_index] {
                     ParetoEfficientPruning::GFiveReg(max_last_register_order) => {
-                        let mut max_last_register_order = max_last_register_order.lock_write();
-                        let mut max_last_register_order =
-                            max_last_register_order.iter_mut().zip(prefix_registers);
-                        let old_max_last_register_order = max_last_register_order.next().unwrap().0;
-                        match last_register.cmp(old_max_last_register_order) {
-                            Ordering::Less => (),
-                            Ordering::Equal => {
-                                let mut f = false;
-                                for (m, &j) in max_last_register_order {
-                                    if f {
-                                        *m = j;
-                                        continue;
-                                    }
-                                    match j.cmp(m) {
-                                        Ordering::Less => break,
-                                        Ordering::Equal => (),
-                                        Ordering::Greater => {
-                                            f = true;
-                                            *m = j;
+                        let _ = max_last_register_order.try_update(
+                            atomic::Ordering::Relaxed,
+                            atomic::Ordering::Relaxed,
+                            |max_last_register_order| match last_register
+                                .cmp(unsafe { &*max_last_register_order })
+                            {
+                                Ordering::Less => None,
+                                Ordering::Equal => {
+                                    let mut new: Option<Vec<u32>> = None;
+                                    let mut f = false;
+                                    for (i, &p) in prefix_registers.iter().enumerate().skip(1) {
+                                        if f {
+                                            new.as_mut().unwrap().push(p);
+                                            continue;
+                                        }
+                                        match p.cmp(unsafe { &*max_last_register_order.add(i) }) {
+                                            Ordering::Less => return None,
+                                            Ordering::Equal => (),
+                                            Ordering::Greater => {
+                                                f = true;
+                                                let mut r = Vec::with_capacity(usize::from(
+                                                    exact_register_count.get() - 1,
+                                                ));
+                                                r.extend(
+                                                    std::iter::once(last_register).chain(
+                                                        prefix_registers
+                                                            .iter()
+                                                            .copied()
+                                                            .skip(1)
+                                                            .take(i),
+                                                    ),
+                                                );
+                                                new = Some(r);
+                                            }
                                         }
                                     }
+
+                                    // new should not be none because we never see the same solution
+                                    // twice
+                                    Some(
+                                        Box::into_raw(new.unwrap().into_boxed_slice()).as_mut_ptr(),
+                                    )
                                 }
-                            }
-                            Ordering::Greater => {
-                                *old_max_last_register_order = last_register;
-                                for (m, &j) in max_last_register_order {
-                                    *m = j;
-                                }
-                            }
-                        }
+                                Ordering::Greater => Some(
+                                    Box::into_raw(
+                                        std::iter::once(last_register)
+                                            .chain(prefix_registers.iter().copied().skip(1))
+                                            .collect::<Box<_>>(),
+                                    )
+                                    .as_mut_ptr(),
+                                ),
+                            },
+                        );
                     }
                     ParetoEfficientPruning::LEFiveReg(max_last_register_order) => {
                         // We cannot guarantee we are the only writer; CAS is necessary
@@ -452,9 +478,9 @@ fn dfs_thread<const N: usize>(
         #[allow(clippy::cast_possible_truncation)]
         let i_u32 = i as u32;
         let max_last_register_order = match max_last_register_orders {
-            ParetoEfficientPruning::GFiveReg(max_last_register_orders) => {
-                max_last_register_orders.read()[0]
-            }
+            ParetoEfficientPruning::GFiveReg(max_last_register_orders) => unsafe {
+                *max_last_register_orders.load(atomic::Ordering::Relaxed)
+            },
             ParetoEfficientPruning::LEFiveReg(max_last_register_orders) => {
                 let l = max_last_register_orders.load(atomic::Ordering::Relaxed);
                 l as u32
@@ -544,15 +570,15 @@ unsafe fn search_dfs_helper<const N: usize>(
         let i = next_possible_orders.len() as u32;
         match max_last_register_order {
             ParetoEfficientPruning::GFiveReg(max_last_register_order) => {
-                let l = max_last_register_order.read();
-                if i <= l[0]
+                let l = max_last_register_order.load(atomic::Ordering::Relaxed);
+                if i <= unsafe { *l }
                     && mutable
                         .registers
                         .iter()
-                        .zip(&l)
+                        .enumerate()
                         .take(usize::from(register_index))
                         .skip(1)
-                        .all(|(&r, &l_)| r <= l_)
+                        .all(|(j, &r)| r <= unsafe { *l.add(j) })
                 {
                     break;
                 }
@@ -586,7 +612,11 @@ unsafe fn search_dfs_helper<const N: usize>(
                     // `remaining_register_count`, and `remaining_register_count` != 0.
                     // `register_index` must thus be in bounds of `mutable.registers`.
                     let old = std::mem::replace(
-                        unsafe { mutable.registers.get_unchecked_mut(usize::from(register_index)) },
+                        unsafe {
+                            mutable
+                                .registers
+                                .get_unchecked_mut(usize::from(register_index))
+                        },
                         i,
                     );
                     // SAFETY: `remaining_register_count` only ever decreases.
@@ -600,7 +630,11 @@ unsafe fn search_dfs_helper<const N: usize>(
                         );
                     }
                     // SAFETY: see above.
-                    *unsafe { mutable.registers.get_unchecked_mut(usize::from(register_index)) } = old;
+                    *unsafe {
+                        mutable
+                            .registers
+                            .get_unchecked_mut(usize::from(register_index))
+                    } = old;
                 }
             } else {
                 mutable.packed_queue.push(i);
@@ -681,10 +715,16 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let max_last_register_orders: Arc<[ParetoEfficientPruning]> = Arc::from(
             (0..num_cores)
                 .map(|_| {
-                    if mutable.exact_register_count().get() <= 5 {
+                    if self.exact_register_count.get() <= 5 {
                         ParetoEfficientPruning::LEFiveReg(AtomicU128::new(0))
                     } else {
-                        ParetoEfficientPruning::GFiveReg(SeqLock::new([0u32; 8]))
+                        ParetoEfficientPruning::GFiveReg(AtomicPtr::new(
+                            Box::into_raw(
+                                vec![0u32; usize::from(self.exact_register_count.get() - 1)]
+                                    .into_boxed_slice(),
+                            )
+                            .as_mut_ptr(),
+                        ))
                     }
                 })
                 .collect::<Box<[_]>>(),
@@ -785,9 +825,9 @@ impl<const N: usize> CycleCombinationsTree<N> {
             .iter()
             .map(|max_last_register_order| {
                 u64::from(match max_last_register_order {
-                    ParetoEfficientPruning::GFiveReg(max_last_register_order) => {
-                        max_last_register_order.read()[0]
-                    }
+                    ParetoEfficientPruning::GFiveReg(max_last_register_order) => unsafe {
+                        *max_last_register_order.load(atomic::Ordering::Relaxed)
+                    },
                     ParetoEfficientPruning::LEFiveReg(max_last_register_order) => {
                         let l = max_last_register_order.load(atomic::Ordering::Relaxed);
                         l as u32
