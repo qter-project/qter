@@ -3,7 +3,7 @@ use std::{
     collections::BinaryHeap,
     fmt::{self, Debug},
     num::{NonZeroU16, NonZeroU32},
-    sync::{Arc, mpmc},
+    sync::{Arc, atomic, mpmc},
     time::{Duration, Instant},
 };
 
@@ -11,6 +11,7 @@ use core_affinity::CoreId;
 use cpu_time::ThreadTime;
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::{Level, debug, log_enabled, trace};
+use portable_atomic::AtomicU128;
 use seqlock::SeqLock;
 
 use crate::{
@@ -38,6 +39,11 @@ struct CycleCombinationsTreeMutable {
 
 #[derive(Debug, Clone)]
 struct PackedCycleCombinationCandidateQueue(Box<[u32]>);
+
+enum ParetoEfficientPruning {
+    GFourReg(SeqLock<[u32; 8]>),
+    LEFourReg(AtomicU128),
+}
 
 #[derive(Clone, Copy)]
 pub struct DisjointRegisters<'a> {
@@ -233,7 +239,7 @@ pub fn dbg_registers_iter<const N: usize>(
 fn details_thread<const N: usize>(
     core_id: CoreId,
     receiver: mpmc::Receiver<PackedCycleCombinationCandidateQueue>,
-    max_last_register_orders: Arc<[SeqLock<[u32; 8]>]>,
+    max_last_register_orders: Arc<[ParetoEfficientPruning]>,
     possible_orders_except_one: &[PossibleOrder<N>],
     exact_register_count: NonZeroU16,
 ) -> DetailsThreadInfo {
@@ -272,35 +278,131 @@ fn details_thread<const N: usize>(
                 // solutions. If something is the maximum in our atomic variable,
                 // then it must either be in the front or the atomic variable is an
                 // underestimate, which is permitted since our bound is admissible
-                let mut max_last_register_order =
-                    max_last_register_orders[thread_index].lock_write();
-                let mut max_last_register_order =
-                    max_last_register_order.iter_mut().zip(prefix_registers);
-                let old_max_last_register_order = max_last_register_order.next().unwrap().0;
-                match last_register.cmp(old_max_last_register_order) {
-                    Ordering::Less => (),
-                    Ordering::Equal => {
-                        let mut f = false;
-                        for (m, &j) in max_last_register_order {
-                            if f {
-                                *m = j;
-                                continue;
+                match &max_last_register_orders[thread_index] {
+                    ParetoEfficientPruning::GFourReg(max_last_register_order) => {
+                        let mut max_last_register_order = max_last_register_order.lock_write();
+                        let mut max_last_register_order =
+                            max_last_register_order.iter_mut().zip(prefix_registers);
+                        let old_max_last_register_order = max_last_register_order.next().unwrap().0;
+                        match last_register.cmp(old_max_last_register_order) {
+                            Ordering::Less => (),
+                            Ordering::Equal => {
+                                let mut f = false;
+                                for (m, &j) in max_last_register_order {
+                                    if f {
+                                        *m = j;
+                                        continue;
+                                    }
+                                    match j.cmp(m) {
+                                        Ordering::Less => break,
+                                        Ordering::Equal => (),
+                                        Ordering::Greater => {
+                                            f = true;
+                                            *m = j;
+                                        }
+                                    }
+                                }
                             }
-                            match j.cmp(m) {
-                                Ordering::Less => break,
-                                Ordering::Equal => (),
-                                Ordering::Greater => {
-                                    f = true;
+                            Ordering::Greater => {
+                                *old_max_last_register_order = last_register;
+                                for (m, &j) in max_last_register_order {
                                     *m = j;
                                 }
                             }
                         }
                     }
-                    Ordering::Greater => {
-                        *old_max_last_register_order = last_register;
-                        for (m, &j) in max_last_register_order {
-                            *m = j;
-                        }
+                    ParetoEfficientPruning::LEFourReg(max_last_register_order) => {
+                        // We cannot guarantee we are the only writer; CAS is necessary
+                        let _ = max_last_register_order.fetch_update(
+                            atomic::Ordering::Relaxed,
+                            atomic::Ordering::Relaxed,
+                            |mut m| {
+                                let mlro = m as u32;
+                                match last_register.cmp(&mlro) {
+                                    Ordering::Less => None,
+                                    Ordering::Equal => {
+                                        const fn mask(i: usize) -> u128 {
+                                            !((!0u32 as u128) << (i * 32))
+                                        }
+
+                                        let len = prefix_registers.len();
+                                        let mut replace = false;
+
+                                        if len <= 1 {
+                                            return Some(m);
+                                        }
+                                        let p = prefix_registers[1];
+                                        let a = (m >> 32) as u32;
+                                        match p.cmp(&a) {
+                                            Ordering::Less => {
+                                                return Some(m);
+                                            }
+                                            Ordering::Equal => (),
+                                            Ordering::Greater => {
+                                                replace = true;
+                                                m = (m & const { mask(1) }) | (u128::from(p) << 32);
+                                            }
+                                        }
+
+                                        if len <= 2 {
+                                            return Some(m);
+                                        }
+                                        let p = prefix_registers[2];
+                                        if replace {
+                                            m = (m & const { mask(2) }) | (u128::from(p) << 64);
+                                        } else {
+                                            let a = (m >> 64) as u32;
+                                            match p.cmp(&a) {
+                                                Ordering::Less => {
+                                                    return Some(m);
+                                                }
+                                                Ordering::Equal => (),
+                                                Ordering::Greater => {
+                                                    replace = true;
+                                                    m = (m & const { mask(2) })
+                                                        | (u128::from(p) << 64);
+                                                }
+                                            }
+                                        }
+
+                                        if len <= 3 {
+                                            return Some(m);
+                                        }
+                                        let p = prefix_registers[3];
+                                        if replace {
+                                            m = (m & const { mask(3) }) | (u128::from(p) << 96);
+                                        } else {
+                                            let a = (m >> 96) as u32;
+                                            match p.cmp(&a) {
+                                                Ordering::Less => {
+                                                    return Some(m);
+                                                }
+                                                Ordering::Equal => (),
+                                                Ordering::Greater => {
+                                                    m = (m & const { mask(3) })
+                                                        | (u128::from(p) << 96);
+                                                }
+                                            }
+                                        }
+                                        Some(m)
+                                    }
+                                    Ordering::Greater => {
+                                        let len = prefix_registers.len();
+                                        let mut ret = u128::from(last_register);
+                                        if len > 1 {
+                                            ret |= u128::from(prefix_registers[1]) << 32;
+                                        }
+                                        if len > 2 {
+                                            ret |= u128::from(prefix_registers[2]) << 64;
+                                        }
+                                        if len > 3 {
+                                            ret |= u128::from(prefix_registers[3]) << 96;
+                                        }
+                                        Some(ret)
+                                    }
+                                }
+                            },
+                        );
                     }
                 }
                 break;
@@ -323,7 +425,7 @@ fn dfs_thread<const N: usize>(
     num_cores: usize,
     exact_piece_count: NonZeroU32,
     mut mutable: CycleCombinationsTreeMutable,
-    max_last_register_orders: &SeqLock<[u32; 8]>,
+    max_last_register_orders: &ParetoEfficientPruning,
     possible_orders_except_one: &[PossibleOrder<N>],
 ) -> TreeThreadInfo {
     core_affinity::set_for_current(core_id);
@@ -349,7 +451,15 @@ fn dfs_thread<const N: usize>(
         // We validated `possible_orders` to be of len `u32` or less
         #[allow(clippy::cast_possible_truncation)]
         let i_u32 = i as u32;
-        let max_last_register_order = max_last_register_orders.read()[0];
+        let max_last_register_order = match max_last_register_orders {
+            ParetoEfficientPruning::GFourReg(max_last_register_orders) => {
+                max_last_register_orders.read()[0]
+            }
+            ParetoEfficientPruning::LEFourReg(max_last_register_orders) => {
+                let l = max_last_register_orders.load(atomic::Ordering::Relaxed);
+                l as u32
+            }
+        };
         if i_u32 <= max_last_register_order {
             break;
         }
@@ -413,7 +523,7 @@ fn dfs_thread<const N: usize>(
 /// `mutable.registers.len()`.
 unsafe fn search_dfs_helper<const N: usize>(
     mutable: &mut CycleCombinationsTreeMutable,
-    max_last_register_order: &SeqLock<[u32; 8]>,
+    max_last_register_order: &ParetoEfficientPruning,
     possible_orders: NonemptySlice<'_, PossibleOrder<N>>,
     remaining_register_count: NonZeroU16,
     remaining_piece_count: NonZeroU32,
@@ -432,10 +542,36 @@ unsafe fn search_dfs_helper<const N: usize>(
         // We validated `possible_orders` to be of len `u32` or less
         #[allow(clippy::cast_possible_truncation)]
         let i = next_possible_orders.len() as u32;
-        let l = max_last_register_order.read();
-        if i <= l[0] && (1..register_index).all(|j| mutable.registers[j as usize] <= l[j as usize])
-        {
-            break;
+        match max_last_register_order {
+            ParetoEfficientPruning::GFourReg(max_last_register_order) => {
+                let l = max_last_register_order.read();
+                if i <= l[0]
+                    && mutable
+                        .registers
+                        .iter()
+                        .zip(&l)
+                        .take(register_index as usize)
+                        .skip(1)
+                        .all(|(&r, &l_)| r <= l_)
+                {
+                    break;
+                }
+            }
+            ParetoEfficientPruning::LEFourReg(max_last_register_order) => {
+                let l = max_last_register_order.load(atomic::Ordering::Relaxed);
+                let l0 = l as u32;
+                if i <= l0
+                    && mutable
+                        .registers
+                        .iter()
+                        .enumerate()
+                        .take(register_index as usize)
+                        .skip(1)
+                        .all(|(j, &r)| r <= ((l >> (32 * j)) as u32))
+                {
+                    break;
+                }
+            }
         }
 
         if let Some(next_remaining_piece_count) = remaining_piece_count
@@ -542,9 +678,15 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let mut post_candidate_count = 0;
         let mut smallest_fronts = BinaryHeap::new();
 
-        let max_last_register_orders: Arc<[SeqLock<[u32; 8]>]> = Arc::from(
+        let max_last_register_orders: Arc<[ParetoEfficientPruning]> = Arc::from(
             (0..num_cores)
-                .map(|_| SeqLock::new([0u32; 8]))
+                .map(|_| {
+                    if mutable.exact_register_count().get() <= 4 {
+                        ParetoEfficientPruning::LEFourReg(AtomicU128::new(0))
+                    } else {
+                        ParetoEfficientPruning::GFourReg(SeqLock::new([0u32; 8]))
+                    }
+                })
                 .collect::<Box<[_]>>(),
         );
         let real_time = Instant::now();
@@ -641,7 +783,17 @@ impl<const N: usize> CycleCombinationsTree<N> {
         #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
         let pruned_orders_percentage = (max_last_register_orders
             .iter()
-            .map(|max_last_register_order| u64::from(max_last_register_order.read()[0]))
+            .map(|max_last_register_order| {
+                u64::from(match max_last_register_order {
+                    ParetoEfficientPruning::GFourReg(max_last_register_order) => {
+                        max_last_register_order.read()[0]
+                    }
+                    ParetoEfficientPruning::LEFourReg(max_last_register_order) => {
+                        let l = max_last_register_order.load(atomic::Ordering::Relaxed);
+                        l as u32
+                    }
+                })
+            })
             .sum::<u64>() as f64)
             / ((self.possible_orders_except_one.len() * num_cores) as f64);
 

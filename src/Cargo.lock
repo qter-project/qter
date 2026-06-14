@@ -638,6 +638,7 @@ dependencies = [
  "humanize-duration",
  "log",
  "num-integer",
+ "portable-atomic",
  "puzzle_theory",
  "rayon",
  "seqlock",

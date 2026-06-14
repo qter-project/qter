@@ -20,7 +20,7 @@ impl CycleCombinationDetails {
         possible_orders_except_one: &[PossibleOrder<N>],
     ) -> Option<Self> {
         let now = Instant::now();
-        while now.elapsed() < Duration::from_millis(10) {}
+        while now.elapsed() < Duration::from_micros(10) {}
         #[allow(clippy::missing_panics_doc)]
         if registers
             .iter()
