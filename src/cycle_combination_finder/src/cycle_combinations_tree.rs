@@ -197,22 +197,10 @@ impl Debug for ProfileInfo {
     }
 }
 
-impl DisjointRegisters<'_> {
-    pub fn iter(&self) -> impl Iterator<Item = u32> {
-        self.prefix_registers
-            .iter()
-            .copied()
-            .chain(std::iter::once(self.last_register))
-    }
-
-    #[must_use]
-    pub fn get(&self, i: usize) -> Option<u32> {
-        if i == self.prefix_registers.len() {
-            Some(self.last_register)
-        } else {
-            self.prefix_registers.get(i).copied()
-        }
-    }
+fn possible_orders_len_cast(len: usize) -> u32 {
+    #[allow(clippy::cast_possible_truncation)]
+    let len = len as u32;
+    len
 }
 
 #[must_use]
@@ -237,6 +225,24 @@ pub fn dbg_registers_iter<const N: usize>(
         .map(|registers| dbg_registers(registers, possible_orders))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+impl DisjointRegisters<'_> {
+    pub fn iter(&self) -> impl Iterator<Item = u32> {
+        self.prefix_registers
+            .iter()
+            .copied()
+            .chain(std::iter::once(self.last_register))
+    }
+
+    #[must_use]
+    pub fn get(&self, i: usize) -> Option<u32> {
+        if i == self.prefix_registers.len() {
+            Some(self.last_register)
+        } else {
+            self.prefix_registers.get(i).copied()
+        }
+    }
 }
 
 #[allow(clippy::needless_pass_by_value)]
@@ -481,9 +487,7 @@ fn dfs_thread<const N: usize>(
         .skip(thread_index)
         .step_by(num_cores)
     {
-        // We validated `possible_orders` to be of len `u32` or less
-        #[allow(clippy::cast_possible_truncation)]
-        let i_u32 = i as u32;
+        let i_u32 = possible_orders_len_cast(i);
         let max_last_register_order = match max_last_register_orders {
             ParetoEfficientPruning::GFiveReg(max_last_register_orders) => unsafe {
                 *max_last_register_orders.load(atomic::Ordering::Relaxed)
@@ -498,8 +502,7 @@ fn dfs_thread<const N: usize>(
         }
         if thread_index == 0 {
             // We validated `possible_orders` to be of len `u32` or less
-            #[allow(clippy::cast_possible_truncation)]
-            let len = possible_orders_except_one.len() as u32;
+            let len = possible_orders_len_cast(possible_orders_except_one.len());
             let new_percent = f64::from(len - i_u32) / f64::from(len - max_last_register_order);
             #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
             let new_bucket = (new_percent * 20.0).floor() as u8;
@@ -572,9 +575,7 @@ unsafe fn search_dfs_helper<const N: usize>(
     }
     loop {
         let (possible_order, next_possible_orders) = curr_possible_orders.split_last();
-        // We validated `possible_orders` to be of len `u32` or less
-        #[allow(clippy::cast_possible_truncation)]
-        let i = next_possible_orders.len() as u32;
+        let i = possible_orders_len_cast(next_possible_orders.len());
         match max_last_register_order {
             ParetoEfficientPruning::GFiveReg(max_last_register_order) => {
                 let l = unsafe {
@@ -751,9 +752,9 @@ impl<const N: usize> CycleCombinationsTree<N> {
                 .zip(max_last_register_orders.iter())
                 .map(|((thread_index, core_id), max_last_register_order)| {
                     let mut mutable = mutable.clone();
-                    // We validated `possible_orders` to be of len `u32` or less
-                    #[allow(clippy::cast_possible_truncation)]
-                    mutable.packed_queue.push(thread_index as u32);
+                    mutable
+                        .packed_queue
+                        .push(u32::try_from(thread_index).expect("You have too many threads."));
                     let tree_thread_handle = s.spawn(move || {
                         dfs_thread(
                             core_id,
