@@ -3,6 +3,7 @@ use std::{
     collections::BinaryHeap,
     fmt::{self, Debug},
     num::{NonZeroU16, NonZeroU32},
+    slice,
     sync::{
         Arc,
         atomic::{self, AtomicPtr},
@@ -286,54 +287,60 @@ fn details_thread<const N: usize>(
                         let _ = max_last_register_order.try_update(
                             atomic::Ordering::Relaxed,
                             atomic::Ordering::Relaxed,
-                            |max_last_register_order| match last_register
-                                .cmp(unsafe { &*max_last_register_order })
-                            {
-                                Ordering::Less => None,
-                                Ordering::Equal => {
-                                    let mut new: Option<Vec<u32>> = None;
-                                    let mut f = false;
-                                    for (i, &p) in prefix_registers.iter().enumerate().skip(1) {
-                                        if f {
-                                            new.as_mut().unwrap().push(p);
-                                            continue;
-                                        }
-                                        match p.cmp(unsafe { &*max_last_register_order.add(i) }) {
-                                            Ordering::Less => return None,
-                                            Ordering::Equal => (),
-                                            Ordering::Greater => {
-                                                f = true;
-                                                let mut r = Vec::with_capacity(usize::from(
-                                                    exact_register_count.get() - 1,
-                                                ));
-                                                r.extend(
-                                                    std::iter::once(last_register).chain(
-                                                        prefix_registers
-                                                            .iter()
-                                                            .copied()
-                                                            .skip(1)
-                                                            .take(i),
-                                                    ),
-                                                );
-                                                new = Some(r);
+                            |max_last_register_order| {
+                                let max_last_register_order = unsafe {
+                                    slice::from_raw_parts(
+                                        max_last_register_order,
+                                        usize::from(exact_register_count.get() - 1),
+                                    )
+                                };
+                                let mut max_last_register_order = max_last_register_order.iter();
+                                match last_register.cmp(max_last_register_order.next().unwrap()) {
+                                    Ordering::Less => None,
+                                    Ordering::Equal => {
+                                        let mut new: Option<Vec<u32>> = None;
+                                        let mut f = false;
+                                        for (i, (&p, m)) in prefix_registers
+                                            .iter()
+                                            .skip(1)
+                                            .zip(max_last_register_order)
+                                            .enumerate()
+                                        {
+                                            if f {
+                                                new.as_mut().unwrap().push(p);
+                                                continue;
+                                            }
+                                            match p.cmp(m) {
+                                                Ordering::Less => return None,
+                                                Ordering::Equal => (),
+                                                Ordering::Greater => {
+                                                    f = true;
+                                                    let mut r = Vec::with_capacity(usize::from(
+                                                        exact_register_count.get() - 1,
+                                                    ));
+                                                    r.extend(std::iter::once(last_register).chain(
+                                                        prefix_registers[1..i].iter().copied(),
+                                                    ));
+                                                    new = Some(r);
+                                                }
                                             }
                                         }
-                                    }
 
-                                    // new should not be none because we never see the same solution
-                                    // twice
-                                    Some(
-                                        Box::into_raw(new.unwrap().into_boxed_slice()).as_mut_ptr(),
-                                    )
+                                        // new can still be None here:
+                                        // A C D can be a solution, followed by B C D
+                                        new.map(|new| {
+                                            Box::into_raw(new.into_boxed_slice()).as_mut_ptr()
+                                        })
+                                    }
+                                    Ordering::Greater => Some(
+                                        Box::into_raw(
+                                            std::iter::once(last_register)
+                                                .chain(prefix_registers.iter().copied().skip(1))
+                                                .collect::<Box<_>>(),
+                                        )
+                                        .as_mut_ptr(),
+                                    ),
                                 }
-                                Ordering::Greater => Some(
-                                    Box::into_raw(
-                                        std::iter::once(last_register)
-                                            .chain(prefix_registers.iter().copied().skip(1))
-                                            .collect::<Box<_>>(),
-                                    )
-                                    .as_mut_ptr(),
-                                ),
                             },
                         );
                     }
@@ -570,15 +577,20 @@ unsafe fn search_dfs_helper<const N: usize>(
         let i = next_possible_orders.len() as u32;
         match max_last_register_order {
             ParetoEfficientPruning::GFiveReg(max_last_register_order) => {
-                let l = max_last_register_order.load(atomic::Ordering::Relaxed);
-                if i <= unsafe { *l }
+                let l = unsafe {
+                    slice::from_raw_parts(
+                        max_last_register_order.load(atomic::Ordering::Relaxed),
+                        usize::from(register_index),
+                    )
+                };
+                let mut l = l.iter();
+                if i <= *l.next().unwrap()
                     && mutable
                         .registers
                         .iter()
-                        .enumerate()
-                        .take(usize::from(register_index))
                         .skip(1)
-                        .all(|(j, &r)| r <= unsafe { *l.add(j) })
+                        .zip(l)
+                        .all(|(&r, &l_)| r <= l_)
                 {
                     break;
                 }
