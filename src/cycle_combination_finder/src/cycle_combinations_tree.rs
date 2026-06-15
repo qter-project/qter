@@ -84,6 +84,7 @@ impl CycleCombinationsTreeMutable {
         // Cast truncation is fine because `self.registers` is the length of the number
         // of registers, which is a `NonZeroU16`
         #[allow(clippy::cast_possible_truncation)]
+        // SAFETY: `self.registers.len()` is not zero
         unsafe {
             NonZeroU16::new_unchecked(self.registers.len().get() as u16)
         }
@@ -243,7 +244,7 @@ impl DisjointRegisters<'_> {
 fn details_thread<const N: usize>(
     core_id: CoreId,
     receiver: mpmc::Receiver<PackedCycleCombinationCandidateQueue>,
-    max_last_register_orders: Arc<[AtomicPtr<u32>]>,
+    mut max_last_register_orders: Arc<[AtomicPtr<u32>]>,
     possible_orders_except_one: &[PossibleOrder<N>],
     exact_register_count: NonZeroU16,
 ) -> DetailsThreadInfo {
@@ -286,16 +287,20 @@ fn details_thread<const N: usize>(
                     atomic::Ordering::Relaxed,
                     atomic::Ordering::Relaxed,
                     |max_last_register_order| {
-                        let max_last_register_order = unsafe {
-                            slice::from_raw_parts(
-                                max_last_register_order,
-                                usize::from(exact_register_count.get() - 1),
-                            )
-                        };
-                        let mut max_last_register_order = max_last_register_order.iter();
-                        match last_register.cmp(max_last_register_order.next().unwrap()) {
-                            Ordering::Less => None,
-                            Ordering::Equal => {
+                        if !max_last_register_order.is_null() {
+                            let max_last_register_order = unsafe {
+                                slice::from_raw_parts(
+                                    max_last_register_order,
+                                    usize::from(exact_register_count.get() - 1),
+                                )
+                            };
+                            let mut max_last_register_order =
+                                max_last_register_order.iter().copied();
+                            let b = max_last_register_order.next().unwrap();
+                            if last_register < b {
+                                return None;
+                            }
+                            if last_register == b {
                                 let mut new: Option<Vec<u32>> = None;
                                 let mut f = false;
                                 for ((i, &p), m) in prefix_registers
@@ -308,7 +313,7 @@ fn details_thread<const N: usize>(
                                         new.as_mut().unwrap().push(p);
                                         continue;
                                     }
-                                    match p.cmp(m) {
+                                    match p.cmp(&m) {
                                         Ordering::Less => return None,
                                         Ordering::Equal => (),
                                         Ordering::Greater => {
@@ -327,23 +332,23 @@ fn details_thread<const N: usize>(
 
                                 // new can still be None here:
                                 // A C D can be a solution, followed by B C D
-                                new.map(|new| {
+                                return new.map(|new| {
                                     debug_assert_eq!(
                                         new.len(),
                                         usize::from(exact_register_count.get() - 1)
                                     );
                                     Box::into_raw(new.into_boxed_slice()).as_mut_ptr()
-                                })
+                                });
                             }
-                            Ordering::Greater => Some(
-                                Box::into_raw(
-                                    std::iter::once(last_register)
-                                        .chain(prefix_registers.iter().copied().skip(1))
-                                        .collect::<Box<_>>(),
-                                )
-                                .as_mut_ptr(),
-                            ),
                         }
+                        Some(
+                            Box::into_raw(
+                                std::iter::once(last_register)
+                                    .chain(prefix_registers.iter().copied().skip(1))
+                                    .collect::<Box<_>>(),
+                            )
+                            .as_mut_ptr(),
+                        )
                     },
                 );
                 break;
@@ -390,11 +395,16 @@ fn dfs_thread<const N: usize>(
         .step_by(num_cores)
     {
         let i_u32 = possible_orders_len_cast(i);
-        let max_last_register_order =
-            unsafe { *max_last_register_orders.load(atomic::Ordering::Relaxed) };
-        if i_u32 <= max_last_register_order {
-            break;
-        }
+        let b = max_last_register_orders.load(atomic::Ordering::Relaxed);
+        let max_last_register_order = if b.is_null() {
+            0
+        } else {
+            let max_last_register_order = unsafe { *b };
+            if i_u32 <= max_last_register_order {
+                break;
+            }
+            max_last_register_order
+        };
         if thread_index == 0 {
             // We validated `possible_orders` to be of len `u32` or less
             let len = possible_orders_len_cast(possible_orders_except_one.len());
@@ -472,22 +482,20 @@ unsafe fn search_dfs_helper<const N: usize>(
         let (possible_order, next_possible_orders) = curr_possible_orders.split_last();
         let i = possible_orders_len_cast(next_possible_orders.len());
 
-        let l = unsafe {
-            slice::from_raw_parts(
-                max_last_register_order.load(atomic::Ordering::Relaxed),
-                usize::from(register_index),
-            )
-        };
-        let mut l = l.iter();
-        if i <= *l.next().unwrap()
-            && mutable
-                .registers
-                .iter()
-                .skip(1)
-                .zip(l)
-                .all(|(&r, &l_)| r <= l_)
-        {
-            break;
+        let b = max_last_register_order.load(atomic::Ordering::Relaxed);
+        if !b.is_null() {
+            let l = unsafe { slice::from_raw_parts(b, usize::from(register_index)) };
+            let mut l = l.iter();
+            if i <= *l.next().unwrap()
+                && mutable
+                    .registers
+                    .iter()
+                    .skip(1)
+                    .zip(l)
+                    .all(|(&r, &l_)| r <= l_)
+            {
+                break;
+            }
         }
 
         if let Some(next_remaining_piece_count) = remaining_piece_count
@@ -604,15 +612,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
 
         let max_last_register_orders: Arc<[AtomicPtr<u32>]> = Arc::from(
             (0..num_cores)
-                .map(|_| {
-                    AtomicPtr::new(
-                        Box::into_raw(
-                            vec![0u32; usize::from(self.exact_register_count.get() - 1)]
-                                .into_boxed_slice(),
-                        )
-                        .as_mut_ptr(),
-                    )
-                })
+                .map(|_| AtomicPtr::default())
                 .collect::<Box<[_]>>(),
         );
         let real_time = Instant::now();
@@ -710,7 +710,13 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let pruned_orders_percentage = (max_last_register_orders
             .iter()
             .map(|max_last_register_order| {
-                u64::from(unsafe { *max_last_register_order.load(atomic::Ordering::Relaxed) })
+                let max_last_register_order =
+                    max_last_register_order.load(atomic::Ordering::Relaxed);
+                u64::from(if max_last_register_order.is_null() {
+                    0
+                } else {
+                    unsafe { *max_last_register_order }
+                })
             })
             .sum::<u64>() as f64)
             / ((self.possible_orders_except_one.len() * num_cores) as f64);
