@@ -732,7 +732,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let max_last_register_orders: Arc<[ParetoEfficientPruning]> = Arc::from(
             (0..num_cores)
                 .map(|_| {
-                    if self.exact_register_count.get() <= 0 {
+                    if self.exact_register_count.get() <= 5 {
                         ParetoEfficientPruning::LEFiveReg(AtomicU128::new(0))
                     } else {
                         ParetoEfficientPruning::GFiveReg(AtomicPtr::new(
