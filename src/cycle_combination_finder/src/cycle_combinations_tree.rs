@@ -16,7 +16,6 @@ use core_affinity::CoreId;
 use cpu_time::ThreadTime;
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::{Level, debug, log_enabled, trace};
-use portable_atomic::AtomicU128;
 
 use crate::{
     cycle_combination_details::CycleCombinationDetails,
@@ -43,11 +42,6 @@ struct CycleCombinationsTreeMutable {
 
 #[derive(Debug, Clone)]
 struct PackedCycleCombinationCandidateQueue(Box<[u32]>);
-
-enum ParetoEfficientPruning {
-    GFiveReg(AtomicPtr<u32>),
-    LEFiveReg(AtomicU128),
-}
 
 #[derive(Clone, Copy)]
 pub struct DisjointRegisters<'a> {
@@ -249,7 +243,7 @@ impl DisjointRegisters<'_> {
 fn details_thread<const N: usize>(
     core_id: CoreId,
     receiver: mpmc::Receiver<PackedCycleCombinationCandidateQueue>,
-    max_last_register_orders: Arc<[ParetoEfficientPruning]>,
+    max_last_register_orders: Arc<[AtomicPtr<u32>]>,
     possible_orders_except_one: &[PossibleOrder<N>],
     exact_register_count: NonZeroU16,
 ) -> DetailsThreadInfo {
@@ -288,166 +282,70 @@ fn details_thread<const N: usize>(
                 // solutions. If something is the maximum in our atomic variable,
                 // then it must either be in the front or the atomic variable is an
                 // underestimate, which is permitted since our bound is admissible
-                match &max_last_register_orders[thread_index] {
-                    ParetoEfficientPruning::GFiveReg(max_last_register_order) => {
-                        let _ = max_last_register_order.try_update(
-                            atomic::Ordering::Relaxed,
-                            atomic::Ordering::Relaxed,
-                            |max_last_register_order| {
-                                let max_last_register_order = unsafe {
-                                    slice::from_raw_parts(
-                                        max_last_register_order,
-                                        usize::from(exact_register_count.get() - 1),
-                                    )
-                                };
-                                let mut max_last_register_order = max_last_register_order.iter();
-                                match last_register.cmp(max_last_register_order.next().unwrap()) {
-                                    Ordering::Less => None,
-                                    Ordering::Equal => {
-                                        let mut new: Option<Vec<u32>> = None;
-                                        let mut f = false;
-                                        for ((i, &p), m) in prefix_registers
-                                            .iter()
-                                            .enumerate()
-                                            .skip(1)
-                                            .zip(max_last_register_order)
-                                        {
-                                            if f {
-                                                new.as_mut().unwrap().push(p);
-                                                continue;
-                                            }
-                                            match p.cmp(m) {
-                                                Ordering::Less => return None,
-                                                Ordering::Equal => (),
-                                                Ordering::Greater => {
-                                                    f = true;
-                                                    let mut r = Vec::with_capacity(usize::from(
-                                                        exact_register_count.get() - 1,
-                                                    ));
-                                                    r.extend(std::iter::once(last_register).chain(
-                                                        prefix_registers[1..=i].iter().copied(),
-                                                    ));
-                                                    new = Some(r);
-                                                }
-                                            }
-                                        }
-
-                                        // new can still be None here:
-                                        // A C D can be a solution, followed by B C D
-                                        new.map(|new| {
-                                            debug_assert_eq!(
-                                                new.len(),
-                                                usize::from(exact_register_count.get() - 1)
+                let _ = max_last_register_orders[thread_index].try_update(
+                    atomic::Ordering::Relaxed,
+                    atomic::Ordering::Relaxed,
+                    |max_last_register_order| {
+                        let max_last_register_order = unsafe {
+                            slice::from_raw_parts(
+                                max_last_register_order,
+                                usize::from(exact_register_count.get() - 1),
+                            )
+                        };
+                        let mut max_last_register_order = max_last_register_order.iter();
+                        match last_register.cmp(max_last_register_order.next().unwrap()) {
+                            Ordering::Less => None,
+                            Ordering::Equal => {
+                                let mut new: Option<Vec<u32>> = None;
+                                let mut f = false;
+                                for ((i, &p), m) in prefix_registers
+                                    .iter()
+                                    .enumerate()
+                                    .skip(1)
+                                    .zip(max_last_register_order)
+                                {
+                                    if f {
+                                        new.as_mut().unwrap().push(p);
+                                        continue;
+                                    }
+                                    match p.cmp(m) {
+                                        Ordering::Less => return None,
+                                        Ordering::Equal => (),
+                                        Ordering::Greater => {
+                                            f = true;
+                                            let mut r = Vec::with_capacity(usize::from(
+                                                exact_register_count.get() - 1,
+                                            ));
+                                            r.extend(
+                                                std::iter::once(last_register)
+                                                    .chain(prefix_registers[1..=i].iter().copied()),
                                             );
-                                            Box::into_raw(new.into_boxed_slice()).as_mut_ptr()
-                                        })
-                                    }
-                                    Ordering::Greater => Some(
-                                        Box::into_raw(
-                                            std::iter::once(last_register)
-                                                .chain(prefix_registers.iter().copied().skip(1))
-                                                .collect::<Box<_>>(),
-                                        )
-                                        .as_mut_ptr(),
-                                    ),
-                                }
-                            },
-                        );
-                    }
-                    ParetoEfficientPruning::LEFiveReg(max_last_register_order) => {
-                        // We cannot guarantee we are the only writer; CAS is necessary
-                        let _ = max_last_register_order.fetch_update(
-                            atomic::Ordering::Relaxed,
-                            atomic::Ordering::Relaxed,
-                            |mut m| {
-                                let mlro = m as u32;
-                                match last_register.cmp(&mlro) {
-                                    Ordering::Less => None,
-                                    Ordering::Equal => {
-                                        const fn mask(i: usize) -> u128 {
-                                            !((!0u32 as u128) << (i * 32))
+                                            new = Some(r);
                                         }
-
-                                        let len = prefix_registers.len();
-                                        let mut replace = false;
-
-                                        if len <= 1 {
-                                            return Some(m);
-                                        }
-                                        let p = prefix_registers[1];
-                                        let a = (m >> 32) as u32;
-                                        match p.cmp(&a) {
-                                            Ordering::Less => {
-                                                return Some(m);
-                                            }
-                                            Ordering::Equal => (),
-                                            Ordering::Greater => {
-                                                replace = true;
-                                                m = (m & const { mask(1) }) | (u128::from(p) << 32);
-                                            }
-                                        }
-
-                                        if len <= 2 {
-                                            return Some(m);
-                                        }
-                                        let p = prefix_registers[2];
-                                        if replace {
-                                            m = (m & const { mask(2) }) | (u128::from(p) << 64);
-                                        } else {
-                                            let a = (m >> 64) as u32;
-                                            match p.cmp(&a) {
-                                                Ordering::Less => {
-                                                    return Some(m);
-                                                }
-                                                Ordering::Equal => (),
-                                                Ordering::Greater => {
-                                                    replace = true;
-                                                    m = (m & const { mask(2) })
-                                                        | (u128::from(p) << 64);
-                                                }
-                                            }
-                                        }
-
-                                        if len <= 3 {
-                                            return Some(m);
-                                        }
-                                        let p = prefix_registers[3];
-                                        if replace {
-                                            m = (m & const { mask(3) }) | (u128::from(p) << 96);
-                                        } else {
-                                            let a = (m >> 96) as u32;
-                                            match p.cmp(&a) {
-                                                Ordering::Less => {
-                                                    return Some(m);
-                                                }
-                                                Ordering::Equal => (),
-                                                Ordering::Greater => {
-                                                    m = (m & const { mask(3) })
-                                                        | (u128::from(p) << 96);
-                                                }
-                                            }
-                                        }
-                                        Some(m)
-                                    }
-                                    Ordering::Greater => {
-                                        let len = prefix_registers.len();
-                                        let mut ret = u128::from(last_register);
-                                        if len > 1 {
-                                            ret |= u128::from(prefix_registers[1]) << 32;
-                                        }
-                                        if len > 2 {
-                                            ret |= u128::from(prefix_registers[2]) << 64;
-                                        }
-                                        if len > 3 {
-                                            ret |= u128::from(prefix_registers[3]) << 96;
-                                        }
-                                        Some(ret)
                                     }
                                 }
-                            },
-                        );
-                    }
-                }
+
+                                // new can still be None here:
+                                // A C D can be a solution, followed by B C D
+                                new.map(|new| {
+                                    debug_assert_eq!(
+                                        new.len(),
+                                        usize::from(exact_register_count.get() - 1)
+                                    );
+                                    Box::into_raw(new.into_boxed_slice()).as_mut_ptr()
+                                })
+                            }
+                            Ordering::Greater => Some(
+                                Box::into_raw(
+                                    std::iter::once(last_register)
+                                        .chain(prefix_registers.iter().copied().skip(1))
+                                        .collect::<Box<_>>(),
+                                )
+                                .as_mut_ptr(),
+                            ),
+                        }
+                    },
+                );
                 break;
             }
         }
@@ -468,7 +366,7 @@ fn dfs_thread<const N: usize>(
     num_cores: usize,
     exact_piece_count: NonZeroU32,
     mut mutable: CycleCombinationsTreeMutable,
-    max_last_register_orders: &ParetoEfficientPruning,
+    max_last_register_orders: &AtomicPtr<u32>,
     possible_orders_except_one: &[PossibleOrder<N>],
 ) -> TreeThreadInfo {
     core_affinity::set_for_current(core_id);
@@ -492,15 +390,8 @@ fn dfs_thread<const N: usize>(
         .step_by(num_cores)
     {
         let i_u32 = possible_orders_len_cast(i);
-        let max_last_register_order = match max_last_register_orders {
-            ParetoEfficientPruning::GFiveReg(max_last_register_orders) => unsafe {
-                *max_last_register_orders.load(atomic::Ordering::Relaxed)
-            },
-            ParetoEfficientPruning::LEFiveReg(max_last_register_orders) => {
-                let l = max_last_register_orders.load(atomic::Ordering::Relaxed);
-                l as u32
-            }
-        };
+        let max_last_register_order =
+            unsafe { *max_last_register_orders.load(atomic::Ordering::Relaxed) };
         if i_u32 <= max_last_register_order {
             break;
         }
@@ -563,7 +454,7 @@ fn dfs_thread<const N: usize>(
 /// `mutable.registers.len()`.
 unsafe fn search_dfs_helper<const N: usize>(
     mutable: &mut CycleCombinationsTreeMutable,
-    max_last_register_order: &ParetoEfficientPruning,
+    max_last_register_order: &AtomicPtr<u32>,
     possible_orders: NonemptySlice<'_, PossibleOrder<N>>,
     remaining_register_count: NonZeroU16,
     remaining_piece_count: NonZeroU32,
@@ -580,41 +471,23 @@ unsafe fn search_dfs_helper<const N: usize>(
     loop {
         let (possible_order, next_possible_orders) = curr_possible_orders.split_last();
         let i = possible_orders_len_cast(next_possible_orders.len());
-        match max_last_register_order {
-            ParetoEfficientPruning::GFiveReg(max_last_register_order) => {
-                let l = unsafe {
-                    slice::from_raw_parts(
-                        max_last_register_order.load(atomic::Ordering::Relaxed),
-                        usize::from(register_index),
-                    )
-                };
-                let mut l = l.iter();
-                if i <= *l.next().unwrap()
-                    && mutable
-                        .registers
-                        .iter()
-                        .skip(1)
-                        .zip(l)
-                        .all(|(&r, &l_)| r <= l_)
-                {
-                    break;
-                }
-            }
-            ParetoEfficientPruning::LEFiveReg(max_last_register_order) => {
-                let l = max_last_register_order.load(atomic::Ordering::Relaxed);
-                let l0 = l as u32;
-                if i <= l0
-                    && mutable
-                        .registers
-                        .iter()
-                        .enumerate()
-                        .take(usize::from(register_index))
-                        .skip(1)
-                        .all(|(j, &r)| r <= ((l >> (32 * j)) as u32))
-                {
-                    break;
-                }
-            }
+
+        let l = unsafe {
+            slice::from_raw_parts(
+                max_last_register_order.load(atomic::Ordering::Relaxed),
+                usize::from(register_index),
+            )
+        };
+        let mut l = l.iter();
+        if i <= *l.next().unwrap()
+            && mutable
+                .registers
+                .iter()
+                .skip(1)
+                .zip(l)
+                .all(|(&r, &l_)| r <= l_)
+        {
+            break;
         }
 
         if let Some(next_remaining_piece_count) = remaining_piece_count
@@ -729,20 +602,16 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let mut post_candidate_count = 0;
         let mut smallest_fronts = BinaryHeap::new();
 
-        let max_last_register_orders: Arc<[ParetoEfficientPruning]> = Arc::from(
+        let max_last_register_orders: Arc<[AtomicPtr<u32>]> = Arc::from(
             (0..num_cores)
                 .map(|_| {
-                    if self.exact_register_count.get() <= 5 {
-                        ParetoEfficientPruning::LEFiveReg(AtomicU128::new(0))
-                    } else {
-                        ParetoEfficientPruning::GFiveReg(AtomicPtr::new(
-                            Box::into_raw(
-                                vec![0u32; usize::from(self.exact_register_count.get() - 1)]
-                                    .into_boxed_slice(),
-                            )
-                            .as_mut_ptr(),
-                        ))
-                    }
+                    AtomicPtr::new(
+                        Box::into_raw(
+                            vec![0u32; usize::from(self.exact_register_count.get() - 1)]
+                                .into_boxed_slice(),
+                        )
+                        .as_mut_ptr(),
+                    )
                 })
                 .collect::<Box<[_]>>(),
         );
@@ -841,15 +710,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let pruned_orders_percentage = (max_last_register_orders
             .iter()
             .map(|max_last_register_order| {
-                u64::from(match max_last_register_order {
-                    ParetoEfficientPruning::GFiveReg(max_last_register_order) => unsafe {
-                        *max_last_register_order.load(atomic::Ordering::Relaxed)
-                    },
-                    ParetoEfficientPruning::LEFiveReg(max_last_register_order) => {
-                        let l = max_last_register_order.load(atomic::Ordering::Relaxed);
-                        l as u32
-                    }
-                })
+                u64::from(unsafe { *max_last_register_order.load(atomic::Ordering::Relaxed) })
             })
             .sum::<u64>() as f64)
             / ((self.possible_orders_except_one.len() * num_cores) as f64);

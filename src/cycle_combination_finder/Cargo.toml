@@ -14,7 +14,6 @@ fxhash = "0.2.1"
 humanize-duration.workspace = true
 log.workspace = true
 num-integer = "0.1.46"
-portable-atomic = "1.13.1"
 puzzle_theory.workspace = true
 rayon = "1.12.0"
 thiserror.workspace = true
