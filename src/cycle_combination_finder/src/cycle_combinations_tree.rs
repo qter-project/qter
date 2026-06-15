@@ -306,11 +306,11 @@ fn details_thread<const N: usize>(
                                     Ordering::Equal => {
                                         let mut new: Option<Vec<u32>> = None;
                                         let mut f = false;
-                                        for (i, (&p, m)) in prefix_registers
+                                        for ((i, &p), m) in prefix_registers
                                             .iter()
+                                            .enumerate()
                                             .skip(1)
                                             .zip(max_last_register_order)
-                                            .enumerate()
                                         {
                                             if f {
                                                 new.as_mut().unwrap().push(p);
@@ -325,7 +325,7 @@ fn details_thread<const N: usize>(
                                                         exact_register_count.get() - 1,
                                                     ));
                                                     r.extend(std::iter::once(last_register).chain(
-                                                        prefix_registers[1..i].iter().copied(),
+                                                        prefix_registers[1..=i].iter().copied(),
                                                     ));
                                                     new = Some(r);
                                                 }
@@ -335,6 +335,10 @@ fn details_thread<const N: usize>(
                                         // new can still be None here:
                                         // A C D can be a solution, followed by B C D
                                         new.map(|new| {
+                                            debug_assert_eq!(
+                                                new.len(),
+                                                usize::from(exact_register_count.get() - 1)
+                                            );
                                             Box::into_raw(new.into_boxed_slice()).as_mut_ptr()
                                         })
                                     }
@@ -643,11 +647,11 @@ unsafe fn search_dfs_helper<const N: usize>(
                         );
                     }
                     // SAFETY: see above.
-                    *unsafe {
-                        mutable
+                    unsafe {
+                        *mutable
                             .registers
-                            .get_unchecked_mut(usize::from(register_index))
-                    } = old;
+                            .get_unchecked_mut(usize::from(register_index)) = old;
+                    };
                 }
             } else {
                 mutable.packed_queue.push(i);
@@ -728,7 +732,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let max_last_register_orders: Arc<[ParetoEfficientPruning]> = Arc::from(
             (0..num_cores)
                 .map(|_| {
-                    if self.exact_register_count.get() <= 5 {
+                    if self.exact_register_count.get() <= 0 {
                         ParetoEfficientPruning::LEFiveReg(AtomicU128::new(0))
                     } else {
                         ParetoEfficientPruning::GFiveReg(AtomicPtr::new(
