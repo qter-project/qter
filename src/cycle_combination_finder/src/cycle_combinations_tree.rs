@@ -320,9 +320,15 @@ fn details_thread<const N: usize>(
                                                     usize::from(exact_register_count.get() - 1)
                                                         .max(1),
                                                 );
-                                                r.extend(std::iter::once(last_register).chain(
-                                                    prefix_registers[1..=i].iter().copied(),
-                                                ));
+                                                r.extend(
+                                                    std::iter::once(last_register).chain(
+                                                        prefix_registers
+                                                            .iter()
+                                                            .copied()
+                                                            .skip(1)
+                                                            .take(i),
+                                                    ),
+                                                );
                                                 new = Some(r);
                                             }
                                         },
@@ -343,7 +349,7 @@ fn details_thread<const N: usize>(
                         Some(
                             Box::into_raw(
                                 std::iter::once(last_register)
-                                    .chain(prefix_registers[1..].iter().copied())
+                                    .chain(prefix_registers.iter().copied().skip(1))
                                     .collect::<Box<_>>(),
                             )
                             .as_mut_ptr(),
@@ -377,9 +383,12 @@ fn dfs_thread<const N: usize>(
     let real_time = Instant::now();
     let cpu_time = ThreadTime::now();
 
-    let exact_register_count = mutable.exact_register_count();
-    let maybe_next_remaining_register_count = NonZeroU16::new(exact_register_count.get() - 1);
-    if maybe_next_remaining_register_count.is_none() {
+    let maybe_next_register_index = if mutable.exact_register_count().get() == 1 {
+        None
+    } else {
+        Some(NonZeroU16::new(1).unwrap())
+    };
+    if maybe_next_register_index.is_none() {
         mutable.packed_queue.truncate(1);
         mutable
             .packed_queue
@@ -426,7 +435,7 @@ fn dfs_thread<const N: usize>(
             continue;
         };
 
-        let Some(next_remaining_register_count) = maybe_next_remaining_register_count else {
+        let Some(next_register_index) = maybe_next_register_index else {
             mutable.packed_queue.push(i_u32);
             continue;
         };
@@ -441,14 +450,14 @@ fn dfs_thread<const N: usize>(
                     &mut mutable,
                     max_last_register_orders,
                     next_possible_orders,
-                    next_remaining_register_count,
+                    next_register_index,
                     next_remaining_piece_count,
                 );
             }
         }
     }
 
-    if maybe_next_remaining_register_count.is_none() {
+    if maybe_next_register_index.is_none() {
         mutable.send_queue();
     }
 
@@ -468,13 +477,17 @@ unsafe fn search_dfs_helper<const N: usize>(
     mutable: &mut CycleCombinationsTreeMutable,
     max_last_register_order: &AtomicPtr<u32>,
     possible_orders: NonemptySlice<'_, PossibleOrder<N>>,
-    remaining_register_count: NonZeroU16,
+    register_index: NonZeroU16,
     remaining_piece_count: NonZeroU32,
 ) {
-    let register_index = mutable.exact_register_count().get() - remaining_register_count.get();
     let mut curr_possible_orders = possible_orders;
-    let maybe_next_remaining_register_count = NonZeroU16::new(remaining_register_count.get() - 1);
-    if maybe_next_remaining_register_count.is_none() {
+    let c = register_index.saturating_add(1);
+    let maybe_next_register_index = if c == mutable.exact_register_count() {
+        None
+    } else {
+        Some(c)
+    };
+    if maybe_next_register_index.is_none() {
         mutable.packed_queue.truncate(1);
         mutable
             .packed_queue
@@ -486,7 +499,7 @@ unsafe fn search_dfs_helper<const N: usize>(
 
         let b = max_last_register_order.load(atomic::Ordering::Relaxed);
         if !b.is_null() {
-            let l = unsafe { slice::from_raw_parts(b, usize::from(register_index)) };
+            let l = unsafe { slice::from_raw_parts(b, usize::from(register_index.get())) };
             let mut l = l.iter();
             if i <= *l.next().unwrap()
                 && mutable
@@ -504,7 +517,7 @@ unsafe fn search_dfs_helper<const N: usize>(
             .get()
             .checked_sub(possible_order.min_piece_count.get())
         {
-            if let Some(next_remaining_register_count) = maybe_next_remaining_register_count {
+            if let Some(next_register_index) = maybe_next_register_index {
                 if let Some(next_remaining_piece_count) =
                     NonZeroU32::new(next_remaining_piece_count)
                 {
@@ -515,7 +528,7 @@ unsafe fn search_dfs_helper<const N: usize>(
                         unsafe {
                             mutable
                                 .registers
-                                .get_unchecked_mut(usize::from(register_index))
+                                .get_unchecked_mut(usize::from(register_index.get()))
                         },
                         i,
                     );
@@ -525,7 +538,7 @@ unsafe fn search_dfs_helper<const N: usize>(
                             mutable,
                             max_last_register_order,
                             curr_possible_orders,
-                            next_remaining_register_count,
+                            next_register_index,
                             next_remaining_piece_count,
                         );
                     }
@@ -533,7 +546,7 @@ unsafe fn search_dfs_helper<const N: usize>(
                     unsafe {
                         *mutable
                             .registers
-                            .get_unchecked_mut(usize::from(register_index)) = old;
+                            .get_unchecked_mut(usize::from(register_index.get())) = old;
                     };
                 }
             } else {
@@ -550,7 +563,7 @@ unsafe fn search_dfs_helper<const N: usize>(
         }
     }
 
-    if maybe_next_remaining_register_count.is_none() {
+    if maybe_next_register_index.is_none() {
         mutable.send_queue();
     }
 }
