@@ -244,7 +244,7 @@ impl DisjointRegisters<'_> {
 fn details_thread<const N: usize>(
     core_id: CoreId,
     receiver: mpmc::Receiver<PackedCycleCombinationCandidateQueue>,
-    mut max_last_register_orders: Arc<[AtomicPtr<u32>]>,
+    max_last_register_orders: Arc<[AtomicPtr<u32>]>,
     possible_orders_except_one: &[PossibleOrder<N>],
     exact_register_count: NonZeroU16,
 ) -> DetailsThreadInfo {
@@ -291,7 +291,7 @@ fn details_thread<const N: usize>(
                             let max_last_register_order = unsafe {
                                 slice::from_raw_parts(
                                     max_last_register_order,
-                                    usize::from(exact_register_count.get() - 1),
+                                    usize::from(exact_register_count.get() - 1).max(1),
                                 )
                             };
                             let mut max_last_register_order =
@@ -302,31 +302,30 @@ fn details_thread<const N: usize>(
                             }
                             if last_register == b {
                                 let mut new: Option<Vec<u32>> = None;
-                                let mut f = false;
                                 for ((i, &p), m) in prefix_registers
                                     .iter()
                                     .enumerate()
                                     .skip(1)
                                     .zip(max_last_register_order)
                                 {
-                                    if f {
-                                        new.as_mut().unwrap().push(p);
-                                        continue;
-                                    }
-                                    match p.cmp(&m) {
-                                        Ordering::Less => return None,
-                                        Ordering::Equal => (),
-                                        Ordering::Greater => {
-                                            f = true;
-                                            let mut r = Vec::with_capacity(usize::from(
-                                                exact_register_count.get() - 1,
-                                            ));
-                                            r.extend(
-                                                std::iter::once(last_register)
-                                                    .chain(prefix_registers[1..=i].iter().copied()),
-                                            );
-                                            new = Some(r);
+                                    match &mut new {
+                                        Some(new) => {
+                                            new.push(p);
                                         }
+                                        None => match p.cmp(&m) {
+                                            Ordering::Less => return None,
+                                            Ordering::Equal => (),
+                                            Ordering::Greater => {
+                                                let mut r = Vec::with_capacity(
+                                                    usize::from(exact_register_count.get() - 1)
+                                                        .max(1),
+                                                );
+                                                r.extend(std::iter::once(last_register).chain(
+                                                    prefix_registers[1..=i].iter().copied(),
+                                                ));
+                                                new = Some(r);
+                                            }
+                                        },
                                     }
                                 }
 
@@ -335,7 +334,7 @@ fn details_thread<const N: usize>(
                                 return new.map(|new| {
                                     debug_assert_eq!(
                                         new.len(),
-                                        usize::from(exact_register_count.get() - 1)
+                                        usize::from(exact_register_count.get() - 1).max(1)
                                     );
                                     Box::into_raw(new.into_boxed_slice()).as_mut_ptr()
                                 });
@@ -344,7 +343,7 @@ fn details_thread<const N: usize>(
                         Some(
                             Box::into_raw(
                                 std::iter::once(last_register)
-                                    .chain(prefix_registers.iter().copied().skip(1))
+                                    .chain(prefix_registers[1..].iter().copied())
                                     .collect::<Box<_>>(),
                             )
                             .as_mut_ptr(),
@@ -399,6 +398,9 @@ fn dfs_thread<const N: usize>(
         let max_last_register_order = if b.is_null() {
             0
         } else {
+            // exact piece count cannot be 0 in this branch; it would have had to interact
+            // with the mpmc thread which can only happen at the very end of this specific
+            // thread's call to dfs_thread
             let max_last_register_order = unsafe { *b };
             if i_u32 <= max_last_register_order {
                 break;
