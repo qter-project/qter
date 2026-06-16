@@ -98,8 +98,10 @@ impl CycleCombinationsTreeMutable {
             let payload =
                 PackedCycleCombinationCandidateQueue(Box::clone_from_ref(&self.packed_queue));
             self.alloc_time += now.elapsed();
+            // We can unwrap because the senders is only dropped after all threads are joined.
             self.sender.send(payload).unwrap();
         } else {
+            // We can unwrap because the senders is only dropped after all threads are joined.
             self.sender
                 .send(PackedCycleCombinationCandidateQueue(Box::clone_from_ref(
                     &self.packed_queue,
@@ -244,7 +246,7 @@ impl DisjointRegisters<'_> {
 fn details_thread<const N: usize>(
     core_id: CoreId,
     receiver: mpmc::Receiver<PackedCycleCombinationCandidateQueue>,
-    max_last_register_orders: Arc<[AtomicPtr<u32>]>,
+    pareto_efficient_prunings: Arc<[AtomicPtr<u32>]>,
     possible_orders_except_one: &[PossibleOrder<N>],
     exact_register_count: NonZeroU16,
 ) -> DetailsThreadInfo {
@@ -267,7 +269,7 @@ fn details_thread<const N: usize>(
                 prefix_registers,
                 last_register,
             };
-            if cycle_combinations.push_and_dominating_check(
+            if !cycle_combinations.push_and_dominating_check(
                 disjoint_registers,
                 |dominating_registers| {
                     post_candidate_count += 1;
@@ -278,86 +280,95 @@ fn details_thread<const N: usize>(
                         })
                 },
             ) {
-                // Note that we are allowed to set
-                // `max_last_register_order_reverse_index` to potentially dominated
-                // solutions. If something is the maximum in our atomic variable,
-                // then it must either be in the front or the atomic variable is an
-                // underestimate, which is permitted since our bound is admissible
-                let _ = max_last_register_orders[thread_index].try_update(
-                    atomic::Ordering::Relaxed,
-                    atomic::Ordering::Relaxed,
-                    |max_last_register_order| {
-                        if !max_last_register_order.is_null() {
-                            let max_last_register_order = unsafe {
-                                slice::from_raw_parts(
-                                    max_last_register_order,
-                                    usize::from(exact_register_count.get() - 1).max(1),
-                                )
-                            };
-                            let mut max_last_register_order =
-                                max_last_register_order.iter().copied();
-                            let b = max_last_register_order.next().unwrap();
-                            if last_register < b {
-                                return None;
-                            }
-                            if last_register == b {
-                                let mut new: Option<Vec<u32>> = None;
-                                for ((i, &p), m) in prefix_registers
-                                    .iter()
-                                    .enumerate()
-                                    .skip(1)
-                                    .zip(max_last_register_order)
-                                {
-                                    match &mut new {
-                                        Some(new) => {
-                                            new.push(p);
-                                        }
-                                        None => match p.cmp(&m) {
-                                            Ordering::Less => return None,
-                                            Ordering::Equal => (),
-                                            Ordering::Greater => {
-                                                let mut r = Vec::with_capacity(
+                continue;
+            }
+            // Note that we are allowed to set
+            // `max_last_register_order_reverse_index` to potentially dominated
+            // solutions. If something is the maximum in our atomic variable,
+            // then it must either be in the front or the atomic variable is an
+            // underestimate, which is permitted since our bound is admissible
+            let _ = pareto_efficient_prunings[thread_index].try_update(
+                atomic::Ordering::Relaxed,
+                atomic::Ordering::Relaxed,
+                |pareto_efficient_pruning| {
+                    if !pareto_efficient_pruning.is_null() {
+                        // SAFETY: later in this block we always initialize
+                        // `pareto_efficient_pruning` to be of
+                        // `usize::from(exact_register_count.get() - 1).max(1)` length.
+                        let raw_pruning = unsafe {
+                            slice::from_raw_parts(
+                                pareto_efficient_pruning,
+                                usize::from(exact_register_count.get() - 1).max(1),
+                            )
+                        };
+                        let mut raw_pruning_iter = raw_pruning.iter().copied();
+                        // We can unwrap because we have at least one element
+                        let max_last_register = raw_pruning_iter.next().unwrap();
+                        if last_register < max_last_register {
+                            return None;
+                        }
+                        if last_register == max_last_register {
+                            let mut maybe_next_pareto_efficient_pruning: Option<Vec<u32>> = None;
+                            for ((i, &prefix_register), pareto_efficient_prune) in prefix_registers
+                                .iter()
+                                .enumerate()
+                                .skip(1)
+                                .zip(raw_pruning_iter)
+                            {
+                                match &mut maybe_next_pareto_efficient_pruning {
+                                    Some(next_pareto_efficient_pruning) => {
+                                        next_pareto_efficient_pruning.push(prefix_register);
+                                    }
+                                    None => match prefix_register.cmp(&pareto_efficient_prune) {
+                                        Ordering::Less => return None,
+                                        Ordering::Equal => (),
+                                        Ordering::Greater => {
+                                            let mut next_pareto_efficient_pruning =
+                                                Vec::with_capacity(
                                                     usize::from(exact_register_count.get() - 1)
                                                         .max(1),
                                                 );
-                                                r.extend(
-                                                    std::iter::once(last_register).chain(
-                                                        prefix_registers
-                                                            .iter()
-                                                            .copied()
-                                                            .skip(1)
-                                                            .take(i),
-                                                    ),
-                                                );
-                                                new = Some(r);
-                                            }
-                                        },
-                                    }
+                                            next_pareto_efficient_pruning.extend(
+                                                std::iter::once(last_register).chain(
+                                                    prefix_registers
+                                                        .iter()
+                                                        .copied()
+                                                        .skip(1)
+                                                        .take(i),
+                                                ),
+                                            );
+                                            maybe_next_pareto_efficient_pruning =
+                                                Some(next_pareto_efficient_pruning);
+                                        }
+                                    },
                                 }
+                            }
 
-                                // new can still be None here:
-                                // A C D can be a solution, followed by B C D
-                                return new.map(|new| {
+                            // new can still be None here:
+                            // A C D can be a solution, followed by B C D
+                            return maybe_next_pareto_efficient_pruning.map(
+                                |next_pareto_efficient_pruning| {
                                     debug_assert_eq!(
-                                        new.len(),
+                                        next_pareto_efficient_pruning.len(),
                                         usize::from(exact_register_count.get() - 1).max(1)
                                     );
-                                    Box::into_raw(new.into_boxed_slice()).as_mut_ptr()
-                                });
-                            }
+                                    Box::into_raw(next_pareto_efficient_pruning.into_boxed_slice())
+                                        .as_mut_ptr()
+                                },
+                            );
                         }
-                        Some(
-                            Box::into_raw(
-                                std::iter::once(last_register)
-                                    .chain(prefix_registers.iter().copied().skip(1))
-                                    .collect::<Box<_>>(),
-                            )
-                            .as_mut_ptr(),
+                    }
+                    Some(
+                        Box::into_raw(
+                            std::iter::once(last_register)
+                                .chain(prefix_registers.iter().copied().skip(1))
+                                .collect::<Box<_>>(),
                         )
-                    },
-                );
-                break;
-            }
+                        .as_mut_ptr(),
+                    )
+                },
+            );
+            break;
         }
     }
     DetailsThreadInfo {
@@ -376,7 +387,7 @@ fn dfs_thread<const N: usize>(
     num_cores: usize,
     exact_piece_count: NonZeroU32,
     mut mutable: CycleCombinationsTreeMutable,
-    max_last_register_orders: &AtomicPtr<u32>,
+    pareto_efficient_pruning: &AtomicPtr<u32>,
     possible_orders_except_one: &[PossibleOrder<N>],
 ) -> TreeThreadInfo {
     core_affinity::set_for_current(core_id);
@@ -403,14 +414,13 @@ fn dfs_thread<const N: usize>(
         .step_by(num_cores)
     {
         let i_u32 = possible_orders_len_cast(i);
-        let b = max_last_register_orders.load(atomic::Ordering::Relaxed);
-        let max_last_register_order = if b.is_null() {
+        let raw_pruning = pareto_efficient_pruning.load(atomic::Ordering::Relaxed);
+        let max_last_register_order = if raw_pruning.is_null() {
             0
         } else {
-            // exact piece count cannot be 0 in this branch; it would have had to interact
-            // with the mpmc thread which can only happen at the very end of this specific
-            // thread's call to dfs_thread
-            let max_last_register_order = unsafe { *b };
+            // SAFETY: `details_thread` guarantees `raw_pruning` points to at least one
+            // element
+            let max_last_register_order = unsafe { *raw_pruning };
             if i_u32 <= max_last_register_order {
                 break;
             }
@@ -448,7 +458,7 @@ fn dfs_thread<const N: usize>(
             unsafe {
                 search_dfs_helper(
                     &mut mutable,
-                    max_last_register_orders,
+                    pareto_efficient_pruning,
                     next_possible_orders,
                     next_register_index,
                     next_remaining_piece_count,
@@ -471,23 +481,19 @@ fn dfs_thread<const N: usize>(
 
 /// # Safety
 ///
-/// `remaining_register_count` must be less than or equal to
-/// `mutable.registers.len()`.
+/// `register_index` must be less than `mutable.exact_register_count()`.
 unsafe fn search_dfs_helper<const N: usize>(
     mutable: &mut CycleCombinationsTreeMutable,
-    max_last_register_order: &AtomicPtr<u32>,
+    pareto_efficient_pruning: &AtomicPtr<u32>,
     possible_orders: NonemptySlice<'_, PossibleOrder<N>>,
     register_index: NonZeroU16,
     remaining_piece_count: NonZeroU32,
 ) {
     let mut curr_possible_orders = possible_orders;
-    let c = register_index.saturating_add(1);
-    let maybe_next_register_index = if c == mutable.exact_register_count() {
-        None
-    } else {
-        Some(c)
-    };
-    if maybe_next_register_index.is_none() {
+    // It should never overflow, and I don't want a panic path, so use saturating
+    // logic
+    let next_register_index = register_index.saturating_add(1);
+    if next_register_index == mutable.exact_register_count() {
         mutable.packed_queue.truncate(1);
         mutable
             .packed_queue
@@ -497,17 +503,24 @@ unsafe fn search_dfs_helper<const N: usize>(
         let (possible_order, next_possible_orders) = curr_possible_orders.split_last();
         let i = possible_orders_len_cast(next_possible_orders.len());
 
-        let b = max_last_register_order.load(atomic::Ordering::Relaxed);
-        if !b.is_null() {
-            let l = unsafe { slice::from_raw_parts(b, usize::from(register_index.get())) };
-            let mut l = l.iter();
-            if i <= *l.next().unwrap()
+        let raw_pruning = pareto_efficient_pruning.load(atomic::Ordering::Relaxed);
+        if !raw_pruning.is_null() {
+            // SAFETY: `raw_pruning` is guaranteed to point to
+            // `(mutable.exact_register_count().get() - 1).max(1)` u32s. The caller
+            // guarantees `register_index` is less than `mutable.exact_register_count()`;
+            // therefore we are in bounds
+            let raw_pruning =
+                unsafe { slice::from_raw_parts(raw_pruning, usize::from(register_index.get())) };
+            let mut raw_pruning_iter = raw_pruning.iter().copied();
+            // We can unwrap because `register_index` is a `NonZero` type
+            let max_last_register_order = raw_pruning_iter.next().unwrap();
+            if i <= max_last_register_order
                 && mutable
                     .registers
                     .iter()
                     .skip(1)
-                    .zip(l)
-                    .all(|(&r, &l_)| r <= l_)
+                    .zip(raw_pruning_iter)
+                    .all(|(&register, pareto_efficient_prune)| register <= pareto_efficient_prune)
             {
                 break;
             }
@@ -517,45 +530,44 @@ unsafe fn search_dfs_helper<const N: usize>(
             .get()
             .checked_sub(possible_order.min_piece_count.get())
         {
-            if let Some(next_register_index) = maybe_next_register_index {
-                if let Some(next_remaining_piece_count) =
-                    NonZeroU32::new(next_remaining_piece_count)
-                {
-                    // SAFETY: caller guarantees `mutable.registers.len()` <=
-                    // `remaining_register_count`, and `remaining_register_count` != 0.
-                    // `register_index` must thus be in bounds of `mutable.registers`.
-                    let old = std::mem::replace(
-                        unsafe {
-                            mutable
-                                .registers
-                                .get_unchecked_mut(usize::from(register_index.get()))
-                        },
-                        i,
-                    );
-                    // SAFETY: `remaining_register_count` only ever decreases.
-                    unsafe {
-                        search_dfs_helper(
-                            mutable,
-                            max_last_register_order,
-                            curr_possible_orders,
-                            next_register_index,
-                            next_remaining_piece_count,
-                        );
-                    }
-                    // SAFETY: see above.
-                    unsafe {
-                        *mutable
-                            .registers
-                            .get_unchecked_mut(usize::from(register_index.get())) = old;
-                    };
-                }
-            } else {
+            if next_register_index == mutable.exact_register_count() {
                 mutable.packed_queue.push(i);
+            } else if let Some(next_remaining_piece_count) =
+                NonZeroU32::new(next_remaining_piece_count)
+            {
+                // SAFETY: caller guarantees `register_index < mutable.exact_register_count()`,
+                // therefore we are in bounds
+                let old = std::mem::replace(
+                    unsafe {
+                        mutable
+                            .registers
+                            .get_unchecked_mut(usize::from(register_index.get()))
+                    },
+                    i,
+                );
+                // SAFETY: `next_register_index != mutable.exact_register_count()` in this
+                // branch, and caller guarantees we are less
+                unsafe {
+                    search_dfs_helper(
+                        mutable,
+                        pareto_efficient_pruning,
+                        curr_possible_orders,
+                        next_register_index,
+                        next_remaining_piece_count,
+                    );
+                }
+                // SAFETY: caller guarantees `register_index < mutable.exact_register_count()`,
+                // therefore we are in bounds
+                unsafe {
+                    *mutable
+                        .registers
+                        .get_unchecked_mut(usize::from(register_index.get())) = old;
+                };
             }
         }
         match NonemptySlice::try_from(next_possible_orders) {
-            Ok(ret) => {
-                curr_possible_orders = ret;
+            Ok(next_possible_orders) => {
+                curr_possible_orders = next_possible_orders;
             }
             Err(()) => {
                 break;
@@ -563,7 +575,7 @@ unsafe fn search_dfs_helper<const N: usize>(
         }
     }
 
-    if maybe_next_register_index.is_none() {
+    if next_register_index == mutable.exact_register_count() {
         mutable.send_queue();
     }
 }
@@ -595,6 +607,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
 
     #[must_use]
     pub(crate) fn search_dfs(self) -> (Vec<CycleCombination>, Arc<[PossibleOrder<N>]>) {
+        // If we return a None here then /shrug
         #[allow(clippy::missing_panics_doc)]
         let core_ids = core_affinity::get_core_ids().unwrap();
         let num_cores = core_ids.len();
@@ -625,7 +638,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let mut post_candidate_count = 0;
         let mut smallest_fronts = BinaryHeap::new();
 
-        let max_last_register_orders: Arc<[AtomicPtr<u32>]> = Arc::from(
+        let pareto_efficient_prunings: Arc<[AtomicPtr<u32>]> = Arc::from(
             (0..num_cores)
                 .map(|_| AtomicPtr::default())
                 .collect::<Box<[_]>>(),
@@ -637,8 +650,8 @@ impl<const N: usize> CycleCombinationsTree<N> {
             let handles = core_ids
                 .into_iter()
                 .enumerate()
-                .zip(max_last_register_orders.iter())
-                .map(|((thread_index, core_id), max_last_register_order)| {
+                .zip(pareto_efficient_prunings.iter())
+                .map(|((thread_index, core_id), pareto_efficient_pruning)| {
                     let mut mutable = mutable.clone();
                     mutable
                         .packed_queue
@@ -650,17 +663,17 @@ impl<const N: usize> CycleCombinationsTree<N> {
                             num_cores,
                             self.exact_piece_count,
                             mutable,
-                            max_last_register_order,
+                            pareto_efficient_pruning,
                             possible_orders_except_one,
                         )
                     });
                     let receiver = receiver.clone();
-                    let max_last_register_orders = Arc::clone(&max_last_register_orders);
+                    let pareto_efficient_prunings = Arc::clone(&pareto_efficient_prunings);
                     let details_thread_handle = s.spawn(move || {
                         details_thread(
                             core_id,
                             receiver,
-                            max_last_register_orders,
+                            pareto_efficient_prunings,
                             possible_orders_except_one,
                             self.exact_register_count,
                         )
@@ -722,7 +735,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let real_time = real_time.elapsed();
 
         #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-        let pruned_orders_percentage = (max_last_register_orders
+        let pruned_orders_percentage = (pareto_efficient_prunings
             .iter()
             .map(|max_last_register_order| {
                 let max_last_register_order =
@@ -730,6 +743,8 @@ impl<const N: usize> CycleCombinationsTree<N> {
                 u64::from(if max_last_register_order.is_null() {
                     0
                 } else {
+                    // SAFETY: `details_thread` guarantees `raw_pruning` points to at least one
+                    // element
                     unsafe { *max_last_register_order }
                 })
             })

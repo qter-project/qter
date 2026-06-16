@@ -9,15 +9,14 @@
 
 ## CCF
 
+- mpmc batching
 - possible orders progress benchmarking
 - better log tracing messages
 - what if possible_orders_except_one is empty? OOB?
-- NonemptyVec([PossibleOrder { order: 116454478140, min_piece_count: 137 }, PossibleOrder { order: 6, min_piece_count: 2 }, PossibleOrder { order: 3, min_piece_count: 1 }]) followed by NonemptyVec([PossibleOrder { order: 82990547640, min_piece_count: 137 }, PossibleOrder { order: 6, min_piece_count: 2 }, PossibleOrder { order: 3, min_piece_count: 1 }])
 - pareto front strategies:
   - rwlock shared front, allowing TOCTOU
   - sync trees together
 - don't use PossibleOrder wrapper; get rid of min_piece_count memory overhead
-- slab allocator
 
 - possible orders
   - daniel's SIMD gcd algorithm

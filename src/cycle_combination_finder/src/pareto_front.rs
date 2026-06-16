@@ -93,8 +93,7 @@ impl CCParetoFront {
                 // this brings clear performance benefits by putting "killer" elements first
                 if i > 0 {
                     // SAFETY: `i` is in range, and `i - 1` must also be in range because of the
-                    // if note that this was not optimizing the bounds
-                    // check
+                    // if. Note that the safe version was not optimizing the bounds check
                     unsafe {
                         self.inner.swap_unchecked(i, i - 1);
                     }
