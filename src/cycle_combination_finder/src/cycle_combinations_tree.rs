@@ -345,11 +345,13 @@ fn details_thread<const N: usize>(
                                         Ordering::Less => return None,
                                         Ordering::Equal => (),
                                         Ordering::Greater => {
+                                            let now = Instant::now();
                                             let mut next_pareto_efficient_pruning =
                                                 Vec::with_capacity(
                                                     usize::from(exact_register_count.get() - 1)
                                                         .max(1),
                                                 );
+                                            alloc_time += now.elapsed();
                                             next_pareto_efficient_pruning.extend(
                                                 std::iter::once(last_register).chain(
                                                     prefix_registers
