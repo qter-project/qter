@@ -441,7 +441,8 @@ fn dfs_thread<const N: usize>(
         .step_by(num_cores)
     {
         let i_u32 = possible_orders_len_cast(i);
-        let raw_pruning = pareto_efficient_pruning.load(atomic::Ordering::Relaxed);
+        // Synchronize with the data in the try_update CAS loop
+        let raw_pruning = pareto_efficient_pruning.load(atomic::Ordering::Acquire);
         let max_last_register_order = if raw_pruning.is_null() {
             0
         } else {
@@ -530,7 +531,8 @@ unsafe fn search_dfs_helper<const N: usize>(
         let (possible_order, next_possible_orders) = curr_possible_orders.split_last();
         let i = possible_orders_len_cast(next_possible_orders.len());
 
-        let raw_pruning = pareto_efficient_pruning.load(atomic::Ordering::Relaxed);
+        // Synchronize with the data in the try_update CAS loop
+        let raw_pruning = pareto_efficient_pruning.load(atomic::Ordering::Acquire);
         if !raw_pruning.is_null() {
             // SAFETY: `raw_pruning` is guaranteed to point to
             // `mutable.exact_register_count().get().saturating_sub(2) + 1` u32s. The caller
@@ -767,8 +769,9 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let pruned_orders_percentage = (pareto_efficient_prunings
             .iter()
             .map(|max_last_register_order| {
+                // Synchronize with the data in the try_update CAS loop
                 let max_last_register_order =
-                    max_last_register_order.load(atomic::Ordering::Relaxed);
+                    max_last_register_order.load(atomic::Ordering::Acquire);
                 u64::from(if max_last_register_order.is_null() {
                     0
                 } else {
