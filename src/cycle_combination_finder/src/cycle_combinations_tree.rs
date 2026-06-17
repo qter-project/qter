@@ -52,6 +52,7 @@ pub struct DisjointRegisters<'a> {
 struct DetailsThreadInfo {
     mkp_real_time: Duration,
     mkp_cpu_time: Duration,
+    mkp_alloc_time: Duration,
     processed_candidate_count: u64,
     post_candidate_count: u64,
     cycle_combinations: CCParetoFront,
@@ -74,6 +75,7 @@ struct ProfileInfo {
     dfs_alloc_time: Duration,
     dfs_cpu_time: Duration,
     dfs_io_time: Duration,
+    mkp_alloc_time: Duration,
     mkp_cpu_time: Duration,
     mkp_io_time: Duration,
     num_cores: usize,
@@ -98,10 +100,12 @@ impl CycleCombinationsTreeMutable {
             let payload =
                 PackedCycleCombinationCandidateQueue(Box::clone_from_ref(&self.packed_queue));
             self.alloc_time += now.elapsed();
-            // We can unwrap because the senders is only dropped after all threads are joined.
+            // We can unwrap because the senders is only dropped after all threads are
+            // joined.
             self.sender.send(payload).unwrap();
         } else {
-            // We can unwrap because the senders is only dropped after all threads are joined.
+            // We can unwrap because the senders is only dropped after all threads are
+            // joined.
             self.sender
                 .send(PackedCycleCombinationCandidateQueue(Box::clone_from_ref(
                     &self.packed_queue,
@@ -171,6 +175,16 @@ impl Debug for ProfileInfo {
                     "{:05.2}% ({})",
                     self.dfs_io_time.div_duration_f64(cpu_time) * 100.0,
                     self.dfs_io_time.div_f64(num_cores).human(Truncate::Millis)
+                ),
+            )
+            .field(
+                &format!("{:>25}", "mkp_alloc_time"),
+                &format!(
+                    "{:05.2}% ({})",
+                    self.mkp_alloc_time.div_duration_f64(cpu_time) * 100.0,
+                    self.mkp_alloc_time
+                        .div_f64(num_cores)
+                        .human(Truncate::Millis)
                 ),
             )
             .field(
@@ -256,6 +270,7 @@ fn details_thread<const N: usize>(
     let mut post_candidate_count = 0;
     let real_time = Instant::now();
     let cpu_time = ThreadTime::now();
+    let mut alloc_time = Duration::default();
     while let Ok(packed_queue) = receiver.recv() {
         let (thread_index_and_prefix_registers, last_registers) = packed_queue
             .0
@@ -274,9 +289,16 @@ fn details_thread<const N: usize>(
                 |dominating_registers| {
                     post_candidate_count += 1;
                     CycleCombinationDetails::new(dominating_registers, possible_orders_except_one)
-                        .map(|details| CycleCombination {
-                            registers: dominating_registers.iter().collect::<Box<_>>(),
-                            details,
+                        .map(|details| {
+                            let registers = if log_enabled!(Level::Debug) {
+                                let now = Instant::now();
+                                let registers = dominating_registers.iter().collect::<Box<_>>();
+                                alloc_time += now.elapsed();
+                                registers
+                            } else {
+                                dominating_registers.iter().collect::<Box<_>>()
+                            };
+                            CycleCombination { registers, details }
                         })
                 },
             ) {
@@ -288,8 +310,8 @@ fn details_thread<const N: usize>(
             // then it must either be in the front or the atomic variable is an
             // underestimate, which is permitted since our bound is admissible
             let _ = pareto_efficient_prunings[thread_index].try_update(
-                atomic::Ordering::Relaxed,
-                atomic::Ordering::Relaxed,
+                atomic::Ordering::Release,
+                atomic::Ordering::Acquire,
                 |pareto_efficient_pruning| {
                     if !pareto_efficient_pruning.is_null() {
                         // SAFETY: later in this block we always initialize
@@ -374,6 +396,7 @@ fn details_thread<const N: usize>(
     DetailsThreadInfo {
         mkp_cpu_time: cpu_time.elapsed(),
         mkp_real_time: real_time.elapsed(),
+        mkp_alloc_time: alloc_time,
         processed_candidate_count,
         post_candidate_count,
         cycle_combinations,
@@ -634,6 +657,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
 
         let mut mkp_real_time = Duration::default();
         let mut mkp_cpu_time = Duration::default();
+        let mut mkp_alloc_time = Duration::default();
         let mut processed_candidate_count = 0;
         let mut post_candidate_count = 0;
         let mut smallest_fronts = BinaryHeap::new();
@@ -700,6 +724,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
 
                 mkp_cpu_time += details_thread_info.mkp_cpu_time;
                 mkp_real_time += details_thread_info.mkp_real_time;
+                mkp_alloc_time += details_thread_info.mkp_alloc_time;
                 processed_candidate_count += details_thread_info.processed_candidate_count;
                 post_candidate_count += details_thread_info.post_candidate_count;
                 smallest_fronts.push(details_thread_info.cycle_combinations);
@@ -754,7 +779,9 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let dfs_io_time = dfs_real_time
             .saturating_sub(dfs_cpu_time)
             .saturating_sub(dfs_alloc_time);
-        let mkp_io_time = mkp_real_time.saturating_sub(mkp_cpu_time);
+        let mkp_io_time = mkp_real_time
+            .saturating_sub(mkp_cpu_time)
+            .saturating_sub(mkp_alloc_time);
 
         let profile_info = ProfileInfo {
             candidate_count,
@@ -765,6 +792,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
             dfs_alloc_time,
             dfs_cpu_time,
             dfs_io_time,
+            mkp_alloc_time,
             mkp_cpu_time,
             mkp_io_time,
             num_cores,
