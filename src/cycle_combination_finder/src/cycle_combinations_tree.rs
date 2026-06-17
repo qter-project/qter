@@ -316,11 +316,11 @@ fn details_thread<const N: usize>(
                     if !pareto_efficient_pruning.is_null() {
                         // SAFETY: later in this block we always initialize
                         // `pareto_efficient_pruning` to be of
-                        // `usize::from(exact_register_count.get() - 1).max(1)` length.
+                        // `usize::from(exact_register_count.get().saturating_sub(2) + 1)` length.
                         let raw_pruning = unsafe {
                             slice::from_raw_parts(
                                 pareto_efficient_pruning,
-                                usize::from(exact_register_count.get() - 1).max(1),
+                                usize::from(exact_register_count.get().saturating_sub(2) + 1),
                             )
                         };
                         let mut raw_pruning_iter = raw_pruning.iter().copied();
@@ -347,10 +347,10 @@ fn details_thread<const N: usize>(
                                         Ordering::Greater => {
                                             let now = Instant::now();
                                             let mut next_pareto_efficient_pruning =
-                                                Vec::with_capacity(
-                                                    usize::from(exact_register_count.get() - 1)
-                                                        .max(1),
-                                                );
+                                                Vec::with_capacity(usize::from(
+                                                    exact_register_count.get().saturating_sub(2)
+                                                        + 1,
+                                                ));
                                             alloc_time += now.elapsed();
                                             next_pareto_efficient_pruning.extend(
                                                 std::iter::once(last_register).chain(
@@ -374,7 +374,9 @@ fn details_thread<const N: usize>(
                                 |next_pareto_efficient_pruning| {
                                     debug_assert_eq!(
                                         next_pareto_efficient_pruning.len(),
-                                        usize::from(exact_register_count.get() - 1).max(1)
+                                        usize::from(
+                                            exact_register_count.get().saturating_sub(2) + 1
+                                        )
                                     );
                                     Box::into_raw(next_pareto_efficient_pruning.into_boxed_slice())
                                         .as_mut_ptr()
@@ -531,7 +533,7 @@ unsafe fn search_dfs_helper<const N: usize>(
         let raw_pruning = pareto_efficient_pruning.load(atomic::Ordering::Relaxed);
         if !raw_pruning.is_null() {
             // SAFETY: `raw_pruning` is guaranteed to point to
-            // `(mutable.exact_register_count().get() - 1).max(1)` u32s. The caller
+            // `mutable.exact_register_count().get().saturating_sub(2) + 1` u32s. The caller
             // guarantees `register_index` is less than `mutable.exact_register_count()`;
             // therefore we are in bounds
             let raw_pruning =
