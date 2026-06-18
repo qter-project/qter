@@ -273,6 +273,102 @@ impl DisjointRegisters<'_> {
     }
 }
 
+fn dominating_check<const N: usize>(
+    dominating_registers: DisjointRegisters,
+    possible_orders_except_one: &[PossibleOrder<N>],
+    post_candidate_count: &mut u64,
+    alloc_time: &mut Duration,
+) -> Option<CycleCombination> {
+    *post_candidate_count += 1;
+    CycleCombinationDetails::new(dominating_registers, possible_orders_except_one).map(|details| {
+        let registers = if log_enabled!(Level::Debug) {
+            let now = Instant::now();
+            let registers = dominating_registers.iter().collect::<Box<_>>();
+            *alloc_time += now.elapsed();
+            registers
+        } else {
+            dominating_registers.iter().collect::<Box<_>>()
+        };
+        CycleCombination { registers, details }
+    })
+}
+
+/// # Safety
+///
+/// `pareto_efficient_pruning` must come from the `try_update` method on one of
+/// `pareto_efficient_prunings`
+unsafe fn try_update_pareto_efficient_pruning(
+    pareto_efficient_pruning: *mut u32,
+    disjoint_registers: DisjointRegisters,
+    raw_pruning_len: NonZeroUsize,
+    alloc_time: &mut Duration,
+) -> Option<*mut u32> {
+    if !pareto_efficient_pruning.is_null() {
+        // SAFETY: the called guarantees `pareto_efficient_pruning` is valid. Also later
+        // in this block we always initialize `pareto_efficient_pruning` to be of
+        // `raw_pruning_len` length.
+        let raw_pruning =
+            unsafe { NonemptySlice::from_raw_parts(pareto_efficient_pruning, raw_pruning_len) };
+        let (&max_last_register, pareto_efficent_prunes) = raw_pruning.split_first();
+        if disjoint_registers.last_register < max_last_register {
+            return None;
+        }
+        if disjoint_registers.last_register == max_last_register {
+            let mut maybe_next_pareto_efficient_pruning: Option<Vec<u32>> = None;
+            for ((i, &prefix_register), pareto_efficient_prune) in disjoint_registers
+                .prefix_registers
+                .iter()
+                .enumerate()
+                .skip(1)
+                .zip(pareto_efficent_prunes)
+            {
+                match &mut maybe_next_pareto_efficient_pruning {
+                    Some(next_pareto_efficient_pruning) => {
+                        next_pareto_efficient_pruning.push(prefix_register);
+                    }
+                    None => match prefix_register.cmp(pareto_efficient_prune) {
+                        Ordering::Less => return None,
+                        Ordering::Equal => (),
+                        Ordering::Greater => {
+                            let now = Instant::now();
+                            let mut next_pareto_efficient_pruning =
+                                Vec::with_capacity(raw_pruning_len.get());
+                            *alloc_time += now.elapsed();
+                            next_pareto_efficient_pruning.extend(
+                                std::iter::once(disjoint_registers.last_register).chain(
+                                    disjoint_registers
+                                        .prefix_registers
+                                        .iter()
+                                        .copied()
+                                        .skip(1)
+                                        .take(i),
+                                ),
+                            );
+                            maybe_next_pareto_efficient_pruning =
+                                Some(next_pareto_efficient_pruning);
+                        }
+                    },
+                }
+            }
+
+            // new can still be None here:
+            // A C D can be a solution, followed by B C D
+            return maybe_next_pareto_efficient_pruning.map(|next_pareto_efficient_pruning| {
+                debug_assert_eq!(next_pareto_efficient_pruning.len(), raw_pruning_len.get());
+                Box::into_raw(next_pareto_efficient_pruning.into_boxed_slice()).as_mut_ptr()
+            });
+        }
+    }
+    Some(
+        Box::into_raw(
+            std::iter::once(disjoint_registers.last_register)
+                .chain(disjoint_registers.prefix_registers.iter().copied().skip(1))
+                .collect::<Box<_>>(),
+        )
+        .as_mut_ptr(),
+    )
+}
+
 #[allow(clippy::needless_pass_by_value)]
 fn details_thread<const N: usize>(
     core_id: CoreId,
@@ -318,22 +414,12 @@ fn details_thread<const N: usize>(
                 if !cycle_combinations.push_and_dominating_check(
                     disjoint_registers,
                     |dominating_registers| {
-                        post_candidate_count += 1;
-                        CycleCombinationDetails::new(
+                        dominating_check(
                             dominating_registers,
                             possible_orders_except_one,
+                            &mut post_candidate_count,
+                            &mut alloc_time,
                         )
-                        .map(|details| {
-                            let registers = if log_enabled!(Level::Debug) {
-                                let now = Instant::now();
-                                let registers = dominating_registers.iter().collect::<Box<_>>();
-                                alloc_time += now.elapsed();
-                                registers
-                            } else {
-                                dominating_registers.iter().collect::<Box<_>>()
-                            };
-                            CycleCombination { registers, details }
-                        })
                     },
                 ) {
                     continue;
@@ -343,88 +429,18 @@ fn details_thread<const N: usize>(
                 // solutions. If something is the maximum in our atomic variable,
                 // then it must either be in the front or the atomic variable is an
                 // underestimate, which is permitted since our bound is admissible
+
+                // SAFETY: `pareto_efficient_pruning` comes from
+                // `pareto_efficient_prunings[thread_index].try_update`.
                 let _ = pareto_efficient_prunings[thread_index].try_update(
                     atomic::Ordering::Release,
                     atomic::Ordering::Acquire,
-                    |pareto_efficient_pruning| {
-                        if !pareto_efficient_pruning.is_null() {
-                            // SAFETY: later in this block we always initialize
-                            // `pareto_efficient_pruning` to be of `raw_pruning_len` length.
-                            let raw_pruning = unsafe {
-                                NonemptySlice::from_raw_parts(
-                                    pareto_efficient_pruning,
-                                    raw_pruning_len,
-                                )
-                            };
-                            // let mut raw_pruning_iter = raw_pruning.iter().copied();
-                            // We can unwrap because we have at least one element
-                            // let max_last_register = raw_pruning_iter.next().unwrap();
-                            let (&max_last_register, pareto_efficent_prunes) =
-                                raw_pruning.split_first();
-                            if last_register < max_last_register {
-                                return None;
-                            }
-                            if last_register == max_last_register {
-                                let mut maybe_next_pareto_efficient_pruning: Option<Vec<u32>> =
-                                    None;
-                                for ((i, &prefix_register), pareto_efficient_prune) in
-                                    prefix_registers
-                                        .iter()
-                                        .enumerate()
-                                        .skip(1)
-                                        .zip(pareto_efficent_prunes)
-                                {
-                                    match &mut maybe_next_pareto_efficient_pruning {
-                                        Some(next_pareto_efficient_pruning) => {
-                                            next_pareto_efficient_pruning.push(prefix_register);
-                                        }
-                                        None => match prefix_register.cmp(pareto_efficient_prune) {
-                                            Ordering::Less => return None,
-                                            Ordering::Equal => (),
-                                            Ordering::Greater => {
-                                                let now = Instant::now();
-                                                let mut next_pareto_efficient_pruning =
-                                                    Vec::with_capacity(raw_pruning_len.get());
-                                                alloc_time += now.elapsed();
-                                                next_pareto_efficient_pruning.extend(
-                                                    std::iter::once(last_register).chain(
-                                                        prefix_registers
-                                                            .iter()
-                                                            .copied()
-                                                            .skip(1)
-                                                            .take(i),
-                                                    ),
-                                                );
-                                                maybe_next_pareto_efficient_pruning =
-                                                    Some(next_pareto_efficient_pruning);
-                                            }
-                                        },
-                                    }
-                                }
-
-                                // new can still be None here:
-                                // A C D can be a solution, followed by B C D
-                                return maybe_next_pareto_efficient_pruning.map(
-                                    |next_pareto_efficient_pruning| {
-                                        debug_assert_eq!(
-                                            next_pareto_efficient_pruning.len(),
-                                            raw_pruning_len.get(),
-                                        );
-                                        Box::into_raw(
-                                            next_pareto_efficient_pruning.into_boxed_slice(),
-                                        )
-                                        .as_mut_ptr()
-                                    },
-                                );
-                            }
-                        }
-                        Some(
-                            Box::into_raw(
-                                std::iter::once(last_register)
-                                    .chain(prefix_registers.iter().copied().skip(1))
-                                    .collect::<Box<_>>(),
-                            )
-                            .as_mut_ptr(),
+                    |pareto_efficient_pruning| unsafe {
+                        try_update_pareto_efficient_pruning(
+                            pareto_efficient_pruning,
+                            disjoint_registers,
+                            raw_pruning_len,
+                            &mut alloc_time,
                         )
                     },
                 );
