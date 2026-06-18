@@ -78,6 +78,7 @@ impl<T> NonemptyVec<T> {
     }
 
     pub fn first_mut(&mut self) -> &mut T {
+        // SAFETY: this collection has at least one element
         unsafe { self.0.first_mut().unwrap_unchecked() }
     }
 

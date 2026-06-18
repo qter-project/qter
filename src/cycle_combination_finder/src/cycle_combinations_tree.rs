@@ -25,7 +25,7 @@ use crate::{
 };
 
 // 7+ is where the performance plateaus from some stupid testing
-const BATCH_SIZE: usize = 7;
+const BATCH_SIZE: NonZeroUsize = NonZeroUsize::new(7).unwrap();
 
 pub(crate) struct CycleCombinationsTree<const N: usize> {
     possible_orders_except_one: Arc<[PossibleOrder<N>]>,
@@ -97,8 +97,7 @@ impl CycleCombinationsTreeMutable {
 
     fn maybe_send_queue(&mut self, force: bool) {
         self.curr_batch_len += 1;
-        if self.curr_batch_len < BATCH_SIZE && !force {
-            trace!("a: {:?}", self.batch_packed_queue);
+        if self.curr_batch_len < BATCH_SIZE.get() && !force {
             return;
         }
         if log_enabled!(Level::Debug) {
@@ -106,11 +105,10 @@ impl CycleCombinationsTreeMutable {
                 .batch_packed_queue
                 .iter()
                 .skip(1)
-                .take(BATCH_SIZE)
+                .take(BATCH_SIZE.get())
                 .map(|&candidate_count| u64::from(candidate_count))
                 .sum::<u64>();
             let now = Instant::now();
-            trace!("{:?}", self.batch_packed_queue);
             let payload =
                 PackedCycleCombinationCandidateQueue(Box::clone_from_ref(&self.batch_packed_queue));
             self.alloc_time += now.elapsed();
@@ -127,8 +125,10 @@ impl CycleCombinationsTreeMutable {
                 .unwrap();
         }
         self.curr_batch_len = 0;
-        self.batch_packed_queue.truncate(BATCH_SIZE + 1);
-        self.batch_packed_queue[1..].fill(0);
+        self.batch_packed_queue.truncate(BATCH_SIZE.get() + 1);
+        for b in self.batch_packed_queue.iter_mut().skip(1) {
+            *b = 0;
+        }
     }
 }
 
@@ -294,19 +294,18 @@ fn details_thread<const N: usize>(
     let mut alloc_time = Duration::default();
     while let Ok(batch_packed_queue) = receiver.recv() {
         let (thread_index_and_candidate_counts, mut candidates) =
-            batch_packed_queue.0.split_at(BATCH_SIZE + 1);
+            batch_packed_queue.0.split_at(BATCH_SIZE.get() + 1);
         let (&thread_index, candidate_counts) =
             thread_index_and_candidate_counts.split_first().unwrap();
         let thread_index = thread_index as usize;
-        let mut curr_batch = 0;
-        loop {
-            let candidate_count = candidate_counts[curr_batch] as usize;
+        for &candidate_count in candidate_counts {
+            let candidate_count = candidate_count as usize;
             if candidate_count == 0 {
                 break;
             }
-            let (prefix_and_last_registers, new_candidates) =
+            let (prefix_and_last_registers, next_candidates) =
                 candidates.split_at(usize::from(exact_register_count.get() - 1) + candidate_count);
-            candidates = new_candidates;
+            candidates = next_candidates;
             let (prefix_registers, last_registers) =
                 prefix_and_last_registers.split_at(usize::from(exact_register_count.get() - 1));
 
@@ -429,10 +428,6 @@ fn details_thread<const N: usize>(
                         )
                     },
                 );
-                break;
-            }
-            curr_batch += 1;
-            if curr_batch == BATCH_SIZE {
                 break;
             }
         }
@@ -731,8 +726,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
                         .push(u32::try_from(thread_index).expect("You have too many threads."));
                     mutable
                         .batch_packed_queue
-                        .extend(std::iter::repeat_n(0, BATCH_SIZE));
-                    trace!("init: {:?}", mutable.batch_packed_queue);
+                        .extend(std::iter::repeat_n(0, BATCH_SIZE.get()));
                     let tree_thread_handle = s.spawn(move || {
                         dfs_thread(
                             core_id,

@@ -9,6 +9,7 @@
 
 ## CCF
 
+- make work with candidate count 0
 - thread count option for tree
 - possible orders progress benchmarking
 - better log tracing messages
