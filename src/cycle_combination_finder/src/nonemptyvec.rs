@@ -1,6 +1,7 @@
 use std::{
     num::NonZeroUsize,
     ops::{Deref, DerefMut},
+    slice,
 };
 
 #[derive(Clone, Debug)]
@@ -100,6 +101,14 @@ impl<T> NonemptyVec<T> {
 }
 
 impl<'a, T> NonemptySlice<'a, T> {
+    /// # Safety
+    /// 
+    /// Follow `slice::from_raw_parts`
+    pub unsafe fn from_raw_parts(data: *const T, len: NonZeroUsize) -> Self {
+        // SAFETY: upheld by caller
+        Self(unsafe { slice::from_raw_parts(data, len.get()) })
+    }
+
     #[must_use]
     pub fn split_first(self) -> (&'a T, &'a [T]) {
         // SAFETY: this collection has at least one element

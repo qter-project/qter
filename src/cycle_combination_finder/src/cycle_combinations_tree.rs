@@ -2,8 +2,7 @@ use std::{
     cmp::Ordering,
     collections::BinaryHeap,
     fmt::{self, Debug},
-    num::{NonZeroU16, NonZeroU32},
-    slice,
+    num::{NonZeroU16, NonZeroU32, NonZeroUsize},
     sync::{
         Arc,
         atomic::{self, AtomicPtr, fence},
@@ -268,6 +267,10 @@ fn details_thread<const N: usize>(
     let mut cycle_combinations = CCParetoFront::default();
     let mut processed_candidate_count = 0;
     let mut post_candidate_count = 0;
+    let raw_pruning_len = NonZeroUsize::new(usize::from(
+        exact_register_count.get().saturating_sub(2) + 1,
+    ))
+    .unwrap();
     let real_time = Instant::now();
     let cpu_time = ThreadTime::now();
     let mut alloc_time = Duration::default();
@@ -315,17 +318,15 @@ fn details_thread<const N: usize>(
                 |pareto_efficient_pruning| {
                     if !pareto_efficient_pruning.is_null() {
                         // SAFETY: later in this block we always initialize
-                        // `pareto_efficient_pruning` to be of
-                        // `usize::from(exact_register_count.get().saturating_sub(2) + 1)` length.
+                        // `pareto_efficient_pruning` to be of `raw_pruning_len` length.
                         let raw_pruning = unsafe {
-                            slice::from_raw_parts(
-                                pareto_efficient_pruning,
-                                usize::from(exact_register_count.get().saturating_sub(2) + 1),
-                            )
+                            NonemptySlice::from_raw_parts(pareto_efficient_pruning, raw_pruning_len)
                         };
-                        let mut raw_pruning_iter = raw_pruning.iter().copied();
+                        // let mut raw_pruning_iter = raw_pruning.iter().copied();
                         // We can unwrap because we have at least one element
-                        let max_last_register = raw_pruning_iter.next().unwrap();
+                        // let max_last_register = raw_pruning_iter.next().unwrap();
+                        let (&max_last_register, pareto_efficent_prunes) =
+                            raw_pruning.split_first();
                         if last_register < max_last_register {
                             return None;
                         }
@@ -335,22 +336,19 @@ fn details_thread<const N: usize>(
                                 .iter()
                                 .enumerate()
                                 .skip(1)
-                                .zip(raw_pruning_iter)
+                                .zip(pareto_efficent_prunes)
                             {
                                 match &mut maybe_next_pareto_efficient_pruning {
                                     Some(next_pareto_efficient_pruning) => {
                                         next_pareto_efficient_pruning.push(prefix_register);
                                     }
-                                    None => match prefix_register.cmp(&pareto_efficient_prune) {
+                                    None => match prefix_register.cmp(pareto_efficient_prune) {
                                         Ordering::Less => return None,
                                         Ordering::Equal => (),
                                         Ordering::Greater => {
                                             let now = Instant::now();
                                             let mut next_pareto_efficient_pruning =
-                                                Vec::with_capacity(usize::from(
-                                                    exact_register_count.get().saturating_sub(2)
-                                                        + 1,
-                                                ));
+                                                Vec::with_capacity(raw_pruning_len.get());
                                             alloc_time += now.elapsed();
                                             next_pareto_efficient_pruning.extend(
                                                 std::iter::once(last_register).chain(
@@ -374,9 +372,7 @@ fn details_thread<const N: usize>(
                                 |next_pareto_efficient_pruning| {
                                     debug_assert_eq!(
                                         next_pareto_efficient_pruning.len(),
-                                        usize::from(
-                                            exact_register_count.get().saturating_sub(2) + 1
-                                        )
+                                        raw_pruning_len.get(),
                                     );
                                     Box::into_raw(next_pareto_efficient_pruning.into_boxed_slice())
                                         .as_mut_ptr()
@@ -443,22 +439,22 @@ fn dfs_thread<const N: usize>(
         let i_u32 = possible_orders_len_cast(i);
         // Synchronize with the data in the try_update CAS loop
         let raw_pruning = pareto_efficient_pruning.load(atomic::Ordering::Relaxed);
-        let max_last_register_order = if raw_pruning.is_null() {
+        let max_last_register = if raw_pruning.is_null() {
             0
         } else {
             fence(atomic::Ordering::Acquire);
             // SAFETY: `details_thread` guarantees `raw_pruning` points to at least one
             // element
-            let max_last_register_order = unsafe { *raw_pruning };
-            if i_u32 <= max_last_register_order {
+            let max_last_register = unsafe { *raw_pruning };
+            if i_u32 <= max_last_register {
                 break;
             }
-            max_last_register_order
+            max_last_register
         };
         if thread_index == 0 {
             // We validated `possible_orders` to be of len `u32` or less
             let len = possible_orders_len_cast(possible_orders_except_one.len());
-            let new_percent = f64::from(len - i_u32) / f64::from(len - max_last_register_order);
+            let new_percent = f64::from(len - i_u32) / f64::from(len - max_last_register);
             #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
             let new_bucket = (new_percent * 20.0).floor() as u8;
             if new_bucket > old_bucket {
@@ -540,18 +536,17 @@ unsafe fn search_dfs_helper<const N: usize>(
             // `mutable.exact_register_count().get().saturating_sub(2) + 1` u32s. The caller
             // guarantees `register_index` is less than `mutable.exact_register_count()`;
             // therefore we are in bounds
-            let raw_pruning =
-                unsafe { slice::from_raw_parts(raw_pruning, usize::from(register_index.get())) };
-            let mut raw_pruning_iter = raw_pruning.iter().copied();
-            // We can unwrap because `register_index` is a `NonZero` type
-            let max_last_register_order = raw_pruning_iter.next().unwrap();
+            let raw_pruning = unsafe {
+                NonemptySlice::from_raw_parts(raw_pruning, NonZeroUsize::from(register_index))
+            };
+            let (&max_last_register_order, pareto_efficent_prunes) = raw_pruning.split_first();
             if i <= max_last_register_order
                 && mutable
                     .registers
                     .iter()
                     .skip(1)
-                    .zip(raw_pruning_iter)
-                    .all(|(&register, pareto_efficient_prune)| register <= pareto_efficient_prune)
+                    .zip(pareto_efficent_prunes)
+                    .all(|(register, pareto_efficient_prune)| register <= pareto_efficient_prune)
             {
                 break;
             }
@@ -770,17 +765,16 @@ impl<const N: usize> CycleCombinationsTree<N> {
         #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
         let pruned_orders_percentage = (pareto_efficient_prunings
             .iter()
-            .map(|max_last_register_order| {
+            .map(|max_last_register| {
                 // Synchronize with the data in the try_update CAS loop
-                let max_last_register_order =
-                    max_last_register_order.load(atomic::Ordering::Relaxed);
-                u64::from(if max_last_register_order.is_null() {
+                let max_last_register = max_last_register.load(atomic::Ordering::Relaxed);
+                u64::from(if max_last_register.is_null() {
                     0
                 } else {
                     fence(atomic::Ordering::Acquire);
                     // SAFETY: `details_thread` guarantees `raw_pruning` points to at least one
                     // element
-                    unsafe { *max_last_register_order }
+                    unsafe { *max_last_register }
                 })
             })
             .sum::<u64>() as f64)
