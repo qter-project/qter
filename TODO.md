@@ -9,15 +9,23 @@
 
 ## CCF
 
-- make work with candidate count 0
-- thread count option for tree
+- profiling for how often the queue is full; find the sweet spot
+- experiment with num_cores * 10
+- api to compute all register counts (precompute possible orders)
 - possible orders progress benchmarking
 - better log tracing messages
 - what if possible_orders_except_one is empty? OOB?
-- pareto front strategies:
-  - rwlock shared front, allowing TOCTOU
-  - sync trees together
 - don't use PossibleOrder wrapper; get rid of min_piece_count memory overhead
+
+- after MKP
+  - pareto front strategies:
+    - rwlock shared front, allowing TOCTOU
+    - sync trees together
+  - max diff ratio setting. prevents solutions like 720720, 2, 2
+  - max solutions per register count setting
+  - SubOptimal Optimality which uses the naive pareto front dominate approach; could also assume a lesser min piece count threshold; uses naive register_index <= 1
+  - reuse possible orders list if two orbits are the same
+  - throw out order case if we ever compute it has a non-+1 orientation factor
 
 - possible orders
   - daniel's SIMD gcd algorithm
@@ -31,12 +39,6 @@
   - old MPC has edge case: it does 2 < cycle_count; it does 4 -> 5 pieces
   - devise a scheme to make MPC incorporate piece counts
   - is possible_order.0.simd_ne(Simd::splat(0)) really needed
-- after MVP
-  - max diff ratio setting. prevents solutions like 720720, 2, 2
-  - max solutions per register count setting
-  - SubOptimal Optimality which uses the naive pareto front dominate approach; could also assume a lesser min piece count threshold; uses naive register_index <= 1
-  - reuse possible orders list if two orbits are the same
-  - throw out order case if we ever compute it has a non-+1 orientation factor
 
 ## CCS
 

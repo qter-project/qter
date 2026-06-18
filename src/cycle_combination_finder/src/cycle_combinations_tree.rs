@@ -18,18 +18,19 @@ use log::{Level, debug, log_enabled, trace};
 
 use crate::{
     cycle_combination_details::CycleCombinationDetails,
-    finder::{CycleCombination, PossibleOrder},
+    finder::{CycleCombination, NumCores, PossibleOrder},
     nonemptyvec::{NonemptySlice, NonemptyVec},
     pareto_front::CCParetoFront,
     puzzle::OrbitDef,
 };
 
 // 7+ is where the performance plateaus from some stupid testing
-const BATCH_SIZE: NonZeroUsize = NonZeroUsize::new(7).unwrap();
+const BATCH_SIZE: NonZeroUsize = NonZeroUsize::new(1).unwrap();
 
 pub(crate) struct CycleCombinationsTree<const N: usize> {
     possible_orders_except_one: Arc<[PossibleOrder<N>]>,
     exact_register_count: NonZeroU16,
+    num_cores: NumCores,
     exact_piece_count: NonZeroU32,
 }
 
@@ -547,8 +548,11 @@ fn dfs_thread<const N: usize>(
     }
     mutable.maybe_send_queue(true);
 
+    let real_time = real_time.elapsed();
+    debug!("{:?} finished with DFS at {}", core_id, real_time.human(Truncate::Millis));
+
     TreeThreadInfo {
-        real_time: real_time.elapsed(),
+        real_time,
         cpu_time: cpu_time.elapsed(),
         alloc_time: mutable.alloc_time,
         candidate_count: mutable.candidate_count,
@@ -660,8 +664,9 @@ unsafe fn search_dfs_helper<const N: usize>(
 impl<const N: usize> CycleCombinationsTree<N> {
     #[must_use]
     pub fn new(
-        exact_register_count: NonZeroU16,
         possible_orders_except_one: Arc<[PossibleOrder<N>]>,
+        exact_register_count: NonZeroU16,
+        num_cores: NumCores,
         orbit_defs: NonemptySlice<'_, OrbitDef>,
     ) -> Self {
         #[allow(clippy::missing_panics_doc)]
@@ -678,6 +683,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
         Self {
             possible_orders_except_one,
             exact_register_count,
+            num_cores,
             exact_piece_count,
         }
     }
@@ -686,12 +692,15 @@ impl<const N: usize> CycleCombinationsTree<N> {
     pub(crate) fn search_dfs(self) -> (Vec<CycleCombination>, Arc<[PossibleOrder<N>]>) {
         // If we return a None here then /shrug
         #[allow(clippy::missing_panics_doc)]
-        let core_ids = core_affinity::get_core_ids().unwrap();
+        let mut core_ids = core_affinity::get_core_ids().unwrap();
+        if let NumCores::Num(num_cores) = self.num_cores {
+            core_ids.truncate(num_cores.get());
+        }
         let num_cores = core_ids.len();
 
         // We do not use `0` as to allow a buffer for every core to prevent starvation
         let (sender, receiver) =
-            mpmc::sync_channel::<PackedCycleCombinationCandidateQueue>(core_ids.len() * 10);
+            mpmc::sync_channel::<PackedCycleCombinationCandidateQueue>(num_cores * 2);
 
         // We can unwrap because `exact_register_count` is NonZero.
         #[allow(clippy::missing_panics_doc)]

@@ -1,7 +1,9 @@
-use std::num::NonZeroU16;
+#![allow(unused)]
+
+use std::num::{NonZeroU16, NonZeroUsize};
 
 use cycle_combination_finder::{
-    finder::{CycleCombinationFinder, RegisterCount},
+    finder::{CycleCombinationFinder, NumCores, RegisterCount},
     puzzle::{cubeN, minxN},
 };
 

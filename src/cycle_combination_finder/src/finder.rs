@@ -1,6 +1,6 @@
 use std::{
     cmp::Ordering,
-    num::{NonZeroU16, NonZeroU32},
+    num::{NonZeroU16, NonZeroU32, NonZeroUsize},
     ops::Deref,
     sync::Arc,
     time::Instant,
@@ -30,6 +30,13 @@ pub enum RegisterCount {
     Exactly(NonZeroU16),
     #[default]
     All,
+}
+
+#[derive(Clone, Copy, Default)]
+pub enum NumCores {
+    #[default]
+    AllCores,
+    Num(NonZeroUsize),
 }
 
 #[derive(Debug, Clone)]
@@ -67,6 +74,7 @@ pub struct CycleCombinationFinder<const N: usize> {
 pub struct CycleCombinationFinderConfig {
     optimality: Optimality,
     register_count: RegisterCount,
+    num_cores: NumCores,
     sorted: bool,
     maybe_expected_length: Option<usize>,
 }
@@ -138,6 +146,12 @@ impl<const N: usize> CycleCombinationFinder<N> {
     }
 
     #[must_use]
+    pub fn with_num_cores(mut self, num_cores: NumCores) -> Self {
+        self.config.num_cores = num_cores;
+        self
+    }
+
+    #[must_use]
     pub fn with_expected_length_assertion(mut self, expected_length: usize) -> Self {
         self.config.maybe_expected_length = Some(expected_length);
         self
@@ -145,9 +159,8 @@ impl<const N: usize> CycleCombinationFinder<N> {
 
     fn find_optimal(
         &self,
-        register_count: RegisterCount,
     ) -> Result<(Vec<CycleCombination>, Arc<[PossibleOrder<N>]>), CycleCombinationFinderError> {
-        let RegisterCount::Exactly(exact_register_count) = register_count else {
+        let RegisterCount::Exactly(exact_register_count) = self.config.register_count else {
             panic!("expected exactly variant for now");
         };
 
@@ -184,8 +197,9 @@ impl<const N: usize> CycleCombinationFinder<N> {
         //         .join(" ")
         // );
         Ok(CycleCombinationsTree::new(
-            exact_register_count,
             Arc::from(possible_orders_except_one.into_boxed_slice()),
+            exact_register_count,
+            self.config.num_cores,
             self.puzzle_def.orbit_defs(),
         )
         .search_dfs())
@@ -205,9 +219,15 @@ impl<const N: usize> CycleCombinationFinder<N> {
     /// mismatches.
     #[allow(clippy::must_use_candidate)]
     pub fn find(&self) -> Result<CycleCombinations<N>, CycleCombinationFinderError> {
+        if let NumCores::Num(num_cores) = self.config.num_cores {
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(num_cores.get())
+                .build_global()
+                .expect("Already initialized rayon.");
+        }
         let (mut cycle_combinations, possible_orders_except_one) = match self.config.optimality {
             Optimality::Equivalent => unimplemented!(),
-            Optimality::Optimal => self.find_optimal(self.config.register_count)?,
+            Optimality::Optimal => self.find_optimal()?,
         };
         if self.config.sorted {
             cycle_combinations.sort_unstable();
@@ -282,7 +302,7 @@ mod tests {
             .find()
             .unwrap();
     }
-    
+
     #[ignore = "takes too long"]
     #[test_log::test]
     fn minx3_optimal_5() {
