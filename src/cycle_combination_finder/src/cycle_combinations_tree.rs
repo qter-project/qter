@@ -6,7 +6,7 @@ use std::{
     slice,
     sync::{
         Arc,
-        atomic::{self, AtomicPtr},
+        atomic::{self, AtomicPtr, fence},
         mpmc,
     },
     time::{Duration, Instant},
@@ -442,10 +442,11 @@ fn dfs_thread<const N: usize>(
     {
         let i_u32 = possible_orders_len_cast(i);
         // Synchronize with the data in the try_update CAS loop
-        let raw_pruning = pareto_efficient_pruning.load(atomic::Ordering::Acquire);
+        let raw_pruning = pareto_efficient_pruning.load(atomic::Ordering::Relaxed);
         let max_last_register_order = if raw_pruning.is_null() {
             0
         } else {
+            fence(atomic::Ordering::Acquire);
             // SAFETY: `details_thread` guarantees `raw_pruning` points to at least one
             // element
             let max_last_register_order = unsafe { *raw_pruning };
@@ -532,8 +533,9 @@ unsafe fn search_dfs_helper<const N: usize>(
         let i = possible_orders_len_cast(next_possible_orders.len());
 
         // Synchronize with the data in the try_update CAS loop
-        let raw_pruning = pareto_efficient_pruning.load(atomic::Ordering::Acquire);
+        let raw_pruning = pareto_efficient_pruning.load(atomic::Ordering::Relaxed);
         if !raw_pruning.is_null() {
+            fence(atomic::Ordering::Acquire);
             // SAFETY: `raw_pruning` is guaranteed to point to
             // `mutable.exact_register_count().get().saturating_sub(2) + 1` u32s. The caller
             // guarantees `register_index` is less than `mutable.exact_register_count()`;
@@ -771,10 +773,11 @@ impl<const N: usize> CycleCombinationsTree<N> {
             .map(|max_last_register_order| {
                 // Synchronize with the data in the try_update CAS loop
                 let max_last_register_order =
-                    max_last_register_order.load(atomic::Ordering::Acquire);
+                    max_last_register_order.load(atomic::Ordering::Relaxed);
                 u64::from(if max_last_register_order.is_null() {
                     0
                 } else {
+                    fence(atomic::Ordering::Acquire);
                     // SAFETY: `details_thread` guarantees `raw_pruning` points to at least one
                     // element
                     unsafe { *max_last_register_order }
