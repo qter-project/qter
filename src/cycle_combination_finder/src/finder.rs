@@ -338,7 +338,7 @@ mod tests {
     fn cube3_optimal_2() {
         let puzzle = CUBE3.clone();
         CycleCombinationFinder::from(puzzle)
-            .with_register_count(RegisterCount::Exactly(NonZeroU16::new(1).unwrap()))
+            .with_register_count(RegisterCount::Exactly(NonZeroU16::new(2).unwrap()))
             .with_expected_length_assertion(5)
             .find()
             .unwrap();

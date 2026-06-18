@@ -9,7 +9,7 @@
 
 ## CCF
 
-- mpmc batching
+- thread count option for tree
 - possible orders progress benchmarking
 - better log tracing messages
 - what if possible_orders_except_one is empty? OOB?

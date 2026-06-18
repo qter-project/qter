@@ -24,6 +24,9 @@ use crate::{
     puzzle::OrbitDef,
 };
 
+// 7+ is where the performance plateaus from some stupid testing
+const BATCH_SIZE: usize = 7;
+
 pub(crate) struct CycleCombinationsTree<const N: usize> {
     possible_orders_except_one: Arc<[PossibleOrder<N>]>,
     exact_register_count: NonZeroU16,
@@ -32,7 +35,8 @@ pub(crate) struct CycleCombinationsTree<const N: usize> {
 
 #[derive(Clone)]
 struct CycleCombinationsTreeMutable {
-    packed_queue: Vec<u32>,
+    batch_packed_queue: Vec<u32>,
+    curr_batch_len: usize,
     registers: NonemptyVec<u32>,
     sender: mpmc::Sender<PackedCycleCombinationCandidateQueue>,
     alloc_time: Duration,
@@ -91,13 +95,24 @@ impl CycleCombinationsTreeMutable {
         }
     }
 
-    fn send_queue(&mut self) {
+    fn maybe_send_queue(&mut self, force: bool) {
+        self.curr_batch_len += 1;
+        if self.curr_batch_len < BATCH_SIZE && !force {
+            trace!("a: {:?}", self.batch_packed_queue);
+            return;
+        }
         if log_enabled!(Level::Debug) {
-            self.candidate_count +=
-                (self.packed_queue.len() - usize::from(self.exact_register_count().get())) as u64;
+            self.candidate_count += self
+                .batch_packed_queue
+                .iter()
+                .skip(1)
+                .take(BATCH_SIZE)
+                .map(|&candidate_count| u64::from(candidate_count))
+                .sum::<u64>();
             let now = Instant::now();
+            trace!("{:?}", self.batch_packed_queue);
             let payload =
-                PackedCycleCombinationCandidateQueue(Box::clone_from_ref(&self.packed_queue));
+                PackedCycleCombinationCandidateQueue(Box::clone_from_ref(&self.batch_packed_queue));
             self.alloc_time += now.elapsed();
             // We can unwrap because the senders is only dropped after all threads are
             // joined.
@@ -107,10 +122,13 @@ impl CycleCombinationsTreeMutable {
             // joined.
             self.sender
                 .send(PackedCycleCombinationCandidateQueue(Box::clone_from_ref(
-                    &self.packed_queue,
+                    &self.batch_packed_queue,
                 )))
                 .unwrap();
         }
+        self.curr_batch_len = 0;
+        self.batch_packed_queue.truncate(BATCH_SIZE + 1);
+        self.batch_packed_queue[1..].fill(0);
     }
 }
 
@@ -274,24 +292,38 @@ fn details_thread<const N: usize>(
     let real_time = Instant::now();
     let cpu_time = ThreadTime::now();
     let mut alloc_time = Duration::default();
-    while let Ok(packed_queue) = receiver.recv() {
-        let (thread_index_and_prefix_registers, last_registers) = packed_queue
-            .0
-            .split_at(usize::from(exact_register_count.get()));
-        let (&thread_index, prefix_registers) =
-            thread_index_and_prefix_registers.split_first().unwrap();
+    while let Ok(batch_packed_queue) = receiver.recv() {
+        let (thread_index_and_candidate_counts, mut candidates) =
+            batch_packed_queue.0.split_at(BATCH_SIZE + 1);
+        let (&thread_index, candidate_counts) =
+            thread_index_and_candidate_counts.split_first().unwrap();
         let thread_index = thread_index as usize;
-        for &last_register in last_registers {
-            processed_candidate_count += 1;
-            let disjoint_registers = DisjointRegisters {
-                prefix_registers,
-                last_register,
-            };
-            if !cycle_combinations.push_and_dominating_check(
-                disjoint_registers,
-                |dominating_registers| {
-                    post_candidate_count += 1;
-                    CycleCombinationDetails::new(dominating_registers, possible_orders_except_one)
+        let mut curr_batch = 0;
+        loop {
+            let candidate_count = candidate_counts[curr_batch] as usize;
+            if candidate_count == 0 {
+                break;
+            }
+            let (prefix_and_last_registers, new_candidates) =
+                candidates.split_at(usize::from(exact_register_count.get() - 1) + candidate_count);
+            candidates = new_candidates;
+            let (prefix_registers, last_registers) =
+                prefix_and_last_registers.split_at(usize::from(exact_register_count.get() - 1));
+
+            for &last_register in last_registers {
+                processed_candidate_count += 1;
+                let disjoint_registers = DisjointRegisters {
+                    prefix_registers,
+                    last_register,
+                };
+                if !cycle_combinations.push_and_dominating_check(
+                    disjoint_registers,
+                    |dominating_registers| {
+                        post_candidate_count += 1;
+                        CycleCombinationDetails::new(
+                            dominating_registers,
+                            possible_orders_except_one,
+                        )
                         .map(|details| {
                             let registers = if log_enabled!(Level::Debug) {
                                 let now = Instant::now();
@@ -303,94 +335,106 @@ fn details_thread<const N: usize>(
                             };
                             CycleCombination { registers, details }
                         })
-                },
-            ) {
-                continue;
-            }
-            // Note that we are allowed to set
-            // `max_last_register_order_reverse_index` to potentially dominated
-            // solutions. If something is the maximum in our atomic variable,
-            // then it must either be in the front or the atomic variable is an
-            // underestimate, which is permitted since our bound is admissible
-            let _ = pareto_efficient_prunings[thread_index].try_update(
-                atomic::Ordering::Release,
-                atomic::Ordering::Acquire,
-                |pareto_efficient_pruning| {
-                    if !pareto_efficient_pruning.is_null() {
-                        // SAFETY: later in this block we always initialize
-                        // `pareto_efficient_pruning` to be of `raw_pruning_len` length.
-                        let raw_pruning = unsafe {
-                            NonemptySlice::from_raw_parts(pareto_efficient_pruning, raw_pruning_len)
-                        };
-                        // let mut raw_pruning_iter = raw_pruning.iter().copied();
-                        // We can unwrap because we have at least one element
-                        // let max_last_register = raw_pruning_iter.next().unwrap();
-                        let (&max_last_register, pareto_efficent_prunes) =
-                            raw_pruning.split_first();
-                        if last_register < max_last_register {
-                            return None;
-                        }
-                        if last_register == max_last_register {
-                            let mut maybe_next_pareto_efficient_pruning: Option<Vec<u32>> = None;
-                            for ((i, &prefix_register), pareto_efficient_prune) in prefix_registers
-                                .iter()
-                                .enumerate()
-                                .skip(1)
-                                .zip(pareto_efficent_prunes)
-                            {
-                                match &mut maybe_next_pareto_efficient_pruning {
-                                    Some(next_pareto_efficient_pruning) => {
-                                        next_pareto_efficient_pruning.push(prefix_register);
-                                    }
-                                    None => match prefix_register.cmp(pareto_efficient_prune) {
-                                        Ordering::Less => return None,
-                                        Ordering::Equal => (),
-                                        Ordering::Greater => {
-                                            let now = Instant::now();
-                                            let mut next_pareto_efficient_pruning =
-                                                Vec::with_capacity(raw_pruning_len.get());
-                                            alloc_time += now.elapsed();
-                                            next_pareto_efficient_pruning.extend(
-                                                std::iter::once(last_register).chain(
-                                                    prefix_registers
-                                                        .iter()
-                                                        .copied()
-                                                        .skip(1)
-                                                        .take(i),
-                                                ),
-                                            );
-                                            maybe_next_pareto_efficient_pruning =
-                                                Some(next_pareto_efficient_pruning);
-                                        }
-                                    },
-                                }
+                    },
+                ) {
+                    continue;
+                }
+                // Note that we are allowed to set
+                // `max_last_register_order_reverse_index` to potentially dominated
+                // solutions. If something is the maximum in our atomic variable,
+                // then it must either be in the front or the atomic variable is an
+                // underestimate, which is permitted since our bound is admissible
+                let _ = pareto_efficient_prunings[thread_index].try_update(
+                    atomic::Ordering::Release,
+                    atomic::Ordering::Acquire,
+                    |pareto_efficient_pruning| {
+                        if !pareto_efficient_pruning.is_null() {
+                            // SAFETY: later in this block we always initialize
+                            // `pareto_efficient_pruning` to be of `raw_pruning_len` length.
+                            let raw_pruning = unsafe {
+                                NonemptySlice::from_raw_parts(
+                                    pareto_efficient_pruning,
+                                    raw_pruning_len,
+                                )
+                            };
+                            // let mut raw_pruning_iter = raw_pruning.iter().copied();
+                            // We can unwrap because we have at least one element
+                            // let max_last_register = raw_pruning_iter.next().unwrap();
+                            let (&max_last_register, pareto_efficent_prunes) =
+                                raw_pruning.split_first();
+                            if last_register < max_last_register {
+                                return None;
                             }
+                            if last_register == max_last_register {
+                                let mut maybe_next_pareto_efficient_pruning: Option<Vec<u32>> =
+                                    None;
+                                for ((i, &prefix_register), pareto_efficient_prune) in
+                                    prefix_registers
+                                        .iter()
+                                        .enumerate()
+                                        .skip(1)
+                                        .zip(pareto_efficent_prunes)
+                                {
+                                    match &mut maybe_next_pareto_efficient_pruning {
+                                        Some(next_pareto_efficient_pruning) => {
+                                            next_pareto_efficient_pruning.push(prefix_register);
+                                        }
+                                        None => match prefix_register.cmp(pareto_efficient_prune) {
+                                            Ordering::Less => return None,
+                                            Ordering::Equal => (),
+                                            Ordering::Greater => {
+                                                let now = Instant::now();
+                                                let mut next_pareto_efficient_pruning =
+                                                    Vec::with_capacity(raw_pruning_len.get());
+                                                alloc_time += now.elapsed();
+                                                next_pareto_efficient_pruning.extend(
+                                                    std::iter::once(last_register).chain(
+                                                        prefix_registers
+                                                            .iter()
+                                                            .copied()
+                                                            .skip(1)
+                                                            .take(i),
+                                                    ),
+                                                );
+                                                maybe_next_pareto_efficient_pruning =
+                                                    Some(next_pareto_efficient_pruning);
+                                            }
+                                        },
+                                    }
+                                }
 
-                            // new can still be None here:
-                            // A C D can be a solution, followed by B C D
-                            return maybe_next_pareto_efficient_pruning.map(
-                                |next_pareto_efficient_pruning| {
-                                    debug_assert_eq!(
-                                        next_pareto_efficient_pruning.len(),
-                                        raw_pruning_len.get(),
-                                    );
-                                    Box::into_raw(next_pareto_efficient_pruning.into_boxed_slice())
+                                // new can still be None here:
+                                // A C D can be a solution, followed by B C D
+                                return maybe_next_pareto_efficient_pruning.map(
+                                    |next_pareto_efficient_pruning| {
+                                        debug_assert_eq!(
+                                            next_pareto_efficient_pruning.len(),
+                                            raw_pruning_len.get(),
+                                        );
+                                        Box::into_raw(
+                                            next_pareto_efficient_pruning.into_boxed_slice(),
+                                        )
                                         .as_mut_ptr()
-                                },
-                            );
+                                    },
+                                );
+                            }
                         }
-                    }
-                    Some(
-                        Box::into_raw(
-                            std::iter::once(last_register)
-                                .chain(prefix_registers.iter().copied().skip(1))
-                                .collect::<Box<_>>(),
+                        Some(
+                            Box::into_raw(
+                                std::iter::once(last_register)
+                                    .chain(prefix_registers.iter().copied().skip(1))
+                                    .collect::<Box<_>>(),
+                            )
+                            .as_mut_ptr(),
                         )
-                        .as_mut_ptr(),
-                    )
-                },
-            );
-            break;
+                    },
+                );
+                break;
+            }
+            curr_batch += 1;
+            if curr_batch == BATCH_SIZE {
+                break;
+            }
         }
     }
     DetailsThreadInfo {
@@ -422,13 +466,8 @@ fn dfs_thread<const N: usize>(
     } else {
         Some(NonZeroU16::new(1).unwrap())
     };
-    if maybe_next_register_index.is_none() {
-        mutable.packed_queue.truncate(1);
-        mutable
-            .packed_queue
-            .extend(mutable.registers.split_last().1.iter().copied());
-    }
     let mut old_bucket = 0;
+    let mut candidate_count = 0;
     for (i, possible_order) in possible_orders_except_one
         .iter()
         .enumerate()
@@ -470,7 +509,13 @@ fn dfs_thread<const N: usize>(
         };
 
         let Some(next_register_index) = maybe_next_register_index else {
-            mutable.packed_queue.push(i_u32);
+            if candidate_count == 0 {
+                mutable
+                    .batch_packed_queue
+                    .extend(mutable.registers.split_last().1.iter().copied());
+            }
+            candidate_count += 1;
+            mutable.batch_packed_queue.push(i_u32);
             continue;
         };
 
@@ -491,9 +536,10 @@ fn dfs_thread<const N: usize>(
         }
     }
 
-    if maybe_next_register_index.is_none() {
-        mutable.send_queue();
+    if maybe_next_register_index.is_none() && candidate_count != 0 {
+        mutable.batch_packed_queue[mutable.curr_batch_len + 1] = candidate_count;
     }
+    mutable.maybe_send_queue(true);
 
     TreeThreadInfo {
         real_time: real_time.elapsed(),
@@ -517,12 +563,7 @@ unsafe fn search_dfs_helper<const N: usize>(
     // It should never overflow, and I don't want a panic path, so use saturating
     // logic
     let next_register_index = register_index.saturating_add(1);
-    if next_register_index == mutable.exact_register_count() {
-        mutable.packed_queue.truncate(1);
-        mutable
-            .packed_queue
-            .extend(mutable.registers.split_last().1.iter().copied());
-    }
+    let mut candidate_count = 0;
     loop {
         let (possible_order, next_possible_orders) = curr_possible_orders.split_last();
         let i = possible_orders_len_cast(next_possible_orders.len());
@@ -555,7 +596,13 @@ unsafe fn search_dfs_helper<const N: usize>(
             .checked_sub(possible_order.min_piece_count.get())
         {
             if next_register_index == mutable.exact_register_count() {
-                mutable.packed_queue.push(i);
+                if candidate_count == 0 {
+                    mutable
+                        .batch_packed_queue
+                        .extend(mutable.registers.split_last().1.iter().copied());
+                }
+                candidate_count += 1;
+                mutable.batch_packed_queue.push(i);
             } else if let Some(next_remaining_piece_count) =
                 NonZeroU32::new(next_remaining_piece_count)
             {
@@ -598,9 +645,9 @@ unsafe fn search_dfs_helper<const N: usize>(
             }
         }
     }
-
-    if next_register_index == mutable.exact_register_count() {
-        mutable.send_queue();
+    if next_register_index == mutable.exact_register_count() && candidate_count != 0 {
+        mutable.batch_packed_queue[mutable.curr_batch_len + 1] = candidate_count;
+        mutable.maybe_send_queue(false);
     }
 }
 
@@ -643,7 +690,8 @@ impl<const N: usize> CycleCombinationsTree<N> {
         // We can unwrap because `exact_register_count` is NonZero.
         #[allow(clippy::missing_panics_doc)]
         let mutable = CycleCombinationsTreeMutable {
-            packed_queue: vec![],
+            batch_packed_queue: vec![],
+            curr_batch_len: 0,
             registers: NonemptyVec::try_from(vec![0; usize::from(self.exact_register_count.get())])
                 .unwrap(),
             sender,
@@ -663,7 +711,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let mut post_candidate_count = 0;
         let mut smallest_fronts = BinaryHeap::new();
 
-        let pareto_efficient_prunings: Arc<[AtomicPtr<u32>]> = Arc::from(
+        let pareto_efficient_prunings: Arc<[_]> = Arc::from(
             (0..num_cores)
                 .map(|_| AtomicPtr::default())
                 .collect::<Box<[_]>>(),
@@ -679,8 +727,12 @@ impl<const N: usize> CycleCombinationsTree<N> {
                 .map(|((thread_index, core_id), pareto_efficient_pruning)| {
                     let mut mutable = mutable.clone();
                     mutable
-                        .packed_queue
+                        .batch_packed_queue
                         .push(u32::try_from(thread_index).expect("You have too many threads."));
+                    mutable
+                        .batch_packed_queue
+                        .extend(std::iter::repeat_n(0, BATCH_SIZE));
+                    trace!("init: {:?}", mutable.batch_packed_queue);
                     let tree_thread_handle = s.spawn(move || {
                         dfs_thread(
                             core_id,

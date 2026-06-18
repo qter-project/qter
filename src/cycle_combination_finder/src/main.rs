@@ -29,7 +29,7 @@ fn main() {
     } else if p == "cube3" {
         let cube3 = cubeN::CUBE3.clone();
         CycleCombinationFinder::from(cube3)
-            .with_register_count(RegisterCount::Exactly(NonZeroU16::new(1).unwrap()))
+            .with_register_count(RegisterCount::Exactly(NonZeroU16::new(2).unwrap()))
             .with_expected_length_assertion(5)
             .find()
             .unwrap();
