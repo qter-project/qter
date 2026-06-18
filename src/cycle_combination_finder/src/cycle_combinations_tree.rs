@@ -456,11 +456,6 @@ fn dfs_thread<const N: usize>(
     let real_time = Instant::now();
     let cpu_time = ThreadTime::now();
 
-    let maybe_next_register_index = if mutable.exact_register_count().get() == 1 {
-        None
-    } else {
-        Some(NonZeroU16::new(1).unwrap())
-    };
     let mut old_bucket = 0;
     let mut candidate_count = 0;
     for (i, possible_order) in possible_orders_except_one
@@ -503,7 +498,7 @@ fn dfs_thread<const N: usize>(
             continue;
         };
 
-        let Some(next_register_index) = maybe_next_register_index else {
+        if mutable.exact_register_count().get() == 1 {
             if candidate_count == 0 {
                 mutable
                     .batch_packed_queue
@@ -512,7 +507,7 @@ fn dfs_thread<const N: usize>(
             candidate_count += 1;
             mutable.batch_packed_queue.push(i_u32);
             continue;
-        };
+        }
 
         if let Some(next_remaining_piece_count) = NonZeroU32::new(next_remaining_piece_count)
             && let Ok(next_possible_orders) =
@@ -524,14 +519,14 @@ fn dfs_thread<const N: usize>(
                     &mut mutable,
                     pareto_efficient_pruning,
                     next_possible_orders,
-                    next_register_index,
+                    NonZeroU16::new(1).unwrap(),
                     next_remaining_piece_count,
                 );
             }
         }
     }
 
-    if maybe_next_register_index.is_none() && candidate_count != 0 {
+    if mutable.exact_register_count().get() == 1 && candidate_count != 0 {
         mutable.batch_packed_queue[mutable.curr_batch_len + 1] = candidate_count;
     }
     mutable.maybe_send_queue(true);
