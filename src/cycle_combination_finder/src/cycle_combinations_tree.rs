@@ -340,17 +340,16 @@ fn dominating_check<const N: usize>(
 /// `pareto_efficient_pruning` must come from the `try_update` method on one of
 /// `pareto_efficient_prunings`
 unsafe fn try_update_pareto_efficient_pruning(
-    pareto_efficient_pruning: *mut u32,
+    raw_pruning: *mut u32,
     disjoint_registers: DisjointRegisters,
     raw_pruning_len: NonZeroUsize,
     alloc_time: &mut Duration,
 ) -> Option<*mut u32> {
-    if !pareto_efficient_pruning.is_null() {
+    if !raw_pruning.is_null() {
         // SAFETY: the called guarantees `pareto_efficient_pruning` is valid. Also later
         // in this block we always initialize `pareto_efficient_pruning` to be of
         // `raw_pruning_len` length.
-        let raw_pruning =
-            unsafe { NonemptySlice::from_raw_parts(pareto_efficient_pruning, raw_pruning_len) };
+        let raw_pruning = unsafe { NonemptySlice::from_raw_parts(raw_pruning, raw_pruning_len) };
         let (&max_last_register, pareto_efficent_prunes) = raw_pruning.split_first();
         if disjoint_registers.last_register < max_last_register {
             return None;
@@ -472,20 +471,31 @@ fn details_thread<const N: usize>(
                 // then it must either be in the front or the atomic variable is an
                 // underestimate, which is permitted since our bound is admissible
 
+                let pareto_efficient_pruning = &pareto_efficient_prunings[thread_index];
+                let mut prev_raw_pruning = pareto_efficient_pruning.load(atomic::Ordering::Acquire);
                 // SAFETY: `pareto_efficient_pruning` comes from
-                // `pareto_efficient_prunings[thread_index].try_update`.
-                let _ = pareto_efficient_prunings[thread_index].try_update(
-                    atomic::Ordering::Release,
-                    atomic::Ordering::Acquire,
-                    |pareto_efficient_pruning| unsafe {
-                        try_update_pareto_efficient_pruning(
-                            pareto_efficient_pruning,
-                            disjoint_registers,
-                            raw_pruning_len,
-                            &mut alloc_time,
-                        )
-                    },
-                );
+                // `pareto_efficient_pruning.try_update`.
+                while let Some(next_raw_pruning) = unsafe {
+                    try_update_pareto_efficient_pruning(
+                        prev_raw_pruning,
+                        disjoint_registers,
+                        raw_pruning_len,
+                        &mut alloc_time,
+                    )
+                } {
+                    match pareto_efficient_prunings[thread_index].compare_exchange_weak(
+                        prev_raw_pruning,
+                        next_raw_pruning,
+                        atomic::Ordering::Release,
+                        atomic::Ordering::Acquire,
+                    ) {
+                        Ok(_) => break,
+                        Err(next_prev_raw_pruning) => {
+                            drop(unsafe { Box::from_raw(next_raw_pruning) });
+                            prev_raw_pruning = next_prev_raw_pruning;
+                        }
+                    }
+                }
                 break;
             }
         }
