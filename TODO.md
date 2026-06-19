@@ -9,9 +9,7 @@
 
 ## CCF
 
-- api to compute all register counts (precompute possible orders)
 - possible orders progress benchmarking
-- better log tracing messages
 - what if possible_orders_except_one is empty? OOB?
 - don't use PossibleOrder wrapper; get rid of min_piece_count memory overhead
 
@@ -27,6 +25,7 @@
   - SubOptimal Optimality which uses the naive pareto front dominate approach; could also assume a lesser min piece count threshold; uses naive register_index <= 1
   - reuse possible orders list if two orbits are the same
   - throw out order case if we ever compute it has a non-+1 orientation factor
+  - better log tracing messages
 
 - possible orders
   - daniel's SIMD gcd algorithm

@@ -737,7 +737,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
     }
 
     #[must_use]
-    pub(crate) fn search_dfs(self) -> (Vec<CycleCombination>, Arc<[PossibleOrder<N>]>) {
+    pub(crate) fn search_dfs(self) -> Vec<CycleCombination> {
         // If we return a None here then /shrug
         #[allow(clippy::missing_panics_doc)]
         let mut core_ids = core_affinity::get_core_ids().unwrap();
@@ -748,8 +748,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
 
         // We do not use `0` as to allow a buffer for every core to prevent starvation
         let cap = num_cores * 10;
-        let (sender, receiver) =
-            mpmc::sync_channel::<PackedCycleCombinationCandidateQueue>(cap);
+        let (sender, receiver) = mpmc::sync_channel::<PackedCycleCombinationCandidateQueue>(cap);
 
         // We can unwrap because `exact_register_count` is NonZero.
         #[allow(clippy::missing_panics_doc)]
@@ -941,9 +940,7 @@ impl<const N: usize> CycleCombinationsTree<N> {
 
         debug!("Search tree complete");
         debug!("{profile_info:#?}");
-        (
-            combined_cycle_combinations.into(),
-            self.possible_orders_except_one,
-        )
+
+        combined_cycle_combinations.into()
     }
 }

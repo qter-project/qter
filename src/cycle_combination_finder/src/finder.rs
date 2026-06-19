@@ -1,4 +1,5 @@
 use std::{
+    cell::OnceCell,
     cmp::Ordering,
     num::{NonZeroU16, NonZeroU32, NonZeroUsize},
     ops::Deref,
@@ -67,6 +68,7 @@ pub enum CycleCombinationFinderError {
 
 pub struct CycleCombinationFinder<const N: usize> {
     puzzle_def: PuzzleDef<N>,
+    maybe_possible_orders_except_one: OnceCell<Arc<[PossibleOrder<N>]>>,
     config: CycleCombinationFinderConfig,
 }
 
@@ -121,6 +123,7 @@ impl<const N: usize> From<PuzzleDef<N>> for CycleCombinationFinder<N> {
     fn from(puzzle_def: PuzzleDef<N>) -> Self {
         Self {
             puzzle_def,
+            maybe_possible_orders_except_one: OnceCell::new(),
             config: CycleCombinationFinderConfig::default(),
         }
     }
@@ -157,54 +160,6 @@ impl<const N: usize> CycleCombinationFinder<N> {
         self
     }
 
-    fn find_optimal(
-        &self,
-    ) -> Result<(Vec<CycleCombination>, Arc<[PossibleOrder<N>]>), CycleCombinationFinderError> {
-        let RegisterCount::Exactly(exact_register_count) = self.config.register_count else {
-            panic!("expected exactly variant for now");
-        };
-
-        // TODO: proper error
-        let possible_orders_except_one = self
-            .puzzle_def
-            .possible_orders()
-            .ok_or(CycleCombinationFinderError::PuzzleTooManyOrders)?;
-        possible_orders_except_one.remove(&OrderExps::one());
-
-        let now = Instant::now();
-        let mut min_piece_count_calculator = MinPieceCount::from(&self.puzzle_def);
-        let mut possible_orders_except_one = possible_orders_except_one
-            .into_iter()
-            .map(|possible_order| {
-                let min_piece_count = min_piece_count_calculator.calculate(&possible_order).0;
-                PossibleOrder {
-                    order: possible_order,
-                    min_piece_count,
-                }
-            })
-            .collect::<Vec<_>>();
-        debug!(
-            "All min piece counts in {}",
-            now.elapsed().human(Truncate::Micro)
-        );
-        possible_orders_except_one.sort_unstable_by(|a, b| a.order.cmp(&b.order));
-        // trace!(
-        //     "{}",
-        //     possible_orders_except_one
-        //         .iter()
-        //         .map(|a| format!("{:?}", a.order))
-        //         .collect::<Vec<_>>()
-        //         .join(" ")
-        // );
-        Ok(CycleCombinationsTree::new(
-            Arc::from(possible_orders_except_one.into_boxed_slice()),
-            exact_register_count,
-            self.config.num_cores,
-            self.puzzle_def.orbit_defs(),
-        )
-        .search_dfs())
-    }
-
     /// Search for CCF solutions in parallel.
     ///
     /// # Errors
@@ -225,9 +180,53 @@ impl<const N: usize> CycleCombinationFinder<N> {
                 .build_global()
                 .expect("Already initialized rayon.");
         }
-        let (mut cycle_combinations, possible_orders_except_one) = match self.config.optimality {
+        let RegisterCount::Exactly(exact_register_count) = self.config.register_count else {
+            panic!("expected exactly variant for now");
+        };
+        let possible_orders_except_one =
+            self.maybe_possible_orders_except_one.get_or_try_init(|| {
+                let possible_orders_except_one = self
+                    .puzzle_def
+                    .possible_orders()
+                    .ok_or(CycleCombinationFinderError::PuzzleTooManyOrders)?;
+                possible_orders_except_one.remove(&OrderExps::one());
+                let now = Instant::now();
+                let mut min_piece_count_calculator = MinPieceCount::from(&self.puzzle_def);
+                let mut possible_orders_except_one = possible_orders_except_one
+                    .into_iter()
+                    .map(|possible_order| {
+                        let min_piece_count =
+                            min_piece_count_calculator.calculate(&possible_order).0;
+                        PossibleOrder {
+                            order: possible_order,
+                            min_piece_count,
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                debug!(
+                    "All min piece counts in {}",
+                    now.elapsed().human(Truncate::Micro)
+                );
+                possible_orders_except_one.sort_unstable_by(|a, b| a.order.cmp(&b.order));
+                trace!(
+                    "Possible orders: {}",
+                    possible_orders_except_one
+                        .iter()
+                        .map(|a| format!("{:?}", a.order))
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                );
+                Ok(Arc::from(possible_orders_except_one.into_boxed_slice()))
+            })?;
+        let mut cycle_combinations = match self.config.optimality {
             Optimality::Equivalent => unimplemented!(),
-            Optimality::Optimal => self.find_optimal()?,
+            Optimality::Optimal => CycleCombinationsTree::new(
+                Arc::clone(possible_orders_except_one),
+                exact_register_count,
+                self.config.num_cores,
+                self.puzzle_def.orbit_defs(),
+            )
+            .search_dfs(),
         };
         if self.config.sorted {
             cycle_combinations.sort_unstable();
@@ -237,13 +236,11 @@ impl<const N: usize> CycleCombinationFinder<N> {
             assert_eq!(
                 cycle_combinations.len(),
                 expected_length,
-                // "Expected {expected_length} solutions, found {}. Solutions: {ret:?}",
-                // ret.len(),
                 "Expected {expected_length} solutions, found {}. Solutions: {}",
                 cycle_combinations.len(),
                 cycle_combinations
                     .into_iter()
-                    .map(|i| dbg_registers(i.registers, &possible_orders_except_one))
+                    .map(|i| dbg_registers(i.registers, possible_orders_except_one))
                     .collect::<Vec<_>>()
                     .join("\n")
             );
@@ -252,7 +249,7 @@ impl<const N: usize> CycleCombinationFinder<N> {
         }
         Ok(CycleCombinations {
             data: cycle_combinations,
-            possible_orders_except_one,
+            possible_orders_except_one: Arc::clone(possible_orders_except_one),
         })
     }
 }

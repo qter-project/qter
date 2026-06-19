@@ -191,9 +191,8 @@ impl<const N: usize> Ord for OrderExps<N> {
                     .take(N)
                     .map(|(p, &e)| f32::from(e) * f32::from(p).ln())
                     .sum();
-                // SAFETY: the input to f32::from are all regular integer numbers. Therefore,
-                // there `a` and `b` are also numbers. This may seem unwarranted, but it
-                // actually has a measurable impact on performance since this is a hot function.
+                // SAFETY: the input to `f32::from` are all regular integer numbers. Therefore,
+                // there `a` and `b` are also numbers.
                 unsafe { a.partial_cmp(&b).unwrap_unchecked() }
             }
         }
