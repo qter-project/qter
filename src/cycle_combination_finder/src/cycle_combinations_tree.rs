@@ -12,7 +12,7 @@ use std::{
 };
 
 use core_affinity::CoreId;
-use cpu_time::ThreadTime;
+// use cpu_time::ThreadTime;
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::{Level, debug, log_enabled, trace};
 use seize::{Collector, Guard, reclaim};
@@ -419,7 +419,7 @@ fn details_thread<const N: usize>(
     possible_orders_except_one: &[PossibleOrder<N>],
     exact_register_count: NonZeroU16,
 ) -> DetailsThreadInfo {
-    core_affinity::set_for_current(core_id);
+    // core_affinity::set_for_current(core_id);
     let mut cycle_combinations = CCParetoFront::default();
     let mut processed_candidate_count = 0;
     let mut post_candidate_count = 0;
@@ -428,7 +428,7 @@ fn details_thread<const N: usize>(
     ))
     .unwrap();
     let real_time = Instant::now();
-    let cpu_time = ThreadTime::now();
+    // let cpu_time = ThreadTime::now();
     let mut alloc_time = Duration::default();
     let collector = Collector::new();
     while let Ok(batch_packed_queue) = receiver.recv() {
@@ -511,7 +511,7 @@ fn details_thread<const N: usize>(
         }
     }
     DetailsThreadInfo {
-        mkp_cpu_time: cpu_time.elapsed(),
+        mkp_cpu_time: real_time.elapsed(),
         mkp_real_time: real_time.elapsed(),
         mkp_alloc_time: alloc_time,
         processed_candidate_count,
@@ -530,9 +530,9 @@ fn dfs_thread<const N: usize>(
     pareto_efficient_pruning: &AtomicPtr<u32>,
     possible_orders_except_one: &[PossibleOrder<N>],
 ) -> TreeThreadInfo {
-    core_affinity::set_for_current(core_id);
+    // core_affinity::set_for_current(core_id);
     let real_time = Instant::now();
-    let cpu_time = ThreadTime::now();
+    // let cpu_time = ThreadTime::now();
 
     let mut old_bucket = 0;
     let mut candidate_count = 0;
@@ -619,7 +619,7 @@ fn dfs_thread<const N: usize>(
 
     TreeThreadInfo {
         real_time: real_time.elapsed(),
-        cpu_time: cpu_time.elapsed(),
+        cpu_time: real_time.elapsed(),
         alloc_time: mutable.alloc_time,
         candidate_count: mutable.candidate_count,
         empty_sends: mutable.empty_sends,
