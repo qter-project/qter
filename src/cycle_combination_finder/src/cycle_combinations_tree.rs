@@ -494,7 +494,9 @@ fn details_thread<const N: usize>(
                         atomic::Ordering::Acquire,
                     ) {
                         Ok(curr_raw_pruning) => unsafe {
-                            collector.retire(curr_raw_pruning, reclaim::boxed);
+                            if !curr_raw_pruning.is_null() {
+                                collector.retire(curr_raw_pruning, reclaim::boxed);
+                            }
                         },
                         Err(curr_raw_pruning) => {
                             unsafe {
