@@ -16,6 +16,7 @@ log.workspace = true
 num-integer = "0.1.46"
 puzzle_theory.workspace = true
 rayon = "1.12.0"
+seize = "0.5.1"
 thiserror.workspace = true
 union-find = { git = "https://github.com/qter-project/union-find-rs" }
 

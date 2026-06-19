@@ -9,10 +9,6 @@
 
 ## CCF
 
-- seize
-- what if possible_orders_except_one is empty? OOB?
-- don't use PossibleOrder wrapper; get rid of min_piece_count memory overhead
-
 - after MKP
   - note that batching "ramps up" the mkp threads when the batch size is large; there are few solutions/batch in the beginning which helps make sure the 
   - profiling for how often the queue is full; find the sweet spot

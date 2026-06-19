@@ -15,6 +15,7 @@ use core_affinity::CoreId;
 use cpu_time::ThreadTime;
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::{Level, debug, log_enabled, trace};
+use seize::{Collector, Guard, reclaim};
 
 use crate::{
     cycle_combination_details::CycleCombinationDetails,
@@ -339,7 +340,7 @@ fn dominating_check<const N: usize>(
 ///
 /// `pareto_efficient_pruning` must come from the `try_update` method on one of
 /// `pareto_efficient_prunings`
-unsafe fn try_update_pareto_efficient_pruning(
+unsafe fn try_next_pareto_efficient_pruning(
     raw_pruning: *mut u32,
     disjoint_registers: DisjointRegisters,
     raw_pruning_len: NonZeroUsize,
@@ -429,11 +430,12 @@ fn details_thread<const N: usize>(
     let real_time = Instant::now();
     let cpu_time = ThreadTime::now();
     let mut alloc_time = Duration::default();
+    let collector = Collector::new();
     while let Ok(batch_packed_queue) = receiver.recv() {
-        let (thread_index_and_candidate_counts, mut packed_candidates) =
-            batch_packed_queue.0.split_at(BATCH_SIZE.get() + 1);
-        let (&thread_index, candidate_counts) =
-            thread_index_and_candidate_counts.split_first().unwrap();
+        let (&thread_index, candidate_counts_and_packed_candidates) =
+            batch_packed_queue.0.split_first().unwrap();
+        let (candidate_counts, mut packed_candidates) =
+            candidate_counts_and_packed_candidates.split_at(BATCH_SIZE.get());
         let thread_index = thread_index as usize;
         for &candidate_count in candidate_counts {
             if candidate_count == 0 {
@@ -471,28 +473,34 @@ fn details_thread<const N: usize>(
                 // then it must either be in the front or the atomic variable is an
                 // underestimate, which is permitted since our bound is admissible
 
+                let guard = collector.enter();
+
                 let pareto_efficient_pruning = &pareto_efficient_prunings[thread_index];
-                let mut prev_raw_pruning = pareto_efficient_pruning.load(atomic::Ordering::Acquire);
-                // SAFETY: `pareto_efficient_pruning` comes from
-                // `pareto_efficient_pruning.try_update`.
+                let mut prev_raw_pruning =
+                    guard.protect(pareto_efficient_pruning, atomic::Ordering::Acquire);
                 while let Some(next_raw_pruning) = unsafe {
-                    try_update_pareto_efficient_pruning(
+                    try_next_pareto_efficient_pruning(
                         prev_raw_pruning,
                         disjoint_registers,
                         raw_pruning_len,
                         &mut alloc_time,
                     )
                 } {
-                    match pareto_efficient_prunings[thread_index].compare_exchange_weak(
+                    match guard.compare_exchange(
+                        pareto_efficient_pruning,
                         prev_raw_pruning,
                         next_raw_pruning,
                         atomic::Ordering::Release,
                         atomic::Ordering::Acquire,
                     ) {
-                        Ok(_) => break,
-                        Err(next_prev_raw_pruning) => {
-                            drop(unsafe { Box::from_raw(next_raw_pruning) });
-                            prev_raw_pruning = next_prev_raw_pruning;
+                        Ok(curr_raw_pruning) => unsafe {
+                            collector.retire(curr_raw_pruning, reclaim::boxed);
+                        },
+                        Err(curr_raw_pruning) => {
+                            unsafe {
+                                reclaim::boxed(next_raw_pruning, &collector);
+                            }
+                            prev_raw_pruning = curr_raw_pruning;
                         }
                     }
                 }
@@ -526,6 +534,7 @@ fn dfs_thread<const N: usize>(
 
     let mut old_bucket = 0;
     let mut candidate_count = 0;
+    let collector = Collector::new();
     for (i, possible_order) in possible_orders_except_one
         .iter()
         .enumerate()
@@ -534,8 +543,10 @@ fn dfs_thread<const N: usize>(
         .step_by(num_cores)
     {
         let i_u32 = possible_orders_len_cast(i);
+
+        let guard = collector.enter();
         // Synchronize with the data in the try_update CAS loop
-        let raw_pruning = pareto_efficient_pruning.load(atomic::Ordering::Acquire);
+        let raw_pruning = guard.protect(pareto_efficient_pruning, atomic::Ordering::Acquire);
         let max_last_register = if raw_pruning.is_null() {
             0
         } else {
@@ -547,6 +558,8 @@ fn dfs_thread<const N: usize>(
             }
             max_last_register
         };
+        drop(guard);
+
         if thread_index == 0 {
             // We validated `possible_orders` to be of len `u32` or less
             let len = possible_orders_len_cast(possible_orders_except_one.len());
@@ -584,6 +597,7 @@ fn dfs_thread<const N: usize>(
             *mutable.registers.first_mut() = i_u32;
             unsafe {
                 search_dfs_helper(
+                    &collector,
                     &mut mutable,
                     pareto_efficient_pruning,
                     next_possible_orders,
@@ -617,6 +631,7 @@ fn dfs_thread<const N: usize>(
 ///
 /// `register_index` must be less than `mutable.exact_register_count()`.
 unsafe fn search_dfs_helper<const N: usize>(
+    collector: &Collector,
     mutable: &mut CycleCombinationsTreeMutable,
     pareto_efficient_pruning: &AtomicPtr<u32>,
     possible_orders: NonemptySlice<'_, PossibleOrder<N>>,
@@ -632,8 +647,8 @@ unsafe fn search_dfs_helper<const N: usize>(
         let (possible_order, next_possible_orders) = curr_possible_orders.split_last();
         let i = possible_orders_len_cast(next_possible_orders.len());
 
-        // Synchronize with the data in the try_update CAS loop
-        let raw_pruning = pareto_efficient_pruning.load(atomic::Ordering::Acquire);
+        let guard = collector.enter();
+        let raw_pruning = guard.protect(pareto_efficient_pruning, atomic::Ordering::Acquire);
         if !raw_pruning.is_null() {
             // SAFETY: `raw_pruning` is guaranteed to point to
             // `mutable.exact_register_count().get().saturating_sub(2) + 1` u32s. The caller
@@ -654,6 +669,7 @@ unsafe fn search_dfs_helper<const N: usize>(
                 break;
             }
         }
+        drop(guard);
 
         if let Some(next_remaining_piece_count) = remaining_piece_count
             .get()
@@ -684,6 +700,7 @@ unsafe fn search_dfs_helper<const N: usize>(
                 // branch, and caller guarantees we are less
                 unsafe {
                     search_dfs_helper(
+                        collector,
                         mutable,
                         pareto_efficient_pruning,
                         curr_possible_orders,
@@ -697,7 +714,7 @@ unsafe fn search_dfs_helper<const N: usize>(
                     *mutable
                         .registers
                         .get_unchecked_mut(usize::from(register_index.get())) = old;
-                };
+                }
             }
         }
         match NonemptySlice::try_from(next_possible_orders) {
@@ -901,8 +918,8 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let pruned_orders_percentage = (pareto_efficient_prunings
             .iter()
             .map(|max_last_register| {
-                // Synchronize with the data in the try_update CAS loop
-                let max_last_register = max_last_register.load(atomic::Ordering::Acquire);
+                // All threads are finished so there is no point in synchronization
+                let max_last_register = max_last_register.load(atomic::Ordering::Relaxed);
                 u64::from(if max_last_register.is_null() {
                     0
                 } else {
