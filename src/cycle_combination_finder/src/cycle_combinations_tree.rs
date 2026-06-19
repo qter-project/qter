@@ -36,7 +36,12 @@ pub(crate) struct CycleCombinationsTree<const N: usize> {
 
 #[derive(Clone)]
 struct CycleCombinationsTreeMutable {
+    fails: u64,
     batch_packed_queue: Vec<u32>,
+    sends: u64,
+    empty_sends: u64,
+    full_sends: u64,
+    sender_lens: u64,
     curr_batch_len: usize,
     registers: NonemptyVec<u32>,
     sender: mpmc::Sender<PackedCycleCombinationCandidateQueue>,
@@ -68,6 +73,10 @@ struct TreeThreadInfo {
     cpu_time: Duration,
     alloc_time: Duration,
     candidate_count: u64,
+    empty_sends: u64,
+    full_sends: u64,
+    sends: u64,
+    sender_lens: u64,
 }
 
 struct ProfileInfo {
@@ -75,6 +84,9 @@ struct ProfileInfo {
     processed_candidate_count: u64,
     post_candidate_count: u64,
     pruned_orders_percentage: f64,
+    sender_len_percentage: f64,
+    empty_sends_percentage: f64,
+    full_sends_percentage: f64,
     real_time: Duration,
     dfs_alloc_time: Duration,
     dfs_cpu_time: Duration,
@@ -102,17 +114,34 @@ impl CycleCombinationsTreeMutable {
             return;
         }
         if log_enabled!(Level::Debug) {
-            self.candidate_count += self
+            let candidate_count = self
                 .batch_packed_queue
                 .iter()
                 .skip(1)
                 .take(BATCH_SIZE.get())
                 .map(|&candidate_count| u64::from(candidate_count))
                 .sum::<u64>();
+            self.candidate_count += candidate_count;
             let now = Instant::now();
             let payload =
                 PackedCycleCombinationCandidateQueue(Box::clone_from_ref(&self.batch_packed_queue));
             self.alloc_time += now.elapsed();
+
+            if self.sender.is_full() {
+                self.full_sends += 1;
+            }
+            let len = self.sender.len();
+            trace!(
+                "{:?}: candidates={candidate_count}; mpmc={len}; fails={}",
+                std::thread::current().id(),
+                self.fails,
+            );
+            self.fails = 0;
+            if len == 0 {
+                self.empty_sends += 1;
+            }
+            self.sender_lens += len as u64;
+            self.sends += 1;
             // We can unwrap because the senders is only dropped after all threads are
             // joined.
             self.sender.send(payload).unwrap();
@@ -155,6 +184,18 @@ impl Debug for ProfileInfo {
             .field(
                 &format!("{:>25}", "pruned_orders_percentage"),
                 &format!("{:05.2}%", self.pruned_orders_percentage * 100.0),
+            )
+            .field(
+                &format!("{:>25}", "sender_len_percentage"),
+                &format!("{:05.2}%", self.sender_len_percentage * 100.0),
+            )
+            .field(
+                &format!("{:>25}", "empty_sends_percentage"),
+                &format!("{:05.2}%", self.empty_sends_percentage * 100.0),
+            )
+            .field(
+                &format!("{:>25}", "full_sends_percentage"),
+                &format!("{:05.2}%", self.full_sends_percentage * 100.0),
             )
             .field(
                 &format!("{:>25}", "real_time"),
@@ -390,21 +431,21 @@ fn details_thread<const N: usize>(
     let cpu_time = ThreadTime::now();
     let mut alloc_time = Duration::default();
     while let Ok(batch_packed_queue) = receiver.recv() {
-        let (thread_index_and_candidate_counts, mut candidates) =
+        let (thread_index_and_candidate_counts, mut packed_candidates) =
             batch_packed_queue.0.split_at(BATCH_SIZE.get() + 1);
         let (&thread_index, candidate_counts) =
             thread_index_and_candidate_counts.split_first().unwrap();
         let thread_index = thread_index as usize;
         for &candidate_count in candidate_counts {
-            let candidate_count = candidate_count as usize;
             if candidate_count == 0 {
                 break;
             }
-            let (prefix_and_last_registers, next_candidates) =
-                candidates.split_at(usize::from(exact_register_count.get() - 1) + candidate_count);
-            candidates = next_candidates;
-            let (prefix_registers, last_registers) =
-                prefix_and_last_registers.split_at(usize::from(exact_register_count.get() - 1));
+            let candidate_count = candidate_count as usize;
+            let (prefix_registers, last_registers_and_next_packed_candidates) =
+                packed_candidates.split_at(usize::from(exact_register_count.get() - 1));
+            let (last_registers, next_packed_candidates) =
+                last_registers_and_next_packed_candidates.split_at(candidate_count);
+            packed_candidates = next_packed_candidates;
 
             for &last_register in last_registers {
                 processed_candidate_count += 1;
@@ -548,14 +589,17 @@ fn dfs_thread<const N: usize>(
     }
     mutable.maybe_send_queue(true);
 
-    let real_time = real_time.elapsed();
-    debug!("{:?} finished with DFS at {}", core_id, real_time.human(Truncate::Millis));
+    debug!("{core_id:?} finished DFS");
 
     TreeThreadInfo {
-        real_time,
+        real_time: real_time.elapsed(),
         cpu_time: cpu_time.elapsed(),
         alloc_time: mutable.alloc_time,
         candidate_count: mutable.candidate_count,
+        empty_sends: mutable.empty_sends,
+        full_sends: mutable.full_sends,
+        sends: mutable.sends,
+        sender_lens: mutable.sender_lens,
     }
 }
 
@@ -655,9 +699,13 @@ unsafe fn search_dfs_helper<const N: usize>(
             }
         }
     }
-    if next_register_index == mutable.exact_register_count() && candidate_count != 0 {
-        mutable.batch_packed_queue[mutable.curr_batch_len + 1] = candidate_count;
-        mutable.maybe_send_queue(false);
+    if next_register_index == mutable.exact_register_count() {
+        if candidate_count != 0 {
+            mutable.batch_packed_queue[mutable.curr_batch_len + 1] = candidate_count;
+            mutable.maybe_send_queue(false);
+        } else if log_enabled!(Level::Debug) {
+            mutable.fails += 1;
+        }
     }
 }
 
@@ -699,13 +747,19 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let num_cores = core_ids.len();
 
         // We do not use `0` as to allow a buffer for every core to prevent starvation
+        let cap = num_cores * 10;
         let (sender, receiver) =
-            mpmc::sync_channel::<PackedCycleCombinationCandidateQueue>(num_cores * 2);
+            mpmc::sync_channel::<PackedCycleCombinationCandidateQueue>(cap);
 
         // We can unwrap because `exact_register_count` is NonZero.
         #[allow(clippy::missing_panics_doc)]
         let mutable = CycleCombinationsTreeMutable {
+            fails: 0,
             batch_packed_queue: vec![],
+            sends: 0,
+            empty_sends: 0,
+            full_sends: 0,
+            sender_lens: 0,
             curr_batch_len: 0,
             registers: NonemptyVec::try_from(vec![0; usize::from(self.exact_register_count.get())])
                 .unwrap(),
@@ -724,6 +778,10 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let mut mkp_alloc_time = Duration::default();
         let mut processed_candidate_count = 0;
         let mut post_candidate_count = 0;
+        let mut sends = 0;
+        let mut empty_sends = 0;
+        let mut full_sends = 0;
+        let mut sender_lens = 0;
         let mut smallest_fronts = BinaryHeap::new();
 
         let pareto_efficient_prunings: Arc<[_]> = Arc::from(
@@ -788,6 +846,10 @@ impl<const N: usize> CycleCombinationsTree<N> {
                 dfs_real_time += tree_thread_info.real_time;
                 dfs_cpu_time += tree_thread_info.cpu_time;
                 dfs_alloc_time += tree_thread_info.alloc_time;
+                sends += tree_thread_info.sends;
+                empty_sends += tree_thread_info.empty_sends;
+                full_sends += tree_thread_info.full_sends;
+                sender_lens += tree_thread_info.sender_lens;
 
                 mkp_cpu_time += details_thread_info.mkp_cpu_time;
                 mkp_real_time += details_thread_info.mkp_real_time;
@@ -843,6 +905,15 @@ impl<const N: usize> CycleCombinationsTree<N> {
             .sum::<u64>() as f64)
             / ((self.possible_orders_except_one.len() * num_cores) as f64);
 
+        #[allow(clippy::cast_precision_loss)]
+        let full_sends_percentage = full_sends as f64 / sends as f64;
+
+        #[allow(clippy::cast_precision_loss)]
+        let empty_sends_percentage = empty_sends as f64 / sends as f64;
+
+        #[allow(clippy::cast_precision_loss)]
+        let sender_len_percentage = sender_lens as f64 / (cap as u64 * sends) as f64;
+
         let dfs_io_time = dfs_real_time
             .saturating_sub(dfs_cpu_time)
             .saturating_sub(dfs_alloc_time);
@@ -855,6 +926,9 @@ impl<const N: usize> CycleCombinationsTree<N> {
             processed_candidate_count,
             post_candidate_count,
             pruned_orders_percentage,
+            sender_len_percentage,
+            empty_sends_percentage,
+            full_sends_percentage,
             real_time,
             dfs_alloc_time,
             dfs_cpu_time,

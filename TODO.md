@@ -9,8 +9,6 @@
 
 ## CCF
 
-- profiling for how often the queue is full; find the sweet spot
-- experiment with num_cores * 10
 - api to compute all register counts (precompute possible orders)
 - possible orders progress benchmarking
 - better log tracing messages
@@ -18,6 +16,9 @@
 - don't use PossibleOrder wrapper; get rid of min_piece_count memory overhead
 
 - after MKP
+  - note that batching "ramps up" the mkp threads when the batch size is large; there are few solutions/batch in the beginning which helps make sure the 
+  - profiling for how often the queue is full; find the sweet spot
+  - experiment with num_cores * 10
   - pareto front strategies:
     - rwlock shared front, allowing TOCTOU
     - sync trees together
