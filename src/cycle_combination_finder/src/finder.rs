@@ -3,6 +3,7 @@ use std::{
     cmp::Ordering,
     num::{NonZeroU16, NonZeroU32, NonZeroUsize},
     ops::Deref,
+    rc::Rc,
     sync::Arc,
     time::Instant,
 };
@@ -66,9 +67,10 @@ pub enum CycleCombinationFinderError {
     PuzzleTooManyOrders,
 }
 
+#[derive(Clone)]
 pub struct CycleCombinationFinder<const N: usize> {
-    puzzle_def: PuzzleDef<N>,
-    maybe_possible_orders_except_one: OnceCell<Arc<[PossibleOrder<N>]>>,
+    puzzle_def: Rc<PuzzleDef<N>>,
+    possible_orders_except_one: OnceCell<Arc<[PossibleOrder<N>]>>,
     config: CycleCombinationFinderConfig,
 }
 
@@ -122,8 +124,8 @@ impl Deref for CycleCombination {
 impl<const N: usize> From<PuzzleDef<N>> for CycleCombinationFinder<N> {
     fn from(puzzle_def: PuzzleDef<N>) -> Self {
         Self {
-            puzzle_def,
-            maybe_possible_orders_except_one: OnceCell::new(),
+            puzzle_def: Rc::new(puzzle_def),
+            possible_orders_except_one: OnceCell::new(),
             config: CycleCombinationFinderConfig::default(),
         }
     }
@@ -183,41 +185,39 @@ impl<const N: usize> CycleCombinationFinder<N> {
         let RegisterCount::Exactly(exact_register_count) = self.config.register_count else {
             panic!("expected exactly variant for now");
         };
-        let possible_orders_except_one =
-            self.maybe_possible_orders_except_one.get_or_try_init(|| {
-                let possible_orders_except_one = self
-                    .puzzle_def
-                    .possible_orders()
-                    .ok_or(CycleCombinationFinderError::PuzzleTooManyOrders)?;
-                possible_orders_except_one.remove(&OrderExps::one());
-                let now = Instant::now();
-                let mut min_piece_count_calculator = MinPieceCount::from(&self.puzzle_def);
-                let mut possible_orders_except_one = possible_orders_except_one
-                    .into_iter()
-                    .map(|possible_order| {
-                        let min_piece_count =
-                            min_piece_count_calculator.calculate(&possible_order).0;
-                        PossibleOrder {
-                            order: possible_order,
-                            min_piece_count,
-                        }
-                    })
-                    .collect::<Vec<_>>();
-                debug!(
-                    "All min piece counts in {}",
-                    now.elapsed().human(Truncate::Micro)
-                );
-                possible_orders_except_one.sort_unstable_by(|a, b| a.order.cmp(&b.order));
-                trace!(
-                    "Possible orders: {}",
-                    possible_orders_except_one
-                        .iter()
-                        .map(|a| format!("{:?}", a.order))
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                );
-                Ok(Arc::from(possible_orders_except_one.into_boxed_slice()))
-            })?;
+        let possible_orders_except_one = self.possible_orders_except_one.get_or_try_init(|| {
+            let possible_orders_except_one = self
+                .puzzle_def
+                .possible_orders()
+                .ok_or(CycleCombinationFinderError::PuzzleTooManyOrders)?;
+            possible_orders_except_one.remove(&OrderExps::one());
+            let now = Instant::now();
+            let mut min_piece_count_calculator = MinPieceCount::from(&*self.puzzle_def);
+            let mut possible_orders_except_one = possible_orders_except_one
+                .into_iter()
+                .map(|possible_order| {
+                    let min_piece_count = min_piece_count_calculator.calculate(&possible_order).0;
+                    PossibleOrder {
+                        order: possible_order,
+                        min_piece_count,
+                    }
+                })
+                .collect::<Vec<_>>();
+            debug!(
+                "All min piece counts in {}",
+                now.elapsed().human(Truncate::Micro)
+            );
+            possible_orders_except_one.sort_unstable_by(|a, b| a.order.cmp(&b.order));
+            trace!(
+                "Possible orders: {}",
+                possible_orders_except_one
+                    .iter()
+                    .map(|a| format!("{:?}", a.order))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            );
+            Ok(Arc::from(possible_orders_except_one.into_boxed_slice()))
+        })?;
         let mut cycle_combinations = match self.config.optimality {
             Optimality::Equivalent => unimplemented!(),
             Optimality::Optimal => CycleCombinationsTree::new(
