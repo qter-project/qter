@@ -2,10 +2,7 @@
 
 use std::num::NonZeroU16;
 
-use cycle_combination_finder::{
-    finder::{CycleCombinationFinder, RegisterCount},
-    puzzle::misc::BIG1,
-};
+use cycle_combination_finder::{finder::CycleCombinationFinder, puzzle::misc::BIG1};
 
 use crate::common::cycles;
 
@@ -15,7 +12,7 @@ mod common;
 fn optimal_2() {
     let big = BIG1.clone();
     let cycle_combinations = CycleCombinationFinder::from(big)
-        .with_register_count(RegisterCount::Exactly(NonZeroU16::new(2).unwrap()))
+        .with_register_count(NonZeroU16::new(2).unwrap())
         .with_sorted(true)
         .find()
         .unwrap();

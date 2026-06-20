@@ -7,7 +7,7 @@ use std::{
 
 use bitgauss::BitMatrix;
 use cycle_combination_finder::{
-    finder::{CycleCombinationFinder, Optimality, RegisterCount},
+    finder::{CycleCombinationFinder, Optimality},
     puzzle::{
         EvenParityConstraints, OrbitDef, OrientationStatus, OrientationSumConstraint,
         ParityConstraint, PuzzleDef,
@@ -47,7 +47,7 @@ fn playground() {
     // let ccf = CycleCombinationFinder::from(puzzle);
     // let cycle_combinations = ccf.find(
     //     Optimality::Optimal,
-    //     RegisterCount::Exactly(NonZeroU16::new(2).unwrap()),
+    //     (NonZeroU16::new(2).unwrap()),
     // );
     // println!("{:?}", cycle_combinations);
 }

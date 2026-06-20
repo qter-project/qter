@@ -3,7 +3,7 @@
 use std::num::NonZeroU16;
 
 use cycle_combination_finder::{
-    finder::{CycleCombinationFinder, Optimality, RegisterCount},
+    finder::{CycleCombinationFinder, Optimality},
     puzzle::minxN::MINX3,
 };
 
@@ -15,7 +15,7 @@ mod common;
 fn optimal_2() {
     let megaminx = MINX3.clone();
     let cycle_combinations = CycleCombinationFinder::from(megaminx)
-        .with_register_count(RegisterCount::Exactly(NonZeroU16::new(2).unwrap()))
+        .with_register_count(NonZeroU16::new(2).unwrap())
         .with_sorted(true)
         .find()
         .unwrap();
@@ -44,7 +44,7 @@ fn optimal_2() {
 fn optimal_3() {
     let megaminx = MINX3.clone();
     let cycle_combinations = CycleCombinationFinder::from(megaminx)
-        .with_register_count(RegisterCount::Exactly(NonZeroU16::new(3).unwrap()))
+        .with_register_count(NonZeroU16::new(3).unwrap())
         .with_sorted(true)
         .find()
         .unwrap();
@@ -74,7 +74,7 @@ fn optimal_3() {
 fn equivalent_2() {
     let megaminx = MINX3.clone();
     let cycle_combinations = CycleCombinationFinder::from(megaminx)
-        .with_register_count(RegisterCount::Exactly(NonZeroU16::new(2).unwrap()))
+        .with_register_count(NonZeroU16::new(2).unwrap())
         .with_optimality(Optimality::Equivalent)
         .with_sorted(true)
         .find()
@@ -86,7 +86,7 @@ fn equivalent_2() {
 fn equivalent_3() {
     let megaminx = MINX3.clone();
     let cycle_combinations = CycleCombinationFinder::from(megaminx)
-        .with_register_count(RegisterCount::Exactly(NonZeroU16::new(3).unwrap()))
+        .with_register_count(NonZeroU16::new(3).unwrap())
         .with_optimality(Optimality::Equivalent)
         .with_sorted(true)
         .find()

@@ -3,7 +3,7 @@
 use std::num::{NonZeroU16, NonZeroUsize};
 
 use cycle_combination_finder::{
-    finder::{CycleCombinationFinder, NumCores, RegisterCount},
+    finder::{CycleCombinationFinder, NumCores},
     puzzle::{cubeN, minxN},
 };
 
@@ -17,21 +17,21 @@ fn main() {
     if p == "minx3" {
         let minx3 = minxN::MINX3.clone();
         CycleCombinationFinder::from(minx3)
-            .with_register_count(RegisterCount::Exactly(NonZeroU16::new(4).unwrap()))
+            .with_register_count(NonZeroU16::new(4).unwrap())
             .with_expected_length_assertion(347)
             .find()
             .unwrap();
     } else if p == "minx4" {
         let minx4 = minxN::MINX4.clone();
         CycleCombinationFinder::from(minx4)
-            .with_register_count(RegisterCount::Exactly(NonZeroU16::new(3).unwrap()))
+            .with_register_count(NonZeroU16::new(3).unwrap())
             .with_expected_length_assertion(251)
             .find()
             .unwrap();
     } else if p == "cube3" {
         let cube3 = cubeN::CUBE3.clone();
         CycleCombinationFinder::from(cube3)
-            .with_register_count(RegisterCount::Exactly(NonZeroU16::new(2).unwrap()))
+            .with_register_count(NonZeroU16::new(2).unwrap())
             .with_expected_length_assertion(5)
             .find()
             .unwrap();

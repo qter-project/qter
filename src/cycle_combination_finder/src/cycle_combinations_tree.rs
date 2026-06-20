@@ -624,7 +624,7 @@ fn dfs_thread<const N: usize>(
     }
     mutable.maybe_send_queue(true);
 
-    debug!("{core_id:?} finished DFS");
+    debug!("DFS: {core_id:?} finished");
 
     TreeThreadInfo {
         real_time: real_time.elapsed(),

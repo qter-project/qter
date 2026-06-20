@@ -3,7 +3,7 @@
 use std::num::NonZeroU16;
 
 use cycle_combination_finder::{
-    finder::{CycleCombinationFinder, Optimality, RegisterCount},
+    finder::{CycleCombinationFinder, Optimality},
     puzzle::cubeN::CUBE3,
 };
 
@@ -15,7 +15,7 @@ mod common;
 fn optimal_2() {
     let cube3 = CUBE3.clone();
     let cycle_combinations = CycleCombinationFinder::from(cube3)
-        .with_register_count(RegisterCount::Exactly(NonZeroU16::new(2).unwrap()))
+        .with_register_count(NonZeroU16::new(2).unwrap())
         .with_sorted(true)
         .find()
         .unwrap();
@@ -38,7 +38,7 @@ fn optimal_2() {
 fn optimal_3() {
     let cube3 = CUBE3.clone();
     let cycle_combinations = CycleCombinationFinder::from(cube3)
-        .with_register_count(RegisterCount::Exactly(NonZeroU16::new(3).unwrap()))
+        .with_register_count(NonZeroU16::new(3).unwrap())
         .with_sorted(true)
         .find()
         .unwrap();
@@ -62,7 +62,7 @@ fn optimal_3() {
 fn optimal_4() {
     let cube3 = CUBE3.clone();
     let cycle_combinations = CycleCombinationFinder::from(cube3)
-        .with_register_count(RegisterCount::Exactly(NonZeroU16::new(4).unwrap()))
+        .with_register_count(NonZeroU16::new(4).unwrap())
         .with_sorted(true)
         .find()
         .unwrap();
@@ -82,7 +82,7 @@ fn optimal_4() {
 fn optimal_5() {
     let cube3 = CUBE3.clone();
     let cycle_combinations = CycleCombinationFinder::from(cube3)
-        .with_register_count(RegisterCount::Exactly(NonZeroU16::new(5).unwrap()))
+        .with_register_count(NonZeroU16::new(5).unwrap())
         .with_sorted(true)
         .find()
         .unwrap();
@@ -102,7 +102,7 @@ fn optimal_5() {
 fn equivalent_2() {
     let cube3 = CUBE3.clone();
     let cycle_combinations = CycleCombinationFinder::from(cube3)
-        .with_register_count(RegisterCount::Exactly(NonZeroU16::new(2).unwrap()))
+        .with_register_count(NonZeroU16::new(2).unwrap())
         .with_optimality(Optimality::Equivalent)
         .with_sorted(true)
         .find()
@@ -114,7 +114,7 @@ fn equivalent_2() {
 fn equivalent_3() {
     let cube3 = CUBE3.clone();
     let cycle_combinations = CycleCombinationFinder::from(cube3)
-        .with_register_count(RegisterCount::Exactly(NonZeroU16::new(3).unwrap()))
+        .with_register_count(NonZeroU16::new(3).unwrap())
         .with_optimality(Optimality::Equivalent)
         .with_sorted(true)
         .find()

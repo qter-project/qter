@@ -103,7 +103,7 @@ impl<T> NonemptyVec<T> {
 
 impl<'a, T> NonemptySlice<'a, T> {
     /// # Safety
-    /// 
+    ///
     /// Follow `slice::from_raw_parts`
     pub unsafe fn from_raw_parts(data: *const T, len: NonZeroUsize) -> Self {
         // SAFETY: upheld by caller
