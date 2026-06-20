@@ -61,9 +61,9 @@ pub struct DisjointRegisters<'a> {
 }
 
 struct DetailsThreadInfo {
-    mkp_real_time: Duration,
-    mkp_cpu_time: Duration,
-    mkp_alloc_time: Duration,
+    real_time: Duration,
+    cpu_time: Duration,
+    alloc_time: Duration,
     processed_candidate_count: u64,
     post_candidate_count: u64,
     cycle_combinations: CCParetoFront,
@@ -93,9 +93,9 @@ struct ProfileInfo {
     dfs_alloc_time: Duration,
     dfs_cpu_time: Duration,
     dfs_io_time: Duration,
-    mkp_alloc_time: Duration,
-    mkp_cpu_time: Duration,
-    mkp_io_time: Duration,
+    details_alloc_time: Duration,
+    details_cpu_time: Duration,
+    details_io_time: Duration,
     num_cores: usize,
 }
 
@@ -207,7 +207,7 @@ impl Debug for ProfileInfo {
                 &format!("{:>25}", "single_cpu_time"),
                 &format!(
                     "{}",
-                    (self.dfs_cpu_time + self.mkp_cpu_time)
+                    (self.dfs_cpu_time + self.details_cpu_time)
                         .div_f64(num_cores)
                         .human(Truncate::Millis)
                 ),
@@ -239,29 +239,33 @@ impl Debug for ProfileInfo {
                 ),
             )
             .field(
-                &format!("{:>25}", "mkp_alloc_time"),
+                &format!("{:>25}", "details_alloc_time"),
                 &format!(
                     "{:05.2}% ({})",
-                    self.mkp_alloc_time.div_duration_f64(cpu_time) * 100.0,
-                    self.mkp_alloc_time
+                    self.details_alloc_time.div_duration_f64(cpu_time) * 100.0,
+                    self.details_alloc_time
                         .div_f64(num_cores)
                         .human(Truncate::Millis)
                 ),
             )
             .field(
-                &format!("{:>25}", "mkp_cpu_time"),
+                &format!("{:>25}", "details_cpu_time"),
                 &format!(
                     "{:05.2}% ({})",
-                    self.mkp_cpu_time.div_duration_f64(cpu_time) * 100.0,
-                    self.mkp_cpu_time.div_f64(num_cores).human(Truncate::Millis)
+                    self.details_cpu_time.div_duration_f64(cpu_time) * 100.0,
+                    self.details_cpu_time
+                        .div_f64(num_cores)
+                        .human(Truncate::Millis)
                 ),
             )
             .field(
-                &format!("{:>25}", "mkp_io_time"),
+                &format!("{:>25}", "details_io_time"),
                 &format!(
                     "{:05.2}% ({})",
-                    self.mkp_io_time.div_duration_f64(cpu_time) * 100.0,
-                    self.mkp_io_time.div_f64(num_cores).human(Truncate::Millis)
+                    self.details_io_time.div_duration_f64(cpu_time) * 100.0,
+                    self.details_io_time
+                        .div_f64(num_cores)
+                        .human(Truncate::Millis)
                 ),
             )
             .field(&format!("{:>25}", "num_cores"), &self.num_cores)
@@ -479,11 +483,11 @@ fn details_thread<const N: usize>(
                 let guard = collector.enter();
 
                 let pareto_efficient_pruning = &pareto_efficient_prunings[thread_index];
-                let mut prev_raw_pruning =
+                let mut maybe_raw_pruning =
                     guard.protect(pareto_efficient_pruning, atomic::Ordering::Acquire);
                 while let Some(next_raw_pruning) = unsafe {
                     try_next_pareto_efficient_pruning(
-                        prev_raw_pruning,
+                        maybe_raw_pruning,
                         disjoint_registers,
                         raw_pruning_len,
                         &mut alloc_time,
@@ -491,7 +495,7 @@ fn details_thread<const N: usize>(
                 } {
                     match guard.compare_exchange(
                         pareto_efficient_pruning,
-                        prev_raw_pruning,
+                        maybe_raw_pruning,
                         next_raw_pruning.as_ptr(),
                         atomic::Ordering::Release,
                         atomic::Ordering::Acquire,
@@ -507,7 +511,7 @@ fn details_thread<const N: usize>(
                             unsafe {
                                 reclaim::boxed(next_raw_pruning.as_ptr(), &collector);
                             }
-                            prev_raw_pruning = curr_raw_pruning;
+                            maybe_raw_pruning = curr_raw_pruning;
                         }
                     }
                 }
@@ -516,9 +520,9 @@ fn details_thread<const N: usize>(
         }
     }
     DetailsThreadInfo {
-        mkp_cpu_time: cpu_time.elapsed(),
-        mkp_real_time: real_time.elapsed(),
-        mkp_alloc_time: alloc_time,
+        cpu_time: cpu_time.elapsed(),
+        real_time: real_time.elapsed(),
+        alloc_time,
         processed_candidate_count,
         post_candidate_count,
         cycle_combinations,
@@ -809,9 +813,9 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let mut dfs_cpu_time = Duration::default();
         let mut dfs_alloc_time = Duration::default();
 
-        let mut mkp_real_time = Duration::default();
-        let mut mkp_cpu_time = Duration::default();
-        let mut mkp_alloc_time = Duration::default();
+        let mut details_real_time = Duration::default();
+        let mut details_cpu_time = Duration::default();
+        let mut details_alloc_time = Duration::default();
         let mut processed_candidate_count = 0;
         let mut post_candidate_count = 0;
         let mut sends = 0;
@@ -887,9 +891,9 @@ impl<const N: usize> CycleCombinationsTree<N> {
                 full_sends += tree_thread_info.full_sends;
                 sender_lens += tree_thread_info.sender_lens;
 
-                mkp_cpu_time += details_thread_info.mkp_cpu_time;
-                mkp_real_time += details_thread_info.mkp_real_time;
-                mkp_alloc_time += details_thread_info.mkp_alloc_time;
+                details_cpu_time += details_thread_info.cpu_time;
+                details_real_time += details_thread_info.real_time;
+                details_alloc_time += details_thread_info.alloc_time;
                 processed_candidate_count += details_thread_info.processed_candidate_count;
                 post_candidate_count += details_thread_info.post_candidate_count;
                 smallest_fronts.push(details_thread_info.cycle_combinations);
@@ -953,9 +957,9 @@ impl<const N: usize> CycleCombinationsTree<N> {
         let dfs_io_time = dfs_real_time
             .saturating_sub(dfs_cpu_time)
             .saturating_sub(dfs_alloc_time);
-        let mkp_io_time = mkp_real_time
-            .saturating_sub(mkp_cpu_time)
-            .saturating_sub(mkp_alloc_time);
+        let details_io_time = details_real_time
+            .saturating_sub(details_cpu_time)
+            .saturating_sub(details_alloc_time);
 
         let profile_info = ProfileInfo {
             candidate_count,
@@ -969,9 +973,9 @@ impl<const N: usize> CycleCombinationsTree<N> {
             dfs_alloc_time,
             dfs_cpu_time,
             dfs_io_time,
-            mkp_alloc_time,
-            mkp_cpu_time,
-            mkp_io_time,
+            details_alloc_time,
+            details_cpu_time,
+            details_io_time,
             num_cores,
         };
 
