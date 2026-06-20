@@ -3,6 +3,7 @@ use std::{
     collections::BinaryHeap,
     fmt::{self, Debug},
     num::{NonZeroU16, NonZeroU32, NonZeroUsize},
+    ptr::NonNull,
     sync::{
         Arc,
         atomic::{self, AtomicPtr},
@@ -341,16 +342,17 @@ fn dominating_check<const N: usize>(
 /// `pareto_efficient_pruning` must come from the `try_update` method on one of
 /// `pareto_efficient_prunings`
 unsafe fn try_next_pareto_efficient_pruning(
-    raw_pruning: *mut u32,
+    maybe_raw_pruning: *mut u32,
     disjoint_registers: DisjointRegisters,
     raw_pruning_len: NonZeroUsize,
     alloc_time: &mut Duration,
-) -> Option<*mut u32> {
-    if !raw_pruning.is_null() {
+) -> Option<NonNull<u32>> {
+    if let Some(raw_pruning) = NonNull::new(maybe_raw_pruning) {
         // SAFETY: the called guarantees `pareto_efficient_pruning` is valid. Also later
         // in this block we always initialize `pareto_efficient_pruning` to be of
         // `raw_pruning_len` length.
-        let raw_pruning = unsafe { NonemptySlice::from_raw_parts(raw_pruning, raw_pruning_len) };
+        let raw_pruning =
+            unsafe { NonemptySlice::from_raw_parts(raw_pruning.as_ptr(), raw_pruning_len) };
         let (&max_last_register, pareto_efficent_prunes) = raw_pruning.split_first();
         if disjoint_registers.last_register < max_last_register {
             return None;
@@ -397,17 +399,18 @@ unsafe fn try_next_pareto_efficient_pruning(
             // A C D can be a solution, followed by B C D
             return maybe_next_pareto_efficient_pruning.map(|next_pareto_efficient_pruning| {
                 debug_assert_eq!(next_pareto_efficient_pruning.len(), raw_pruning_len.get());
-                Box::into_raw(next_pareto_efficient_pruning.into_boxed_slice()).as_mut_ptr()
+                NonNull::from_mut(Box::leak(next_pareto_efficient_pruning.into_boxed_slice()))
+                    .cast()
             });
         }
     }
     Some(
-        Box::into_raw(
+        NonNull::from_mut(Box::leak(
             std::iter::once(disjoint_registers.last_register)
                 .chain(disjoint_registers.prefix_registers.iter().copied().skip(1))
                 .collect::<Box<_>>(),
-        )
-        .as_mut_ptr(),
+        ))
+        .cast(),
     )
 }
 
@@ -489,18 +492,20 @@ fn details_thread<const N: usize>(
                     match guard.compare_exchange(
                         pareto_efficient_pruning,
                         prev_raw_pruning,
-                        next_raw_pruning,
+                        next_raw_pruning.as_ptr(),
                         atomic::Ordering::Release,
                         atomic::Ordering::Acquire,
                     ) {
-                        Ok(curr_raw_pruning) => unsafe {
-                            if !curr_raw_pruning.is_null() {
-                                collector.retire(curr_raw_pruning, reclaim::boxed);
+                        Ok(maybe_curr_raw_pruning) => {
+                            if let Some(curr_raw_pruning) = NonNull::new(maybe_curr_raw_pruning) {
+                                unsafe {
+                                    collector.retire(curr_raw_pruning.as_ptr(), reclaim::boxed);
+                                }
                             }
-                        },
+                        }
                         Err(curr_raw_pruning) => {
                             unsafe {
-                                reclaim::boxed(next_raw_pruning, &collector);
+                                reclaim::boxed(next_raw_pruning.as_ptr(), &collector);
                             }
                             prev_raw_pruning = curr_raw_pruning;
                         }
@@ -548,17 +553,17 @@ fn dfs_thread<const N: usize>(
 
         let guard = collector.enter();
         // Synchronize with the data in the try_update CAS loop
-        let raw_pruning = guard.protect(pareto_efficient_pruning, atomic::Ordering::Acquire);
-        let max_last_register = if raw_pruning.is_null() {
-            0
-        } else {
+        let maybe_raw_pruning = guard.protect(pareto_efficient_pruning, atomic::Ordering::Acquire);
+        let max_last_register = if let Some(raw_pruning) = NonNull::new(maybe_raw_pruning) {
             // SAFETY: `details_thread` guarantees `raw_pruning` points to at least one
             // element
-            let max_last_register = unsafe { *raw_pruning };
+            let max_last_register = unsafe { raw_pruning.read() };
             if i_u32 <= max_last_register {
                 break;
             }
             max_last_register
+        } else {
+            0
         };
         drop(guard);
 
@@ -651,13 +656,16 @@ unsafe fn search_dfs_helper<const N: usize>(
 
         let guard = collector.enter();
         let raw_pruning = guard.protect(pareto_efficient_pruning, atomic::Ordering::Acquire);
-        if !raw_pruning.is_null() {
+        if let Some(raw_pruning) = NonNull::new(raw_pruning) {
             // SAFETY: `raw_pruning` is guaranteed to point to
             // `mutable.exact_register_count().get().saturating_sub(2) + 1` u32s. The caller
             // guarantees `register_index` is less than `mutable.exact_register_count()`;
             // therefore we are in bounds
             let raw_pruning = unsafe {
-                NonemptySlice::from_raw_parts(raw_pruning, NonZeroUsize::from(register_index))
+                NonemptySlice::from_raw_parts(
+                    raw_pruning.as_ptr(),
+                    NonZeroUsize::from(register_index),
+                )
             };
             let (&max_last_register_order, pareto_efficent_prunes) = raw_pruning.split_first();
             if i <= max_last_register_order
