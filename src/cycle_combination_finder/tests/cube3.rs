@@ -14,7 +14,8 @@ mod common;
 #[test_log::test]
 fn optimal_2() {
     let cube3 = CUBE3.clone();
-    let cycle_combinations = CycleCombinationFinder::from(cube3)
+    let cycle_combinations = CycleCombinationFinder::builder()
+        .with_puzzle_def(cube3)
         .with_register_count(NonZeroU16::new(2).unwrap())
         .with_sorted(true)
         .find()
@@ -37,7 +38,8 @@ fn optimal_2() {
 #[test_log::test]
 fn optimal_3() {
     let cube3 = CUBE3.clone();
-    let cycle_combinations = CycleCombinationFinder::from(cube3)
+    let cycle_combinations = CycleCombinationFinder::builder()
+        .with_puzzle_def(cube3)
         .with_register_count(NonZeroU16::new(3).unwrap())
         .with_sorted(true)
         .find()
@@ -61,7 +63,8 @@ fn optimal_3() {
 #[test_log::test]
 fn optimal_4() {
     let cube3 = CUBE3.clone();
-    let cycle_combinations = CycleCombinationFinder::from(cube3)
+    let cycle_combinations = CycleCombinationFinder::builder()
+        .with_puzzle_def(cube3)
         .with_register_count(NonZeroU16::new(4).unwrap())
         .with_sorted(true)
         .find()
@@ -81,7 +84,8 @@ fn optimal_4() {
 #[test_log::test]
 fn optimal_5() {
     let cube3 = CUBE3.clone();
-    let cycle_combinations = CycleCombinationFinder::from(cube3)
+    let cycle_combinations = CycleCombinationFinder::builder()
+        .with_puzzle_def(cube3)
         .with_register_count(NonZeroU16::new(5).unwrap())
         .with_sorted(true)
         .find()
@@ -101,7 +105,8 @@ fn optimal_5() {
 #[test_log::test]
 fn equivalent_2() {
     let cube3 = CUBE3.clone();
-    let cycle_combinations = CycleCombinationFinder::from(cube3)
+    let cycle_combinations = CycleCombinationFinder::builder()
+        .with_puzzle_def(cube3)
         .with_register_count(NonZeroU16::new(2).unwrap())
         .with_optimality(Optimality::Equivalent)
         .with_sorted(true)
@@ -113,7 +118,8 @@ fn equivalent_2() {
 #[test_log::test]
 fn equivalent_3() {
     let cube3 = CUBE3.clone();
-    let cycle_combinations = CycleCombinationFinder::from(cube3)
+    let cycle_combinations = CycleCombinationFinder::builder()
+        .with_puzzle_def(cube3)
         .with_register_count(NonZeroU16::new(3).unwrap())
         .with_optimality(Optimality::Equivalent)
         .with_sorted(true)
