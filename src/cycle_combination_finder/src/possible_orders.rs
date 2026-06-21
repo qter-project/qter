@@ -5,7 +5,7 @@ use dashmap::DashSet;
 use fxhash::{FxBuildHasher, FxHashMap, FxHashSet};
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::debug;
-use rayon::prelude::*;
+use rayon::{ThreadPool, prelude::*};
 
 use crate::{
     FIRST_129_PRIMES,
@@ -469,19 +469,21 @@ impl<const N: usize> PuzzleDef<N> {
     }
 
     #[must_use]
-    pub fn possible_orders(&self) -> Option<OrdersDashSet<N>> {
+    pub fn possible_orders(&self, maybe_pool: Option<ThreadPool>) -> Option<OrdersDashSet<N>> {
+        let work = || {
+            self.connected_components()
+                .par_iter()
+                .map(|connected_component| {
+                    Cow::Owned(self.connected_component_possible_orders(connected_component))
+                })
+                .reduce(
+                    || Cow::Owned(LcmOrders::OrbitOrders(OrdersSet::default())),
+                    combine,
+                )
+                .into_owned()
+        };
         let now = Instant::now();
-        let all_combined = self
-            .connected_components()
-            .par_iter()
-            .map(|connected_component| {
-                Cow::Owned(self.connected_component_possible_orders(connected_component))
-            })
-            .reduce(
-                || Cow::Owned(LcmOrders::OrbitOrders(OrdersSet::default())),
-                combine,
-            );
-        let all_combined = match all_combined.into_owned() {
+        let all_combined = match maybe_pool.map_or_else(work, |pool| pool.install(work)) {
             LcmOrders::CombinedOrders(all_combined) => all_combined,
             LcmOrders::OrbitOrders(all_combined) => all_combined.into_iter().collect(),
         };
@@ -1151,7 +1153,7 @@ mod puzzle {
         expected_highest_ten: &[Int<U>; 10],
     ) {
         let start = Instant::now();
-        let possible_orders = puzzle_def.possible_orders().unwrap();
+        let possible_orders = puzzle_def.possible_orders(None).unwrap();
         info!(
             "Possible puzzle orders for {puzzle_def:?} in {}",
             start.elapsed().human(Truncate::Micro)

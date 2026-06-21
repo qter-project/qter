@@ -206,20 +206,24 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<N>> {
     /// [`Self::with_expected_length_assertion`] and the solutions length
     /// mismatches.
     pub fn find(self) -> Result<CycleCombinations<N>, CycleCombinationFinderError> {
-        if let NumCores::Num(num_cores) = self.config.num_cores {
-            rayon::ThreadPoolBuilder::new()
-                .num_threads(num_cores.get())
-                .build_global()
-                .expect("Already initialized rayon.");
-        }
         let HasRegisterCount(exact_register_count) = self.register_count;
         let HasPuzzleDef {
             puzzle_def,
             possible_orders_except_one,
         } = &*self.puzzle_def;
         let possible_orders_except_one = possible_orders_except_one.get_or_try_init(|| {
+            let maybe_pool = if let NumCores::Num(num_cores) = self.config.num_cores {
+                Some(
+                    rayon::ThreadPoolBuilder::new()
+                        .num_threads(num_cores.get())
+                        .build()
+                        .unwrap(),
+                )
+            } else {
+                None
+            };
             let possible_orders_except_one = puzzle_def
-                .possible_orders()
+                .possible_orders(maybe_pool)
                 .ok_or(CycleCombinationFinderError::PuzzleTooManyOrders)?;
             possible_orders_except_one.remove(&OrderExps::one());
             let now = Instant::now();
