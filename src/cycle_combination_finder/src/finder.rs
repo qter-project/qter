@@ -260,6 +260,8 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<N>> {
                 exact_register_count,
                 self.config.num_cores,
                 puzzle_def.orbit_defs(),
+                10,
+                NonZeroUsize::new(1).unwrap(),
             ),
         };
         if self.config.sorted {

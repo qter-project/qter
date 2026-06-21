@@ -26,9 +26,6 @@ use crate::{
     puzzle::OrbitDef,
 };
 
-// 7+ is where the performance plateaus from some stupid testing
-const BATCH_SIZE: NonZeroUsize = NonZeroUsize::new(1).unwrap();
-
 #[derive(Clone)]
 struct CycleCombinationsTreeMutable {
     fails: u64,
@@ -42,6 +39,9 @@ struct CycleCombinationsTreeMutable {
     sender: mpmc::Sender<PackedCycleCombinationCandidateQueue>,
     alloc_time: Duration,
     candidate_count: u64,
+
+    sender_capacity: usize,
+    batch_size: NonZeroUsize,
 }
 
 #[derive(Debug, Clone)]
@@ -105,7 +105,7 @@ impl CycleCombinationsTreeMutable {
 
     fn maybe_send_queue(&mut self, force: bool) {
         self.curr_batch_len += 1;
-        if self.curr_batch_len < BATCH_SIZE.get() && !force {
+        if self.curr_batch_len < self.batch_size.get() && !force {
             return;
         }
         if log_enabled!(Level::Debug) {
@@ -113,7 +113,7 @@ impl CycleCombinationsTreeMutable {
                 .batch_packed_queue
                 .iter()
                 .skip(1)
-                .take(BATCH_SIZE.get())
+                .take(self.batch_size.get())
                 .map(|&candidate_count| u64::from(candidate_count))
                 .sum::<u64>();
             self.candidate_count += candidate_count;
@@ -122,21 +122,21 @@ impl CycleCombinationsTreeMutable {
                 PackedCycleCombinationCandidateQueue(Box::clone_from_ref(&self.batch_packed_queue));
             self.alloc_time += now.elapsed();
 
-            if self.sender.is_full() {
-                self.full_sends += 1;
-            }
             let len = self.sender.len();
             trace!(
                 "{:?}: candidates={candidate_count}; mpmc={len}; fails={}",
                 std::thread::current().id(),
                 self.fails,
             );
-            self.fails = 0;
+            if len == self.sender_capacity {
+                self.full_sends += 1;
+            }
             if len == 0 {
                 self.empty_sends += 1;
             }
             self.sender_lens += len as u64;
             self.sends += 1;
+            self.fails = 0;
             // We can unwrap because the senders is only dropped after all threads are
             // joined.
             self.sender.send(payload).unwrap();
@@ -150,7 +150,7 @@ impl CycleCombinationsTreeMutable {
                 .unwrap();
         }
         self.curr_batch_len = 0;
-        self.batch_packed_queue.truncate(BATCH_SIZE.get() + 1);
+        self.batch_packed_queue.truncate(self.batch_size.get() + 1);
         for b in self.batch_packed_queue.iter_mut().skip(1) {
             *b = 0;
         }
@@ -411,13 +411,13 @@ unsafe fn try_next_pareto_efficient_pruning(
     )
 }
 
-#[allow(clippy::needless_pass_by_value)]
 fn details_thread<const N: usize>(
     core_id: CoreId,
     receiver: mpmc::Receiver<PackedCycleCombinationCandidateQueue>,
-    pareto_efficient_prunings: Arc<[AtomicPtr<u32>]>,
+    pareto_efficient_prunings: &[AtomicPtr<u32>],
     possible_orders_except_one: &[PossibleOrder<N>],
     exact_register_count: NonZeroU16,
+    batch_size: NonZeroUsize,
 ) -> DetailsThreadInfo {
     core_affinity::set_for_current(core_id);
     let mut cycle_combinations = CCParetoFront::default();
@@ -431,11 +431,11 @@ fn details_thread<const N: usize>(
     let cpu_time = ThreadTime::now();
     let mut alloc_time = Duration::default();
     let collector = Collector::new();
-    while let Ok(batch_packed_queue) = receiver.recv() {
+    for batch_packed_queue in receiver {
         let (&thread_index, candidate_counts_and_packed_candidates) =
             batch_packed_queue.0.split_first().unwrap();
         let (candidate_counts, mut packed_candidates) =
-            candidate_counts_and_packed_candidates.split_at(BATCH_SIZE.get());
+            candidate_counts_and_packed_candidates.split_at(batch_size.get());
         let thread_index = thread_index as usize;
         for &candidate_count in candidate_counts {
             if candidate_count == 0 {
@@ -522,7 +522,6 @@ fn details_thread<const N: usize>(
     }
 }
 
-#[allow(clippy::needless_pass_by_value)]
 fn dfs_thread<const N: usize>(
     core_id: CoreId,
     thread_index: usize,
@@ -748,6 +747,8 @@ pub(crate) fn search_dfs<const N: usize>(
     exact_register_count: NonZeroU16,
     num_cores: NumCores,
     orbit_defs: NonemptySlice<'_, OrbitDef>,
+    capacity_multipler: usize,
+    batch_size: NonZeroUsize,
 ) -> Vec<CycleCombination> {
     // If we return a None here then /shrug
     #[allow(clippy::missing_panics_doc)]
@@ -758,8 +759,9 @@ pub(crate) fn search_dfs<const N: usize>(
     let num_cores = core_ids.len();
 
     // We do not use `0` as to allow a buffer for every core to prevent starvation
-    let cap = num_cores * 10;
-    let (sender, receiver) = mpmc::sync_channel::<PackedCycleCombinationCandidateQueue>(cap);
+    let sender_capacity = num_cores * capacity_multipler;
+    let (sender, receiver) =
+        mpmc::sync_channel::<PackedCycleCombinationCandidateQueue>(sender_capacity);
 
     // We can unwrap because `exact_register_count` is NonZero.
     #[allow(clippy::missing_panics_doc)]
@@ -775,6 +777,9 @@ pub(crate) fn search_dfs<const N: usize>(
         sender,
         alloc_time: Duration::default(),
         candidate_count: 0,
+
+        sender_capacity,
+        batch_size,
     };
 
     let mut candidate_count = 0;
@@ -820,7 +825,7 @@ pub(crate) fn search_dfs<const N: usize>(
                     .push(u32::try_from(thread_index).expect("You have too many threads."));
                 mutable
                     .batch_packed_queue
-                    .extend(std::iter::repeat_n(0, BATCH_SIZE.get()));
+                    .extend(std::iter::repeat_n(0, batch_size.get()));
                 let tree_thread_handle = s.spawn(move || {
                     dfs_thread(
                         core_id,
@@ -833,7 +838,7 @@ pub(crate) fn search_dfs<const N: usize>(
                     )
                 });
                 let receiver = receiver.clone();
-                let pareto_efficient_prunings = Arc::clone(&pareto_efficient_prunings);
+                let pareto_efficient_prunings = &pareto_efficient_prunings;
                 let details_thread_handle = s.spawn(move || {
                     details_thread(
                         core_id,
@@ -841,6 +846,7 @@ pub(crate) fn search_dfs<const N: usize>(
                         pareto_efficient_prunings,
                         possible_orders_except_one,
                         exact_register_count,
+                        batch_size,
                     )
                 });
                 (tree_thread_handle, details_thread_handle)
@@ -928,7 +934,7 @@ pub(crate) fn search_dfs<const N: usize>(
     let empty_sends_percentage = empty_sends as f64 / sends as f64;
 
     #[allow(clippy::cast_precision_loss)]
-    let sender_len_percentage = sender_lens as f64 / (cap as u64 * sends) as f64;
+    let sender_len_percentage = sender_lens as f64 / (sender_capacity as u64 * sends) as f64;
 
     let dfs_io_time = dfs_real_time
         .saturating_sub(dfs_cpu_time)
