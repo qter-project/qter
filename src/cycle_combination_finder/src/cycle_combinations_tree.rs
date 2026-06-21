@@ -29,13 +29,6 @@ use crate::{
 // 7+ is where the performance plateaus from some stupid testing
 const BATCH_SIZE: NonZeroUsize = NonZeroUsize::new(1).unwrap();
 
-pub(crate) struct CycleCombinationsTree<const N: usize> {
-    possible_orders_except_one: Arc<[PossibleOrder<N>]>,
-    exact_register_count: NonZeroU16,
-    num_cores: NumCores,
-    exact_piece_count: NonZeroU32,
-}
-
 #[derive(Clone)]
 struct CycleCombinationsTreeMutable {
     fails: u64,
@@ -750,238 +743,220 @@ unsafe fn search_dfs_helper<const N: usize>(
     }
 }
 
-impl<const N: usize> CycleCombinationsTree<N> {
-    #[must_use]
-    pub fn new(
-        possible_orders_except_one: Arc<[PossibleOrder<N>]>,
-        exact_register_count: NonZeroU16,
-        num_cores: NumCores,
-        orbit_defs: NonemptySlice<'_, OrbitDef>,
-    ) -> Self {
-        #[allow(clippy::missing_panics_doc)]
-        // We are allowed to unwrap because `orbit_defs` is non-empty, and `piece_count` is a
-        // NonZero. Therefore the sum must be non-zero.
-        let exact_piece_count = NonZeroU32::new(
-            orbit_defs
-                .iter()
-                .map(|&orbit_def| u32::from(orbit_def.piece_count.get()))
-                .sum::<u32>(),
-        )
-        .unwrap();
-
-        Self {
-            possible_orders_except_one,
-            exact_register_count,
-            num_cores,
-            exact_piece_count,
-        }
+pub(crate) fn search_dfs<const N: usize>(
+    possible_orders_except_one: &Arc<[PossibleOrder<N>]>,
+    exact_register_count: NonZeroU16,
+    num_cores: NumCores,
+    orbit_defs: NonemptySlice<'_, OrbitDef>,
+) -> Vec<CycleCombination> {
+    // If we return a None here then /shrug
+    #[allow(clippy::missing_panics_doc)]
+    let mut core_ids = core_affinity::get_core_ids().unwrap();
+    if let NumCores::Num(num_cores) = num_cores {
+        core_ids.truncate(num_cores.get());
     }
+    let num_cores = core_ids.len();
 
-    #[must_use]
-    pub(crate) fn search_dfs(self) -> Vec<CycleCombination> {
-        // If we return a None here then /shrug
-        #[allow(clippy::missing_panics_doc)]
-        let mut core_ids = core_affinity::get_core_ids().unwrap();
-        if let NumCores::Num(num_cores) = self.num_cores {
-            core_ids.truncate(num_cores.get());
-        }
-        let num_cores = core_ids.len();
+    // We do not use `0` as to allow a buffer for every core to prevent starvation
+    let cap = num_cores * 10;
+    let (sender, receiver) = mpmc::sync_channel::<PackedCycleCombinationCandidateQueue>(cap);
 
-        // We do not use `0` as to allow a buffer for every core to prevent starvation
-        let cap = num_cores * 10;
-        let (sender, receiver) = mpmc::sync_channel::<PackedCycleCombinationCandidateQueue>(cap);
+    // We can unwrap because `exact_register_count` is NonZero.
+    #[allow(clippy::missing_panics_doc)]
+    let mutable = CycleCombinationsTreeMutable {
+        fails: 0,
+        batch_packed_queue: vec![],
+        sends: 0,
+        empty_sends: 0,
+        full_sends: 0,
+        sender_lens: 0,
+        curr_batch_len: 0,
+        registers: NonemptyVec::try_from(vec![0; usize::from(exact_register_count.get())]).unwrap(),
+        sender,
+        alloc_time: Duration::default(),
+        candidate_count: 0,
+    };
 
-        // We can unwrap because `exact_register_count` is NonZero.
-        #[allow(clippy::missing_panics_doc)]
-        let mutable = CycleCombinationsTreeMutable {
-            fails: 0,
-            batch_packed_queue: vec![],
-            sends: 0,
-            empty_sends: 0,
-            full_sends: 0,
-            sender_lens: 0,
-            curr_batch_len: 0,
-            registers: NonemptyVec::try_from(vec![0; usize::from(self.exact_register_count.get())])
-                .unwrap(),
-            sender,
-            alloc_time: Duration::default(),
-            candidate_count: 0,
-        };
+    let mut candidate_count = 0;
+    let mut dfs_real_time = Duration::default();
+    let mut dfs_cpu_time = Duration::default();
+    let mut dfs_alloc_time = Duration::default();
 
-        let mut candidate_count = 0;
-        let mut dfs_real_time = Duration::default();
-        let mut dfs_cpu_time = Duration::default();
-        let mut dfs_alloc_time = Duration::default();
+    let mut details_real_time = Duration::default();
+    let mut details_cpu_time = Duration::default();
+    let mut details_alloc_time = Duration::default();
+    let mut processed_candidate_count = 0;
+    let mut post_candidate_count = 0;
+    let mut sends = 0;
+    let mut empty_sends = 0;
+    let mut full_sends = 0;
+    let mut sender_lens = 0;
+    let mut smallest_fronts = BinaryHeap::new();
 
-        let mut details_real_time = Duration::default();
-        let mut details_cpu_time = Duration::default();
-        let mut details_alloc_time = Duration::default();
-        let mut processed_candidate_count = 0;
-        let mut post_candidate_count = 0;
-        let mut sends = 0;
-        let mut empty_sends = 0;
-        let mut full_sends = 0;
-        let mut sender_lens = 0;
-        let mut smallest_fronts = BinaryHeap::new();
-
-        let pareto_efficient_prunings: Arc<[_]> = Arc::from(
-            (0..num_cores)
-                .map(|_| AtomicPtr::default())
-                .collect::<Box<[_]>>(),
-        );
-        let real_time = Instant::now();
-        std::thread::scope(|s| {
-            let possible_orders_except_one = &self.possible_orders_except_one;
-
-            let handles = core_ids
-                .into_iter()
-                .enumerate()
-                .zip(pareto_efficient_prunings.iter())
-                .map(|((thread_index, core_id), pareto_efficient_pruning)| {
-                    let mut mutable = mutable.clone();
-                    mutable
-                        .batch_packed_queue
-                        .push(u32::try_from(thread_index).expect("You have too many threads."));
-                    mutable
-                        .batch_packed_queue
-                        .extend(std::iter::repeat_n(0, BATCH_SIZE.get()));
-                    let tree_thread_handle = s.spawn(move || {
-                        dfs_thread(
-                            core_id,
-                            thread_index,
-                            num_cores,
-                            self.exact_piece_count,
-                            mutable,
-                            pareto_efficient_pruning,
-                            possible_orders_except_one,
-                        )
-                    });
-                    let receiver = receiver.clone();
-                    let pareto_efficient_prunings = Arc::clone(&pareto_efficient_prunings);
-                    let details_thread_handle = s.spawn(move || {
-                        details_thread(
-                            core_id,
-                            receiver,
-                            pareto_efficient_prunings,
-                            possible_orders_except_one,
-                            self.exact_register_count,
-                        )
-                    });
-                    (tree_thread_handle, details_thread_handle)
-                })
-                .collect::<Vec<_>>();
-            drop(mutable);
-
-            for (tree_thread_info, details_thread_info) in
-                handles
-                    .into_iter()
-                    .map(|(tree_thread_handle, details_thread_handle)| {
-                        (
-                            tree_thread_handle.join().unwrap(),
-                            details_thread_handle.join().unwrap(),
-                        )
-                    })
-            {
-                candidate_count += tree_thread_info.candidate_count;
-                dfs_real_time += tree_thread_info.real_time;
-                dfs_cpu_time += tree_thread_info.cpu_time;
-                dfs_alloc_time += tree_thread_info.alloc_time;
-                sends += tree_thread_info.sends;
-                empty_sends += tree_thread_info.empty_sends;
-                full_sends += tree_thread_info.full_sends;
-                sender_lens += tree_thread_info.sender_lens;
-
-                details_cpu_time += details_thread_info.cpu_time;
-                details_real_time += details_thread_info.real_time;
-                details_alloc_time += details_thread_info.alloc_time;
-                processed_candidate_count += details_thread_info.processed_candidate_count;
-                post_candidate_count += details_thread_info.post_candidate_count;
-                smallest_fronts.push(details_thread_info.cycle_combinations);
-            }
-        });
-
-        let mut combined_cycle_combinations = CCParetoFront::default();
-        trace!(
-            "{}",
-            smallest_fronts
-                .iter()
-                .filter_map(|x| {
-                    let s = dbg_registers_iter(
-                        x.inner
-                            .iter()
-                            .map(|combination| combination.registers.iter().copied()),
-                        &self.possible_orders_except_one,
-                    );
-                    if s.is_empty() { None } else { Some(s) }
-                })
-                .collect::<Vec<_>>()
-                .join("\n\n")
-        );
-        while let Some(mut smallest_front) = smallest_fronts.pop() {
-            if let Some(smaller_front) = smallest_fronts.pop() {
-                smallest_front.merge(smaller_front);
-                smallest_fronts.push(smallest_front);
-            } else {
-                combined_cycle_combinations = smallest_front;
-            }
-        }
-
-        let real_time = real_time.elapsed();
-
-        #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-        let pruned_orders_percentage = (pareto_efficient_prunings
+    let pareto_efficient_prunings: Arc<[_]> = Arc::from(
+        (0..num_cores)
+            .map(|_| AtomicPtr::default())
+            .collect::<Box<[_]>>(),
+    );
+    // We are allowed to unwrap because `orbit_defs` is non-empty, and `piece_count` is a
+    // NonZero. Therefore the sum must be non-zero.
+    let exact_piece_count = NonZeroU32::new(
+        orbit_defs
             .iter()
-            .map(|max_last_register| {
-                // All threads are finished so there is no point in synchronization
-                let max_last_register = max_last_register.load(atomic::Ordering::Relaxed);
-                u64::from(if max_last_register.is_null() {
-                    0
-                } else {
-                    // SAFETY: `details_thread` guarantees `raw_pruning` points to at least one
-                    // element
-                    unsafe { *max_last_register }
-                })
+            .map(|&orbit_def| u32::from(orbit_def.piece_count.get()))
+            .sum::<u32>(),
+    )
+    .unwrap();
+    let real_time = Instant::now();
+    std::thread::scope(|s| {
+        let handles = core_ids
+            .into_iter()
+            .enumerate()
+            .zip(pareto_efficient_prunings.iter())
+            .map(|((thread_index, core_id), pareto_efficient_pruning)| {
+                let mut mutable = mutable.clone();
+                mutable
+                    .batch_packed_queue
+                    .push(u32::try_from(thread_index).expect("You have too many threads."));
+                mutable
+                    .batch_packed_queue
+                    .extend(std::iter::repeat_n(0, BATCH_SIZE.get()));
+                let tree_thread_handle = s.spawn(move || {
+                    dfs_thread(
+                        core_id,
+                        thread_index,
+                        num_cores,
+                        exact_piece_count,
+                        mutable,
+                        pareto_efficient_pruning,
+                        possible_orders_except_one,
+                    )
+                });
+                let receiver = receiver.clone();
+                let pareto_efficient_prunings = Arc::clone(&pareto_efficient_prunings);
+                let details_thread_handle = s.spawn(move || {
+                    details_thread(
+                        core_id,
+                        receiver,
+                        pareto_efficient_prunings,
+                        possible_orders_except_one,
+                        exact_register_count,
+                    )
+                });
+                (tree_thread_handle, details_thread_handle)
             })
-            .sum::<u64>() as f64)
-            / ((self.possible_orders_except_one.len() * num_cores) as f64);
+            .collect::<Vec<_>>();
+        drop(mutable);
 
-        #[allow(clippy::cast_precision_loss)]
-        let full_sends_percentage = full_sends as f64 / sends as f64;
+        for (tree_thread_info, details_thread_info) in
+            handles
+                .into_iter()
+                .map(|(tree_thread_handle, details_thread_handle)| {
+                    (
+                        tree_thread_handle.join().unwrap(),
+                        details_thread_handle.join().unwrap(),
+                    )
+                })
+        {
+            candidate_count += tree_thread_info.candidate_count;
+            dfs_real_time += tree_thread_info.real_time;
+            dfs_cpu_time += tree_thread_info.cpu_time;
+            dfs_alloc_time += tree_thread_info.alloc_time;
+            sends += tree_thread_info.sends;
+            empty_sends += tree_thread_info.empty_sends;
+            full_sends += tree_thread_info.full_sends;
+            sender_lens += tree_thread_info.sender_lens;
 
-        #[allow(clippy::cast_precision_loss)]
-        let empty_sends_percentage = empty_sends as f64 / sends as f64;
+            details_cpu_time += details_thread_info.cpu_time;
+            details_real_time += details_thread_info.real_time;
+            details_alloc_time += details_thread_info.alloc_time;
+            processed_candidate_count += details_thread_info.processed_candidate_count;
+            post_candidate_count += details_thread_info.post_candidate_count;
+            smallest_fronts.push(details_thread_info.cycle_combinations);
+        }
+    });
 
-        #[allow(clippy::cast_precision_loss)]
-        let sender_len_percentage = sender_lens as f64 / (cap as u64 * sends) as f64;
-
-        let dfs_io_time = dfs_real_time
-            .saturating_sub(dfs_cpu_time)
-            .saturating_sub(dfs_alloc_time);
-        let details_io_time = details_real_time
-            .saturating_sub(details_cpu_time)
-            .saturating_sub(details_alloc_time);
-
-        let profile_info = ProfileInfo {
-            candidate_count,
-            processed_candidate_count,
-            post_candidate_count,
-            pruned_orders_percentage,
-            sender_len_percentage,
-            empty_sends_percentage,
-            full_sends_percentage,
-            real_time,
-            dfs_alloc_time,
-            dfs_cpu_time,
-            dfs_io_time,
-            details_alloc_time,
-            details_cpu_time,
-            details_io_time,
-            num_cores,
-        };
-
-        debug!("Search tree complete");
-        debug!("{profile_info:#?}");
-
-        combined_cycle_combinations.into()
+    let mut combined_cycle_combinations = CCParetoFront::default();
+    trace!(
+        "{}",
+        smallest_fronts
+            .iter()
+            .filter_map(|x| {
+                let s = dbg_registers_iter(
+                    x.inner
+                        .iter()
+                        .map(|combination| combination.registers.iter().copied()),
+                    possible_orders_except_one,
+                );
+                if s.is_empty() { None } else { Some(s) }
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    );
+    while let Some(mut smallest_front) = smallest_fronts.pop() {
+        if let Some(smaller_front) = smallest_fronts.pop() {
+            smallest_front.merge(smaller_front);
+            smallest_fronts.push(smallest_front);
+        } else {
+            combined_cycle_combinations = smallest_front;
+        }
     }
+
+    let real_time = real_time.elapsed();
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+    let pruned_orders_percentage = (pareto_efficient_prunings
+        .iter()
+        .map(|max_last_register| {
+            // All threads are finished so there is no point in synchronization
+            let max_last_register = max_last_register.load(atomic::Ordering::Relaxed);
+            u64::from(if max_last_register.is_null() {
+                0
+            } else {
+                // SAFETY: `details_thread` guarantees `raw_pruning` points to at least one
+                // element
+                unsafe { *max_last_register }
+            })
+        })
+        .sum::<u64>() as f64)
+        / ((possible_orders_except_one.len() * num_cores) as f64);
+
+    #[allow(clippy::cast_precision_loss)]
+    let full_sends_percentage = full_sends as f64 / sends as f64;
+
+    #[allow(clippy::cast_precision_loss)]
+    let empty_sends_percentage = empty_sends as f64 / sends as f64;
+
+    #[allow(clippy::cast_precision_loss)]
+    let sender_len_percentage = sender_lens as f64 / (cap as u64 * sends) as f64;
+
+    let dfs_io_time = dfs_real_time
+        .saturating_sub(dfs_cpu_time)
+        .saturating_sub(dfs_alloc_time);
+    let details_io_time = details_real_time
+        .saturating_sub(details_cpu_time)
+        .saturating_sub(details_alloc_time);
+
+    let profile_info = ProfileInfo {
+        candidate_count,
+        processed_candidate_count,
+        post_candidate_count,
+        pruned_orders_percentage,
+        sender_len_percentage,
+        empty_sends_percentage,
+        full_sends_percentage,
+        real_time,
+        dfs_alloc_time,
+        dfs_cpu_time,
+        dfs_io_time,
+        details_alloc_time,
+        details_cpu_time,
+        details_io_time,
+        num_cores,
+    };
+
+    debug!("Search tree complete");
+    debug!("{profile_info:#?}");
+
+    combined_cycle_combinations.into()
 }

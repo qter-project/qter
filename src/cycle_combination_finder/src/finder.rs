@@ -14,7 +14,7 @@ use thiserror::Error;
 
 use crate::{
     cycle_combination_details::CycleCombinationDetails,
-    cycle_combinations_tree::{CycleCombinationsTree, dbg_registers},
+    cycle_combinations_tree::{dbg_registers, search_dfs},
     min_piece_count::MinPieceCount,
     orderexps::OrderExps,
     puzzle::PuzzleDef,
@@ -255,13 +255,12 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<N>> {
         })?;
         let mut cycle_combinations = match self.config.optimality {
             Optimality::Equivalent => unimplemented!(),
-            Optimality::Optimal => CycleCombinationsTree::new(
-                Arc::clone(possible_orders_except_one),
+            Optimality::Optimal => search_dfs(
+                possible_orders_except_one,
                 exact_register_count,
                 self.config.num_cores,
                 puzzle_def.orbit_defs(),
-            )
-            .search_dfs(),
+            ),
         };
         if self.config.sorted {
             cycle_combinations.sort_unstable();
