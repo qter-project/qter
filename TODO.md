@@ -11,7 +11,6 @@
 
 - after MKP
   - note that batching "ramps up" the mkp threads when the batch size is large; there are few solutions/batch in the beginning which helps make sure the 
-  - profiling for how often the queue is full; find the sweet spot
   - experiment with num_cores * 10
   - pareto front strategies:
     - rwlock shared front, allowing TOCTOU

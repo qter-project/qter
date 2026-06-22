@@ -5,7 +5,6 @@ use std::{
     num::{NonZeroU16, NonZeroU32, NonZeroUsize},
     ptr::NonNull,
     sync::{
-        Arc,
         atomic::{self, AtomicPtr},
         mpmc,
     },
@@ -743,7 +742,7 @@ unsafe fn search_dfs_helper<const N: usize>(
 }
 
 pub(crate) fn search_dfs<const N: usize>(
-    possible_orders_except_one: &Arc<[PossibleOrder<N>]>,
+    possible_orders_except_one: &[PossibleOrder<N>],
     exact_register_count: NonZeroU16,
     num_cores: NumCores,
     orbit_defs: NonemptySlice<'_, OrbitDef>,
@@ -798,11 +797,9 @@ pub(crate) fn search_dfs<const N: usize>(
     let mut sender_lens = 0;
     let mut smallest_fronts = BinaryHeap::new();
 
-    let pareto_efficient_prunings: Arc<[_]> = Arc::from(
-        (0..num_cores)
-            .map(|_| AtomicPtr::default())
-            .collect::<Box<[_]>>(),
-    );
+    let pareto_efficient_prunings = (0..num_cores)
+        .map(|_| AtomicPtr::default())
+        .collect::<Box<[_]>>();
     // We are allowed to unwrap because `orbit_defs` is non-empty, and `piece_count` is a
     // NonZero. Therefore the sum must be non-zero.
     let exact_piece_count = NonZeroU32::new(
