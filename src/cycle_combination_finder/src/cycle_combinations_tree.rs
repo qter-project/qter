@@ -5,6 +5,7 @@ use std::{
     num::{NonZeroU16, NonZeroU32, NonZeroUsize},
     ptr::NonNull,
     sync::{
+        Arc,
         atomic::{self, AtomicPtr},
         mpmc,
     },
@@ -15,11 +16,12 @@ use core_affinity::CoreId;
 use cpu_time::ThreadTime;
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::{Level, debug, log_enabled, trace};
+use multiqueue2::{BroadcastReceiver, BroadcastSender, broadcast_queue};
 use seize::{Collector, Guard, reclaim};
 
 use crate::{
     cycle_combination_details::CycleCombinationDetails,
-    finder::{CycleCombination, NumCores, PossibleOrder},
+    finder::{CycleCombination, CycleCombinationInner, NumCores, PossibleOrder},
     nonemptyvec::{NonemptySlice, NonemptyVec},
     pareto_front::CCParetoFront,
     puzzle::OrbitDef,
@@ -46,7 +48,7 @@ struct CycleCombinationsTreeMutable {
 #[derive(Debug, Clone)]
 struct PackedCycleCombinationCandidateQueue(Box<[u32]>);
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct DisjointRegisters<'a> {
     prefix_registers: &'a [u32],
     last_register: u32,
@@ -313,26 +315,6 @@ impl DisjointRegisters<'_> {
     }
 }
 
-fn dominating_check<const N: usize>(
-    dominating_registers: DisjointRegisters,
-    possible_orders_except_one: &[PossibleOrder<N>],
-    post_candidate_count: &mut u64,
-    alloc_time: &mut Duration,
-) -> Option<CycleCombination> {
-    *post_candidate_count += 1;
-    CycleCombinationDetails::new(dominating_registers, possible_orders_except_one).map(|details| {
-        let registers = if log_enabled!(Level::Debug) {
-            let now = Instant::now();
-            let registers = dominating_registers.iter().collect::<Box<_>>();
-            *alloc_time += now.elapsed();
-            registers
-        } else {
-            dominating_registers.iter().collect::<Box<_>>()
-        };
-        CycleCombination { registers, details }
-    })
-}
-
 /// # Safety
 ///
 /// `pareto_efficient_pruning` must come from the `try_update` method on one of
@@ -412,13 +394,17 @@ unsafe fn try_next_pareto_efficient_pruning(
 
 fn details_thread<const N: usize>(
     core_id: CoreId,
-    receiver: mpmc::Receiver<PackedCycleCombinationCandidateQueue>,
+    candidates_receiver: mpmc::Receiver<PackedCycleCombinationCandidateQueue>,
+    solutions_receiver: BroadcastReceiver<CycleCombination>,
+    solutions_sender: BroadcastSender<CycleCombination>,
     pareto_efficient_prunings: &[AtomicPtr<u32>],
     possible_orders_except_one: &[PossibleOrder<N>],
     exact_register_count: NonZeroU16,
     batch_size: NonZeroUsize,
 ) -> DetailsThreadInfo {
-    core_affinity::set_for_current(core_id);
+    if core_affinity::set_for_current(core_id) {
+        debug!("Details: Pinned {core_id:?}");
+    }
     let mut cycle_combinations = CCParetoFront::default();
     let mut processed_candidate_count = 0;
     let mut post_candidate_count = 0;
@@ -430,7 +416,11 @@ fn details_thread<const N: usize>(
     let cpu_time = ThreadTime::now();
     let mut alloc_time = Duration::default();
     let collector = Collector::new();
-    for batch_packed_queue in receiver {
+    for batch_packed_queue in candidates_receiver {
+        for s in solutions_receiver.try_iter() {
+            cycle_combinations.push(s);
+        }
+
         let (&thread_index, candidate_counts_and_packed_candidates) =
             batch_packed_queue.0.split_first().unwrap();
         let (candidate_counts, mut packed_candidates) =
@@ -456,12 +446,27 @@ fn details_thread<const N: usize>(
                 if !cycle_combinations.push_and_dominating_check(
                     disjoint_registers,
                     |dominating_registers| {
-                        dominating_check(
+                        post_candidate_count += 1;
+                        CycleCombinationDetails::new(
                             dominating_registers,
                             possible_orders_except_one,
-                            &mut post_candidate_count,
-                            &mut alloc_time,
                         )
+                        .map(|details| {
+                            let registers = if log_enabled!(Level::Debug) {
+                                let now = Instant::now();
+                                let registers = dominating_registers.iter().collect::<Box<_>>();
+                                alloc_time += now.elapsed();
+                                registers
+                            } else {
+                                dominating_registers.iter().collect::<Box<_>>()
+                            };
+                            let inner = Arc::new(CycleCombinationInner { registers, details });
+                            let _ = solutions_sender.try_send(CycleCombination {
+                                inner: Arc::clone(&inner),
+                            });
+                            let _ = solutions_receiver.try_recv();
+                            CycleCombination { inner }
+                        })
                     },
                 ) {
                     continue;
@@ -530,7 +535,9 @@ fn dfs_thread<const N: usize>(
     pareto_efficient_pruning: &AtomicPtr<u32>,
     possible_orders_except_one: &[PossibleOrder<N>],
 ) -> TreeThreadInfo {
-    core_affinity::set_for_current(core_id);
+    if core_affinity::set_for_current(core_id) {
+        debug!("DFS: Pinned {core_id:?}");
+    }
     let real_time = Instant::now();
     let cpu_time = ThreadTime::now();
 
@@ -761,6 +768,7 @@ pub(crate) fn search_dfs<const N: usize>(
     let sender_capacity = num_cores * capacity_multipler;
     let (sender, receiver) =
         mpmc::sync_channel::<PackedCycleCombinationCandidateQueue>(sender_capacity);
+    let (sender2, receiver2) = broadcast_queue(100);
 
     // We can unwrap because `exact_register_count` is NonZero.
     #[allow(clippy::missing_panics_doc)]
@@ -835,11 +843,15 @@ pub(crate) fn search_dfs<const N: usize>(
                     )
                 });
                 let receiver = receiver.clone();
+                let receiver2 = receiver2.add_stream();
+                let sender2 = sender2.clone();
                 let pareto_efficient_prunings = &pareto_efficient_prunings;
                 let details_thread_handle = s.spawn(move || {
                     details_thread(
                         core_id,
                         receiver,
+                        receiver2,
+                        sender2,
                         pareto_efficient_prunings,
                         possible_orders_except_one,
                         exact_register_count,
@@ -850,6 +862,8 @@ pub(crate) fn search_dfs<const N: usize>(
             })
             .collect::<Vec<_>>();
         drop(mutable);
+        drop(sender2);
+        drop(receiver2);
 
         for (tree_thread_info, details_thread_info) in
             handles
@@ -888,7 +902,7 @@ pub(crate) fn search_dfs<const N: usize>(
                 let s = dbg_registers_iter(
                     x.inner
                         .iter()
-                        .map(|combination| combination.registers.iter().copied()),
+                        .map(|combination| combination.inner.registers.iter().copied()),
                     possible_orders_except_one,
                 );
                 if s.is_empty() { None } else { Some(s) }

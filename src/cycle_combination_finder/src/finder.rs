@@ -40,8 +40,13 @@ pub struct PossibleOrder<const N: usize> {
     pub(crate) min_piece_count: NonZeroU32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct CycleCombination {
+    pub(crate) inner: Arc<CycleCombinationInner>,
+}
+
+#[derive(Debug)]
+pub(crate) struct CycleCombinationInner {
     pub(crate) registers: Box<[u32]>,
     pub(crate) details: CycleCombinationDetails,
 }
@@ -92,7 +97,7 @@ pub struct CycleCombinationFinderConfig {
 
 impl Ord for CycleCombination {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.registers.iter().cmp(&other.registers)
+        self.inner.registers.iter().cmp(&other.inner.registers)
     }
 }
 
@@ -106,14 +111,14 @@ impl Eq for CycleCombination {}
 
 impl PartialEq for CycleCombination {
     fn eq(&self, other: &Self) -> bool {
-        self.registers == other.registers
+        self.inner.registers == other.inner.registers
     }
 }
 
 impl<const N: usize> CycleCombinations<N> {
     pub fn registers(&self) -> impl Iterator<Item = impl Iterator<Item = &OrderExps<N>>> {
         self.data.iter().map(|x| {
-            x.registers
+            x.inner.registers
                 .iter()
                 .map(|&i| &self.possible_orders_except_one[i as usize].order)
         })
@@ -124,7 +129,7 @@ impl Deref for CycleCombination {
     type Target = CycleCombinationDetails;
 
     fn deref(&self) -> &Self::Target {
-        &self.details
+        &self.inner.details
     }
 }
 
@@ -276,7 +281,7 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<N>> {
                 cycle_combinations.len(),
                 cycle_combinations
                     .into_iter()
-                    .map(|i| dbg_registers(i.registers, possible_orders_except_one))
+                    .map(|i| dbg_registers(i.inner.registers.iter().copied(), possible_orders_except_one))
                     .collect::<Vec<_>>()
                     .join("\n")
             );

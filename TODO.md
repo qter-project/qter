@@ -9,6 +9,9 @@
 
 ## CCF
 
+- get rid of immediately recv send
+- work around using Arc
+
 - after MKP
   - note that batching "ramps up" the mkp threads when the batch size is large; there are few solutions/batch in the beginning which helps make sure the 
   - experiment with num_cores * 10

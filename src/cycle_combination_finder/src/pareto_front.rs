@@ -66,7 +66,10 @@ impl CCParetoFront {
         }
         let mut len = 0;
         for (i, member) in self.inner.iter().enumerate().skip(start) {
-            if dominate(registers.iter().copied(), member.registers.iter().copied()) {
+            if dominate(
+                registers.iter().copied(),
+                member.inner.registers.iter().copied(),
+            ) {
                 self.index_dominated_elements[len] = i;
                 len += 1;
             }
@@ -80,13 +83,12 @@ impl CCParetoFront {
         }
     }
 
-    pub fn push_and_dominating_check(
-        &mut self,
-        registers: DisjointRegisters,
-        mut dominating_check: impl FnMut(DisjointRegisters) -> Option<CycleCombination>,
-    ) -> bool {
+    pub fn push(&mut self, existing: CycleCombination) -> bool {
         for (i, member) in self.inner.iter().enumerate() {
-            if dominate(member.registers.iter().copied(), registers.iter()) {
+            if dominate(
+                member.inner.registers.iter().copied(),
+                existing.inner.registers.iter().copied(),
+            ) {
                 // `new_element` is dominated by `element`, it is thus not part of the Pareto
                 // front swap `element` with the previous element in order to
                 // percolate the best elements to the top NOTE: in my benchmarks
@@ -99,14 +101,50 @@ impl CCParetoFront {
                     }
                 }
                 return false;
-            } else if dominate(registers.iter(), member.registers.iter().copied())
+            } else if dominate(
+                existing.inner.registers.iter().copied(),
+                member.inner.registers.iter().copied(),
+            ) {
+                // `new_element` dominates `element`, it is thus part of the Pareto front
+                self.inner.swap_remove(i);
+                // looks at the rest of the Pareto front to remove any further element that
+                // are dominated
+                self.remove_dominated_starting_at(&existing.inner.registers, i);
+                break;
+            }
+        }
+
+        self.inner.push(existing);
+        true
+    }
+
+    pub fn push_and_dominating_check(
+        &mut self,
+        registers: DisjointRegisters,
+        mut dominating_check: impl FnMut(DisjointRegisters) -> Option<CycleCombination>,
+    ) -> bool {
+        for (i, member) in self.inner.iter().enumerate() {
+            if dominate(member.inner.registers.iter().copied(), registers.iter()) {
+                // `new_element` is dominated by `element`, it is thus not part of the Pareto
+                // front swap `element` with the previous element in order to
+                // percolate the best elements to the top NOTE: in my benchmarks
+                // this brings clear performance benefits by putting "killer" elements first
+                if i > 0 {
+                    // SAFETY: `i` is in range, and `i - 1` must also be in range because of the
+                    // if. Note that the safe version was not optimizing the bounds check
+                    unsafe {
+                        self.inner.swap_unchecked(i, i - 1);
+                    }
+                }
+                return false;
+            } else if dominate(registers.iter(), member.inner.registers.iter().copied())
                 && let Some(cycle_combination) = (dominating_check)(registers)
             {
                 // `new_element` dominates `element`, it is thus part of the Pareto front
                 self.inner.swap_remove(i);
                 // looks at the rest of the Pareto front to remove any further element that
                 // are dominated
-                self.remove_dominated_starting_at(&cycle_combination.registers, i);
+                self.remove_dominated_starting_at(&cycle_combination.inner.registers, i);
                 self.inner.push(cycle_combination);
                 return true;
             }
@@ -123,14 +161,20 @@ impl CCParetoFront {
 
     fn remove_dominated(&mut self, registers: &[u32]) -> bool {
         for (i, member) in self.inner.iter().enumerate() {
-            if dominate(member.registers.iter().copied(), registers.iter().copied()) {
+            if dominate(
+                member.inner.registers.iter().copied(),
+                registers.iter().copied(),
+            ) {
                 if i > 0 {
                     unsafe {
                         self.inner.swap_unchecked(i, i - 1);
                     }
                 }
                 return false;
-            } else if dominate(registers.iter().copied(), member.registers.iter().copied()) {
+            } else if dominate(
+                registers.iter().copied(),
+                member.inner.registers.iter().copied(),
+            ) {
                 self.inner.swap_remove(i);
                 self.remove_dominated_starting_at(registers, i);
                 return true;
@@ -154,7 +198,7 @@ impl CCParetoFront {
         // for all the elements in the largest front, remove dominated elements from the
         // smallest front the largest front keeps only the elements that should be in
         // the final Pareto front
-        largest_front.retain(|x| self.remove_dominated(&x.registers));
+        largest_front.retain(|x| self.remove_dominated(&x.inner.registers));
         // extends the largest front with the content of the smallest front
         // and make it our front
         std::mem::swap(&mut self.inner, &mut largest_front);
