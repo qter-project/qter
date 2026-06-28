@@ -12,14 +12,13 @@ dashmap = { version = "6.2.1", features = ["rayon"] }
 env_logger = "0.11.10"
 fxhash = "0.2.1"
 humanize-duration.workspace = true
-left-right = "0.11.7"
 log.workspace = true
-multiqueue2 = "0.2.1"
 num-integer = "0.1.46"
 puzzle_theory.workspace = true
 rayon = "1.12.0"
 seize = "0.5.1"
 thiserror.workspace = true
+tokio = { version = "1.52.3", features = ["sync"] }
 union-find = { git = "https://github.com/qter-project/union-find-rs" }
 
 [dev-dependencies]

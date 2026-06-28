@@ -8,6 +8,7 @@ use std::{
         Arc,
         atomic::{self, AtomicPtr},
         mpmc,
+        mpsc::{RecvError, TryRecvError},
     },
     time::{Duration, Instant},
 };
@@ -16,8 +17,8 @@ use core_affinity::CoreId;
 use cpu_time::ThreadTime;
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::{Level, debug, log_enabled, trace};
-use multiqueue2::{BroadcastReceiver, BroadcastSender, broadcast_queue};
 use seize::{Collector, Guard, reclaim};
+use tokio::sync::broadcast::error::TryRecvError as TokioTryRecvError;
 
 use crate::{
     cycle_combination_details::CycleCombinationDetails,
@@ -395,8 +396,8 @@ unsafe fn try_next_pareto_efficient_pruning(
 fn details_thread<const N: usize>(
     core_id: CoreId,
     candidates_receiver: mpmc::Receiver<PackedCycleCombinationCandidateQueue>,
-    solutions_receiver: BroadcastReceiver<CycleCombination>,
-    solutions_sender: BroadcastSender<CycleCombination>,
+    mut solutions_receiver: tokio::sync::broadcast::Receiver<(CoreId, CycleCombination)>,
+    solutions_sender: tokio::sync::broadcast::Sender<(CoreId, CycleCombination)>,
     pareto_efficient_prunings: &[AtomicPtr<u32>],
     possible_orders_except_one: &[PossibleOrder<N>],
     exact_register_count: NonZeroU16,
@@ -416,10 +417,30 @@ fn details_thread<const N: usize>(
     let cpu_time = ThreadTime::now();
     let mut alloc_time = Duration::default();
     let collector = Collector::new();
-    for batch_packed_queue in candidates_receiver {
-        for s in solutions_receiver.try_iter() {
-            cycle_combinations.push(s);
+    loop {
+        let maybe_batch_packed_queue = match candidates_receiver.try_recv() {
+            Ok(batch_packed_queue) => Some(batch_packed_queue),
+            Err(TryRecvError::Disconnected) => break,
+            Err(TryRecvError::Empty) => None,
+        };
+
+        loop {
+            match solutions_receiver.try_recv() {
+                Ok((c, s)) => {
+                    if c != core_id {
+                        cycle_combinations.push(s);
+                    }
+                }
+                Err(TokioTryRecvError::Closed) => panic!(),
+                Err(TokioTryRecvError::Empty | TokioTryRecvError::Lagged(_)) => break,
+            }
         }
+
+        let batch_packed_queue =
+            match maybe_batch_packed_queue.map_or_else(|| candidates_receiver.recv(), Ok) {
+                Ok(batch_packed_queue) => batch_packed_queue,
+                Err(RecvError) => break,
+            };
 
         let (&thread_index, candidate_counts_and_packed_candidates) =
             batch_packed_queue.0.split_first().unwrap();
@@ -461,10 +482,16 @@ fn details_thread<const N: usize>(
                                 dominating_registers.iter().collect::<Box<_>>()
                             };
                             let inner = Arc::new(CycleCombinationInner { registers, details });
-                            let _ = solutions_sender.try_send(CycleCombination {
-                                inner: Arc::clone(&inner),
-                            });
-                            let _ = solutions_receiver.try_recv();
+                            assert!(
+                                solutions_sender
+                                    .send((
+                                        core_id,
+                                        CycleCombination {
+                                            inner: Arc::clone(&inner),
+                                        },
+                                    ))
+                                    .is_ok()
+                            );
                             CycleCombination { inner }
                         })
                     },
@@ -516,6 +543,8 @@ fn details_thread<const N: usize>(
             }
         }
     }
+    drop(solutions_sender);
+    drop(candidates_receiver);
     DetailsThreadInfo {
         cpu_time: cpu_time.elapsed(),
         real_time: real_time.elapsed(),
@@ -766,9 +795,9 @@ pub(crate) fn search_dfs<const N: usize>(
 
     // We do not use `0` as to allow a buffer for every core to prevent starvation
     let sender_capacity = num_cores * capacity_multipler;
-    let (sender, receiver) =
+    let (sender, candidates_receiver) =
         mpmc::sync_channel::<PackedCycleCombinationCandidateQueue>(sender_capacity);
-    let (sender2, receiver2) = broadcast_queue(100);
+    let (solutions_sender, _) = tokio::sync::broadcast::channel(num_cores * batch_size.get());
 
     // We can unwrap because `exact_register_count` is NonZero.
     #[allow(clippy::missing_panics_doc)]
@@ -842,16 +871,16 @@ pub(crate) fn search_dfs<const N: usize>(
                         possible_orders_except_one,
                     )
                 });
-                let receiver = receiver.clone();
-                let receiver2 = receiver2.add_stream();
-                let sender2 = sender2.clone();
+                let candidates_receiver = candidates_receiver.clone();
+                let solutions_receiver = solutions_sender.subscribe();
+                let solutions_sender = solutions_sender.clone();
                 let pareto_efficient_prunings = &pareto_efficient_prunings;
                 let details_thread_handle = s.spawn(move || {
                     details_thread(
                         core_id,
-                        receiver,
-                        receiver2,
-                        sender2,
+                        candidates_receiver,
+                        solutions_receiver,
+                        solutions_sender,
                         pareto_efficient_prunings,
                         possible_orders_except_one,
                         exact_register_count,
@@ -862,8 +891,7 @@ pub(crate) fn search_dfs<const N: usize>(
             })
             .collect::<Vec<_>>();
         drop(mutable);
-        drop(sender2);
-        drop(receiver2);
+        drop(solutions_sender);
 
         for (tree_thread_info, details_thread_info) in
             handles

@@ -9,8 +9,8 @@
 
 ## CCF
 
-- get rid of immediately recv send
 - work around using Arc
+- use pruning information when each mpmc solution is pushed
 
 - after MKP
   - note that batching "ramps up" the mkp threads when the batch size is large; there are few solutions/batch in the beginning which helps make sure the 
