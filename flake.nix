@@ -78,6 +78,7 @@
               nodejs
               typescript
               wasm-pack
+              cargo-nextest
 
               # (gap.overrideAttrs (o: {
               #   version = "4.13.1";
