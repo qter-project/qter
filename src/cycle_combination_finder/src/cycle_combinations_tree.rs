@@ -35,14 +35,14 @@ struct CycleCombinationsTreeMutable {
     sends: u64,
     empty_sends: u64,
     full_sends: u64,
-    sender_lens: u64,
+    sender_lens: usize,
     curr_batch_len: usize,
     registers: NonemptyVec<u32>,
-    sender: mpmc::Sender<PackedCycleCombinationCandidateQueue>,
+    candidates_sender: mpmc::Sender<PackedCycleCombinationCandidateQueue>,
     alloc_time: Duration,
     candidate_count: u64,
 
-    sender_capacity: usize,
+    candidates_sender_capacity: usize,
     batch_size: NonZeroUsize,
 }
 
@@ -73,7 +73,7 @@ struct TreeThreadInfo {
     empty_sends: u64,
     full_sends: u64,
     sends: u64,
-    sender_lens: u64,
+    sender_lens: usize,
 }
 
 struct ProfileInfo {
@@ -124,28 +124,28 @@ impl CycleCombinationsTreeMutable {
                 PackedCycleCombinationCandidateQueue(Box::clone_from_ref(&self.batch_packed_queue));
             self.alloc_time += now.elapsed();
 
-            let len = self.sender.len();
+            let len = self.candidates_sender.len();
             trace!(
                 "{:?}: candidates={candidate_count}; mpmc={len}; fails={}",
                 std::thread::current().id(),
                 self.fails,
             );
-            if len == self.sender_capacity {
+            if len == self.candidates_sender_capacity {
                 self.full_sends += 1;
             }
             if len == 0 {
                 self.empty_sends += 1;
             }
-            self.sender_lens += len as u64;
+            self.sender_lens += len;
             self.sends += 1;
             self.fails = 0;
             // We can unwrap because the senders is only dropped after all threads are
             // joined.
-            self.sender.send(payload).unwrap();
+            self.candidates_sender.send(payload).unwrap();
         } else {
             // We can unwrap because the senders is only dropped after all threads are
             // joined.
-            self.sender
+            self.candidates_sender
                 .send(PackedCycleCombinationCandidateQueue(Box::clone_from_ref(
                     &self.batch_packed_queue,
                 )))
@@ -794,9 +794,10 @@ pub(crate) fn search_dfs<const N: usize>(
     let num_cores = core_ids.len();
 
     // We do not use `0` as to allow a buffer for every core to prevent starvation
-    let sender_capacity = num_cores * capacity_multipler;
-    let (sender, candidates_receiver) =
-        mpmc::sync_channel::<PackedCycleCombinationCandidateQueue>(sender_capacity);
+    let candidates_sender_capacity = num_cores * capacity_multipler;
+    let (candidates_sender, candidates_receiver) =
+        mpmc::sync_channel::<PackedCycleCombinationCandidateQueue>(candidates_sender_capacity);
+    // I will only send at most `batch_size` solutions before receiving the queue, so I can make the capacity equal to this
     let (solutions_sender, _) = tokio::sync::broadcast::channel(num_cores * batch_size.get());
 
     // We can unwrap because `exact_register_count` is NonZero.
@@ -810,11 +811,11 @@ pub(crate) fn search_dfs<const N: usize>(
         sender_lens: 0,
         curr_batch_len: 0,
         registers: NonemptyVec::try_from(vec![0; usize::from(exact_register_count.get())]).unwrap(),
-        sender,
+        candidates_sender,
         alloc_time: Duration::default(),
         candidate_count: 0,
 
-        sender_capacity,
+        candidates_sender_capacity,
         batch_size,
     };
 
@@ -973,7 +974,8 @@ pub(crate) fn search_dfs<const N: usize>(
     let empty_sends_percentage = empty_sends as f64 / sends as f64;
 
     #[allow(clippy::cast_precision_loss)]
-    let sender_len_percentage = sender_lens as f64 / (sender_capacity as u64 * sends) as f64;
+    let sender_len_percentage =
+        sender_lens as f64 / (candidates_sender_capacity as u64 * sends) as f64;
 
     let dfs_io_time = dfs_real_time
         .saturating_sub(dfs_cpu_time)
