@@ -8,6 +8,7 @@ float = true
 stealthchop = false
 await_moves_delay = 200
 corner_cut_help = 1
+compensation = 0
 mismatch = { behavior = "ReturnSimulation" }
 
 # org order is UBRDFL
