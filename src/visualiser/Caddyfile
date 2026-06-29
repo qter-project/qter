@@ -1,0 +1,4 @@
+# visualiser
+10.42.0.1:8080 {
+        file_server
+}

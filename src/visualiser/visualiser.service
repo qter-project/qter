@@ -1,0 +1,13 @@
+[Unit]
+Description=Qter Visualiser
+After=network.target
+
+[Service]
+Type=simple
+User=robot
+WorkingDirectory=/home/robot/Desktop/visualiser
+ExecStart=caddy run --config Caddyfile
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
