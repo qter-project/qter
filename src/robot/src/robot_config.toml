@@ -1,37 +1,34 @@
 qvis_app_path = "/home/robot/Desktop/qvis/qvis_app/"
 revolutions_per_second = 10
-max_acceleration = 300
+max_acceleration = 100
 microstep_resolution = 1
 priority = "RealTime"
 wait_between_moves = 0.02
 float = true
 stealthchop = false
-await_moves_delay = 200
+await_moves_delay = 0
 corner_cut_help = 1
-compensation = 0
 mismatch = { behavior = "ReturnSimulation" }
 
-# org order is UBRDFL
-
-[motors.R]
+[motors.U]
 step_pin = 21
 dir_pin = 26
 uart_bus = "Uart0"
 uart_address = 0
 
-[motors.F]
+[motors.L]
 step_pin = 19
 dir_pin = 13
 uart_bus = "Uart0"
 uart_address = 1
 
-[motors.U]
+[motors.B]
 step_pin = 6
 dir_pin = 17
 uart_bus = "Uart0"
 uart_address = 2
 
-[motors.L]
+[motors.R]
 step_pin = 11
 dir_pin = 7
 uart_bus = "Uart4"
@@ -43,7 +40,7 @@ dir_pin = 5
 uart_bus = "Uart4"
 uart_address = 1
 
-[motors.B]
+[motors.F]
 step_pin = 12
 dir_pin = 23
 uart_bus = "Uart4"

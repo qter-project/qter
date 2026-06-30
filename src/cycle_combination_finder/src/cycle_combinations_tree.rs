@@ -436,14 +436,14 @@ fn details_thread<const N: usize>(
             }
         }
 
-        let batch_packed_queue =
+        let PackedCycleCombinationCandidateQueue(batch_packed_queue) =
             match maybe_batch_packed_queue.map_or_else(|| candidates_receiver.recv(), Ok) {
                 Ok(batch_packed_queue) => batch_packed_queue,
                 Err(RecvError) => break,
             };
 
         let (&thread_index, candidate_counts_and_packed_candidates) =
-            batch_packed_queue.0.split_first().unwrap();
+            batch_packed_queue.split_first().unwrap();
         let (candidate_counts, mut packed_candidates) =
             candidate_counts_and_packed_candidates.split_at(batch_size.get());
         let thread_index = thread_index as usize;
@@ -525,6 +525,15 @@ fn details_thread<const N: usize>(
                         atomic::Ordering::Acquire,
                     ) {
                         Ok(maybe_curr_raw_pruning) => {
+                            let a = dbg_registers(
+                                disjoint_registers.iter(),
+                                possible_orders_except_one,
+                            );
+                            println!(
+                                "{:?}: {a} ({})",
+                                std::thread::current().id(),
+                                disjoint_registers.iter().sum::<u32>()
+                            );
                             if let Some(curr_raw_pruning) = NonNull::new(maybe_curr_raw_pruning) {
                                 unsafe {
                                     collector.retire(curr_raw_pruning.as_ptr(), reclaim::boxed);

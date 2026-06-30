@@ -175,13 +175,6 @@ pub struct Ticker {
     now: Instant,
 }
 
-impl RobotConfig {
-    fn compensation(&self, dir: TurnDir) -> i32 {
-        let sign = dir.qturns().signum();
-        self.compensation.cast_signed() * sign
-    }
-}
-
 impl Ticker {
     pub fn new() -> Self {
         Self {
@@ -557,17 +550,9 @@ fn motor_thread(
 
         match moves {
             MoveInstruction::Single((face, dir)) => {
-                if robot_config.compensation(dir) != 0 {
-                    todo!()
-                }
-
                 motors.perform_single(face, dir);
             }
             MoveInstruction::Double([(face1, dir1), (face2, dir2)]) => {
-                if robot_config.compensation(dir1) != 0 || robot_config.compensation(dir1) != 0 {
-                    todo!()
-                }
-
                 motors.perform_commutative(face1, dir1, face2, dir2);
             }
             MoveInstruction::Float => {
@@ -739,7 +724,7 @@ pub enum TurnDir {
 }
 
 impl TurnDir {
-    fn qturns(self) -> i32 {
+    pub fn qturns(self) -> i32 {
         match self {
             TurnDir::Normal => 1,
             TurnDir::Double => 2,
