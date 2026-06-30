@@ -10,10 +10,10 @@
 ## CCF
 
 - work around using Arc
-- use pruning information when each mpmc solution is pushed
+- use pruning information when each mpmc solution is pushed: multithread pareto efficient pruning and ignore the first register descending
 
 - after MKP
-  - note that batching "ramps up" the mkp threads when the batch size is large; there are few solutions/batch in the beginning which helps make sure the 
+  - note that batching "ramps up" the mkp threads when the batch size is large; there are few solutions/batch in the beginning which helps make sure the
   - experiment with num_cores * 10
   - pareto front strategies:
     - rwlock shared front, allowing TOCTOU
@@ -136,7 +136,7 @@
 ## Q
 
 - ⭐Compile to Q
-  - ⭐"[repeat|print|halt] until _ solved" syntax
+  - ⭐"[repeat|print|halt] until \_ solved" syntax
 - Make solved-goto pieces "optimal" in a meaningful sense of "optimal"
 - Parse Q
 

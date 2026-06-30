@@ -132,7 +132,7 @@ impl Motor {
             dir: mk_output_pin(motor_config.dir_pin),
             uart_bus: motor_config.uart_bus,
             uart_address: motor_config.uart_address,
-            holding: false,
+            holding: true,
             overtemp_prewarning: false,
             face,
             config,

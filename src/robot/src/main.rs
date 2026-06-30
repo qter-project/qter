@@ -14,6 +14,7 @@ use robot::{
     hardware::{
         RobotHandle,
         config::{Face, Priority, RobotConfig},
+        motors::Motors,
         set_prio,
     },
     qvis_app::{self, QvisAppHandle},
@@ -115,7 +116,8 @@ async fn main() -> color_eyre::Result<()> {
             robot_handle.loop_face_turn(face).await?;
         }
         Commands::Float => {
-            robot::hardware::float(robot_config);
+            let mut motors = Motors::new(robot_config);
+            motors.float_all();
         }
         Commands::TestPrio { prio } => {
             const SAMPLES: usize = 2048;
@@ -163,7 +165,7 @@ async fn main() -> color_eyre::Result<()> {
                 cert_digest.fmt(wtransport::tls::Sha256DigestFmt::DottedHex)
             );
             let server = tiny_http::Server::http(("0.0.0.0", server_port)).unwrap();
-            std::thread::spawn(move || {
+            thread::spawn(move || {
                 for req in server.incoming_requests() {
                     if req.url() == "/cert.json" {
                         let _ = req.respond(
@@ -186,7 +188,7 @@ async fn main() -> color_eyre::Result<()> {
             let mut maybe_handles = if simulated {
                 None
             } else {
-                let qvis_app_handle = QvisAppHandle::init(robot_config.qvis_app_path.clone())
+                let qvis_app_handle = QvisAppHandle::init(&robot_config.qvis_app_path)
                     .await
                     .unwrap();
                 let now = Utc::now;
@@ -237,7 +239,7 @@ async fn main() -> color_eyre::Result<()> {
             }
         }
         Commands::Calibrate => {
-            let mut qvis_app_handle = QvisAppHandle::init(robot_config.qvis_app_path.clone())
+            let mut qvis_app_handle = QvisAppHandle::init(&robot_config.qvis_app_path)
                 .await
                 .unwrap();
             let now = Utc::now;
@@ -245,7 +247,7 @@ async fn main() -> color_eyre::Result<()> {
             qvis_app::calibrate(&mut qvis_app_handle, &mut robot_handle).await?;
         }
         Commands::Solve { looprepl } => {
-            let mut qvis_app_handle = QvisAppHandle::init(robot_config.qvis_app_path.clone())
+            let mut qvis_app_handle = QvisAppHandle::init(&robot_config.qvis_app_path)
                 .await
                 .unwrap();
             let now = Utc::now;

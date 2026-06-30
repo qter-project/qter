@@ -5,6 +5,7 @@ use crate::hardware::{
     uart::{UartId, UartNode},
 };
 use itertools::Itertools;
+use log::debug;
 use std::{
     ops::Index,
     thread,
@@ -97,7 +98,7 @@ impl Motors {
         Motors(Face::ALL.map(|face| Motor::new(robot_config, face)))
     }
 
-    pub fn motors(&mut self) -> &mut [Motor; 6] {
+    pub fn motors_mut(&mut self) -> &mut [Motor; 6] {
         &mut self.0
     }
 
@@ -207,6 +208,7 @@ impl Motors {
 impl Drop for Motors {
     fn drop(&mut self) {
         self.float_all();
+        debug!("Floated motors");
     }
 }
 

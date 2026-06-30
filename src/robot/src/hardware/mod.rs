@@ -20,7 +20,7 @@ use std::{
         LazyLock, Mutex,
         mpsc::{self, RecvTimeoutError},
     },
-    thread,
+    thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
 use thread_priority::{
@@ -30,7 +30,7 @@ use thread_priority::{
 };
 
 pub mod config;
-mod motors;
+pub mod motors;
 pub mod uart;
 
 pub const FULLSTEPS_PER_REVOLUTION: u32 = 200;
@@ -65,7 +65,8 @@ enum MotorMessage {
 }
 
 pub struct RobotHandle {
-    motor_thread_handle: mpsc::Sender<MotorMessage>,
+    motor_thread_message_sender: mpsc::Sender<MotorMessage>,
+    motor_thread_handle: Option<JoinHandle<()>>,
     config: &'static RobotConfig,
 }
 
@@ -76,12 +77,11 @@ impl RobotHandle {
 
         let (tx, rx) = mpsc::channel();
 
-        {
-            thread::spawn(move || motor_thread(rx, robot_config, now));
-        }
+        let motor_thread_handle = Some(thread::spawn(move || motor_thread(rx, robot_config, now)));
 
         RobotHandle {
-            motor_thread_handle: tx,
+            motor_thread_message_sender: tx,
+            motor_thread_handle,
             config: robot_config,
         }
     }
@@ -93,7 +93,7 @@ impl RobotHandle {
     pub async fn loop_face_turn(&self, face: Face) -> Result<(), QterRobotError> {
         loop {
             let (tx, rx) = tokio::sync::oneshot::channel();
-            self.motor_thread_handle
+            self.motor_thread_message_sender
                 .send(MotorMessage::QueueMove((face, TurnDir::Normal, tx)))
                 .map_err(mpsc_err)?;
             rx.await.map_err(oneshot_err)??;
@@ -121,7 +121,7 @@ impl RobotHandle {
 
             let (tx, rx) = tokio::sync::oneshot::channel();
 
-            self.motor_thread_handle
+            self.motor_thread_message_sender
                 .send(MotorMessage::QueueMove((face, dir, tx)))
                 .map_err(mpsc_err)?;
 
@@ -141,7 +141,7 @@ impl RobotHandle {
     ) -> Result<impl Future<Output = Result<(), QterRobotError>> + 'static, QterRobotError> {
         let (tx, rx) = tokio::sync::oneshot::channel();
 
-        self.motor_thread_handle
+        self.motor_thread_message_sender
             .send(MotorMessage::PrevMovesDone(tx))
             .map_err(mpsc_err)?;
 
@@ -152,6 +152,14 @@ impl RobotHandle {
             tokio::time::sleep(Duration::from_millis(delay.ceil() as u64)).await;
             Ok(())
         })
+    }
+}
+
+impl Drop for RobotHandle {
+    fn drop(&mut self) {
+        if let Some(motor_thread_handle) = self.motor_thread_handle.take() {
+            motor_thread_handle.join().unwrap();
+        }
     }
 }
 
@@ -293,7 +301,7 @@ enum MotorDriverTemperature {
 
 fn motor_driver_thread_watchdog(
     rx: mpsc::Receiver<oneshot::Sender<[MotorDriverTemperature; 6]>>,
-    robot_config: RobotConfig,
+    robot_config: &'static RobotConfig,
 ) {
     let mut motor_driver_temperatures = Face::ALL.map(|_| MotorDriverTemperature::Normal);
     let mut prev_motor_currents = Face::ALL.map(|_| 0);
@@ -303,7 +311,7 @@ fn motor_driver_thread_watchdog(
             Ok(signal) => Some(signal),
             Err(RecvTimeoutError::Timeout) => None,
             Err(RecvTimeoutError::Disconnected) => {
-                return;
+                break;
             }
         };
 
@@ -416,6 +424,7 @@ fn motor_driver_thread_watchdog(
             signal.send(motor_driver_temperatures).unwrap();
         }
     }
+    debug!("Watchdog thread disconnected");
 }
 
 fn motor_thread(
@@ -423,13 +432,12 @@ fn motor_thread(
     robot_config: &'static RobotConfig,
     now: fn() -> DateTime<Utc>,
 ) {
-    let (watchdox_tx, watchdog_rx) = mpsc::channel();
-    {
-        let robot_config = robot_config.clone();
-        thread::spawn(move || motor_driver_thread_watchdog(watchdog_rx, robot_config));
-    }
-
     set_prio(robot_config.priority);
+
+    let (watchdox_tx, watchdog_rx) = mpsc::channel();
+
+    let watchdog_thread_handle =
+        thread::spawn(move || motor_driver_thread_watchdog(watchdog_rx, robot_config));
 
     let mut motors: Motors = Motors::new(robot_config);
 
@@ -525,7 +533,7 @@ fn motor_thread(
             .unwrap()
             .iter()
             .zip(prev_motor_driver_temperatures.iter_mut())
-            .zip(motors.motors().iter_mut())
+            .zip(motors.motors_mut().iter_mut())
         {
             match (motor_driver_temperature, *prev_motor_driver_temperature) {
                 (MotorDriverTemperature::PreWarning, MotorDriverTemperature::Normal) => {
@@ -581,6 +589,7 @@ fn motor_thread(
     }
 
     println!("Completed move sequence");
+    watchdog_thread_handle.join().unwrap();
 }
 
 pub fn set_prio(prio: Priority) {
@@ -713,18 +722,8 @@ pub fn uart_init(robot_config: &'static RobotConfig) {
 }
 
 pub fn float(robot_config: &'static RobotConfig) {
-    let motors = Motors::new(robot_config);
-    motors.with_uarts(|mut uart_node| {
-        let pwmconf = uart_node.pwmconf();
-        uart_node.set_pwmconf(pwmconf.with_freewheel(1));
-
-        uart_node.set_iholdirun(
-            IholdIrun::empty()
-                .with_ihold(0)
-                .with_irun(0)
-                .with_iholddelay(0),
-        );
-    });
+    let mut motors = Motors::new(robot_config);
+    motors.float_all();
 }
 
 pub fn estop() -> ! {
@@ -733,7 +732,7 @@ pub fn estop() -> ! {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum TurnDir {
+pub enum TurnDir {
     Normal,
     Double,
     Prime,

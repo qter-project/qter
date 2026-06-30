@@ -12,7 +12,7 @@ use super::uart::{NodeAddress, UartId};
 /// Global robot configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RobotConfig {
-    pub motors: Motors,
+    pub motors: MotorConfigs,
     pub revolutions_per_second: f64,
     pub max_acceleration: f64,
     pub await_moves_delay: f64,
@@ -112,9 +112,9 @@ impl Face {
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(from = "MotorsRepr", into = "MotorsRepr")]
-pub struct Motors([MotorConfig; 6]);
+pub struct MotorConfigs([MotorConfig; 6]);
 
-impl Index<Face> for Motors {
+impl Index<Face> for MotorConfigs {
     type Output = MotorConfig;
 
     fn index(&self, index: Face) -> &Self::Output {
@@ -122,7 +122,7 @@ impl Index<Face> for Motors {
     }
 }
 
-impl Debug for Motors {
+impl Debug for MotorConfigs {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         MotorsRepr::from(self.clone()).fmt(f)
     }
@@ -139,7 +139,7 @@ struct MotorsRepr {
     B: MotorConfig,
 }
 
-impl From<MotorsRepr> for Motors {
+impl From<MotorsRepr> for MotorConfigs {
     fn from(value: MotorsRepr) -> Self {
         let mut out = [const { None }; 6];
         out[Face::R as usize] = Some(value.R);
@@ -148,12 +148,12 @@ impl From<MotorsRepr> for Motors {
         out[Face::L as usize] = Some(value.L);
         out[Face::D as usize] = Some(value.D);
         out[Face::B as usize] = Some(value.B);
-        Motors(out.map(Option::unwrap))
+        MotorConfigs(out.map(Option::unwrap))
     }
 }
 
-impl From<Motors> for MotorsRepr {
-    fn from(value: Motors) -> Self {
+impl From<MotorConfigs> for MotorsRepr {
+    fn from(value: MotorConfigs) -> Self {
         let mut value = value.0.map(Some);
         MotorsRepr {
             R: value[Face::R as usize].take().unwrap(),

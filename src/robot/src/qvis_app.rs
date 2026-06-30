@@ -20,7 +20,7 @@ pub struct QvisAppHandle {
 }
 
 impl QvisAppHandle {
-    pub async fn init(qvis_app_path: PathBuf) -> Result<Self, io::Error> {
+    pub async fn init(qvis_app_path: &PathBuf) -> Result<Self, io::Error> {
         let mut child = tokio::process::Command::new("cargo")
             .args(["make", "prod"])
             .current_dir(qvis_app_path)
