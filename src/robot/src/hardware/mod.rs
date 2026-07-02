@@ -570,12 +570,14 @@ fn motor_thread(
             "Completed moves: {moves:?}",
         );
 
-        let wait = Duration::from_secs_f64(robot_config.wait_between_moves);
-        info!(
-            target: "move_seq",
-            "Waiting for {wait:?}",
-        );
-        thread::sleep(wait);
+        if robot_config.wait_between_moves != 0.0 {
+            let wait = Duration::from_secs_f64(robot_config.wait_between_moves);
+            info!(
+                target: "move_seq",
+                "Waiting for {wait:?}",
+            );
+            thread::sleep(wait);
+        }
     }
 
     println!("Completed move sequence");
