@@ -155,7 +155,9 @@ impl RobotHandle {
 
         Ok(async move {
             rx.await.map_err(oneshot_err)??;
-            tokio::time::sleep(Duration::from_millis(delay.ceil() as u64)).await;
+            if delay != 0.0 {
+                tokio::time::sleep(Duration::from_millis(delay.ceil() as u64)).await;
+            }
             Ok(())
         })
     }
@@ -458,7 +460,7 @@ fn motor_thread(
     let mut unparkers = Vec::<tokio::sync::oneshot::Sender<Result<(), QterRobotError>>>::new();
 
     let iter = gen move {
-        const SHORT_TIMEOUT: Duration = Duration::from_millis(50);
+        const SHORT_TIMEOUT: Duration = Duration::from_millis(1);
         const NO_TIMEOUT: Duration = Duration::MAX;
 
         loop {
