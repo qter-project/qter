@@ -574,6 +574,8 @@ fn motor_thread(
     }
 
     println!("Completed move sequence");
+    
+    drop(watchdox_tx);
     watchdog_thread_handle.join().unwrap();
 }
 
