@@ -65,7 +65,7 @@ enum MotorMessage {
 }
 
 pub struct RobotHandle {
-    motor_thread_message_sender: mpsc::Sender<MotorMessage>,
+    motor_thread_message_sender: Option<mpsc::Sender<MotorMessage>>,
     motor_thread_handle: Option<JoinHandle<()>>,
     config: &'static RobotConfig,
 }
@@ -80,7 +80,7 @@ impl RobotHandle {
         let motor_thread_handle = Some(thread::spawn(move || motor_thread(rx, robot_config, now)));
 
         RobotHandle {
-            motor_thread_message_sender: tx,
+            motor_thread_message_sender: Some(tx),
             motor_thread_handle,
             config: robot_config,
         }
@@ -94,6 +94,8 @@ impl RobotHandle {
         loop {
             let (tx, rx) = tokio::sync::oneshot::channel();
             self.motor_thread_message_sender
+                .as_ref()
+                .unwrap()
                 .send(MotorMessage::QueueMove((face, TurnDir::Normal, tx)))
                 .map_err(mpsc_err)?;
             rx.await.map_err(oneshot_err)??;
@@ -122,6 +124,8 @@ impl RobotHandle {
             let (tx, rx) = tokio::sync::oneshot::channel();
 
             self.motor_thread_message_sender
+                .as_ref()
+                .unwrap()
                 .send(MotorMessage::QueueMove((face, dir, tx)))
                 .map_err(mpsc_err)?;
 
@@ -142,6 +146,8 @@ impl RobotHandle {
         let (tx, rx) = tokio::sync::oneshot::channel();
 
         self.motor_thread_message_sender
+            .as_ref()
+            .unwrap()
             .send(MotorMessage::PrevMovesDone(tx))
             .map_err(mpsc_err)?;
 
@@ -157,9 +163,8 @@ impl RobotHandle {
 
 impl Drop for RobotHandle {
     fn drop(&mut self) {
-        if let Some(motor_thread_handle) = self.motor_thread_handle.take() {
-            motor_thread_handle.join().unwrap();
-        }
+        drop(self.motor_thread_message_sender.take().unwrap());
+        self.motor_thread_handle.take().unwrap().join().unwrap();
     }
 }
 
@@ -574,7 +579,7 @@ fn motor_thread(
     }
 
     println!("Completed move sequence");
-    
+
     drop(watchdox_tx);
     watchdog_thread_handle.join().unwrap();
 }
