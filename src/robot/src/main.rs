@@ -59,6 +59,8 @@ enum Commands {
     },
     /// Stop holding position across all motors.
     Float,
+    /// Hold position across all motors.
+    Hold,
     /// Test latencies at the different options for priority level
     TestPrio {
         prio: Priority,
@@ -116,8 +118,13 @@ async fn main() -> color_eyre::Result<()> {
             robot_handle.loop_face_turn(face).await?;
         }
         Commands::Float => {
+            let motors = Motors::new(robot_config);
+            drop(motors);
+        }
+        Commands::Hold => {
             let mut motors = Motors::new(robot_config);
-            motors.float_all();
+            motors.hold_all();
+            std::mem::forget(motors);
         }
         Commands::TestPrio { prio } => {
             const SAMPLES: usize = 2048;

@@ -717,11 +717,6 @@ pub fn uart_init(robot_config: &'static RobotConfig) {
     });
 }
 
-pub fn float(robot_config: &'static RobotConfig) {
-    let mut motors = Motors::new(robot_config);
-    motors.float_all();
-}
-
 pub fn estop() -> ! {
     error!("Emergency stop triggered. Immediately stopping all motors and exiting the process.");
     std::process::exit(1);
