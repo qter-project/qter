@@ -718,8 +718,7 @@ pub fn uart_init(robot_config: &'static RobotConfig) {
 }
 
 pub fn estop() -> ! {
-    error!("Emergency stop triggered. Immediately stopping all motors and exiting the process.");
-    std::process::exit(1);
+    panic!("Emergency stop triggered. Immediately stopping all motors and exiting the process.");
 }
 
 #[derive(Debug, Clone, Copy)]
