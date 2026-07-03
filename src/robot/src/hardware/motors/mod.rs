@@ -103,13 +103,13 @@ impl Motors {
     }
 
     pub fn hold_all(&mut self) {
-        for motor in &mut self.0 {
+        for motor in self.motors_mut() {
             motor.hold();
         }
     }
 
     pub fn float_all(&mut self) {
-        for motor in &mut self.0 {
+        for motor in self.motors_mut() {
             motor.float();
         }
     }

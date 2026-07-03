@@ -109,11 +109,18 @@ pub struct Motor {
     step: OutputPin,
     dir: OutputPin,
     overtemp_prewarning: bool,
-    holding: bool,
+    holding_state: HoldingState,
     uart_bus: UartId,
     uart_address: NodeAddress,
     face: Face,
     config: &'static RobotConfig,
+}
+
+#[derive(PartialEq)]
+enum HoldingState {
+    Holding,
+    Floating,
+    Unknown,
 }
 
 impl Motor {
@@ -132,7 +139,7 @@ impl Motor {
             dir: mk_output_pin(motor_config.dir_pin),
             uart_bus: motor_config.uart_bus,
             uart_address: motor_config.uart_address,
-            holding: true,
+            holding_state: HoldingState::Unknown,
             overtemp_prewarning: false,
             face,
             config,
@@ -161,11 +168,11 @@ impl Motor {
     }
 
     pub fn hold(&mut self) {
-        if self.holding || self.overtemp_prewarning {
+        if self.holding_state == HoldingState::Holding || self.overtemp_prewarning {
             return;
         }
 
-        self.holding = true;
+        self.holding_state = HoldingState::Holding;
 
         self.with_uart(|mut uart| {
             let initial_pwmconf = uart.pwmconf();
@@ -186,11 +193,11 @@ impl Motor {
     }
 
     pub fn float(&mut self) {
-        if !self.holding {
+        if self.holding_state == HoldingState::Floating {
             return;
         }
 
-        self.holding = false;
+        self.holding_state = HoldingState::Floating;
 
         self.with_uart(|mut uart| {
             let initial_pwmconf = uart.pwmconf();
