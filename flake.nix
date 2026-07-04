@@ -10,6 +10,10 @@
       url = "github:qter-project/vcube";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    tytanic = {
+      url = "github:typst-community/tytanic/v0.4.0";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -18,6 +22,7 @@
       flake-utils,
       rust-overlay,
       vcube,
+      tytanic,
       ...
     }:
     flake-utils.lib.eachDefaultSystem (
@@ -79,6 +84,7 @@
               typescript
               wasm-pack
               cargo-nextest
+              tytanic.packages."${system}".default
 
               # (gap.overrideAttrs (o: {
               #   version = "4.13.1";

@@ -1,0 +1,12 @@
+[package]
+name = "cube-module"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+ciborium = "0.2.2"
+serde = { version = "1.0.228", default-features = false, features = ["derive"] }
+wasm-minimal-protocol = "0.2.0"

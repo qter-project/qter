@@ -46,3 +46,7 @@ Guidance for OpenCode agents working in this repo. Verified against current conf
 ## Docs
 
 - Book: `shiroa build docs --mode static-html` (output `docs/dist`). Paper: `typst compile paper/paper.typ` from the `media/` directory. Both redeploy on push to `main` via `.github/workflows/deploy.yml`.
+
+## Rules
+
+- When instructions are ambiguous or inconsistent, ask the user for clarification. If the ambiguity might be resolved by reading code, do that first.
