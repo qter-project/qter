@@ -138,17 +138,17 @@
 
         packages.shiroa = pkgs.rustPlatform.buildRustPackage {
           pname = "shiroa";
-          version = "0.3.1-rc4";
+          version = "0.4.0";
 
           src = pkgs.fetchFromGitHub {
             owner = "Myriad-Dreamin";
             repo = "shiroa";
-            rev = "fea5b750fb5e6e1ba6841b25f5bc1e7d08f3fa90";
+            rev = "16efd7d1b7b01005a23b35278c66bcbef88b25dc";
             fetchSubmodules = true;
-            sha256 = "sha256-kvovTHi1WI/LMHUxBI6B1PcGb9DNdXjMxTvDMO51hwQ=";
+            sha256 = "sha256-6wrr9aVWp0QDcAd4T59WKtwZBZemdMxuNWbfDN8V8v8=";
           };
 
-          cargoHash = "sha256-Gi5Dx8xbCOBpfUTdi3zQTfqFkk5QNSB++lukSw9K7gU=";
+          cargoHash = "sha256-BWO49yMTCGtWTR/1u3/pvU/JdQi+2LlqjJX6p1fAUT0=";
 
           meta = {
             description = "A simple tool for creating modern online books in pure typst.";

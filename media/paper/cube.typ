@@ -10,7 +10,7 @@
     "n": (rgb("#dddddd"), none), ///gray,
 )
 
-#let p = plugin("./cube-module/target/wasm32-unknown-unknown/release/cube_module.wasm")
+#let p = plugin("./cube-module/cube_module.wasm")
 
 #let cube(faces, offset: (0, 0), scale-amt: 1, distance: 5, back: false, name: "") = {
     import cetz.draw : *
