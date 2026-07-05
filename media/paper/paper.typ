@@ -1,6 +1,6 @@
 #import "@preview/cetz:0.4.2"
 #import "@preview/fletcher:0.5.8" as fletcher: diagram, edge, node, shapes
-#import "cube.typ" : *
+#import "../../docs/cube/cube.typ" : *
 
 #show heading: v => {
     set text(tracking: -0.04em)

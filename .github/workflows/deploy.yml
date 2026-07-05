@@ -34,7 +34,7 @@ jobs:
           git: https://github.com/Myriad-Dreamin/shiroa
 
       - name: Compile documentation
-        run: shiroa build docs --mode static-html
+        run: shiroa build docs --mode static-html --root .
         
       - name: Upload artifact
         uses: actions/upload-artifact@v7
@@ -53,7 +53,7 @@ jobs:
         uses: typst-community/setup-typst@v5
 
       - name: Compile document
-        run: typst compile paper/paper.typ
+        run: typst compile media/paper/paper.typ --root .
         working-directory: media
 
       - name: Upload artifact
