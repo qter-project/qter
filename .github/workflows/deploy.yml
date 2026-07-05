@@ -53,7 +53,7 @@ jobs:
         uses: typst-community/setup-typst@v5
 
       - name: Compile document
-        run: typst compile media/paper/paper.typ --root .
+        run: typst compile paper/paper.typ --root ..
         working-directory: media
 
       - name: Upload artifact
