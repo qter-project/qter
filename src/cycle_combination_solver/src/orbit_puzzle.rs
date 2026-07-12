@@ -1,7 +1,7 @@
 use std::{
     hash::Hash,
     num::NonZeroU8,
-    simd::{LaneCount, Simd, SupportedLaneCount, cmp::SimdPartialOrd, num::SimdUint},
+    simd::{Simd, cmp::SimdPartialOrd, num::SimdUint},
 };
 
 use enum_dispatch::enum_dispatch;
@@ -154,10 +154,7 @@ impl<C: SpecializedOrbitPuzzleState + Clone> OrbitPuzzleState for C {
 pub(crate) fn exact_hasher_orbit<const PIECE_COUNT: u16, const ORI_COUNT: u16, const LEN: usize>(
     perm: Simd<u8, LEN>,
     ori: Simd<u8, LEN>,
-) -> u64
-where
-    LaneCount<LEN>: SupportedLaneCount,
-{
+) -> u64 {
     // Powers of ORI_COUNT used to efficiently hash the orientation to an n-ary
     // base. The hash is essentially a dot product of the orientation vector
     // with the powers of ORI_COUNT

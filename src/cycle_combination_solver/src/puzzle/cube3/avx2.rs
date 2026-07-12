@@ -616,7 +616,7 @@ impl Cube3 {
                     let inv_trial = u8x32::splat($i);
                     let inv_correct = IDENTITY
                         .simd_eq(avx2_swizzle_lo(perm, inv_trial))
-                        .to_int()
+                        .to_simd()
                         .cast();
                     inverse |= inv_trial & inv_correct;
                 };

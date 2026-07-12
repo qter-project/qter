@@ -661,7 +661,7 @@ impl UncompressedCube3 {
                 let ep_correct: u8x16 =
                     a.ep.swizzle_dyn(ep_trial)
                         .simd_eq(EP_IDENTITY)
-                        .to_int()
+                        .to_simd()
                         .cast();
                 self.ep |= ep_trial & ep_correct;
 
@@ -672,7 +672,7 @@ impl UncompressedCube3 {
                     let cp_correct: u8x8 =
                         a.cp.swizzle_dyn(cp_trial)
                             .simd_eq(CP_IDENTITY)
-                            .to_int()
+                            .to_simd()
                             .cast();
                     self.cp |= cp_trial & cp_correct;
                 }
@@ -746,7 +746,7 @@ impl Cube3 {
                 let ep_correct: u8x16 = other_ep
                     .swizzle_dyn(ep_trial)
                     .simd_eq(EP_IDENTITY)
-                    .to_int()
+                    .to_simd()
                     .cast();
                 ep |= ep_trial & ep_correct;
 
@@ -757,7 +757,7 @@ impl Cube3 {
                     let cp_correct: u8x8 = other_cp
                         .swizzle_dyn(cp_trial)
                         .simd_eq(CP_IDENTITY)
-                        .to_int()
+                        .to_simd()
                         .cast();
                     cp |= cp_trial & cp_correct;
                 }
