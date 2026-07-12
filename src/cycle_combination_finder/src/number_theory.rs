@@ -1,3 +1,5 @@
+use std::num::{NonZeroU8, NonZeroU16};
+
 use crate::{FIRST_129_PRIMES, orderexps::OrderExps};
 
 /// Compute all divisors of a number, with every divisor represented as a
@@ -8,23 +10,19 @@ use crate::{FIRST_129_PRIMES, orderexps::OrderExps};
 /// This function panics if a divisor cannot be represented by the first `N`
 /// primes.
 #[must_use]
-pub fn divisors<const N: usize>(n: u8) -> Vec<OrderExps<N>> {
+pub fn divisors<const N: usize>(n: NonZeroU8) -> Vec<OrderExps<N>> {
     #[allow(clippy::missing_panics_doc)]
     {
-        assert!(u16::from(n) < FIRST_129_PRIMES[N]);
-    }
-    let mut divisors = vec![];
-    if n == 0 {
-        return divisors;
+        assert!(NonZeroU16::from(n).get() < FIRST_129_PRIMES[N]);
     }
     let mut divisor = OrderExps::one();
-    divisors.push(divisor.clone());
+    let mut divisors = vec![divisor.clone()];
 
     let mut primes_and_index = FIRST_129_PRIMES
         .into_iter()
         .map_while(|p| u8::try_from(p).ok())
         .enumerate();
-    let mut remainder = n;
+    let mut remainder = n.get();
     let mut max_exp: u8 = 0;
 
     let (mut prime_index, mut prime) = primes_and_index.next().unwrap();
@@ -59,7 +57,9 @@ pub fn divisors<const N: usize>(n: u8) -> Vec<OrderExps<N>> {
 
 #[cfg(test)]
 mod divisors {
-    use crate::{number_theory::divisors, orderexps::OrderExps};
+    use std::num::NonZeroU8;
+
+    use crate::{number_theory, orderexps::OrderExps};
 
     fn as_u64s<const N: usize>(n: Vec<OrderExps<N>>) -> Vec<u8> {
         n.into_iter()
@@ -67,9 +67,13 @@ mod divisors {
             .collect()
     }
 
+    fn divisors<const N: usize>(n: u8) -> Vec<OrderExps<N>> {
+        assert_ne!(n, 0);
+        number_theory::divisors(NonZeroU8::new(n).unwrap())
+    }
+
     #[test_log::test]
     fn edge_cases() {
-        assert!(divisors::<8>(0).is_empty());
         assert_eq!(as_u64s(divisors::<8>(1)), vec![1]);
         assert_eq!(as_u64s(divisors::<8>(2)), vec![1, 2]);
     }

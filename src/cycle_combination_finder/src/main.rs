@@ -20,7 +20,7 @@ fn main() {
     if p == "minx3" {
         let minx3 = minxN::MINX3.clone();
         ccf.with_puzzle_def(minx3)
-            .with_register_count(NonZeroU16::new(4).unwrap())
+            .with_register_count(NonZeroU16::new(3).unwrap())
             .with_expected_length_assertion(347)
             .find()
             .unwrap();

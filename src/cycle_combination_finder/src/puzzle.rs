@@ -12,6 +12,7 @@ use union_find::{QuickUnionUf, UnionBySize, UnionFind};
 use crate::{
     FIRST_129_PRIMES, gauss_jordan_without_zero_rows,
     nonemptyvec::{NonemptySlice, NonemptyVec},
+    orderexps::OrderExps,
 };
 
 #[allow(non_snake_case)]
@@ -32,7 +33,7 @@ pub enum PuzzleDefCreationError {
     #[error("Puzzle must have at least one orbit")]
     NoOrbits,
     #[error(
-        "Puzzle has too many orbits. Expected a maximum of {MAX_ORBIT_COUNT} but found {actual}"
+        "Puzzle has too many orbits. Expected a maximum of {max} but found {actual}"
     )]
     TooManyOrbits { actual: usize, max: usize },
     #[error("Even parity constraint contains the duplicated index {0}")]
@@ -55,6 +56,7 @@ pub struct PuzzleDef<const N: usize> {
     orbit_defs: NonemptyVec<OrbitDef>,
     even_parity_constraints: BitMatrix,
     connected_components: Vec<Vec<usize>>,
+    orientations_exps: NonemptyVec<OrderExps<N>>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -288,10 +290,24 @@ impl<const N: usize> PuzzleDef<N> {
                 2.. => unreachable!(),
             }
         }
+
+        #[allow(clippy::missing_panics_doc)]
+        let orientations_exps = NonemptyVec::try_from(
+            orbit_defs
+                .iter()
+                .map(|orbit_def| {
+                    OrderExps::<N>::try_from(NonZeroU16::from(orbit_def.orientation_count()))
+                        .expect("all u8s are prime power representable")
+                })
+                .collect::<Vec<_>>(),
+        )
+        .expect("`orbit_defs` is non empty");
+
         Ok(Self {
             orbit_defs,
             even_parity_constraints,
             connected_components,
+            orientations_exps,
         })
     }
 
@@ -308,6 +324,11 @@ impl<const N: usize> PuzzleDef<N> {
     #[must_use]
     pub fn connected_components(&self) -> &[Vec<usize>] {
         &self.connected_components
+    }
+
+    #[must_use]
+    pub fn orientations_exps(&self) -> NonemptySlice<'_, OrderExps<N>> {
+        self.orientations_exps.as_slice()
     }
 }
 

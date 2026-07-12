@@ -25,7 +25,7 @@ use crate::{
     finder::{CycleCombination, CycleCombinationInner, NumCores, PossibleOrder},
     nonemptyvec::{NonemptySlice, NonemptyVec},
     pareto_front::CCParetoFront,
-    puzzle::OrbitDef,
+    puzzle::PuzzleDef,
 };
 
 #[derive(Clone)]
@@ -299,7 +299,7 @@ pub fn dbg_registers_iter<const N: usize>(
 }
 
 impl DisjointRegisters<'_> {
-    pub fn iter(&self) -> impl Iterator<Item = u32> {
+    pub fn iter(self) -> impl Iterator<Item = u32> {
         self.prefix_registers
             .iter()
             .copied()
@@ -307,11 +307,37 @@ impl DisjointRegisters<'_> {
     }
 
     #[must_use]
-    pub fn get(&self, i: usize) -> Option<u32> {
+    pub fn get(self, i: usize) -> Option<u32> {
         if i == self.prefix_registers.len() {
             Some(self.last_register)
         } else {
             self.prefix_registers.get(i).copied()
+        }
+    }
+
+    pub fn iter_orders<const N: usize>(
+        self,
+        possible_orders_except_one: &[PossibleOrder<N>],
+    ) -> impl Iterator<Item = &PossibleOrder<N>> {
+        self.iter().map(|i| &possible_orders_except_one[i as usize])
+    }
+
+    #[must_use]
+    pub fn get_order<const N: usize>(
+        self,
+        i: usize,
+        possible_orders_except_one: &[PossibleOrder<N>],
+    ) -> Option<&PossibleOrder<N>> {
+        self.get(i).map(|i| &possible_orders_except_one[i as usize])
+    }
+}
+
+impl<'a> From<NonemptySlice<'a, u32>> for DisjointRegisters<'a> {
+    fn from(value: NonemptySlice<'a, u32>) -> Self {
+        let (&last_register, prefix_registers) = value.split_last();
+        DisjointRegisters {
+            prefix_registers,
+            last_register,
         }
     }
 }
@@ -399,6 +425,7 @@ fn details_thread<const N: usize>(
     mut solutions_receiver: tokio::sync::broadcast::Receiver<(CoreId, CycleCombination)>,
     solutions_sender: tokio::sync::broadcast::Sender<(CoreId, CycleCombination)>,
     pareto_efficient_prunings: &[AtomicPtr<u32>],
+    puzzle_def: &PuzzleDef<N>,
     possible_orders_except_one: &[PossibleOrder<N>],
     exact_register_count: NonZeroU16,
     batch_size: NonZeroUsize,
@@ -471,6 +498,7 @@ fn details_thread<const N: usize>(
                         CycleCombinationDetails::new(
                             dominating_registers,
                             possible_orders_except_one,
+                            puzzle_def,
                         )
                         .map(|details| {
                             let registers = if log_enabled!(Level::Debug) {
@@ -525,15 +553,6 @@ fn details_thread<const N: usize>(
                         atomic::Ordering::Acquire,
                     ) {
                         Ok(maybe_curr_raw_pruning) => {
-                            let a = dbg_registers(
-                                disjoint_registers.iter(),
-                                possible_orders_except_one,
-                            );
-                            println!(
-                                "{:?}: {a} ({})",
-                                std::thread::current().id(),
-                                disjoint_registers.iter().sum::<u32>()
-                            );
                             if let Some(curr_raw_pruning) = NonNull::new(maybe_curr_raw_pruning) {
                                 unsafe {
                                     collector.retire(curr_raw_pruning.as_ptr(), reclaim::boxed);
@@ -787,10 +806,10 @@ unsafe fn search_dfs_helper<const N: usize>(
 }
 
 pub(crate) fn search_dfs<const N: usize>(
+    puzzle_def: &PuzzleDef<N>,
     possible_orders_except_one: &[PossibleOrder<N>],
     exact_register_count: NonZeroU16,
     num_cores: NumCores,
-    orbit_defs: NonemptySlice<'_, OrbitDef>,
     capacity_multipler: usize,
     batch_size: NonZeroUsize,
 ) -> Vec<CycleCombination> {
@@ -850,7 +869,8 @@ pub(crate) fn search_dfs<const N: usize>(
     // We are allowed to unwrap because `orbit_defs` is non-empty, and `piece_count` is a
     // NonZero. Therefore the sum must be non-zero.
     let exact_piece_count = NonZeroU32::new(
-        orbit_defs
+        puzzle_def
+            .orbit_defs()
             .iter()
             .map(|&orbit_def| u32::from(orbit_def.piece_count.get()))
             .sum::<u32>(),
@@ -892,6 +912,7 @@ pub(crate) fn search_dfs<const N: usize>(
                         solutions_receiver,
                         solutions_sender,
                         pareto_efficient_prunings,
+                        puzzle_def,
                         possible_orders_except_one,
                         exact_register_count,
                         batch_size,

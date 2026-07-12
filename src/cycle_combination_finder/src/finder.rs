@@ -227,13 +227,13 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<N>> {
             } else {
                 None
             };
-            let possible_orders_except_one = puzzle_def
+            let possible_orders = puzzle_def
                 .possible_orders(maybe_pool)
                 .ok_or(CycleCombinationFinderError::PuzzleTooManyOrders)?;
-            possible_orders_except_one.remove(&OrderExps::one());
+            possible_orders.remove(&OrderExps::one());
             let now = Instant::now();
             let mut min_piece_count_calculator = MinPieceCount::from(puzzle_def);
-            let mut possible_orders_except_one = possible_orders_except_one
+            let mut possible_orders_except_one = possible_orders
                 .into_iter()
                 .map(|possible_order| {
                     let min_piece_count = min_piece_count_calculator.calculate(&possible_order).0;
@@ -261,10 +261,10 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<N>> {
         let mut cycle_combinations = match self.config.optimality {
             Optimality::Equivalent => unimplemented!(),
             Optimality::Optimal => search_dfs(
+                puzzle_def,
                 possible_orders_except_one,
                 exact_register_count,
                 self.config.num_cores,
-                puzzle_def.orbit_defs(),
                 10,
                 NonZeroUsize::new(1).unwrap(),
             ),

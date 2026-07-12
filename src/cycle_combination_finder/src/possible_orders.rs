@@ -1,4 +1,4 @@
-use std::{borrow::Cow, cmp::Ordering, time::Instant};
+use std::{borrow::Cow, time::Instant};
 
 use bitgauss::BitMatrix;
 use dashmap::DashSet;
@@ -116,7 +116,7 @@ impl OrbitDef {
         }
 
         let extend_orientation_order_factors = {
-            let orientation_order_factors = divisors(orientation_count.get());
+            let orientation_order_factors = divisors(orientation_count);
             let maybe_prime_power_piece_count = if let OrientationStatus::CanOrient {
                 count: _,
                 sum_constraint: OrientationSumConstraint::Zero,
@@ -371,7 +371,7 @@ impl<const N: usize> PuzzleDef<N> {
                         )
                     })
                 })
-                .max_by(|&(_, _, a), &(_, _, b)| a.partial_cmp(&b).unwrap_or(Ordering::Equal))
+                .max_by(|&(_, _, a), &(_, _, b)| a.partial_cmp(&b).unwrap())
                 // `work` must not be empty because we asserted `connected_component` must not be empty earlier
                 .unwrap();
             match max_count {
@@ -1135,7 +1135,7 @@ mod puzzle {
     use std::{str::FromStr, time::Instant};
 
     use humanize_duration::{Truncate, prelude::DurationExt};
-    use log::info;
+    use log::{debug, info};
     use puzzle_theory::numbers::{Int, U};
 
     use crate::puzzle::{
@@ -1176,6 +1176,14 @@ mod puzzle {
             .map(|f| f.as_bigint())
             .collect::<Vec<_>>();
         possible_orders.sort_unstable();
+        debug!(
+            "{} possible orders: {:?}",
+            possible_orders.len(),
+            possible_orders
+                .iter()
+                .map(|&possible_order| u64::try_from(possible_order).unwrap())
+                .collect::<Vec<_>>()
+        );
 
         let actual = possible_orders.rchunks(10).next().unwrap();
         if DEBUG {

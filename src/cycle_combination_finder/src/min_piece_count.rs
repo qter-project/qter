@@ -1,31 +1,31 @@
 use std::{
-    num::{NonZeroU16, NonZeroU32},
+    num::NonZeroU32,
     simd::{Simd, cmp::SimdPartialEq},
 };
 
-use crate::{FIRST_129_PRIMES, orderexps::OrderExps, puzzle::PuzzleDef};
+use crate::{
+    FIRST_129_PRIMES,
+    nonemptyvec::{NonemptySlice, NonemptyVec},
+    orderexps::OrderExps,
+    puzzle::PuzzleDef,
+};
 
 #[derive(Debug)]
-pub struct MinPieceCount<const N: usize> {
-    orientations_exps: Vec<OrderExps<N>>,
-    orbit_orientation_contributions: Vec<OrderExps<N>>,
+pub struct MinPieceCount<'a, const N: usize> {
+    orientations_exps: NonemptySlice<'a, OrderExps<N>>,
+    orbit_orientation_contributions: NonemptyVec<OrderExps<N>>,
     leftover_prime_powers_mask: u64,
     orientations_exps_lcm: OrderExps<N>,
 }
 
-impl<const N: usize> From<&PuzzleDef<N>> for MinPieceCount<N> {
-    fn from(puzzle_def: &PuzzleDef<N>) -> Self {
-        let orientations_exps = puzzle_def
-            .orbit_defs()
-            .iter()
-            .map(|orbit_def| {
-                OrderExps::<N>::try_from(NonZeroU16::from(orbit_def.orientation_count())).unwrap()
-            })
-            .collect::<Vec<_>>();
+impl<'a, const N: usize> From<&'a PuzzleDef<N>> for MinPieceCount<'a, N> {
+    fn from(puzzle_def: &'a PuzzleDef<N>) -> Self {
+        let orientations_exps = puzzle_def.orientations_exps();
         let orientations_exps_lcm = OrderExps::lcms(orientations_exps.iter().cloned()).unwrap();
         let leftover_prime_powers_mask =
             orientations_exps_lcm.0.simd_eq(Simd::splat(0)).to_bitmask();
-        let orbit_orientation_contributions = vec![OrderExps::one(); orientations_exps.len()];
+        let orbit_orientation_contributions =
+            NonemptyVec::try_from(vec![OrderExps::one(); orientations_exps.len().get()]).unwrap();
 
         Self {
             orientations_exps,
@@ -44,7 +44,7 @@ fn prime_power_cycle_piece_count(prime: u16, exp: u8) -> u32 {
     }
 }
 
-impl<const N: usize> MinPieceCount<N> {
+impl<const N: usize> MinPieceCount<'_, N> {
     /// Compute a lower bound of the minimum number of pieces to construct a
     /// twisty puzzle group element with *known* possible order. This bound is
     /// close to being tight.
@@ -121,7 +121,7 @@ impl<const N: usize> MinPieceCount<N> {
         // Thus this fits into a u32.
         let mut needing_orientation_cycles_count = 0u32;
         let mut min_piece_count = leftover_prime_powers_sum;
-        for orbit_orientation_contribution in &self.orbit_orientation_contributions {
+        for orbit_orientation_contribution in self.orbit_orientation_contributions.iter() {
             let mut contributing_prime_powers_mask = orbit_orientation_contribution
                 .0
                 .simd_ne(Simd::splat(0))
@@ -190,7 +190,7 @@ mod tests {
         pub orientations_exps_lcm: OrderExps<N>,
     }
 
-    impl<const N: usize> PartialEq<PartialMinPieceCount<N>> for MinPieceCount<N> {
+    impl<const N: usize> PartialEq<PartialMinPieceCount<N>> for MinPieceCount<'_, N> {
         fn eq(&self, other: &PartialMinPieceCount<N>) -> bool {
             let MinPieceCount {
                 orientations_exps: orientations_exps_1,
@@ -203,7 +203,7 @@ mod tests {
                 leftover_prime_powers_mask,
                 orientations_exps_lcm,
             } = other;
-            *orientations_exps_1 == *orientations_exps
+            &**orientations_exps_1 == orientations_exps.as_slice()
                 && *leftover_prime_powers_mask_1 == *leftover_prime_powers_mask
                 && *orientations_exps_lcm_1 == *orientations_exps_lcm
         }
