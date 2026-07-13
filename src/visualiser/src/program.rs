@@ -40,24 +40,21 @@ impl Program {
 
         let reporter = compiler::Reporter::default();
 
-        let (program, regs) = match compiler::compile(
-            &s,
-            |_| Err("Imports are not allowed".to_owned()),
-            &reporter,
-        ) {
-            Some(v) => v,
-            None => {
-                let reports = Arc::try_unwrap(reporter)
-                    .expect("reporter should be uniquely owned after compile")
-                    .into_iter();
-                return Err(reports
-                    .map(|report| CompileError {
-                        report,
-                        source: s.clone(),
-                    })
-                    .collect::<Vec<_>>());
-            }
-        };
+        let (program, regs) =
+            match compiler::compile(&s, |_| Err("Imports are not allowed".to_owned()), &reporter) {
+                Some(v) => v,
+                None => {
+                    let reports = Arc::try_unwrap(reporter)
+                        .expect("reporter should be uniquely owned after compile")
+                        .into_iter();
+                    return Err(reports
+                        .map(|report| CompileError {
+                            report,
+                            source: s.clone(),
+                        })
+                        .collect::<Vec<_>>());
+                }
+            };
 
         let Some(regs) = regs else {
             return Err(mk_error(
@@ -97,7 +94,20 @@ impl Program {
             .collect();
 
         let (q_text, instr_spans) =
-            compiler::q_emitter::emit_q(&program, "<output>".into()).unwrap();
+            match compiler::q_emitter::emit_q(&program, "<output>".into(), &reporter) {
+                Some(v) => v,
+                None => {
+                    let reports = Arc::try_unwrap(reporter)
+                        .expect("reporter should be uniquely owned after emit_q")
+                        .into_iter();
+                    return Err(reports
+                        .map(|report| CompileError {
+                            report,
+                            source: s.clone(),
+                        })
+                        .collect::<Vec<_>>());
+                }
+            };
 
         Ok(Self {
             inner: Arc::new(program),

@@ -1,4 +1,4 @@
-use chumsky::prelude::Rich;
+use ariadne::{Report, ReportKind};
 use internment::ArcIntern;
 use itertools::Itertools;
 use puzzle_theory::{
@@ -11,6 +11,8 @@ use qter_core::{
     SeparatesByPuzzleType, Solve, SolvedGoto,
 };
 use std::fmt::Write;
+
+use crate::Reporter;
 
 const ALG_MAX_CHARS_WIDTH: usize = 50;
 
@@ -29,29 +31,33 @@ enum QInstruction {
 ///
 /// # Errors
 ///
-/// Returns compile errors if `theoretical` registers are present.
+/// Returns `None` and pushes errors to the reporter if `theoretical` registers are present or if there are multiple puzzles.
 #[allow(clippy::missing_panics_doc)]
 pub fn emit_q(
     program: &Program,
     file_name: ArcIntern<str>,
-) -> Result<(File, Box<[Span]>), Vec<Rich<'static, char, Span>>> {
-    let mut errors = Vec::new();
+    r: &Reporter,
+) -> Option<(File, Box<[Span]>)> {
+    let before = r.count();
+
     for theoretical in &program.theoretical {
-        errors.push(Rich::custom(
-            theoretical.span().clone(),
-            "Cannot compile a QAT program with theoretical registers",
-        ));
+        r.push(
+            Report::build(ReportKind::Error, theoretical.span().clone())
+                .with_message("Cannot compile a QAT program with theoretical registers")
+                .finish(),
+        );
     }
 
     if program.puzzles.len() > 1 {
-        errors.push(Rich::custom(
-            program.puzzles[1].span().clone(),
-            "Compiling with multiple puzzles is unsupported (for now)",
-        ));
+        r.push(
+            Report::build(ReportKind::Error, program.puzzles[1].span().clone())
+                .with_message("Compiling with multiple puzzles is unsupported (for now)")
+                .finish(),
+        );
     }
 
-    if !errors.is_empty() {
-        return Err(errors);
+    if r.count() - before != 0 {
+        return None;
     }
 
     let mut out = String::new();
@@ -146,15 +152,12 @@ pub fn emit_q(
 
     let file = File::new(file_name, ArcIntern::from(out));
 
-    if errors.is_empty() {
-        let spans = spans
-            .into_iter()
-            .map(|(start, end)| Span::new(file.clone(), start, end))
-            .collect();
-        Ok((file, spans))
-    } else {
-        Err(errors)
-    }
+    let spans = spans
+        .into_iter()
+        .map(|(start, end)| Span::new(file.clone(), start, end))
+        .collect();
+
+    Some((file, spans))
 }
 
 fn stringify_alg(alg: &Algorithm, padding: usize, pad_first: bool) -> String {

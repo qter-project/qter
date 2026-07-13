@@ -693,7 +693,7 @@ mod tests {
 
         let program = Arc::new(program);
 
-        let q = emit_q(&program, "program.q".into()).unwrap();
+        let q = emit_q(&program, "program.q".into(), &reporter).unwrap();
 
         let expected_count = maxima.iter().map(|v| v + 1).product::<usize>();
         let mut real_count = 0;
@@ -958,7 +958,10 @@ mod tests {
             None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
 
-        let q = emit_q(&program, "code.q".into()).unwrap().0.inner();
+        let q = emit_q(&program, "code.q".into(), &reporter)
+            .unwrap()
+            .0
+            .inner();
 
         assert_str_eq!(
             q,
@@ -1120,7 +1123,10 @@ A: 3x3
             None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
 
-        let q_code = emit_q(&program, "code.q".into()).unwrap().0.inner();
+        let q_code = emit_q(&program, "code.q".into(), &reporter)
+            .unwrap()
+            .0
+            .inner();
 
         assert_eq!(
             q_code,
@@ -1203,7 +1209,10 @@ A: 3x3
             None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
 
-        let q_code = emit_q(&program, "code.q".into()).unwrap().0.inner();
+        let q_code = emit_q(&program, "code.q".into(), &reporter)
+            .unwrap()
+            .0
+            .inner();
 
         assert_str_eq!(
             q_code,

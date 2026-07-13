@@ -6,10 +6,12 @@
 )]
 
 use std::{
-    collections::HashMap, rc::Rc, sync::{
+    collections::HashMap,
+    rc::Rc,
+    sync::{
         Arc, OnceLock,
         atomic::{AtomicUsize, Ordering},
-    }
+    },
 };
 
 use ariadne::{Report, ReportKind};
@@ -854,7 +856,7 @@ mod tests {
             }
         };
 
-        let q_code = emit_q(&program, "code.q".into()).unwrap().0;
+        let q_code = emit_q(&program, "code.q".into(), &reporter).unwrap().0;
 
         assert_eq!(
             q_code.inner(),

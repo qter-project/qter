@@ -4,11 +4,15 @@
 #![allow(clippy::needless_pass_by_value)]
 
 use std::{
-    cell::RefCell, collections::HashMap, error::Error, fs, io, path::{Path, PathBuf}, rc::Rc, sync::Arc
+    cell::RefCell,
+    collections::HashMap,
+    error::Error,
+    fs, io,
+    path::{Path, PathBuf},
+    rc::Rc,
+    sync::Arc,
 };
 
-use ariadne::{Color, Label, Report, ReportKind, Source};
-use chumsky::error::Rich;
 use clap::{ArgAction, Parser};
 use color_eyre::{
     eyre::{OptionExt, eyre},
@@ -23,7 +27,7 @@ use interpreter::{
 use itertools::Itertools;
 use puzzle_theory::{
     numbers::{I, Int},
-    span::{File, Span},
+    span::File,
 };
 use qter_core::{
     ByPuzzleType, Program,
@@ -73,31 +77,6 @@ enum Commands {
         /// The input alg table
         input: PathBuf,
     },
-}
-
-fn process_errors(errs: Vec<Rich<'static, char, Span>>, file: &Path) -> color_eyre::Report {
-    for err in &errs {
-        let source = err.span().source();
-
-        Report::build(ReportKind::Error, err.span().clone())
-            .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
-            .with_message(err.to_string())
-            .with_label(
-                Label::new(err.span().clone())
-                    .with_message(err.reason().to_string())
-                    .with_color(Color::Red),
-            )
-            .finish()
-            .eprint((source.name(), Source::from(&*source.inner())))
-            // .eprint(("bruh.qat", Source::from(include_str!("./main.rs"))))
-            .unwrap();
-    }
-
-    eyre!(
-        "Could not compile {} due to {} errors.",
-        file.display(),
-        errs.len()
-    )
 }
 
 fn print_reports(reporter: &Reporter, sources: &HashMap<ArcIntern<str>, ArcIntern<str>>) {
@@ -150,7 +129,9 @@ fn compile_qat(file: &Path) -> color_eyre::Result<(Program, File)> {
             }
         },
         &reporter,
-    ) { Ok((v, qat)) } else {
+    ) {
+        Ok((v, qat))
+    } else {
         print_reports(&reporter, &sources.borrow());
         Err(eyre!(
             "Could not compile {} due to {} errors.",
@@ -173,14 +154,22 @@ async fn main() -> color_eyre::Result<()> {
                 ));
             }
 
-            let (program, _) = compile_qat(&file)?;
+            let (program, qat) = compile_qat(&file)?;
 
             let path = file.with_extension("q");
 
-            let q_code = match emit_q(&program, path.display().to_string().into()) {
-                Ok(v) => v.0,
-                Err(errs) => {
-                    return Err(process_errors(errs, &file));
+            let reporter = Reporter::default();
+
+            let q_code = match emit_q(&program, path.display().to_string().into(), &reporter) {
+                Some(v) => v.0,
+                None => {
+                    let sources = std::iter::once((qat.name(), qat.inner())).collect();
+                    print_reports(&reporter, &sources);
+                    return Err(eyre!(
+                        "Could not compile {} due to {} errors.",
+                        file.display(),
+                        reporter.iter().count()
+                    ));
                 }
             };
 

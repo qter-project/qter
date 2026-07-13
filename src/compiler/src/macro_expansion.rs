@@ -344,7 +344,7 @@ fn expand_code(
 mod tests {
 
     use std::rc::Rc;
-use std::sync::Arc;
+    use std::sync::Arc;
 
     use crate::Reporter;
     use crate::parsing::tests::file;
