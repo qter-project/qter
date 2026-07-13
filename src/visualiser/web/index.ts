@@ -454,8 +454,9 @@ class EditorWithCompilation extends EventTarget {
             if (Array.isArray(e) && (e.length == 0 || e[0] instanceof CompileError)) {
                 msg = "";
                 for (let error of e as CompileError[]) {
-                    msg += `error at ${error.start_line()}:${error.start_col()}: ${error.message()}\n`;
-                    this.#errorHighlight.add(this.#editor.getRange(error.start(), error.end()));
+                    msg += error.render()
+                    // msg += `error at ${error.start_line()}:${error.start_col()}: ${error.message()}\n`;
+                    // this.#errorHighlight.add(this.#editor.getRange(error.start(), error.end()));
                 }
                 msg = msg.trimEnd();
             } else {

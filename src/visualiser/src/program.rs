@@ -43,7 +43,7 @@ impl Program {
         let (program, regs) = match compiler::compile(
             &s,
             |_| Err("Imports are not allowed".to_owned()),
-            Arc::clone(&reporter),
+            &reporter,
         ) {
             Some(v) => v,
             None => {
@@ -137,6 +137,7 @@ pub struct CompileError {
 
 #[wasm_bindgen]
 impl CompileError {
+    // TODO: Fork ariadne to extract span info out of reports?
     pub fn render(&self) -> String {
         let mut buf = std::io::Cursor::new(Vec::<u8>::new());
         self.report
@@ -158,7 +159,7 @@ fn serialize_arc_intern_str<S: serde::Serializer>(
     s: &ArcIntern<str>,
     serializer: S,
 ) -> Result<S::Ok, S::Error> {
-    (&**s).serialize(serializer)
+    (**s).serialize(serializer)
 }
 
 #[derive(Tsify, Serialize)]
