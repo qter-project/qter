@@ -10,6 +10,7 @@ crate-type = ["cdylib"]
 wasm-bindgen = "0.2.108"
 qter_core.workspace = true
 chumsky.workspace = true
+ariadne.workspace = true
 internment.workspace = true
 tokio = "1.49.0"
 puzzle_theory.workspace = true

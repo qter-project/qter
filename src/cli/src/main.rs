@@ -4,10 +4,7 @@
 #![allow(clippy::needless_pass_by_value)]
 
 use std::{
-    error::Error,
-    fs, io,
-    path::{Path, PathBuf},
-    sync::Arc,
+    cell::RefCell, collections::HashMap, error::Error, fs, io, path::{Path, PathBuf}, rc::Rc, sync::Arc
 };
 
 use ariadne::{Color, Label, Report, ReportKind, Source};
@@ -17,7 +14,7 @@ use color_eyre::{
     eyre::{OptionExt, eyre},
     owo_colors::OwoColorize,
 };
-use compiler::{compile, q_emitter::emit_q};
+use compiler::{Reporter, compile, q_emitter::emit_q};
 use internment::ArcIntern;
 use interpreter::{
     ActionPerformed, ExecutionState, InputRet, Interpreter, PausedState,
@@ -103,26 +100,63 @@ fn process_errors(errs: Vec<Rich<'static, char, Span>>, file: &Path) -> color_ey
     )
 }
 
+fn print_reports(reporter: &Reporter, sources: &HashMap<ArcIntern<str>, ArcIntern<str>>) {
+    let mut cache = ariadne::sources(
+        sources
+            .iter()
+            .map(|(name, contents)| (name.clone(), contents.clone())),
+    );
+
+    for (_, report) in reporter.iter() {
+        report
+            .eprint(&mut cache)
+            .unwrap_or_else(|e| eprintln!("Failed to print report: {e}"));
+    }
+}
+
 fn compile_qat(file: &Path) -> color_eyre::Result<(Program, File)> {
-    let path = ArcIntern::from(format!("{}", file.display()));
+    let path: ArcIntern<str> = ArcIntern::from(format!("{}", file.display()));
+    let contents: ArcIntern<str> = ArcIntern::from(fs::read_to_string(file)?);
+    let qat = File::new(path.clone(), contents.clone());
 
-    let qat = File::new(path, ArcIntern::from(fs::read_to_string(file)?));
+    let sources: Rc<RefCell<HashMap<ArcIntern<str>, ArcIntern<str>>>> =
+        Rc::new(RefCell::new(HashMap::new()));
+    sources.borrow_mut().insert(path.clone(), contents.clone());
 
-    match compile(&qat, |name| {
-        let path = PathBuf::from(name);
+    let reporter = Reporter::default();
 
-        if path.ancestors().count() > 1 {
-            // Easier not to implement relative paths and stuff
-            return Err("Imported files must be in the same path".to_owned());
-        }
+    if let Some((v, _)) = compile(
+        &qat,
+        {
+            let sources = Rc::clone(&sources);
+            move |name| {
+                let path = PathBuf::from(name);
 
-        match fs::read_to_string(path) {
-            Ok(s) => Ok(ArcIntern::from(s)),
-            Err(e) => Err(e.to_string()),
-        }
-    }) {
-        Ok((v, _)) => Ok((v, qat)),
-        Err(errs) => Err(process_errors(errs, file)),
+                if path.ancestors().count() > 1 {
+                    // Easier not to implement relative paths and stuff
+                    return Err("Imported files must be in the same path".to_owned());
+                }
+
+                match fs::read_to_string(path) {
+                    Ok(s) => {
+                        let contents: ArcIntern<str> = ArcIntern::from(s);
+                        sources
+                            .borrow_mut()
+                            .insert(ArcIntern::from(name), ArcIntern::clone(&contents));
+                        Ok(contents)
+                    }
+                    Err(e) => Err(e.to_string()),
+                }
+            }
+        },
+        &reporter,
+    ) { Ok((v, qat)) } else {
+        print_reports(&reporter, &sources.borrow());
+        Err(eyre!(
+            "Could not compile {} due to {} errors.",
+            file.display(),
+            reporter.iter().count()
+        ))
     }
 }
 

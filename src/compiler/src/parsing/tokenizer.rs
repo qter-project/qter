@@ -260,7 +260,7 @@ pub struct SpanMarker(usize);
 
 pub struct TokenW<'a> {
     pub token: Token<'a>,
-    reporter: Reporter,
+    pub(super) reporter: Reporter,
 }
 
 pub enum Token<'a> {

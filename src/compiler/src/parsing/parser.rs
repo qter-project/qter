@@ -30,7 +30,7 @@ use super::tokenizer::Token;
 
 pub fn parse(
     iter: &mut TokenIter,
-    find_import: impl Fn(&str) -> Result<ArcIntern<str>, String> + 'static,
+    find_import: Rc<impl Fn(&str) -> Result<ArcIntern<str>, String> + 'static>,
     is_prelude: bool,
 ) -> Option<ParsedSyntax> {
     let registers = match registers(iter) {
@@ -63,7 +63,7 @@ pub fn parse(
             iter.file(),
             super::PRELUDE.with(|v| (*v).clone()),
             Span::new(iter.file().clone(), 0, iter.file().inner().len()),
-            iter.r(),
+            &iter.r(),
         );
     }
 
@@ -78,8 +78,6 @@ pub fn parse(
     );
 
     let mut rhai_macros = RhaiMacros::new();
-
-    let find_import = Rc::new(find_import);
 
     loop {
         let marker = iter.marker();
@@ -150,7 +148,7 @@ pub fn parse(
 
                 let Some(importee) = super::parse(
                     &File::new(filename.value, import),
-                    move |v| (find_import)(v),
+                    find_import,
                     is_prelude,
                     iter.r(),
                 ) else {
@@ -162,7 +160,7 @@ pub fn parse(
                     iter.file(),
                     importee.value,
                     iter.cash_in(marker),
-                    iter.r(),
+                    &iter.r(),
                 );
             }
             Token::Directive(ident) if &**ident == "start-rhai" => {
@@ -788,48 +786,46 @@ fn macro_branch(
 }
 
 fn macro_pattern_component(t: &mut TokenIter) -> Attempt<Option<WithSpan<MacroPatternComponent>>> {
-    t.attempt(|t, commit| {
-        match t.next()?.token {
-            Token::Ident(word) => {
-                *commit = true;
-                Some(
-                    word.span()
-                        .clone()
-                        .with(MacroPatternComponent::Word(word.into_inner())),
-                )
-            }
-            Token::Constant(name) => {
-                *commit = true;
-
-                let marker = t.marker();
-
-                if let Some(ws) = t.whitespace() {
-                    t.report(
-                        Report::build(ReportKind::Error, ws)
-                            .with_message("Expected colon, found whitespace")
-                            .finish(),
-                    );
-                    return None;
-                }
-
-                t.next()?.symbol(Symbol::Colon)?;
-
-                let ty = t
-                    .next()?
-                    .one_of([
-                        ("int", MacroArgTy::Int),
-                        ("reg", MacroArgTy::Reg),
-                        ("block", MacroArgTy::Block),
-                        ("ident", MacroArgTy::Ident),
-                    ])
-                    .map(|(ty, span)| span.with(ty))?;
-
-                Some(
-                    t.cash_in(marker)
-                        .with(MacroPatternComponent::Argument { name, ty }),
-                )
-            }
-            _ => None,
+    t.attempt(|t, commit| match t.next()?.token {
+        Token::Ident(word) => {
+            *commit = true;
+            Some(
+                word.span()
+                    .clone()
+                    .with(MacroPatternComponent::Word(word.into_inner())),
+            )
         }
+        Token::Constant(name) => {
+            *commit = true;
+
+            let marker = t.marker();
+
+            if let Some(ws) = t.whitespace() {
+                t.report(
+                    Report::build(ReportKind::Error, ws)
+                        .with_message("Expected colon, found whitespace")
+                        .finish(),
+                );
+                return None;
+            }
+
+            t.next()?.symbol(Symbol::Colon)?;
+
+            let ty = t
+                .next()?
+                .one_of([
+                    ("int", MacroArgTy::Int),
+                    ("reg", MacroArgTy::Reg),
+                    ("block", MacroArgTy::Block),
+                    ("ident", MacroArgTy::Ident),
+                ])
+                .map(|(ty, span)| span.with(ty))?;
+
+            Some(
+                t.cash_in(marker)
+                    .with(MacroPatternComponent::Argument { name, ty }),
+            )
+        }
+        _ => None,
     })
 }

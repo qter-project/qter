@@ -325,7 +325,7 @@ impl SeparatesByPuzzleType for InputRet {
 mod tests {
     use super::*;
     use crate::{Interpreter, PausedState, puzzle_states::SimulatedPuzzle};
-    use compiler::{compile, q_emitter::emit_q};
+    use compiler::{Reporter, compile, q_emitter::emit_q};
     use internment::ArcIntern;
     use itertools::Itertools;
     use pretty_assertions::{assert_eq, assert_str_eq};
@@ -454,9 +454,10 @@ mod tests {
                 halt \"The modulus is\" A
         ";
 
-        let (program, _) = match compile(&file(code), |_| unreachable!()) {
-            Ok(v) => v,
-            Err(e) => panic!("{e:?}"),
+        let reporter = Reporter::default();
+        let (program, _) = match compile(&file(code), |_| unreachable!(), Arc::clone(&reporter)) {
+            Some(v) => v,
+            None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
 
         let mut interpreter: Interpreter<SimulatedPuzzle> =
@@ -537,9 +538,10 @@ mod tests {
                 halt \"The modulus is\" B
         ";
 
-        let (program, _) = match compile(&file(code), |_| unreachable!()) {
-            Ok(v) => v,
-            Err(e) => panic!("{e:?}"),
+        let reporter = Reporter::default();
+        let (program, _) = match compile(&file(code), |_| unreachable!(), Arc::clone(&reporter)) {
+            Some(v) => v,
+            None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
 
         let mut interpreter: Interpreter<SimulatedPuzzle> =
@@ -616,9 +618,10 @@ mod tests {
                 halt "Done"
         "#;
 
-        let (program, _) = match compile(&file(code), |_| unreachable!()) {
-            Ok(v) => v,
-            Err(e) => panic!("{e:?}"),
+        let reporter = Reporter::default();
+        let (program, _) = match compile(&file(code), |_| unreachable!(), Arc::clone(&reporter)) {
+            Some(v) => v,
+            None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
 
         let mut interpreter: Interpreter<SimulatedPuzzle> =
@@ -682,9 +685,10 @@ mod tests {
         maxima: [usize; N],
         cases: impl Iterator<Item = ([usize; N], String)>,
     ) {
-        let (program, _) = match compile(&file(code), |_| unreachable!()) {
-            Ok(v) => v,
-            Err(e) => panic!("{e:?}"),
+        let reporter = Reporter::default();
+        let (program, _) = match compile(&file(code), |_| unreachable!(), Arc::clone(&reporter)) {
+            Some(v) => v,
+            None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
 
         let program = Arc::new(program);
@@ -846,9 +850,10 @@ mod tests {
             halt \"Done\"
         ";
 
-        let (program, _) = match compile(&file(code), |_| unreachable!()) {
-            Ok(v) => v,
-            Err(e) => panic!("{e:?}"),
+        let reporter = Reporter::default();
+        let (program, _) = match compile(&file(code), |_| unreachable!(), Arc::clone(&reporter)) {
+            Some(v) => v,
+            None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
 
         assert_eq!(program.instructions.len(), 4 + 6 + 1);
@@ -947,9 +952,10 @@ mod tests {
                 halt \"A=\" A
         ";
 
-        let (program, _) = match compile(&file(code), |_| unreachable!()) {
-            Ok(v) => v,
-            Err(e) => panic!("{e:?}"),
+        let reporter = Reporter::default();
+        let (program, _) = match compile(&file(code), |_| unreachable!(), Arc::clone(&reporter)) {
+            Some(v) => v,
+            None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
 
         let q = emit_q(&program, "code.q".into()).unwrap().0.inner();
@@ -1045,9 +1051,10 @@ A: 3x3
                 halt \"A=\" A
         ";
 
-        let (program, _) = match compile(&file(code), |_| unreachable!()) {
-            Ok(v) => v,
-            Err(e) => panic!("{e:?}"),
+        let reporter = Reporter::default();
+        let (program, _) = match compile(&file(code), |_| unreachable!(), Arc::clone(&reporter)) {
+            Some(v) => v,
+            None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
 
         // println!("{:#?}", program);
@@ -1107,9 +1114,10 @@ A: 3x3
                 add A 20
         ";
 
-        let (program, _) = match compile(&file(code), |_| unreachable!()) {
-            Ok(v) => v,
-            Err(e) => panic!("{e:?}"),
+        let reporter = Reporter::default();
+        let (program, _) = match compile(&file(code), |_| unreachable!(), Arc::clone(&reporter)) {
+            Some(v) => v,
+            None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
 
         let q_code = emit_q(&program, "code.q".into()).unwrap().0.inner();
@@ -1189,9 +1197,10 @@ A: 3x3
                 halt \"C=\" C
         ";
 
-        let (program, _) = match compile(&file(code), |_| unreachable!()) {
-            Ok(v) => v,
-            Err(e) => panic!("{e:?}"),
+        let reporter = Reporter::default();
+        let (program, _) = match compile(&file(code), |_| unreachable!(), Arc::clone(&reporter)) {
+            Some(v) => v,
+            None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
 
         let q_code = emit_q(&program, "code.q".into()).unwrap().0.inner();

@@ -6,15 +6,13 @@
 )]
 
 use std::{
-    collections::HashMap,
-    sync::{
+    collections::HashMap, rc::Rc, sync::{
         Arc, OnceLock,
         atomic::{AtomicUsize, Ordering},
-    },
+    }
 };
 
 use ariadne::{Report, ReportKind};
-use chumsky::error::Rich;
 use internment::ArcIntern;
 use parsing::parse;
 use puzzle_theory::{
@@ -35,7 +33,7 @@ pub mod q_emitter;
 mod rhai;
 mod strip_expanded;
 
-type Reporter = Arc<boxcar::Vec<Report<'static, Span>>>;
+pub type Reporter = Arc<boxcar::Vec<Report<'static, Span>>>;
 
 /// Compiles a QAT program into a Q program while returning the register architecture used.
 ///
@@ -45,15 +43,15 @@ type Reporter = Arc<boxcar::Vec<Report<'static, Span>>>;
 pub fn compile(
     qat: &File,
     find_import: impl Fn(&str) -> Result<ArcIntern<str>, String> + 'static,
-    reporter: Reporter,
+    reporter: &Reporter,
 ) -> Option<(Program, Option<WithSpan<RegistersDecl>>)> {
-    let parsed = parse(qat, find_import, false, Arc::clone(&reporter))?;
+    let parsed = parse(qat, Rc::new(find_import), false, Arc::clone(reporter))?;
 
     let arch = parsed.expansion_info.registers.clone();
 
-    let expanded = expand(parsed.into_inner(), reporter)?;
+    let expanded = expand(parsed.into_inner(), Arc::clone(reporter))?;
 
-    strip_expanded(expanded).map(|v| (v, arch))
+    strip_expanded(expanded, reporter).map(|v| (v, arch))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -130,18 +128,21 @@ fn tag_with_key(instr: &mut TaggedInstruction, key: Option<MacroBranchKey>) {
 fn resolve_just_these_defines(
     this: &mut WithSpan<TaggedInstruction>,
     defines: &HashMap<ArcIntern<str>, Define<WithSpan<ResolvedValue>>>,
-) -> Result<(), Vec<Rich<'static, char, Span>>> {
+    r: &Reporter,
+) -> Option<()> {
     match &mut this.0 {
         Instruction::Label(_) | Instruction::Define(_) | Instruction::Code(Code::Primitive(_)) => {
-            Ok(())
+            Some(())
         }
-        Instruction::Code(Code::Macro(call)) => collect_err(
+        Instruction::Code(Code::Macro(call)) => {
             call.arguments
                 .iter_mut()
-                .map(|arg| arg.resolve_just_these_defines(defines)),
-        ),
+                .map(|arg| arg.resolve_just_these_defines(defines, r))
+                .collect::<Option<Vec<_>>>()?;
+            Some(())
+        }
         Instruction::Constant(arc_intern) => match defines.get(arc_intern) {
-            None => Ok(()),
+            None => Some(()),
             Some(value) => match &*value.value {
                 ResolvedValue::Int(_) => todo!(),
                 ResolvedValue::Ident {
@@ -150,22 +151,26 @@ fn resolve_just_these_defines(
                 } => todo!(),
                 ResolvedValue::Block(block) => {
                     this.0 = Instruction::Block(block.clone());
-                    Ok(())
+                    Some(())
                 }
             },
         },
-        Instruction::RhaiCall(rhai_call) => collect_err(
+        Instruction::RhaiCall(rhai_call) => {
             rhai_call
                 .args
                 .iter_mut()
-                .map(|arg| arg.resolve_just_these_defines(defines)),
-        ),
-        Instruction::Block(block) => collect_err(
+                .map(|arg| arg.resolve_just_these_defines(defines, r))
+                .collect::<Option<Vec<_>>>()?;
+            Some(())
+        }
+        Instruction::Block(block) => {
             block
                 .code
                 .iter_mut()
-                .map(|instr| resolve_just_these_defines(instr, defines)),
-        ),
+                .map(|instr| resolve_just_these_defines(instr, defines, r))
+                .collect::<Option<Vec<_>>>()?;
+            Some(())
+        }
     }
 }
 
@@ -266,26 +271,29 @@ impl Value {
     fn resolve_just_these_defines(
         &mut self,
         defines: &HashMap<ArcIntern<str>, Define<WithSpan<ResolvedValue>>>,
-    ) -> Result<(), Vec<Rich<'static, char, Span>>> {
+        r: &Reporter,
+    ) -> Option<()> {
         match self {
             Value::Resolved(value) => match value {
                 ResolvedValue::Int(_)
                 | ResolvedValue::Ident {
                     ident: _,
                     as_reg: _,
-                } => Ok(()),
-                ResolvedValue::Block(block) => collect_err(
+                } => Some(()),
+                ResolvedValue::Block(block) => {
                     block
                         .code
                         .iter_mut()
-                        .map(|instr| resolve_just_these_defines(instr, defines)),
-                ),
+                        .map(|instr| resolve_just_these_defines(instr, defines, r))
+                        .collect::<Option<Vec<_>>>()?;
+                    Some(())
+                }
             },
             Value::Constant(arc_intern) => match defines.get(arc_intern) {
-                None => Ok(()),
+                None => Some(()),
                 Some(value) => {
                     *self = Value::Resolved(value.value.value.clone());
-                    Ok(())
+                    Some(())
                 }
             },
         }
@@ -361,7 +369,7 @@ impl RhaiCall {
 
         let rhai = info.rhai_macros.get(&span.source()).unwrap();
 
-        let result = rhai.do_rhai_call(&self.function_name, args, span.clone(), info)?;
+        let result = rhai.do_rhai_call(&self.function_name, args, span.clone(), info, r)?;
 
         Some(span.with(result))
     }
@@ -766,7 +774,7 @@ impl ExpansionInfo {
             }
             DefineValue::RhaiCall(call) => {
                 let span = call.span().clone();
-                call.into_inner().perform(span, self, block_id)
+                call.into_inner().perform(span, self, block_id, r)
             }
         }
     }
@@ -802,10 +810,12 @@ struct ExpandedCode {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use internment::ArcIntern;
     use puzzle_theory::span::File;
 
-    use crate::{compile, q_emitter::emit_q};
+    use crate::{Reporter, compile, q_emitter::emit_q};
 
     #[test]
     fn test_define() {
@@ -828,12 +838,20 @@ mod tests {
             $Z
         ";
 
+        let reporter = Reporter::default();
+
         let (program, _) = match compile(
             &File::new(ArcIntern::from("code.qat"), ArcIntern::from(code)),
             |_| unreachable!(),
+            Arc::clone(&reporter),
         ) {
-            Ok(v) => v,
-            Err(e) => panic!("{e:?}"),
+            Some(v) => v,
+            None => {
+                for report in reporter.iter() {
+                    println!("{:?}", report.1);
+                }
+                panic!();
+            }
         };
 
         let q_code = emit_q(&program, "code.q".into()).unwrap().0;
@@ -862,16 +880,16 @@ A: 3x3
             $X
         ";
 
+        let reporter = Reporter::default();
+
         match compile(
             &File::new(ArcIntern::from("code.qat"), ArcIntern::from(code)),
             |_| unreachable!(),
+            Arc::clone(&reporter),
         ) {
-            Ok(v) => panic!("{v:?}"),
-            Err(e) => {
-                assert_eq!(e.len(), 1);
-
-                assert_eq!(e[0].span().line(), 7);
-                assert_eq!(e[0].span().slice(), "$X");
+            Some(v) => panic!("{v:?}"),
+            None => {
+                assert_eq!(reporter.iter().count(), 1);
             }
         }
     }

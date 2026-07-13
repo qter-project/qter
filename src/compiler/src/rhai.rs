@@ -1,7 +1,6 @@
 use std::{fmt::Debug, sync::OnceLock};
 
 use ariadne::{Report, ReportKind};
-use chumsky::error::Rich;
 use internment::ArcIntern;
 use itertools::Itertools;
 use puzzle_theory::{
@@ -139,7 +138,7 @@ impl RhaiMacros {
 
         let branch_key = info.fresh_branch_key()();
 
-        from_rhai(value, span.clone(), branch_key)
+        from_rhai(value, span.clone(), branch_key, r)
     }
 }
 
@@ -156,7 +155,7 @@ fn into_rhai(arg: ResolvedValue, info: &ExpansionInfo) -> Dynamic {
                 Dynamic::from(str)
             }
         },
-        ResolvedValue::Block(block) => {
+        ResolvedValue::Block(_block) => {
             todo!()
         }
     }
@@ -199,7 +198,7 @@ fn from_rhai(
 
     let value = match value.try_cast_result::<ImmutableString>() {
         Ok(str) => {
-            return Ok(ResolvedValue::Ident {
+            return Some(ResolvedValue::Ident {
                 ident: span.with(ArcIntern::from(&*str)),
                 as_reg: OnceLock::new(),
             });
@@ -211,7 +210,7 @@ fn from_rhai(
         Ok(WRegisterInfo(str)) => {
             let span = str.0.reg_name.span().clone();
 
-            return Ok(ResolvedValue::Ident {
+            return Some(ResolvedValue::Ident {
                 ident: span.with(ArcIntern::from(str.0.to_string())),
                 as_reg: OnceLock::new(),
             });
@@ -219,7 +218,7 @@ fn from_rhai(
         Err(v) => v,
     };
 
-    try_decode_block(value, &span, branch_key).map(|v| {
+    try_decode_block(value, &span, branch_key, r).map(|v| {
         ResolvedValue::Block(Block {
             code: v
                 .into_iter()
@@ -234,18 +233,24 @@ fn try_decode_block(
     value: Dynamic,
     span: &Span,
     branch_key: MacroBranchKey,
-) -> Result<Option<WithSpan<Instruction>>, String> {
+    r: &Reporter,
+) -> Option<Option<WithSpan<Instruction>>> {
     let value = match value.try_cast_result::<Array>() {
         Ok(v) => v,
         Err(value) => {
-            return Err(format!(
-                "Unable to interpret `{value}` as a positive integer, identifier, register, or code block."
-            ));
+            r.push(
+                Report::build(ReportKind::Error, span.clone())
+                    .with_message(format!(
+                        "Unable to interpret `{value}` as a positive integer, identifier, register, or code block."
+                    ))
+                    .finish(),
+            );
+            return None;
         }
     };
 
     if value.is_empty() {
-        return Ok(None);
+        return Some(None);
     }
 
     if value[0].is_string() {
@@ -255,12 +260,12 @@ fn try_decode_block(
 
         let args = values
             .map(|v| {
-                from_rhai(v, span.clone(), branch_key)
+                from_rhai(v, span.clone(), branch_key, r)
                     .map(|v| span.clone().with(Value::Resolved(v)))
             })
-            .try_collect::<_, Vec<_>, _>()?;
+            .collect::<Option<Vec<_>>>()?;
 
-        Ok(Some(span.clone().with(Instruction::Code(Code::Macro(
+        Some(Some(span.clone().with(Instruction::Code(Code::Macro(
             MacroCall {
                 name: span.clone().with(ArcIntern::from(name)),
                 arguments: span.clone().with(args),
@@ -268,13 +273,16 @@ fn try_decode_block(
         )))))
     } else {
         // This is a code block
-        Ok(Some(
+        Some(Some(
             span.clone().with(Instruction::Block(Block {
                 code: value
                     .into_iter()
-                    .filter_map(|v| try_decode_block(v, span, branch_key).transpose())
-                    .map(|v| v.map(|v| v.map(|v| (v, None, Some(branch_key)))))
-                    .try_collect::<_, Vec<_>, _>()?,
+                    .map(|v| try_decode_block(v, span, branch_key, r))
+                    .collect::<Option<Vec<Option<WithSpan<Instruction>>>>>()?
+                    .into_iter()
+                    .flatten()
+                    .map(|v| v.map(|v| (v, None, Some(branch_key))))
+                    .collect_vec(),
             })),
         ))
     }

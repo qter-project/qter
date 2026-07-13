@@ -1,8 +1,14 @@
-use ariadne::{Label, Report, ReportKind};
+use std::rc::Rc;
+
+use ariadne::{Label, Report, ReportKind, Source};
 use internment::ArcIntern;
 use puzzle_theory::span::{File, Span, WithSpan};
 
-use crate::{BlockID, ParsedSyntax, Reporter, builtin_macros::builtin_macros, parsing::tokenizer::{TokenEnclosure, TokenizerState}};
+use crate::{
+    BlockID, ParsedSyntax, Reporter,
+    builtin_macros::builtin_macros,
+    parsing::tokenizer::{TokenEnclosure, TokenizerState},
+};
 
 mod parser;
 mod tokenizer;
@@ -13,24 +19,21 @@ thread_local! {
 
         let reporter = Reporter::default();
 
-        let mut parsed_prelude = match parse(
+        let Some(mut parsed_prelude) = parse(
             &prelude,
-            |_| {
+            Rc::new(|_: &str| {
                 panic!(
                     "Prelude should not import files (because it's easier not to implement; message henry if you need this feature)"
                 )
-            },
+            }),
             true,
             reporter.clone(),
-        ) {
-            Some(v) => v,
-            None => {
+        ) else {
                 for report in reporter.iter() {
-                    // report.1.eprint();
+                    report.1.eprint((ArcIntern::from("prelude.qat"), Source::from(prelude.inner()))).unwrap();
                 }
 
-                panic!()
-            },
+                panic!("Failed building the prelude with {} errors", reporter.count())
         };
 
         let builtin_macros = builtin_macros(&prelude);
@@ -51,16 +54,14 @@ thread_local! {
 
 pub fn parse(
     qat: &File,
-    find_import: impl Fn(&str) -> Result<ArcIntern<str>, String> + 'static,
+    find_import: Rc<impl Fn(&str) -> Result<ArcIntern<str>, String> + 'static>,
     is_prelude: bool,
     reporter: Reporter,
 ) -> Option<WithSpan<ParsedSyntax>> {
     let mut state = TokenizerState::new(qat.clone(), reporter);
     let enclosure = TokenEnclosure::new(&mut state);
 
-    enclosure.parse(|iter| {
-        parser::parse(iter, find_import, is_prelude)
-    })
+    enclosure.parse(|iter| parser::parse(iter, find_import, is_prelude))
 }
 
 fn merge_files(
@@ -68,7 +69,7 @@ fn merge_files(
     importer_contents: &File,
     mut importee: ParsedSyntax,
     span: Span,
-    reporter: Reporter,
+    reporter: &Reporter,
 ) -> Option<()> {
     match (
         &importer.expansion_info.registers,
@@ -80,12 +81,18 @@ fn merge_files(
                 Report::build(ReportKind::Error, span)
                     .with_message("Importing this file introduces a second registers declaration")
                     .with_note("A QAT program may only contain one registers declaration")
-                    .with_label(Label::new(regs1.span().clone()).with_message("Current registers declaration"))
-                    .with_label(Label::new(regs2.span().clone()).with_message("Introduced registers declaration"))
+                    .with_label(
+                        Label::new(regs1.span().clone())
+                            .with_message("Current registers declaration"),
+                    )
+                    .with_label(
+                        Label::new(regs2.span().clone())
+                            .with_message("Introduced registers declaration"),
+                    )
                     .finish(),
             );
             return None;
-        },
+        }
         (_, None) => {}
     }
 
@@ -141,68 +148,16 @@ fn merge_files(
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use chumsky::Parser;
+    use std::{rc::Rc, sync::Arc};
+
     use internment::ArcIntern;
     use puzzle_theory::span::File;
 
-    use super::{ident, number, parse, registers};
+    use super::parse;
+    use crate::Reporter;
 
     pub(crate) fn file(str: &'static str) -> File {
         File::new(ArcIntern::from("<static>"), ArcIntern::from(str))
-    }
-
-    #[test]
-    fn test_number() {
-        number::<()>().parse(file("123")).unwrap();
-        number::<()>().parse(file("12398263596868928956891896286935689869218695689689297479561963469856981968423679569173479159")).unwrap();
-
-        assert!(number::<()>().parse(file("")).has_errors());
-        assert!(number::<()>().parse(file("3x3")).has_errors());
-        assert!(number::<()>().parse(file("0.12")).has_errors());
-        assert!(number::<()>().parse(file("-11")).has_errors());
-        assert!(number::<()>().parse(file("-11")).has_errors());
-    }
-
-    #[test]
-    fn test_ident() {
-        ident::<()>().parse(file("a")).unwrap();
-        ident::<()>().parse(file("A")).unwrap();
-        ident::<()>().parse(file("3x3")).unwrap();
-        ident::<()>().parse(file("thingy")).unwrap();
-        ident::<()>().parse(file("prhaih")).unwrap();
-        ident::<()>().parse(file("->")).unwrap();
-        ident::<()>().parse(file("\"345\"")).unwrap();
-        ident::<()>().parse(file("\"rhai\"")).unwrap();
-
-        assert!(ident::<()>().parse(file("345")).has_errors());
-        assert!(ident::<()>().parse(file("rhai")).has_errors());
-        assert!(ident::<()>().parse(file("thing<-thing")).has_errors());
-        assert!(ident::<()>().parse(file("aa.aa")).has_errors());
-        assert!(ident::<()>().parse(file("!aaaa")).has_errors());
-        assert!(ident::<()>().parse(file("aaaa)")).has_errors());
-    }
-
-    #[test]
-    fn test_registers() {
-        let code = "
-            .registers {
-                a, b <- 3x3 builtin (90, 90)
-                (
-                    c, d ← 3x3 builtin (210, 24)
-                    d, e, f ← 3x3 builtin (30, 30, 30)
-                )
-                f ← theoretical 90
-                g, h ← 3x3 (U, D)
-            }
-        ";
-
-        let errs = registers().parse(file(code)).into_errors();
-
-        for err in &errs {
-            println!("{err}; {:?}", err.span().line_and_col());
-        }
-
-        assert!(errs.is_empty());
     }
 
     #[test]
@@ -247,22 +202,21 @@ pub(crate) mod tests {
             .import \"pog.qat\"
         ";
 
+        let reporter = Reporter::default();
+
         match parse(
             &file(code),
-            |name| {
+            Rc::new(|name: &str| {
                 assert_eq!(name, "pog.qat");
                 Ok(ArcIntern::from("add 1 a"))
-            },
+            }),
             false,
+            Arc::clone(&reporter),
         ) {
-            Ok(_) => {}
-            Err(errs) => {
-                for err in &errs {
-                    println!(
-                        "{err}; {:?}; `{}`",
-                        err.span().line_and_col(),
-                        err.span().slice()
-                    );
+            Some(_) => {}
+            None => {
+                for (_, report) in reporter.iter() {
+                    println!("{report:?}");
                 }
 
                 panic!();

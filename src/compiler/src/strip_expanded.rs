@@ -1,12 +1,12 @@
 use std::{collections::HashMap, sync::Arc};
 
-use chumsky::error::Rich;
+use ariadne::{Report, ReportKind};
 use internment::ArcIntern;
-use itertools::{Either, Itertools};
+use itertools::Itertools;
 use puzzle_theory::{
     numbers::{Int, U},
     permutations::PermutationGroup,
-    span::{Span, WithSpan},
+    span::WithSpan,
 };
 use qter_core::{
     ByPuzzleType, Facelets, Halt, Input, Instruction, Print, Program, PuzzleIdx, RegisterGenerator,
@@ -16,6 +16,7 @@ use qter_core::{
 
 use crate::{
     ExpandedCode, ExpandedCodeComponent, LabelReference, Primitive, Puzzle, RegisterReference,
+    Reporter,
     optimization::{OptimizingCodeComponent, OptimizingPrimitive, do_optimization},
 };
 
@@ -57,38 +58,40 @@ impl GlobalRegs {
     fn generator(
         &self,
         register: &RegisterReference,
-    ) -> Result<ByPuzzleType<'static, (StateIdx, RegisterGenerator)>, Rich<'static, char, Span>>
-    {
+        r: &Reporter,
+    ) -> Option<ByPuzzleType<'static, (StateIdx, RegisterGenerator)>> {
         let reg_info = self.get_reg(register);
 
         match reg_info {
             ByPuzzleType::Theoretical((theoretical, ())) => {
-                Ok(ByPuzzleType::Theoretical((theoretical, ())))
+                Some(ByPuzzleType::Theoretical((theoretical, ())))
             }
-            ByPuzzleType::Puzzle((puzzle_idx, (idx, arch, modulus))) => Ok(ByPuzzleType::Puzzle((
-                puzzle_idx,
-                (
-                    new_from_effect(&arch, vec![(idx, Int::<U>::one())]),
-                    get_facelets(idx, &arch, modulus, register)?,
-                ),
-            ))),
+            ByPuzzleType::Puzzle((puzzle_idx, (idx, arch, modulus))) => {
+                Some(ByPuzzleType::Puzzle((
+                    puzzle_idx,
+                    (
+                        new_from_effect(&arch, vec![(idx, Int::<U>::one())]),
+                        get_facelets(idx, &arch, modulus, register, r)?,
+                    ),
+                )))
+            }
         }
     }
 
     fn facelets(
         &self,
         register: &RegisterReference,
-    ) -> Result<ByPuzzleType<'_, FaceletsInfo>, Rich<'static, char, Span>> {
+        r: &Reporter,
+    ) -> Option<ByPuzzleType<'_, FaceletsInfo>> {
         let reg_info = self.get_reg(register);
 
         match reg_info {
             ByPuzzleType::Theoretical((theoretical_idx, ())) => {
-                Ok(ByPuzzleType::Theoretical(theoretical_idx))
+                Some(ByPuzzleType::Theoretical(theoretical_idx))
             }
-            ByPuzzleType::Puzzle((puzzle_idx, (idx, arch, modulus))) => Ok(ByPuzzleType::Puzzle((
-                puzzle_idx,
-                get_facelets(idx, &arch, modulus, register)?,
-            ))),
+            ByPuzzleType::Puzzle((puzzle_idx, (idx, arch, modulus))) => Some(ByPuzzleType::Puzzle(
+                (puzzle_idx, get_facelets(idx, &arch, modulus, register, r)?),
+            )),
         }
     }
 }
@@ -98,11 +101,12 @@ fn get_facelets(
     arch: &Architecture,
     modulus: Option<Int<U>>,
     register: &RegisterReference,
-) -> Result<Facelets, Rich<'static, char, Span>> {
+    r: &Reporter,
+) -> Option<Facelets> {
     match modulus {
         Some(modulus) => {
             if let Some(v) = arch.registers()[idx].signature_facelets_mod(modulus) {
-                Ok(v)
+                Some(v)
             } else {
                 let cycles = arch.registers()[idx]
                     .unshared_cycles()
@@ -112,16 +116,18 @@ fn get_facelets(
                     .dedup()
                     .collect_vec();
 
-                Err(Rich::custom(
-                    register.reg_name.span().clone(),
-                    format!(
-                        "Could not find a set of pieces for solved-goto that encode the given modulus. The available moduli are the LCM of any combination of the following piece subcycles: {}",
-                        cycles.into_iter().join(", ")
-                    ),
-                ))
+                r.push(
+                    Report::build(ReportKind::Error, register.reg_name.span().clone())
+                        .with_message(format!(
+                            "Could not find a set of pieces for solved-goto that encode the given modulus. The available moduli are the LCM of any combination of the following piece subcycles: {}",
+                            cycles.into_iter().join(", ")
+                        ))
+                        .finish(),
+                );
+                None
             }
         }
-        None => Ok(arch.registers()[idx].signature_facelets()),
+        None => Some(arch.registers()[idx].signature_facelets()),
     }
 }
 
@@ -133,7 +139,7 @@ impl SeparatesByPuzzleType for FaceletsInfo {
     type Puzzle<'s> = (PuzzleIdx, Facelets);
 }
 
-pub fn strip_expanded(expanded: ExpandedCode) -> Result<Program, Vec<Rich<'static, char, Span>>> {
+pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
     let mut global_regs = GlobalRegs {
         register_table: HashMap::new(),
         theoretical: vec![],
@@ -174,10 +180,12 @@ pub fn strip_expanded(expanded: ExpandedCode) -> Result<Program, Vec<Rich<'stati
     let global_regs = Arc::new(global_regs);
     let global_regs_for_iter = Arc::clone(&global_regs);
 
-    let (instructions_mapped, errors) = expanded
+    let before = r.count();
+
+    let instructions_mapped = expanded
         .expanded_code_components
         .into_iter()
-        .map(move |v| {
+        .filter_map(move |v| {
             let span = v.span().clone();
             let instr = match v.into_inner() {
                 ExpandedCodeComponent::Instruction(primitive, block_id) => {
@@ -200,10 +208,12 @@ pub fn strip_expanded(expanded: ExpandedCode) -> Result<Program, Vec<Rich<'stati
                             Primitive::Goto { label } => {
                                 let span = label.span().clone();
                                 let Some(label) = expanded.block_info.label_scope(&label) else {
-                                    return Err(Rich::custom(
-                                        label.span().clone(),
-                                        "Could not find label in scope",
-                                    ));
+                                    r.push(
+                                        Report::build(ReportKind::Error, label.span().clone())
+                                            .with_message("Could not find label in scope")
+                                            .finish(),
+                                    );
+                                    return None;
                                 };
 
                                 OptimizingPrimitive::Goto {
@@ -213,10 +223,12 @@ pub fn strip_expanded(expanded: ExpandedCode) -> Result<Program, Vec<Rich<'stati
                             Primitive::SolvedGoto { label, register } => {
                                 let span = label.span().clone();
                                 let Some(label) = expanded.block_info.label_scope(&label) else {
-                                    return Err(Rich::custom(
-                                        label.span().clone(),
-                                        "Could not find label in scope",
-                                    ));
+                                    r.push(
+                                        Report::build(ReportKind::Error, label.span().clone())
+                                            .with_message("Could not find label in scope")
+                                            .finish(),
+                                    );
+                                    return None;
                                 };
 
                                 OptimizingPrimitive::SolvedGoto {
@@ -240,15 +252,12 @@ pub fn strip_expanded(expanded: ExpandedCode) -> Result<Program, Vec<Rich<'stati
                 ExpandedCodeComponent::Label(label) => OptimizingCodeComponent::Label(label),
             };
 
-            Ok(span.with(instr))
+            Some(span.with(instr))
         })
-        .partition_map::<Vec<_>, Vec<_>, _, _, _>(|res| match res {
-            Ok(v) => Either::Left(v),
-            Err(e) => Either::Right(e),
-        });
+        .collect_vec();
 
-    if !errors.is_empty() {
-        return Err(errors);
+    if r.count() - before != 0 {
+        return None;
     }
 
     let optimized = do_optimization(instructions_mapped.into_iter(), &global_regs);
@@ -283,9 +292,11 @@ pub fn strip_expanded(expanded: ExpandedCode) -> Result<Program, Vec<Rich<'stati
         })
         .collect_vec();
 
-    let (instructions, errors) = instructions
+    let before = r.count();
+
+    let instructions = instructions
         .into_iter()
-        .map(|fully_simplified| {
+        .filter_map(|fully_simplified| {
             let span = fully_simplified.span().to_owned();
 
             let instruction = match *fully_simplified.into_inner() {
@@ -307,7 +318,7 @@ pub fn strip_expanded(expanded: ExpandedCode) -> Result<Program, Vec<Rich<'stati
                     instruction_idx: *label_locations.get(&label).unwrap(),
                 },
                 OptimizingPrimitive::SolvedGoto { register, label } => {
-                    let facelets = global_regs.facelets(&register)?;
+                    let facelets = global_regs.facelets(&register, r)?;
 
                     let solved_goto = qter_core::SolvedGoto {
                         instruction_idx: *label_locations.get(&label).unwrap(),
@@ -329,7 +340,7 @@ pub fn strip_expanded(expanded: ExpandedCode) -> Result<Program, Vec<Rich<'stati
                     register,
                 } => Instruction::RepeatUntil(ByPuzzleType::Puzzle(RepeatUntil {
                     puzzle_idx: puzzle,
-                    facelets: match global_regs.facelets(&register)? {
+                    facelets: match global_regs.facelets(&register, r)? {
                         ByPuzzleType::Theoretical(_) => unreachable!(),
                         ByPuzzleType::Puzzle((idx, facelets)) => {
                             assert_eq!(idx, puzzle);
@@ -352,7 +363,7 @@ pub fn strip_expanded(expanded: ExpandedCode) -> Result<Program, Vec<Rich<'stati
                         message: message.into_inner(),
                     };
 
-                    Instruction::Input(match global_regs.generator(&register)? {
+                    Instruction::Input(match global_regs.generator(&register, r)? {
                         ByPuzzleType::Theoretical((theoretical, ())) => {
                             ByPuzzleType::Theoretical((input, theoretical))
                         }
@@ -371,7 +382,7 @@ pub fn strip_expanded(expanded: ExpandedCode) -> Result<Program, Vec<Rich<'stati
                         message: message.into_inner(),
                     };
                     Instruction::Halt(match register {
-                        Some(register) => match global_regs.generator(&register)? {
+                        Some(register) => match global_regs.generator(&register, r)? {
                             ByPuzzleType::Theoretical((theoretical_idx, ())) => {
                                 ByPuzzleType::Theoretical((halt, Some(theoretical_idx)))
                             }
@@ -391,7 +402,7 @@ pub fn strip_expanded(expanded: ExpandedCode) -> Result<Program, Vec<Rich<'stati
                         message: message.into_inner(),
                     };
                     Instruction::Print(match register {
-                        Some(register) => match global_regs.generator(&register)? {
+                        Some(register) => match global_regs.generator(&register, r)? {
                             ByPuzzleType::Theoretical((theoretical_idx, ())) => {
                                 ByPuzzleType::Theoretical((print, Some(theoretical_idx)))
                             }
@@ -408,20 +419,17 @@ pub fn strip_expanded(expanded: ExpandedCode) -> Result<Program, Vec<Rich<'stati
                 }
             };
 
-            Ok(WithSpan::new(instruction, span))
+            Some(WithSpan::new(instruction, span))
         })
-        .partition_map::<Vec<_>, Vec<_>, _, _, _>(|res| match res {
-            Ok(v) => Either::Left(v),
-            Err(e) => Either::Right(e),
-        });
+        .collect_vec();
 
-    if !errors.is_empty() {
-        return Err(errors);
+    if r.count() - before != 0 {
+        return None;
     }
 
     let global_regs = Arc::into_inner(global_regs).unwrap();
 
-    Ok(Program {
+    Some(Program {
         theoretical: global_regs.theoretical,
         puzzles: global_regs.puzzles,
         instructions,

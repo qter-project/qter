@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use chumsky::{error::Rich, span::Span as _};
+use ariadne::{Report as AriadneReport, ReportKind, Source as AriadneSource, Span as _};
 use internment::ArcIntern;
 use puzzle_theory::{
     puzzle_geometry::{PuzzleGeometry, parsing::puzzle},
@@ -30,17 +30,34 @@ impl Program {
         let s = File::new("<inner>".into(), s.into());
         let mk_error = |msg: &str, span: Option<Span>| {
             let span = span.unwrap_or_else(|| Span::new(s.clone(), 0, s.inner().len()));
-            return vec![CompileError {
-                inner: Rich::custom(span, msg),
-            }];
+            vec![CompileError {
+                report: AriadneReport::build(ReportKind::Error, span)
+                    .with_message(msg)
+                    .finish(),
+                source: s.clone(),
+            }]
         };
 
-        let (program, regs) = compiler::compile(&s, |_| Err("Imports are not allowed".to_owned()))
-            .map_err(|e| {
-                e.into_iter()
-                    .map(|v| CompileError { inner: v })
-                    .collect::<Vec<_>>()
-            })?;
+        let reporter = compiler::Reporter::default();
+
+        let (program, regs) = match compiler::compile(
+            &s,
+            |_| Err("Imports are not allowed".to_owned()),
+            Arc::clone(&reporter),
+        ) {
+            Some(v) => v,
+            None => {
+                let reports = Arc::try_unwrap(reporter)
+                    .expect("reporter should be uniquely owned after compile")
+                    .into_iter();
+                return Err(reports
+                    .map(|report| CompileError {
+                        report,
+                        source: s.clone(),
+                    })
+                    .collect::<Vec<_>>());
+            }
+        };
 
         let Some(regs) = regs else {
             return Err(mk_error(
@@ -114,37 +131,24 @@ impl Program {
 
 #[wasm_bindgen]
 pub struct CompileError {
-    inner: Rich<'static, char, puzzle_theory::span::Span>,
+    report: ariadne::Report<'static, puzzle_theory::span::Span>,
+    source: File,
 }
 
 #[wasm_bindgen]
 impl CompileError {
-    pub fn start(&self) -> usize {
-        self.inner.span().start()
-    }
-
-    pub fn end(&self) -> usize {
-        self.inner.span().end()
-    }
-
-    pub fn start_line(&self) -> usize {
-        self.inner.span().line()
-    }
-
-    pub fn start_col(&self) -> usize {
-        self.inner.span().col()
-    }
-
-    pub fn end_line(&self) -> usize {
-        self.inner.span().clone().after().line()
-    }
-
-    pub fn end_col(&self) -> usize {
-        self.inner.span().clone().after().line()
-    }
-
-    pub fn message(&self) -> String {
-        self.inner.to_string()
+    pub fn render(&self) -> String {
+        let mut buf = std::io::Cursor::new(Vec::<u8>::new());
+        self.report
+            .write(
+                (
+                    self.source.name(),
+                    AriadneSource::from(&*self.source.inner()),
+                ),
+                &mut buf,
+            )
+            .unwrap();
+        String::from_utf8(buf.into_inner()).unwrap()
     }
 }
 

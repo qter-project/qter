@@ -50,3 +50,4 @@ Guidance for OpenCode agents working in this repo. Verified against current conf
 ## Rules
 
 - When instructions are ambiguous or inconsistent, ask the user for clarification. If the ambiguity might be resolved by reading code, do that first.
+- Ask the user about architectural decisions

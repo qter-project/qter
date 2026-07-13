@@ -1,10 +1,10 @@
-use chumsky::error::Rich;
+use ariadne::{Report, ReportKind};
 use internment::ArcIntern;
 use puzzle_theory::span::{File, Span, WithSpan};
 
 use crate::{
-    BlockID, ExpansionInfo, LabelReference, Macro, Primitive, RegisterReference, ResolvedValue,
-    Value,
+    BlockID, ExpansionInfo, LabelReference, Macro, Primitive, RegisterReference, Reporter,
+    ResolvedValue, Value,
 };
 
 use std::collections::HashMap;
@@ -13,23 +13,36 @@ fn expect_reg(
     reg_value: &WithSpan<Value>,
     block_id: BlockID,
     syntax: &ExpansionInfo,
-) -> Result<RegisterReference, Rich<'static, char, Span>> {
+    r: &Reporter,
+) -> Option<RegisterReference> {
     match syntax.block_info.resolve_ref(block_id, reg_value) {
         Some(value) => match value.as_reg(syntax) {
-            Some(Ok(reg)) => Ok(reg.0.clone()),
-            Some(Err(reg_name)) => Err(Rich::custom(
-                reg_value.span().clone(),
-                format!("The register {} does not exist", &**reg_name),
-            )),
-            None => Err(Rich::custom(
-                reg_value.span().clone(),
-                "Expected a register",
-            )),
+            Some(Ok(reg)) => Some(reg.0.clone()),
+            Some(Err(reg_name)) => {
+                r.push(
+                    Report::build(ReportKind::Error, reg_value.span().clone())
+                        .with_message(format!("The register {} does not exist", &**reg_name))
+                        .finish(),
+                );
+                None
+            }
+            None => {
+                r.push(
+                    Report::build(ReportKind::Error, reg_value.span().clone())
+                        .with_message("Expected a register")
+                        .finish(),
+                );
+                None
+            }
         },
-        None => Err(Rich::custom(
-            reg_value.span().clone(),
-            "Constant not found in this scope",
-        )),
+        None => {
+            r.push(
+                Report::build(ReportKind::Error, reg_value.span().clone())
+                    .with_message("Constant not found in this scope")
+                    .finish(),
+            );
+            None
+        }
     }
 }
 
@@ -37,9 +50,10 @@ fn expect_label(
     label_value: &WithSpan<Value>,
     block_id: BlockID,
     syntax: &ExpansionInfo,
-) -> Result<WithSpan<LabelReference>, Rich<'static, char, Span>> {
+    r: &Reporter,
+) -> Option<WithSpan<LabelReference>> {
     match syntax.block_info.resolve_ref(block_id, label_value) {
-        Some(ResolvedValue::Ident { ident, as_reg: _ }) => Ok(WithSpan::new(
+        Some(ResolvedValue::Ident { ident, as_reg: _ }) => Some(WithSpan::new(
             LabelReference {
                 name: ArcIntern::clone(ident),
                 block_id,
@@ -47,11 +61,22 @@ fn expect_label(
             },
             label_value.span().to_owned(),
         )),
-        Some(_) => Err(Rich::custom(label_value.span().clone(), "Expected a label")),
-        None => Err(Rich::custom(
-            label_value.span().clone(),
-            "Constant not found in this scope",
-        )),
+        Some(_) => {
+            r.push(
+                Report::build(ReportKind::Error, label_value.span().clone())
+                    .with_message("Expected a label")
+                    .finish(),
+            );
+            None
+        }
+        None => {
+            r.push(
+                Report::build(ReportKind::Error, label_value.span().clone())
+                    .with_message("Constant not found in this scope")
+                    .finish(),
+            );
+            None
+        }
     }
 }
 
@@ -59,16 +84,27 @@ fn print_like(
     syntax: &ExpansionInfo,
     mut args: WithSpan<Vec<WithSpan<Value>>>,
     block_id: BlockID,
-) -> Result<(Option<RegisterReference>, WithSpan<String>), Rich<'static, char, Span>> {
+    r: &Reporter,
+) -> Option<(Option<RegisterReference>, WithSpan<String>)> {
     if args.len() > 2 || args.is_empty() {
-        return Err(Rich::custom(
-            args.span().clone(),
-            format!("Expected one or two arguments, found {}", args.len()),
-        ));
+        r.push(
+            Report::build(ReportKind::Error, args.span().clone())
+                .with_message(format!(
+                    "Expected one or two arguments, found {}",
+                    args.len()
+                ))
+                .finish(),
+        );
+        return None;
     }
 
     let maybe_reg = if args.len() == 2 {
-        Some(expect_reg(args.pop().as_ref().unwrap(), block_id, syntax)?)
+        Some(expect_reg(
+            args.pop().as_ref().unwrap(),
+            block_id,
+            syntax,
+            r,
+        )?)
     } else {
         None
     };
@@ -80,14 +116,24 @@ fn print_like(
             WithSpan::new((**ident).to_owned(), span)
         }
         Some(_) => {
-            return Err(Rich::custom(span, "Expected a message"));
+            r.push(
+                Report::build(ReportKind::Error, span.clone())
+                    .with_message("Expected a message")
+                    .finish(),
+            );
+            return None;
         }
         None => {
-            return Err(Rich::custom(span, "Constant not found in this scope"));
+            r.push(
+                Report::build(ReportKind::Error, span.clone())
+                    .with_message("Constant not found in this scope")
+                    .finish(),
+            );
+            return None;
         }
     };
 
-    Ok((maybe_reg, message))
+    Some((maybe_reg, message))
 }
 
 pub fn builtin_macros(prelude: &File) -> HashMap<(File, ArcIntern<str>), WithSpan<Macro>> {
@@ -102,12 +148,14 @@ pub fn builtin_macros(prelude: &File) -> HashMap<(File, ArcIntern<str>), WithSpa
     macros.insert(
         (prelude.clone(), ArcIntern::from("add")),
         WithSpan::new(
-            Macro::Builtin(|syntax, mut args, block_id| {
+            Macro::Builtin(|syntax, mut args, block_id, r| {
                 if args.len() != 2 {
-                    return Err(Rich::custom(
-                        args.span().clone(),
-                        format!("Expected two arguments, found {}", args.len()),
-                    ));
+                    r.push(
+                        Report::build(ReportKind::Error, args.span().clone())
+                            .with_message(format!("Expected two arguments, found {}", args.len()))
+                            .finish(),
+                    );
+                    return None;
                 }
 
                 let second_arg = args.pop().unwrap();
@@ -115,16 +163,26 @@ pub fn builtin_macros(prelude: &File) -> HashMap<(File, ArcIntern<str>), WithSpa
                 let amt = match syntax.block_info.resolve(block_id, second_arg.into_inner()) {
                     Some(ResolvedValue::Int(int)) => WithSpan::new(int, span),
                     Some(_) => {
-                        return Err(Rich::custom(span, "Expected a number"));
+                        r.push(
+                            Report::build(ReportKind::Error, span)
+                                .with_message("Expected a number")
+                                .finish(),
+                        );
+                        return None;
                     }
                     None => {
-                        return Err(Rich::custom(span, "Constant not found in this scope"));
+                        r.push(
+                            Report::build(ReportKind::Error, span)
+                                .with_message("Constant not found in this scope")
+                                .finish(),
+                        );
+                        return None;
                     }
                 };
 
-                let register = expect_reg(args.pop().as_ref().unwrap(), block_id, syntax)?;
+                let register = expect_reg(args.pop().as_ref().unwrap(), block_id, syntax, r)?;
 
-                Ok(Primitive::Add { amt, register })
+                Some(Primitive::Add { amt, register })
             }),
             dummy_span.clone(),
         ),
@@ -133,17 +191,19 @@ pub fn builtin_macros(prelude: &File) -> HashMap<(File, ArcIntern<str>), WithSpa
     macros.insert(
         (prelude.to_owned(), ArcIntern::from("goto")),
         WithSpan::new(
-            Macro::Builtin(|syntax, mut args, block_id| {
+            Macro::Builtin(|syntax, mut args, block_id, r| {
                 if args.len() != 1 {
-                    return Err(Rich::custom(
-                        args.span().clone(),
-                        format!("Expected one argument, found {}", args.len()),
-                    ));
+                    r.push(
+                        Report::build(ReportKind::Error, args.span().clone())
+                            .with_message(format!("Expected one argument, found {}", args.len()))
+                            .finish(),
+                    );
+                    return None;
                 }
 
-                let label = expect_label(args.pop().as_ref().unwrap(), block_id, syntax)?;
+                let label = expect_label(args.pop().as_ref().unwrap(), block_id, syntax, r)?;
 
-                Ok(Primitive::Goto { label })
+                Some(Primitive::Goto { label })
             }),
             dummy_span.clone(),
         ),
@@ -152,18 +212,20 @@ pub fn builtin_macros(prelude: &File) -> HashMap<(File, ArcIntern<str>), WithSpa
     macros.insert(
         (prelude.to_owned(), ArcIntern::from("solved-goto")),
         WithSpan::new(
-            Macro::Builtin(|syntax, mut args, block_id| {
+            Macro::Builtin(|syntax, mut args, block_id, r| {
                 if args.len() != 2 {
-                    return Err(Rich::custom(
-                        args.span().clone(),
-                        format!("Expected two arguments, found {}", args.len()),
-                    ));
+                    r.push(
+                        Report::build(ReportKind::Error, args.span().clone())
+                            .with_message(format!("Expected two arguments, found {}", args.len()))
+                            .finish(),
+                    );
+                    return None;
                 }
 
-                let label = expect_label(args.pop().as_ref().unwrap(), block_id, syntax)?;
-                let register = expect_reg(args.pop().as_ref().unwrap(), block_id, syntax)?;
+                let label = expect_label(args.pop().as_ref().unwrap(), block_id, syntax, r)?;
+                let register = expect_reg(args.pop().as_ref().unwrap(), block_id, syntax, r)?;
 
-                Ok(Primitive::SolvedGoto { register, label })
+                Some(Primitive::SolvedGoto { register, label })
             }),
             dummy_span.clone(),
         ),
@@ -172,15 +234,17 @@ pub fn builtin_macros(prelude: &File) -> HashMap<(File, ArcIntern<str>), WithSpa
     macros.insert(
         (prelude.to_owned(), ArcIntern::from("input")),
         WithSpan::new(
-            Macro::Builtin(|syntax, mut args, block_id| {
+            Macro::Builtin(|syntax, mut args, block_id, r| {
                 if args.len() != 2 {
-                    return Err(Rich::custom(
-                        args.span().clone(),
-                        format!("Expected two arguments, found {}", args.len()),
-                    ));
+                    r.push(
+                        Report::build(ReportKind::Error, args.span().clone())
+                            .with_message(format!("Expected two arguments, found {}", args.len()))
+                            .finish(),
+                    );
+                    return None;
                 }
 
-                let register = expect_reg(args.pop().as_ref().unwrap(), block_id, syntax)?;
+                let register = expect_reg(args.pop().as_ref().unwrap(), block_id, syntax, r)?;
 
                 let second_arg = args.pop().unwrap();
                 let span = second_arg.span().to_owned();
@@ -189,14 +253,24 @@ pub fn builtin_macros(prelude: &File) -> HashMap<(File, ArcIntern<str>), WithSpa
                         WithSpan::new(ident.trim_matches('"').to_owned(), span)
                     }
                     Some(_) => {
-                        return Err(Rich::custom(span, "Expected a message"));
+                        r.push(
+                            Report::build(ReportKind::Error, span)
+                                .with_message("Expected a message")
+                                .finish(),
+                        );
+                        return None;
                     }
                     None => {
-                        return Err(Rich::custom(span, "Constant not found in this scope"));
+                        r.push(
+                            Report::build(ReportKind::Error, span)
+                                .with_message("Constant not found in this scope")
+                                .finish(),
+                        );
+                        return None;
                     }
                 };
 
-                Ok(Primitive::Input { register, message })
+                Some(Primitive::Input { register, message })
             }),
             dummy_span.clone(),
         ),
@@ -205,10 +279,10 @@ pub fn builtin_macros(prelude: &File) -> HashMap<(File, ArcIntern<str>), WithSpa
     macros.insert(
         (prelude.to_owned(), ArcIntern::from("halt")),
         WithSpan::new(
-            Macro::Builtin(|syntax, args, block_id| {
-                let (register, message) = print_like(syntax, args, block_id)?;
+            Macro::Builtin(|syntax, args, block_id, r| {
+                let (register, message) = print_like(syntax, args, block_id, r)?;
 
-                Ok(Primitive::Halt { register, message })
+                Some(Primitive::Halt { register, message })
             }),
             dummy_span.clone(),
         ),
@@ -217,10 +291,10 @@ pub fn builtin_macros(prelude: &File) -> HashMap<(File, ArcIntern<str>), WithSpa
     macros.insert(
         (prelude.to_owned(), ArcIntern::from("print")),
         WithSpan::new(
-            Macro::Builtin(|syntax, args, block_id| {
-                let (register, message) = print_like(syntax, args, block_id)?;
+            Macro::Builtin(|syntax, args, block_id, r| {
+                let (register, message) = print_like(syntax, args, block_id, r)?;
 
-                Ok(Primitive::Print { register, message })
+                Some(Primitive::Print { register, message })
             }),
             dummy_span.clone(),
         ),

@@ -45,7 +45,7 @@ pub fn expand(mut parsed: ParsedSyntax, r: Reporter) -> Option<ExpandedCode> {
         }
     }
 
-    if !r.count() - before != 0 {
+    if r.count() - before != 0 {
         return None;
     }
 
@@ -131,9 +131,9 @@ fn expand_block(
                         return vec![]
                     }
 
-                    let resolved = match expansion_info.resolve(define.value, block_id) {
-                        Ok(v) => v,
-                        Err(errs) => return Err(errs),
+                    let resolved = match expansion_info.resolve(define.value, block_id, r) {
+                        Some(v) => v,
+                        None => return vec![],
                     };
 
                     let new_define = Define {
@@ -193,9 +193,9 @@ fn expand_block(
                     }
                 }
                 Instruction::RhaiCall(call) => {
-                    let value = match call.perform(span.clone(), expansion_info, block_id) {
-                        Ok(v) => v,
-                        Err(errs) => return Err(errs),
+                    let value = match call.perform(span.clone(), expansion_info, block_id, r) {
+                        Some(v) => v,
+                        None => return vec![],
                     };
                     let _ = changed.set(span.clone());
 
@@ -315,7 +315,7 @@ fn expand_code(
 
                 let mut instr = branch.code.clone();
                 instr.1 = Some(block_id);
-                resolve_just_these_defines(&mut instr, &defines);
+                resolve_just_these_defines(&mut instr, &defines, r);
 
                 return vec![instr];
             }
@@ -343,10 +343,11 @@ fn expand_code(
 #[cfg(test)]
 mod tests {
 
-    use std::sync::Arc;
+    use std::rc::Rc;
+use std::sync::Arc;
 
-use crate::Reporter;
-use crate::parsing::tests::file;
+    use crate::Reporter;
+    use crate::parsing::tests::file;
     use crate::{macro_expansion::expand, parsing::parse};
 
     #[test]
@@ -372,7 +373,13 @@ use crate::parsing::tests::file;
 
         let reporter = Reporter::default();
 
-        let parsed = parse(&file(code), |_| unreachable!(), false, Arc::clone(&reporter)).unwrap();
+        let parsed = parse(
+            &file(code),
+            Rc::new(|_: &str| unreachable!()),
+            false,
+            Arc::clone(&reporter),
+        )
+        .unwrap();
 
         let expanded = expand(parsed.into_inner(), Arc::clone(&reporter)).unwrap();
 
