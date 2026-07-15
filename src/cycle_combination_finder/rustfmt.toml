@@ -1,5 +1,5 @@
 unstable_features = true
-wrap_commands = true
+wrap_comments = true
 format_macro_matchers = true
 format_strings = true
 reorder_impl_items = true
