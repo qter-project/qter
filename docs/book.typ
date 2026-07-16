@@ -28,9 +28,17 @@
       - #chapter("./theory/permutation-groups.typ")[Permutation Groups]
       - #chapter("./theory/parity-and-orientation-sum.typ")[Parity and Orientation Sum]
       - #chapter("./theory/cycle-structures.typ")[Cycle Structures]
+        - #chapter("./theory/ori-pari-sharing.typ")[Orientation and Parity Sharing]
     - #chapter("./theory/qas.typ")[The Qter Architecture Solver]
       - #chapter("./theory/ccf.typ")[Cycle Combination Finder]
       - #chapter("./theory/ccs.typ")[Cycle Combination Solver]
+        - #chapter("./theory/tree-searching.typ")[Tree Searching]
+        - #chapter("./theory/pruning.typ")[Pruning]
+          - #chapter("./theory/symmetry-reduction.typ")[Symmetry Reduction]
+          - #chapter("./theory/pruning-table-types.typ")[Pruning Table Types]
+        - #chapter("./theory/ida-star.typ")[IDA\* Optimizations]
+        - #chapter("./theory/larger-puzzles.typ")[Larger Puzzles]
+        - #chapter("./theory/fixed-pieces.typ")[Fixed Pieces]
       - #chapter("./theory/mcc.typ")[Movecount Coefficient Calculator]
 
     = Technical Documentation

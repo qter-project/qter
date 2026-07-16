@@ -37,13 +37,13 @@
 
 // Fonts
 #let main-font = (
-  "Charter",
-  "Source Han Serif SC",
+  // "Charter",
+  // "Source Han Serif SC",
   // shiroa's embedded font
   "Libertinus Serif",
 )
 #let code-font = (
-  "BlexMono Nerd Font Mono",
+  // "BlexMono Nerd Font Mono",
   // shiroa's embedded font
   "DejaVu Sans Mono",
 )
@@ -84,6 +84,11 @@
 
 .diagram svg {
     height: auto !important;
+}
+
+p {
+  margin-top: 1rem;
+  margin-bottom: 1rem;
 }
 ```
 

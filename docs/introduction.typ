@@ -10,7 +10,7 @@ This book is intended to comprehensively describe Qter and how we created it. It
     columns: 3,
     [], [*Description*], [*Background required*],
     [*Overview*], [What Qter is and how you can play with it], [Basic programming],
-    [*Theory*], [Mathematics and algorithms behind encoding computations into move sequences], [Data structures & algorithms | discrete math],
+    [*Theory*], [Mathematics and algorithms behind encoding computations into move sequences], [Data structures & algorithms — discrete math],
     [*Technical Documentation*], [Implementation details of our software including lots of cool optimizations], [Software engineering],
     [*Blog*], [Stories from our journey creating this!], [None],
 )

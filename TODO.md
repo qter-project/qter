@@ -169,3 +169,23 @@
 
 - Add cayleypy to the paper
 - Add linear order growth to the paper
+
+# Parallelism
+
+- Threads are humans running different programs
+- Reading and writing a single cube is an atomic operation since you have to physically pick it up and only one person can hold it at a time
+- Due to a lack of weird cache stuff, all operations are SeqCst
+
+## LL/SC
+
+Every "data cube" has a second "marker cube" where every person is assigned a piece on the marker cube. For example, Arhan could have the FR piece. Basically, it's a `(2, 2, 2, 2, 2, ...)` architecture. The Load Linked instruction would be to read the cube and to perform an algorithm on the marker cube that flips the piece. Then, when someone picks up the cube to mutate it, they have to solve the marker cube to clear all of the markers. Then the store conditional would be to `solved-goto` your register.
+
+This set of marker cubes can just be another memory tape that we would advance in step with the memory tape of data cubes.
+
+We need a new instruction telling the person to pick up multiple cubes so that the person would pick up both the data cube and marker cube at once to make mutating both of them an atomic operation.
+
+## Square 1 mutexes
+
+A mutex would be a square-one cube (or any quasigroup puzzle). Locking the mutex would involve putting the puzzle into a state where a turn is impossible so that the cube is _literally locked_. Then we would have people try to do a turn and fail if they can't. The semantics of doing turns would be "if you can't do it, then wait until you can"
+
+(We can also just use a normal puzzle and solved-goto lol)
