@@ -120,13 +120,13 @@ mod divisors {
     }
 
     #[test_log::test]
-    #[should_panic(expected = "assertion failed: u16::from(n) < FIRST_")]
+    #[should_panic(expected = "assertion failed: NonZeroU16::from(n).get() < FIRST_")]
     fn too_big_prime_panics1() {
         let _ = divisors::<32>(251);
     }
 
     #[test_log::test]
-    #[should_panic(expected = "assertion failed: u16::from(n) < FIRST_")]
+    #[should_panic(expected = "assertion failed: NonZeroU16::from(n).get() < FIRST_")]
     fn too_big_prime_panics2() {
         let _ = divisors::<32>(137);
     }

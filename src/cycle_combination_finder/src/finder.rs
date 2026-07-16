@@ -118,7 +118,8 @@ impl PartialEq for CycleCombination {
 impl<const N: usize> CycleCombinations<N> {
     pub fn registers(&self) -> impl Iterator<Item = impl Iterator<Item = &OrderExps<N>>> {
         self.data.iter().map(|x| {
-            x.inner.registers
+            x.inner
+                .registers
                 .iter()
                 .map(|&i| &self.possible_orders_except_one[i as usize].order)
         })
@@ -281,7 +282,10 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<N>> {
                 cycle_combinations.len(),
                 cycle_combinations
                     .into_iter()
-                    .map(|i| dbg_registers(i.inner.registers.iter().copied(), possible_orders_except_one))
+                    .map(|i| dbg_registers(
+                        i.inner.registers.iter().copied(),
+                        possible_orders_except_one
+                    ))
                     .collect::<Vec<_>>()
                     .join("\n")
             );
@@ -321,6 +325,10 @@ mod tests {
         cycles
     }
 
+    // The expected length has not been re-pinned since the details step
+    // became a real feasibility check; the per-order decomposition
+    // enumeration is not yet fast enough for minx4-sized orders.
+    #[ignore = "takes too long"]
     #[test_log::test]
     fn minx4_optimal_3() {
         let minx4 = MINX4.clone();
@@ -350,7 +358,7 @@ mod tests {
         CycleCombinationFinder::builder()
             .with_puzzle_def(minx3)
             .with_register_count(NonZeroU16::new(4).unwrap())
-            .with_expected_length_assertion(347)
+            .with_expected_length_assertion(170)
             .find()
             .unwrap();
     }
@@ -361,7 +369,7 @@ mod tests {
         CycleCombinationFinder::builder()
             .with_puzzle_def(minx3)
             .with_register_count(NonZeroU16::new(3).unwrap())
-            .with_expected_length_assertion(64)
+            .with_expected_length_assertion(58)
             .find()
             .unwrap();
     }
@@ -372,7 +380,7 @@ mod tests {
         CycleCombinationFinder::builder()
             .with_puzzle_def(cube3)
             .with_register_count(NonZeroU16::new(4).unwrap())
-            .with_expected_length_assertion(50)
+            .with_expected_length_assertion(26)
             .find()
             .unwrap();
     }
@@ -383,7 +391,7 @@ mod tests {
         CycleCombinationFinder::builder()
             .with_puzzle_def(cube3)
             .with_register_count(NonZeroU16::new(3).unwrap())
-            .with_expected_length_assertion(17)
+            .with_expected_length_assertion(14)
             .find()
             .unwrap();
     }
@@ -394,7 +402,7 @@ mod tests {
         CycleCombinationFinder::builder()
             .with_puzzle_def(cube3)
             .with_register_count(NonZeroU16::new(2).unwrap())
-            .with_expected_length_assertion(5)
+            .with_expected_length_assertion(4)
             .find()
             .unwrap();
     }

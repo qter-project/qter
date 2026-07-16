@@ -21,7 +21,7 @@ use seize::{Collector, Guard, reclaim};
 use tokio::sync::broadcast::error::TryRecvError as TokioTryRecvError;
 
 use crate::{
-    cycle_combination_details::CycleCombinationDetails,
+    cycle_combination_details::{CycleCombinationDetails, RegisterOptionsCache},
     finder::{CycleCombination, CycleCombinationInner, NumCores, PossibleOrder},
     nonemptyvec::{NonemptySlice, NonemptyVec},
     pareto_front::CCParetoFront,
@@ -444,6 +444,7 @@ fn details_thread<const N: usize>(
     let cpu_time = ThreadTime::now();
     let mut alloc_time = Duration::default();
     let collector = Collector::new();
+    let mut register_options_cache = RegisterOptionsCache::new(possible_orders_except_one.len());
     loop {
         let maybe_batch_packed_queue = match candidates_receiver.try_recv() {
             Ok(batch_packed_queue) => Some(batch_packed_queue),
@@ -499,6 +500,7 @@ fn details_thread<const N: usize>(
                             dominating_registers,
                             possible_orders_except_one,
                             puzzle_def,
+                            &mut register_options_cache,
                         )
                         .map(|details| {
                             let registers = if log_enabled!(Level::Debug) {
@@ -825,7 +827,8 @@ pub(crate) fn search_dfs<const N: usize>(
     let candidates_sender_capacity = num_cores * capacity_multipler;
     let (candidates_sender, candidates_receiver) =
         mpmc::sync_channel::<PackedCycleCombinationCandidateQueue>(candidates_sender_capacity);
-    // I will only send at most `batch_size` solutions before receiving the queue, so I can make the capacity equal to this
+    // I will only send at most `batch_size` solutions before receiving the queue,
+    // so I can make the capacity equal to this
     let (solutions_sender, _) = tokio::sync::broadcast::channel(num_cores * batch_size.get());
 
     // We can unwrap because `exact_register_count` is NonZero.
@@ -866,8 +869,8 @@ pub(crate) fn search_dfs<const N: usize>(
     let pareto_efficient_prunings = (0..num_cores)
         .map(|_| AtomicPtr::default())
         .collect::<Box<[_]>>();
-    // We are allowed to unwrap because `orbit_defs` is non-empty, and `piece_count` is a
-    // NonZero. Therefore the sum must be non-zero.
+    // We are allowed to unwrap because `orbit_defs` is non-empty, and `piece_count`
+    // is a NonZero. Therefore the sum must be non-zero.
     let exact_piece_count = NonZeroU32::new(
         puzzle_def
             .orbit_defs()

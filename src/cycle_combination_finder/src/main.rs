@@ -21,7 +21,7 @@ fn main() {
         let minx3 = minxN::MINX3.clone();
         ccf.with_puzzle_def(minx3)
             .with_register_count(NonZeroU16::new(3).unwrap())
-            .with_expected_length_assertion(347)
+            .with_expected_length_assertion(58)
             .find()
             .unwrap();
     } else if p == "minx4" {

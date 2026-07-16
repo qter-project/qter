@@ -32,9 +32,7 @@ pub enum PuzzleDefCreationError {
     InvalidOrbitConstraintsLength { expected: usize, actual: usize },
     #[error("Puzzle must have at least one orbit")]
     NoOrbits,
-    #[error(
-        "Puzzle has too many orbits. Expected a maximum of {max} but found {actual}"
-    )]
+    #[error("Puzzle has too many orbits. Expected a maximum of {max} but found {actual}")]
     TooManyOrbits { actual: usize, max: usize },
     #[error("Even parity constraint contains the duplicated index {0}")]
     DuplicateIndicies(usize),

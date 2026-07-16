@@ -12,6 +12,9 @@
 - work around using Arc
 - use pruning information when each mpmc solution is pushed: multithread pareto efficient pruning and ignore the first register descending
 
+- MKP
+  - share junk parity 2-cycles (and parity pieces in general) between registers; would admit combinations that are currently rejected for being 2 edges over budget
+  - speed up the per-order decomposition enumeration (prune placements incrementally, memoize orbit resolutions) and re-enable minx4_optimal_3
 - after MKP
   - note that batching "ramps up" the mkp threads when the batch size is large; there are few solutions/batch in the beginning which helps make sure the
   - experiment with num_cores * 10
