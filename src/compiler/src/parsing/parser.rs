@@ -172,8 +172,9 @@ pub fn parse(
                         None => (ident.span().clone(), true),
                     };
 
-                    let mut report =
-                        Report::build(ReportKind::Error, span).with_message(err.to_string());
+                    let mut report = Report::build(ReportKind::Error, span.clone())
+                        .with_message(err.to_string())
+                        .with_label(Label::new(span).with_color(Color::Red));
 
                     if default {
                         report =
@@ -212,7 +213,19 @@ fn registers(t: &mut TokenIter) -> Attempt<Option<WithSpan<RegistersDecl>>> {
         let decls = t.next()?.enclosure(Encloser::Brace)?.parse(|t| {
             let mut decls = Vec::new();
 
-            while !t.is_empty() {
+            loop {
+                let is_empty = matches!(
+                    t.attempt(|t, commit| {
+                        t.next();
+                        *commit = t.is_empty();
+                    }),
+                    Attempt::Taken(())
+                );
+
+                if is_empty {
+                    break;
+                }
+
                 decls.push(register_decl(t)?);
             }
 
@@ -371,9 +384,7 @@ fn register_architecture(t: &mut TokenIter) -> Option<PuzzleUnnamed> {
                         })?
                         .into_inner(),
                     _ => {
-                        return tokenw.unexpected(
-                            "an algorithm, parenthezised list of algorithms, or `builtin`",
-                        );
+                        return tokenw.unexpected("an number or parenthezised list of numbers");
                     }
                 };
 
@@ -419,27 +430,46 @@ fn register_architecture(t: &mut TokenIter) -> Option<PuzzleUnnamed> {
             let mut algs = Some(Vec::new());
 
             let mut alg = Some(Algorithm::identity(Arc::clone(&group)));
+            let mut has_moves = false;
 
             loop {
                 let tokenw = t.next()?;
-                match tokenw.token {
-                    Token::Ident(turn) => try_append(&mut alg, turn, &group, t.r()),
-                    Token::Symbol(sym) if *sym == Symbol::Comma => {
-                        if let (Some(algs), Some(alg)) = (&mut algs, alg) {
-                            algs.push(alg);
-                        }
 
-                        alg = Some(Algorithm::identity(Arc::clone(&group)));
-                    }
-                    Token::EndOfEnclosure(_, _) => {
-                        break algs.map(|algs| {
-                            (
-                                Arc::new(Architecture::new(group, algs.into())),
-                                Permutation::identity(),
-                            )
-                        });
-                    }
-                    _ => return tokenw.unexpected("a move, a comma, or a ')'"),
+                if let Token::Ident(turn) = tokenw.token {
+                    try_append(&mut alg, turn, &group, t.r());
+                    has_moves = true;
+                    continue;
+                }
+
+                let mut done = false;
+                if has_moves
+                    && let Token::Symbol(sym) = &tokenw.token
+                    && **sym == Symbol::Comma
+                {
+                    // ok
+                } else if let Token::EndOfEnclosure(_, _) = &tokenw.token {
+                    // ok
+                    done = true;
+                } else {
+                    return tokenw.unexpected(if has_moves {
+                        "a move, a comma, or a ')'"
+                    } else {
+                        "a move or a ')'"
+                    });
+                }
+
+                if has_moves && let (Some(algs), Some(alg)) = (&mut algs, alg) {
+                    algs.push(alg);
+                }
+                alg = Some(Algorithm::identity(Arc::clone(&group)));
+
+                if done {
+                    break algs.map(|algs| {
+                        (
+                            Arc::new(Architecture::new(group, algs.into())),
+                            Permutation::identity(),
+                        )
+                    });
                 }
             }
         }),

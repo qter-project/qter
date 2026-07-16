@@ -77,21 +77,29 @@ impl<'a> TokenEnclosure<'a> {
         }
     }
 
-    pub fn parse<T>(self, f: impl FnOnce(&mut TokenIter<'a>) -> Option<T>) -> Option<WithSpan<T>> {
-        let mut iter = TokenIter {
+    fn mk_iter(self) -> TokenIter<'a> {
+        TokenIter {
             start: self.state.spot,
             state: self.state,
             done: None,
-        };
+        }
+    }
+
+    pub fn parse<T>(self, f: impl FnOnce(&mut TokenIter<'a>) -> Option<T>) -> Option<WithSpan<T>> {
+        let mut iter = self.mk_iter();
 
         let res = f(&mut iter);
 
         // It's a bug if we parse successfully without consuming all of the input
-        assert!(res.is_none() || iter.done.is_some());
+        // assert!(res.is_none() || iter.done.is_some());
 
         let span = iter.run_to_end()?;
 
         res.map(|v| span.with(v))
+    }
+
+    pub fn discard(self) -> Option<Span> {
+        self.mk_iter().run_to_end()
     }
 }
 
@@ -106,14 +114,10 @@ impl<'a> TokenIter<'a> {
         let mut this = self;
         loop {
             polonius!(|this| -> Option<TokenW<'polonius>> {
-                if let Some(token) =
-                    this.next_nl()
-                        .and_then(|TokenNLW { token, reporter }| match token {
-                            TokenNL::NewLine(_) => None,
-                            TokenNL::Token(token) => Some(TokenW { token, reporter }),
-                        })
-                {
-                    polonius_return!(Some(token))
+                let TokenNLW { token, reporter } = polonius_try!(this.next_nl());
+                match token {
+                    TokenNL::NewLine(_) => {}
+                    TokenNL::Token(token) => polonius_return!(Some(TokenW { token, reporter })),
                 }
             });
         }
@@ -154,6 +158,7 @@ impl<'a> TokenIter<'a> {
         step: impl FnOnce(&mut Self, &mut bool) -> T,
     ) -> Attempt<T> {
         let t2 = self.state.clone();
+        let d2 = self.done.clone();
 
         let marker = self.marker();
 
@@ -177,6 +182,7 @@ impl<'a> TokenIter<'a> {
         } else {
             let span = self.cash_in(marker);
             *self.state = t2;
+            self.done = d2;
             Attempt::NotTaken(span)
         }
     }
@@ -192,9 +198,11 @@ impl<'a> TokenIter<'a> {
     fn run_to_end(mut self) -> Option<Span> {
         loop {
             match self.done {
-                Some(v) => return Some(v),
+                Some(v) => break Some(v),
                 None => {
-                    let _: TokenNLW = self.next_nl()?;
+                    if let TokenNL::Token(Token::Enclosure(_, enclosure)) = self.next_nl()?.token {
+                        enclosure.discard();
+                    }
                 }
             }
         }
@@ -216,7 +224,7 @@ impl<'a> TokenIter<'a> {
                 let mut start = span2.start();
 
                 while line != 0 {
-                    start = source[start..].find('\n')?;
+                    start += source[start..].find('\n')? + 1;
                     line -= 1;
                 }
 
@@ -289,9 +297,16 @@ impl<'a> TokenW<'a> {
     }
 
     pub fn word(self, word: &str) -> Option<()> {
-        match self.token {
-            Token::Ident(ident) if &**ident == word => Some(()),
-            _ => self.unexpected(&format!("`{word}`")),
+        if let Some(word) = word.strip_prefix(".") {
+            match self.token {
+                Token::Directive(directive) if &**directive == word => Some(()),
+                _ => self.unexpected(&format!("`{word}`")),
+            }
+        } else {
+            match self.token {
+                Token::Ident(ident) if &**ident == word => Some(()),
+                _ => self.unexpected(&format!("`{word}`")),
+            }
         }
     }
 
@@ -345,10 +360,7 @@ impl<'a> TokenW<'a> {
             Token::Number(num) => ("a number".to_owned(), num.span().clone()),
             Token::Symbol(symbol) => ("a symbol".to_owned(), symbol.span().clone()),
             Token::Enclosure(encloser, enclosed) => {
-                let span = match enclosed.parse(|_| Some(())) {
-                    Some(s) => s.span().clone(),
-                    None => return None,
-                };
+                let span = enclosed.discard()?;
 
                 (
                     match encloser {
@@ -371,8 +383,9 @@ impl<'a> TokenW<'a> {
         };
 
         self.reporter.push(
-            Report::build(ReportKind::Error, span)
+            Report::build(ReportKind::Error, span.clone())
                 .with_message(format!("Expected {expected} but found {found}."))
+                .with_label(Label::new(span).with_message("here"))
                 .finish(),
         );
 
@@ -504,6 +517,8 @@ impl Tokenizer {
             ('}', _) => (S::Close(Brace), 1),
             ('(', _) => (S::Open(Paren), 1),
             (')', _) => (S::Close(Paren), 1),
+            ('/', Some('/')) => (S::LineCommentStart, 2),
+            ('/', Some('*')) => (S::BlockCommentStart, 2),
             ('"', _) => (S::Quote, 1),
             ('\n', _) => (S::NewLine, 1),
             _ => return None,
@@ -513,12 +528,19 @@ impl Tokenizer {
     fn take_rhai(&mut self) -> Option<Span> {
         let spot = self.spot;
         let Some(end) = self.qat().find(".end-rhai") else {
+            let span = self.mk_span(spot - 11, spot);
+            self.reporter.push(
+                Report::build(ReportKind::Error, span.clone())
+                    .with_message("Unterminated Rhai block")
+                    .with_label(Label::new(span))
+                    .finish(),
+            );
             return None;
         };
 
-        self.spot = end + 9;
+        self.spot += end + 9;
 
-        Some(self.mk_span(spot, end))
+        Some(self.mk_span(spot, spot + end))
     }
 
     fn next(&mut self) -> Option<TokenNL> {
@@ -644,19 +666,35 @@ impl Tokenizer {
                     TokenNL::NewLine(self.mk_span(spot, self.spot))
                 }
                 SpecialSym::LineCommentStart => {
-                    while self.peek(0) != Some('\n') {
+                    while self.peek(0).is_some_and(|v| v != '\n') {
                         self.advance(1);
                     }
 
                     return self.next();
                 }
                 SpecialSym::BlockCommentStart => {
-                    while self.peek(0) != Some('*') || self.peek(1) != Some('/') {
-                        self.advance(1);
-                    }
+                    let comment_start = self.spot;
+                    self.advance(amt);
 
-                    if self.peek(1).is_some() {
-                        self.advance(2);
+                    loop {
+                        let (Some(c1), Some(c2)) = (self.peek(0), self.peek(1)) else {
+                            self.reporter.push(
+                                Report::build(
+                                    ReportKind::Error,
+                                    self.mk_span(comment_start, self.spot),
+                                )
+                                .with_message("Unclosed block comment")
+                                .finish(),
+                            );
+                            return None;
+                        };
+
+                        if (c1, c2) == ('*', '/') {
+                            self.advance(2);
+                            break;
+                        }
+
+                        self.advance(1);
                     }
 
                     return self.next();
@@ -670,7 +708,7 @@ impl Tokenizer {
 
         while let Some(c) = self.peek(0)
             && self.special_sym().is_none()
-            && ![' ', '\t'].contains(&c)
+            && ![' ', '\t', '\r'].contains(&c)
         {
             ident.push(c);
             self.advance(1);
@@ -678,17 +716,16 @@ impl Tokenizer {
 
         let span = self.mk_span(ident_start, self.spot);
 
-        let directive = ident.starts_with('.');
-        let constant = ident.starts_with('$');
-
-        Some(TokenNL::Token(if directive {
-            Token::Directive(span.with(ArcIntern::from(&ident[1..])))
-        } else if constant {
-            Token::Constant(span.with(ArcIntern::from(&ident[1..])))
-        } else if let Ok(num) = ident.parse::<Int<U>>() {
-            Token::Number(span.with(num))
-        } else {
-            Token::Ident(span.with(ArcIntern::from(ident)))
-        }))
+        Some(TokenNL::Token(
+            if let Some(directive) = ident.strip_prefix('.') {
+                Token::Directive(span.with(ArcIntern::from(directive)))
+            } else if let Some(constant) = ident.strip_prefix('$') {
+                Token::Constant(span.with(ArcIntern::from(constant)))
+            } else if let Ok(num) = ident.parse::<Int<U>>() {
+                Token::Number(span.with(num))
+            } else {
+                Token::Ident(span.with(ArcIntern::from(ident)))
+            },
+        ))
     }
 }

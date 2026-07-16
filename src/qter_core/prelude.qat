@@ -13,7 +13,7 @@
     fn subtract_order_relative(r1, n) {
         return [ "add", r1, (-n) % r1.order ];
     }
-end-rhai
+.end-rhai
 
 .macro sub {
     ($R:reg $N:int) => rhai subtract_order_relative($R, $N)
@@ -243,7 +243,7 @@ end-rhai
 
         return output;
     }
-end-rhai
+.end-rhai
 
 .macro repeat {
     ($times:int $code:block) => rhai repeat($code, 1, $times)
@@ -264,7 +264,7 @@ end-rhai
 
         throw "Three register multiplication is unimplemented";
     }
-end-rhai
+.end-rhai
 
 .macro multiply {
     ($R1:reg $R2:reg using $R3:reg) => {

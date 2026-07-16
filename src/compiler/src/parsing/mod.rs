@@ -29,11 +29,11 @@ thread_local! {
             true,
             reporter.clone(),
         ) else {
-                for report in reporter.iter() {
-                    report.1.eprint((ArcIntern::from("prelude.qat"), Source::from(prelude.inner()))).unwrap();
-                }
+            for report in reporter.iter() {
+                report.1.eprint((ArcIntern::from("prelude.qat"), Source::from(prelude.inner()))).unwrap();
+            }
 
-                panic!("Failed building the prelude with {} errors", reporter.count())
+            panic!("Failed building the prelude with {} errors", reporter.count())
         };
 
         let builtin_macros = builtin_macros(&prelude);

@@ -845,7 +845,7 @@ mod tests {
         let (program, _) = match compile(
             &File::new(ArcIntern::from("code.qat"), ArcIntern::from(code)),
             |_| unreachable!(),
-            Arc::clone(&reporter),
+            &reporter,
         ) {
             Some(v) => v,
             None => {
@@ -887,7 +887,7 @@ A: 3x3
         match compile(
             &File::new(ArcIntern::from("code.qat"), ArcIntern::from(code)),
             |_| unreachable!(),
-            Arc::clone(&reporter),
+            &reporter,
         ) {
             Some(v) => panic!("{v:?}"),
             None => {
