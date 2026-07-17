@@ -23,6 +23,7 @@ pretty_env_logger.workspace = true
 test-log.workspace = true
 
 [build-dependencies]
+cc = "1"
 cfg_aliases = "0.2.1"
 
 [lints]

@@ -673,6 +673,7 @@ dependencies = [
 name = "cycle_combination_solver"
 version = "0.1.0"
 dependencies = [
+ "cc",
  "cfg_aliases",
  "enum_dispatch",
  "fastrand",

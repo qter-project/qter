@@ -1,33 +1,6 @@
-use std::ptr;
-
-/// Reverse the elements in the slice `perm` from index `s` to index `e`,
-/// inclusive.
-///
-/// # Safety
-///
-/// `s` and `e` must be valid indices for `perm`, and `s` must be less than or
-/// equal to `e`.
-unsafe fn reverse_unchecked(perm: &mut [u8], mut s: usize, mut e: usize) {
-    while s < e {
-        // SAFETY: `perm` is a mutable slice, and `s` and `e` are valid indices
-        // for `perm` by the caller
-        unsafe {
-            swap_unchecked(perm, s, e);
-        }
-        s += 1;
-        e -= 1;
-    }
-}
-
-/// Swaps the elements at indices `i` and `j` in the slice `perm`.
-///
-/// # Safety
-///
-/// `i` and `j` must be valid indices for `perm`
-unsafe fn swap_unchecked(perm: &mut [u8], i: usize, j: usize) {
-    unsafe {
-        ptr::swap(perm.as_mut_ptr().add(i), perm.as_mut_ptr().add(j));
-    }
+unsafe extern "C" {
+    /// Implemented in `cpp/permutator.cpp`, compiled and linked by `build.rs`.
+    fn qter_pandita2(perm: *mut u8, len: usize);
 }
 
 /// Use an alternative implementation of the Pandita algorithm to compute the
@@ -37,25 +10,10 @@ unsafe fn swap_unchecked(perm: &mut [u8], i: usize, j: usize) {
 ///
 /// `perm` must have length at least two and must contain unique elements.
 pub unsafe fn pandita2(perm: &mut [u8]) {
-    // Benchmarked on a 2025 Mac M4: 170.49ns (test_big) 2.84ns (test_small)
-
-    let len = perm.len();
-    let mut i = len - 2;
-    // SAFETY: The safety backed by the correctness of the implementation of the
-    // given algorithm
+    // SAFETY: `perm` is a valid buffer of `perm.len()` bytes, and the caller
+    // upholds the length and uniqueness requirements
     unsafe {
-        while perm.get_unchecked(i) >= perm.get_unchecked(i + 1) {
-            if i == 0 {
-                return;
-            }
-            i -= 1;
-        }
-        let mut j = len - 1;
-        while perm.get_unchecked(j) <= perm.get_unchecked(i) {
-            j -= 1;
-        }
-        swap_unchecked(perm, i, j);
-        reverse_unchecked(perm, i + 1, len - 1);
+        qter_pandita2(perm.as_mut_ptr(), perm.len());
     }
 }
 

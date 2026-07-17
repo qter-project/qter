@@ -50,4 +50,12 @@ fn main() {
         // avx2: { not(l) }, // true
         // avx2: { l }, // false
     }
+
+    println!("cargo:rerun-if-changed=cpp/permutator.cpp");
+    println!("cargo:rerun-if-changed=cpp/permutator.h");
+    cc::Build::new()
+        .cpp(true)
+        .std("c++17")
+        .file("cpp/permutator.cpp")
+        .compile("qter_permutator");
 }
