@@ -2,8 +2,6 @@
 
 #show: book-page.with(title: "Introduction")
 
-TODO: Figure out where to put the content in README.md
-
 This book is intended to comprehensively describe Qter and how we created it. It has the following chapters:
 
 #table(
@@ -16,3 +14,23 @@ This book is intended to comprehensively describe Qter and how we created it. It
 )
 
 Note, most of the content in *Overview* and *Theory* was originally written for our #link("https://qter.dev/paper.pdf")[technical paper].
+
+TODO: Figure out where to put the content in README.md
+
+#html.script("
+let params = new URLSearchParams(window.location.search)
+
+document.getElementById(\"sidebar-close\").addEventListener(\"click\", () => {
+    var newurl = window.location.protocol + \"//\" + window.location.host + window.location.pathname + '?mobile-close-hamburger=';
+    window.history.pushState({path:newurl},'',newurl);
+})
+
+document.getElementById(\"sidebar-open\").addEventListener(\"click\", () => {
+    var newurl = window.location.protocol + \"//\" + window.location.host + window.location.pathname;
+    window.history.pushState({path:newurl},'',newurl);
+})
+
+if (!params.has(\"mobile-close-hamburger\")) {
+    document.getElementById(\"sidebar-open\").click()
+}
+")

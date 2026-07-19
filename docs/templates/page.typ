@@ -174,6 +174,16 @@ p {
   // Main body.
   set par(justify: true)
 
+  html.script("
+  document.getElementById(\"sidebar-open\").addEventListener(\"click\", () => {
+      let elts = document.querySelectorAll(\"a[href=\\\"/introduction.html\\\"]\")
+
+      for (const elt of elts) {
+          elt.href = \"/introduction.html?mobile-close-hamburger=\"
+      }
+  })
+  ")
+
   plain-body
 }
 

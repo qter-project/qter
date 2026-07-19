@@ -23,6 +23,7 @@ pub struct RobotConfig {
     pub qvis_app_path: PathBuf,
     pub corner_cut_help: u32,
     pub mismatch: MismatchBehavior,
+    pub compensation: 
 }
 
 impl RobotConfig {
