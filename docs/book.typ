@@ -7,6 +7,7 @@
   title: "Qter Documentation",
   repository: "https://github.com/qter-project/qter",
   repository-edit: "https://github.com/qter-project/qter/edit/main/docs/{path}",
+  discord: "https://discord.gg/geEhJ6DjBb",
   summary: [
     #prefix-chapter("introduction.typ")[Introduction]
 
