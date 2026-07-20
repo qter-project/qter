@@ -73,7 +73,7 @@ class RegisterElement extends HTMLElement {
             :host {
                 display: block;
             }
-            
+
             #container {
                 display: flex;
                 flex-flow: row nowrap;
@@ -83,7 +83,7 @@ class RegisterElement extends HTMLElement {
             .label {
                 font-size: 1.5em;
             }
-            
+
             .value {
                 font-size: 1.25em;
                 margin-right: 1em;
@@ -407,6 +407,46 @@ class Output {
     }
 }
 
+class Scroller {
+    #target: Element;
+    #padLines: number;
+
+    constructor(target: Element, padLines: number) {
+        this.#target = target;
+        this.#padLines = padLines;
+    }
+
+    scrollIntoView(range: Range) {
+        if (!this.#target.contains(range.commonAncestorContainer)) {
+            throw new Error("attempted to scroll to range that is not a descendant");
+        }
+
+        let em = parseFloat(window.getComputedStyle(this.#target).fontSize);
+        let pad = this.#padLines * em;
+
+        let eltHeight = this.#target.clientHeight;
+        let eltTop = this.#target.scrollTop;
+        let eltBottom = eltTop + eltHeight;
+
+        let { top, height } = range.getBoundingClientRect();
+        top -= this.#target.getBoundingClientRect().top;
+        top += eltTop;
+        let bottom = top + height;
+
+        let above = top < eltTop + pad;
+        let below = bottom > eltBottom - pad;
+        let pos = null;
+        if (above && below) pos = top + height / 2 - eltHeight / 2;
+        else if (above) pos = top - pad;
+        else if (below) pos = bottom + pad - eltHeight;
+
+        if (pos != null) {
+            pos = Math.max(0, Math.min(pos, this.#target.scrollHeight - eltHeight));
+            this.#target.scrollTo({ top: pos, behavior: "smooth" });
+        }
+    }
+}
+
 class EditorWithCompilation extends EventTarget {
     #editor: EditorWithPresets;
     #output: Output;
@@ -603,7 +643,7 @@ class Infoview {
 class Messages extends EventTarget {
     #messagesContainer: HTMLPreElement;
 
-    #messages: { message: string, error: boolean }[] = [];
+    #messages: { message: string, error: boolean, input?: string }[] = [];
     #maxInput: bigint | null = null;
 
     constructor(messagesContainer: HTMLPreElement) {
@@ -635,7 +675,11 @@ class Messages extends EventTarget {
         this.#updateMessages();
     }
 
-    #makeMessageNode({ message, error }: { message: string, error: boolean }): Node {
+    #makeMessageNode({ message, error, input }: { message: string, error: boolean, input?: string }): Node {
+        if (input != undefined) {
+            message = `${message}  ${input}`;
+        }
+
         if (error) {
             let span = document.createElement("span");
             span.classList.add("error-msg");
@@ -681,6 +725,9 @@ class Messages extends EventTarget {
         ev.preventDefault();
         if (this.#maxInput == null) return;
         let val = BigInt(input.value);
+        this.#messages.at(-1)!.input = `${val}`;
+        this.#maxInput = null;
+        this.#updateMessages();
         this.#dispatchInputEvent(val);
     }
 }
@@ -710,7 +757,8 @@ class RunTask {
         do {
             try {
                 // drive the interpreter to update `.state`...
-                await Promise.race([interpreter.step(), abort]);
+                // await Promise.race([interpreter.step(), abort]);
+                await interpreter.step();
                 if (signal.aborted) return { reason: "aborted" };
 
                 update();
@@ -718,7 +766,10 @@ class RunTask {
                 let state = interpreter.state;
                 if (state.kind == "Halted") return { reason: "halted" };
                 else if (state.kind == "NeedsInput") {
-                    await Promise.race([input(state.max_input).then(v => interpreter.give_input(v)), abort]);
+                    let val = await Promise.race([input(state.max_input), abort]);
+                    if (val == null) return { reason: "aborted" };
+                    // await Promise.race([input(state.max_input).then(v => interpreter.give_input(v)), abort]);
+                    await interpreter.give_input(val);
                     if (signal.aborted) return { reason: "aborted" };
 
                     update();
@@ -755,6 +806,7 @@ enum State {
 
 class Runner {
     #editor: EditorWithCompilation;
+    #outputScroller: Scroller;
     #infoview: Infoview;
     #messages: Messages;
     #executeButton: HTMLButtonElement;
@@ -768,6 +820,7 @@ class Runner {
 
     constructor(
         editor: EditorWithCompilation,
+        outputScroller: Scroller,
         infoview: Infoview,
         messages: Messages,
         executeButton: HTMLButtonElement,
@@ -775,6 +828,7 @@ class Runner {
         runButton: HTMLButtonElement,
     ) {
         this.#editor = editor;
+        this.#outputScroller = outputScroller;
         this.#infoview = infoview;
         this.#messages = messages;
         this.#executeButton = executeButton;
@@ -876,7 +930,9 @@ class Runner {
         this.#lineHighlight.clear();
         if (this.#interpreter != null) {
             let { start, end } = this.#program!.instr_span(this.#interpreter.program_counter);
-            this.#lineHighlight.add(this.#editor.getOutputRange(start, end));
+            let range = this.#editor.getOutputRange(start, end);
+            this.#lineHighlight.add(range);
+            this.#outputScroller.scrollIntoView(range);
         }
     }
 
@@ -892,7 +948,6 @@ class Runner {
                 let input = await new Promise<bigint>(resolve => {
                     this.#messages.addEventListener("input", (val) => resolve(val.detail), { once: true });
                 });
-                this.#messages.maxInput = null;
                 return input;
             }
         );
@@ -984,6 +1039,7 @@ export function main() {
     const presetSelector = document.getElementById("preset-selector") as HTMLSelectElement;
     const saveCodeDialog = document.getElementById("save-code-dialog") as HTMLDialogElement;
     const outputContainer = document.getElementById("output-container") as HTMLPreElement;
+    const output = document.getElementById("output") as HTMLDivElement;
     const registersCube = document.getElementById("registers-cube") as CubePairElement;
     const stateCube = document.getElementById("state-cube") as CubePairElement;
     const registersContainer = document.getElementById("registers") as HTMLDivElement;
@@ -1002,6 +1058,11 @@ export function main() {
         new Output(outputContainer, qSyntax)
     );
 
+    let outputScroller = new Scroller(
+        output,
+        2,
+    );
+
     let infoview = (window as any).infoview = new Infoview(
         stateCube,
         registersCube,
@@ -1012,6 +1073,7 @@ export function main() {
 
     (window as any).runner = new Runner(
         editor,
+        outputScroller,
         infoview,
         messages,
         executeButton,

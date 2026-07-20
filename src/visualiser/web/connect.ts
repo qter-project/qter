@@ -2,7 +2,7 @@ import config from "./config.json" with { type: "json" }
 import { Connection } from "./visualiser.js";
 
 async function connectWebTransport(): Promise<Connection> {
-    let certHash = (await import(config.certHashUrl, { with: { type: "json" } })).default as number[];
+    let certHash = (await (await fetch(config.certHashUrl)).json()) as number[];
 
     let wt = new WebTransport(config.robotUrl, {
         serverCertificateHashes: [{

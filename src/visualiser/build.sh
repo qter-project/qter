@@ -10,7 +10,7 @@ elif [ "$1" = "wasm-pack" ]; then
 elif [ "$1" = "cp-static" ]; then
     cp -R static/* dist;
 elif [ "$1" = "caddy-serve" ]; then
-    caddy file-server -root dist;
+    caddy file-server --root dist;
 elif [ "$1" = "clean" ]; then
     rm -r dist node_modules;
     rm -rf tree-sitter-q;

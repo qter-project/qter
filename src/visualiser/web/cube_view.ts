@@ -121,7 +121,7 @@ export class CubeElement extends HTMLElement {
                 aspect-ratio: 1;
                 contain: strict;
             }
-            
+
             #viewport {
                 perspective: calc(var(--cube-size) * 4);
                 width: 100%;
@@ -130,13 +130,13 @@ export class CubeElement extends HTMLElement {
                 align-items: center;
                 justify-content: center;
             }
-            
+
             #cube {
                 transform-style: preserve-3d;
                 width: var(--cube-size);
                 height: var(--cube-size);
             }
-            
+
             .face {
                 position: absolute;
                 box-sizing: border-box;
@@ -151,30 +151,27 @@ export class CubeElement extends HTMLElement {
                 gap: 2%;
                 padding: 1%;
             }
-            
+
             #cube.inverted .face {
                 transform: var(--face-transform) translateZ(calc(var(--cube-size) / 2)) scaleZ(-1);
                 backface-visibility: hidden;
             }
-            
+
             .facelet {
                 /* border: 2px solid color(from var(--color) srgb r g b / 90%); */
                 border-radius: 10%;
                 /* background-color: hsl(from var(--color) h calc(0.5 * s) l / 90%); */
-                background-color: hsl(from var(--color) h calc(0.7 * s) l);
+                /* background-color: hsl(from var(--color) h calc(0.7 * s) l); */
+                background-color: var(--color);
                 aspect-ratio: 1;
                 font-size: calc(var(--cube-size) * 1/8);
-                color: if(
-                    style(--color: white): black;
-                    style(--color: yellow): black;
-                    else: white;
-                );
+                color: contrast-color(var(--color));
 
                 display: flex;
                 align-items: center;
                 justify-content: center;
             }
-            
+
             #cube.inverted .facelet {
                 transform: scaleX(-1);
             }
@@ -267,13 +264,13 @@ export class CubePairElement extends HTMLElement {
             :host {
                 display: block;
             }
-            
+
             #container {
                 display: flex;
                 flex-flow: row nowrap;
                 justify-content: space-around;
             }
-            
+
             #container > * {
                 flex: 1;
             }
