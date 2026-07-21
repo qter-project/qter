@@ -118,7 +118,8 @@ impl PartialEq for CycleCombination {
 impl<const N: usize> CycleCombinations<N> {
     pub fn registers(&self) -> impl Iterator<Item = impl Iterator<Item = &OrderExps<N>>> {
         self.data.iter().map(|x| {
-            x.inner.registers
+            x.inner
+                .registers
                 .iter()
                 .map(|&i| &self.possible_orders_except_one[i as usize].order)
         })

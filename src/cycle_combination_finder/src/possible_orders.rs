@@ -372,7 +372,8 @@ impl<const N: usize> PuzzleDef<N> {
                     })
                 })
                 .max_by(|&(_, _, a), &(_, _, b)| a.partial_cmp(&b).unwrap())
-                // `work` must not be empty because we asserted `connected_component` must not be empty earlier
+                // `work` must not be empty because we asserted `connected_component` must not be
+                // empty earlier
                 .unwrap();
             match max_count {
                 0 => panic!(),

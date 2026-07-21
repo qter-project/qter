@@ -3,35 +3,33 @@ use std::{
     simd::{Simd, cmp::SimdPartialEq},
 };
 
-use crate::{
-    FIRST_65_PRIMES,
-    nonemptyvec::{NonemptySlice, NonemptyVec},
-    orderexps::OrderExps,
-    puzzle::PuzzleDef,
-};
+use crate::{FIRST_65_PRIMES, nonemptyvec::NonemptyVec, orderexps::OrderExps, puzzle::PuzzleDef};
 
 #[derive(Debug)]
 pub struct MinPieceCount<'a, const N: usize> {
-    orientations_exps: NonemptySlice<'a, OrderExps<N>>,
+    puzzle_def: &'a PuzzleDef<N>,
     orbit_orientation_contributions: NonemptyVec<OrderExps<N>>,
     leftover_prime_powers_mask: u64,
-    orientations_exps_lcm: OrderExps<N>,
 }
 
 impl<'a, const N: usize> From<&'a PuzzleDef<N>> for MinPieceCount<'a, N> {
     fn from(puzzle_def: &'a PuzzleDef<N>) -> Self {
-        let orientations_exps = puzzle_def.orientations_exps();
-        let orientations_exps_lcm = OrderExps::lcms(orientations_exps.iter().cloned()).unwrap();
-        let leftover_prime_powers_mask =
-            orientations_exps_lcm.0.simd_eq(Simd::splat(0)).to_bitmask();
+        let leftover_prime_powers_mask = puzzle_def
+            .orientations_exps_lcm()
+            .0
+            .simd_eq(Simd::splat(0))
+            .to_bitmask();
         let orbit_orientation_contributions =
-            NonemptyVec::try_from(vec![OrderExps::one(); orientations_exps.len().get()]).unwrap();
+            NonemptyVec::try_from(vec![
+                OrderExps::one();
+                puzzle_def.orientations_exps().len().get()
+            ])
+            .unwrap();
 
         Self {
-            orientations_exps,
+            puzzle_def,
             orbit_orientation_contributions,
             leftover_prime_powers_mask,
-            orientations_exps_lcm,
         }
     }
 }
@@ -74,9 +72,11 @@ impl<const N: usize> MinPieceCount<'_, N> {
         }
 
         let required_cycle_prime_powers =
-            possible_order.remove_factors(&self.orientations_exps_lcm);
+            possible_order.remove_factors(self.puzzle_def.orientations_exps_lcm());
         let mut prime_power_to_orbit: [Option<(usize, u32)>; N] = [None; N];
-        for (orbit_index, orientation_exps) in self.orientations_exps.iter().enumerate() {
+        for (orbit_index, orientation_exps) in
+            self.puzzle_def.orientations_exps().iter().enumerate()
+        {
             let mut eq = (possible_order
                 .remove_factors(orientation_exps)
                 .0
@@ -114,7 +114,7 @@ impl<const N: usize> MinPieceCount<'_, N> {
                 maybe_two_orientation_contribution_orbit_index = Some(orbit_index);
             }
             self.orbit_orientation_contributions[orbit_index].0[prime_power_index] =
-                self.orientations_exps_lcm.0[prime_power_index];
+                self.puzzle_def.orientations_exps_lcm().0[prime_power_index];
         }
 
         // The maximum number of contributing orbits is the max N, one for every prime.
@@ -153,7 +153,7 @@ impl<const N: usize> MinPieceCount<'_, N> {
         debug_assert!(
             min_piece_count
                 >= possible_order
-                    .remove_factors(&self.orientations_exps_lcm)
+                    .remove_factors(self.puzzle_def.orientations_exps_lcm())
                     .0
                     .as_array()
                     .iter()
@@ -193,19 +193,18 @@ mod tests {
     impl<const N: usize> PartialEq<PartialMinPieceCount<N>> for MinPieceCount<'_, N> {
         fn eq(&self, other: &PartialMinPieceCount<N>) -> bool {
             let MinPieceCount {
-                orientations_exps: orientations_exps_1,
+                puzzle_def: puzzle_def_1,
                 orbit_orientation_contributions: _,
                 leftover_prime_powers_mask: leftover_prime_powers_mask_1,
-                orientations_exps_lcm: orientations_exps_lcm_1,
             } = self;
             let PartialMinPieceCount {
                 orientations_exps,
                 leftover_prime_powers_mask,
                 orientations_exps_lcm,
             } = other;
-            &**orientations_exps_1 == orientations_exps.as_slice()
+            &*puzzle_def_1.orientations_exps() == orientations_exps.as_slice()
                 && *leftover_prime_powers_mask_1 == *leftover_prime_powers_mask
-                && *orientations_exps_lcm_1 == *orientations_exps_lcm
+                && puzzle_def_1.orientations_exps_lcm() == orientations_exps_lcm
         }
     }
 

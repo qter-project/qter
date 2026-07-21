@@ -106,7 +106,7 @@ impl<'a, T> NonemptySlice<'a, T> {
     pub fn len(self) -> NonZeroUsize {
         unsafe { NonZeroUsize::new_unchecked(self.0.len()) }
     }
-    
+
     /// # Safety
     ///
     /// Follow `slice::from_raw_parts`

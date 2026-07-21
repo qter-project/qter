@@ -32,9 +32,7 @@ pub enum PuzzleDefCreationError {
     InvalidOrbitConstraintsLength { expected: usize, actual: usize },
     #[error("Puzzle must have at least one orbit")]
     NoOrbits,
-    #[error(
-        "Puzzle has too many orbits. Expected a maximum of {max} but found {actual}"
-    )]
+    #[error("Puzzle has too many orbits. Expected a maximum of {max} but found {actual}")]
     TooManyOrbits { actual: usize, max: usize },
     #[error("Even parity constraint contains the duplicated index {0}")]
     DuplicateIndicies(usize),
@@ -57,6 +55,7 @@ pub struct PuzzleDef<const N: usize> {
     even_parity_constraints: BitMatrix,
     connected_components: Vec<Vec<usize>>,
     orientations_exps: NonemptyVec<OrderExps<N>>,
+    orientations_exps_lcm: OrderExps<N>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -302,12 +301,16 @@ impl<const N: usize> PuzzleDef<N> {
                 .collect::<Vec<_>>(),
         )
         .expect("`orbit_defs` is non empty");
+        #[allow(clippy::missing_panics_doc)]
+        let orientations_exps_lcm = OrderExps::lcms(orientations_exps.iter().cloned())
+            .expect("`orientations_exps` is non empty");
 
         Ok(Self {
             orbit_defs,
             even_parity_constraints,
             connected_components,
             orientations_exps,
+            orientations_exps_lcm,
         })
     }
 
@@ -329,6 +332,11 @@ impl<const N: usize> PuzzleDef<N> {
     #[must_use]
     pub fn orientations_exps(&self) -> NonemptySlice<'_, OrderExps<N>> {
         self.orientations_exps.as_slice()
+    }
+
+    #[must_use]
+    pub fn orientations_exps_lcm(&self) -> &OrderExps<N> {
+        &self.orientations_exps_lcm
     }
 }
 
