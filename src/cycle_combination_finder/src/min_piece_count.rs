@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    FIRST_129_PRIMES,
+    FIRST_65_PRIMES,
     nonemptyvec::{NonemptySlice, NonemptyVec},
     orderexps::OrderExps,
     puzzle::PuzzleDef,
@@ -63,7 +63,7 @@ impl<const N: usize> MinPieceCount<'_, N> {
         while leftover_prime_powers_mask != 0 {
             let prime_power_index = leftover_prime_powers_mask.trailing_zeros() as usize;
             let exp = possible_order.0[prime_power_index];
-            let prime = FIRST_129_PRIMES[prime_power_index];
+            let prime = FIRST_65_PRIMES[prime_power_index];
 
             let leftover_prime_power = prime_power_cycle_piece_count(prime, exp);
             if leftover_prime_power != 0 {
@@ -133,7 +133,7 @@ impl<const N: usize> MinPieceCount<'_, N> {
             while contributing_prime_powers_mask != 0 {
                 let prime_power_index = contributing_prime_powers_mask.trailing_zeros() as usize;
                 let exp = required_cycle_prime_powers.0[prime_power_index];
-                let prime = FIRST_129_PRIMES[prime_power_index];
+                let prime = FIRST_65_PRIMES[prime_power_index];
                 let cycle_piece_count = prime_power_cycle_piece_count(prime, exp);
                 if cycle_piece_count != 0 {
                     needs_orientation_cycles_count = false;
@@ -157,7 +157,7 @@ impl<const N: usize> MinPieceCount<'_, N> {
                     .0
                     .as_array()
                     .iter()
-                    .zip(FIRST_129_PRIMES)
+                    .zip(FIRST_65_PRIMES)
                     .map(|(&exp, prime)| prime_power_cycle_piece_count(prime, exp))
                     .sum::<u32>()
         );
@@ -174,7 +174,7 @@ mod tests {
     use std::num::NonZeroU16;
 
     use crate::{
-        FIRST_129_PRIMES,
+        FIRST_65_PRIMES,
         min_piece_count::{MinPieceCount, prime_power_cycle_piece_count},
         orderexps::OrderExps,
         puzzle::{
@@ -295,7 +295,7 @@ mod tests {
                     .0
                     .as_array()
                     .iter()
-                    .zip(FIRST_129_PRIMES)
+                    .zip(FIRST_65_PRIMES)
                     .map(|(&exp, prime)| prime_power_cycle_piece_count(prime, exp))
                     .sum::<u32>()
             );

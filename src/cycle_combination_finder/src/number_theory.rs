@@ -1,6 +1,6 @@
 use std::num::{NonZeroU8, NonZeroU16};
 
-use crate::{FIRST_129_PRIMES, orderexps::OrderExps};
+use crate::{FIRST_65_PRIMES, orderexps::OrderExps};
 
 /// Compute all divisors of a number, with every divisor represented as a
 /// [`OrderExps`].
@@ -13,12 +13,12 @@ use crate::{FIRST_129_PRIMES, orderexps::OrderExps};
 pub fn divisors<const N: usize>(n: NonZeroU8) -> Vec<OrderExps<N>> {
     #[allow(clippy::missing_panics_doc)]
     {
-        assert!(NonZeroU16::from(n).get() < FIRST_129_PRIMES[N]);
+        assert!(NonZeroU16::from(n).get() < FIRST_65_PRIMES[N]);
     }
     let mut divisor = OrderExps::one();
     let mut divisors = vec![divisor.clone()];
 
-    let mut primes_and_index = FIRST_129_PRIMES
+    let mut primes_and_index = FIRST_65_PRIMES
         .into_iter()
         .map_while(|p| u8::try_from(p).ok())
         .enumerate();

@@ -10,7 +10,7 @@ use thiserror::Error;
 use union_find::{QuickUnionUf, UnionBySize, UnionFind};
 
 use crate::{
-    FIRST_129_PRIMES, gauss_jordan_without_zero_rows,
+    FIRST_65_PRIMES, gauss_jordan_without_zero_rows,
     nonemptyvec::{NonemptySlice, NonemptyVec},
     orderexps::OrderExps,
 };
@@ -190,9 +190,9 @@ impl<const N: usize> PuzzleDef<N> {
                             }
                             _ => (),
                         }
-                        if piece_count.get() >= FIRST_129_PRIMES[N] {
+                        if piece_count.get() >= FIRST_65_PRIMES[N] {
                             return Err(PuzzleDefCreationError::OrbitTooManyPieces {
-                                max: FIRST_129_PRIMES[N] - 1,
+                                max: FIRST_65_PRIMES[N] - 1,
                                 actual: piece_count.get(),
                             });
                         }
@@ -201,9 +201,9 @@ impl<const N: usize> PuzzleDef<N> {
                             orientation,
                             parity_constraint: ParityConstraint::None,
                         };
-                        if u16::from(ret.orientation_count().get()) >= FIRST_129_PRIMES[N] {
+                        if u16::from(ret.orientation_count().get()) >= FIRST_65_PRIMES[N] {
                             return Err(PuzzleDefCreationError::OrbitTooMuchOrientation {
-                                max: FIRST_129_PRIMES[N] - 1,
+                                max: FIRST_65_PRIMES[N] - 1,
                                 actual: ret.orientation_count().get(),
                             });
                         }
@@ -351,7 +351,7 @@ mod tests {
     use puzzle_theory::puzzle_geometry::parsing::puzzle;
 
     use crate::{
-        FIRST_129_PRIMES,
+        FIRST_65_PRIMES,
         puzzle::{
             EvenParityConstraints, MAX_ORBIT_COUNT, OrientationStatus, OrientationSumConstraint,
             PartialOrbitDef, PuzzleDef, PuzzleDefCreationError,
@@ -500,7 +500,7 @@ mod tests {
                 vec![PartialOrbitDef {
                     piece_count: 1.try_into().unwrap(),
                     orientation: OrientationStatus::CanOrient {
-                        count: FIRST_129_PRIMES[8].try_into().unwrap(),
+                        count: FIRST_65_PRIMES[8].try_into().unwrap(),
                         sum_constraint: OrientationSumConstraint::None,
                     },
                 }],
@@ -516,7 +516,7 @@ mod tests {
                 vec![PartialOrbitDef {
                     piece_count: 1.try_into().unwrap(),
                     orientation: OrientationStatus::CanOrient {
-                        count: u8::try_from(FIRST_129_PRIMES[8]).unwrap() - 1,
+                        count: u8::try_from(FIRST_65_PRIMES[8]).unwrap() - 1,
                         sum_constraint: OrientationSumConstraint::None,
                     },
                 }],

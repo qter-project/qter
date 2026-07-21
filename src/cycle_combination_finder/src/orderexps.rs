@@ -14,7 +14,7 @@ use std::{
 use puzzle_theory::numbers::{Int, U};
 use thiserror::Error;
 
-use crate::FIRST_129_PRIMES;
+use crate::FIRST_65_PRIMES;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct OrderExps<const N: usize>(pub Simd<u8, N>);
@@ -30,7 +30,7 @@ impl<const N: usize> OrderExps<N> {
     #[must_use]
     pub fn as_bigint(&self) -> Int<U> {
         let mut result = Int::one();
-        for (p, &e) in FIRST_129_PRIMES
+        for (p, &e) in FIRST_65_PRIMES
             .into_iter()
             .zip(self.0.as_array().iter())
             .take(N)
@@ -80,7 +80,7 @@ impl<const N: usize> OrderExps<N> {
     #[must_use]
     pub fn prime_power_sum_u32(&self) -> u32 {
         #[allow(clippy::missing_panics_doc)]
-        (self.0.cast::<u32>() * Simd::from_array(*FIRST_129_PRIMES.split_array_ref().0).cast())
+        (self.0.cast::<u32>() * Simd::from_array(*FIRST_65_PRIMES.split_array_ref().0).cast())
             .reduce_sum()
     }
 
@@ -90,7 +90,7 @@ impl<const N: usize> OrderExps<N> {
     #[must_use]
     pub fn prime_power_sum_u16_unchecked(&self) -> u16 {
         #[allow(clippy::missing_panics_doc)]
-        (self.0.cast::<u16>() * Simd::from_array(*FIRST_129_PRIMES.split_array_ref().0))
+        (self.0.cast::<u16>() * Simd::from_array(*FIRST_65_PRIMES.split_array_ref().0))
             .reduce_sum()
     }
 
@@ -107,7 +107,7 @@ impl<const N: usize> OrderExps<N> {
         #[allow(clippy::missing_panics_doc, clippy::cast_possible_truncation)]
         (self.0
             * Simd::from_array(
-                FIRST_129_PRIMES
+                FIRST_65_PRIMES
                     .split_array_ref()
                     .0
                     .map(|prime| prime as u8),
@@ -127,7 +127,7 @@ impl<const N: usize> TryFrom<NonZeroU16> for OrderExps<N> {
 
     fn try_from(n: NonZeroU16) -> Result<Self, Self::Error> {
         let mut exps = Self::one();
-        let mut primes_and_exps = FIRST_129_PRIMES.into_iter().zip(exps.0.as_mut_array());
+        let mut primes_and_exps = FIRST_65_PRIMES.into_iter().zip(exps.0.as_mut_array());
         let (mut prime, mut exp) = primes_and_exps.next().unwrap();
         let mut remainder = n.get();
         while remainder > 1 {
@@ -179,13 +179,13 @@ impl<const N: usize> Ord for OrderExps<N> {
             (false, false) => {
                 // Note that it is slower to use exponent/product compared to product/sum. It is
                 // also slower to subtract `min` from `self` and `other`.
-                let a: f32 = FIRST_129_PRIMES
+                let a: f32 = FIRST_65_PRIMES
                     .into_iter()
                     .zip(self.0.as_array().iter())
                     .take(N)
                     .map(|(p, &e)| f32::from(e) * f32::from(p).ln())
                     .sum();
-                let b: f32 = FIRST_129_PRIMES
+                let b: f32 = FIRST_65_PRIMES
                     .into_iter()
                     .zip(other.0.as_array().iter())
                     .take(N)
@@ -203,11 +203,11 @@ impl<const N: usize> Ord for OrderExps<N> {
 mod tests {
     use std::num::NonZeroU16;
 
-    use crate::{FIRST_129_PRIMES, orderexps::OrderExps};
+    use crate::{FIRST_65_PRIMES, orderexps::OrderExps};
 
     #[test_log::test]
     fn try_from_basic() {
-        for i in 1..FIRST_129_PRIMES[64] {
+        for i in 1..FIRST_65_PRIMES[64] {
             assert_eq!(
                 u16::try_from(
                     OrderExps::<64>::try_from(NonZeroU16::new(i).unwrap())
@@ -223,13 +223,13 @@ mod tests {
     #[test_log::test]
     #[should_panic(expected = "PrimeTooLarge")]
     fn try_from_prime_too_large() {
-        OrderExps::<64>::try_from(NonZeroU16::new(FIRST_129_PRIMES[65]).unwrap()).unwrap();
+        OrderExps::<64>::try_from(NonZeroU16::new(FIRST_65_PRIMES[64] + 1).unwrap()).unwrap();
     }
 
     #[test_log::test]
     fn ord() {
-        for i in 1..FIRST_129_PRIMES[64] {
-            for j in 1..FIRST_129_PRIMES[64] {
+        for i in 1..FIRST_65_PRIMES[64] {
+            for j in 1..FIRST_65_PRIMES[64] {
                 let a = OrderExps::<64>::try_from(NonZeroU16::new(i).unwrap()).unwrap();
                 let b = OrderExps::<64>::try_from(NonZeroU16::new(j).unwrap()).unwrap();
                 assert_eq!(a.cmp(&b), i.cmp(&j));
