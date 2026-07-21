@@ -229,7 +229,7 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<N>> {
                 None
             };
             let possible_orders = puzzle_def
-                .possible_orders(maybe_pool)
+                .possible_orders(maybe_pool, true)
                 .ok_or(CycleCombinationFinderError::PuzzleTooManyOrders)?;
             possible_orders.remove(&OrderExps::one());
             let now = Instant::now();

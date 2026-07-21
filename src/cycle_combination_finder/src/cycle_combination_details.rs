@@ -50,7 +50,7 @@ mod tests {
     #[test_log::test]
     fn foo() {
         let minx3 = MINX3.clone();
-        let possible_orders = minx3.possible_orders(None).unwrap();
+        let possible_orders = minx3.possible_orders(None, true).unwrap();
         possible_orders.remove(&OrderExps::one());
         let mut min_piece_count_calculator = MinPieceCount::from(&minx3);
         let mut possible_orders_except_one = possible_orders
