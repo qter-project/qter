@@ -21,7 +21,7 @@ pub mod cubeN;
 pub mod minxN;
 pub mod misc;
 
-const MAX_ORBIT_COUNT: usize = 2usize.pow(16);
+const MAX_ORBIT_COUNT: usize = (!0u16) as usize;
 
 #[derive(Error, Debug)]
 pub enum PuzzleDefCreationError {
@@ -419,8 +419,8 @@ mod tests {
                 EvenParityConstraints(vec![])
             ),
             Err(PuzzleDefCreationError::TooManyOrbits {
-                actual: 65537,
-                max: 65536,
+                actual: 65536,
+                max: 65535,
             }),
         );
     }

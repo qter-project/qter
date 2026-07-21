@@ -282,7 +282,10 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<N>> {
                 cycle_combinations.len(),
                 cycle_combinations
                     .into_iter()
-                    .map(|i| dbg_registers(i.inner.registers.iter().copied(), possible_orders_except_one))
+                    .map(|i| dbg_registers(
+                        i.inner.registers.iter().copied(),
+                        possible_orders_except_one
+                    ))
                     .collect::<Vec<_>>()
                     .join("\n")
             );
