@@ -9,26 +9,27 @@
 
 ## CCF
 
+- ripgrep
+
 - work around using Arc
 - use pruning information when each mpmc solution is pushed: multithread pareto efficient pruning and ignore the first register descending
 
 - after MKP
   - note that batching "ramps up" the mkp threads when the batch size is large; there are few solutions/batch in the beginning which helps make sure the
   - experiment with num_cores * 10
-  - pareto front strategies:
-    - rwlock shared front, allowing TOCTOU
-    - sync trees together
   - max diff ratio setting. prevents solutions like 720720, 2, 2
   - max solutions per register count setting
   - SubOptimal Optimality which uses the naive pareto front dominate approach; could also assume a lesser min piece count threshold; uses naive register_index <= 1
   - reuse possible orders list if two orbits are the same
   - throw out order case if we ever compute it has a non-+1 orientation factor
+  - is possible_order.0.simd_ne(Simd::splat(0)) really needed
   - better log tracing messages
 
 - possible orders
+  - store next trie levels inline
   - daniel's SIMD gcd algorithm
   - compute minimum piece count
-  - can we just remove constraints?
+  - can we just remove parity constraints?
   - can we just ignore added extra orbits
     - perhaps I can do separate analysis beforehand to show that 5354228880 can fit on the puzzle, and then if so, try to remove orbits and then see if 5354228880 still fits
 - min piece count
@@ -36,7 +37,6 @@
   - test case for: orientation counts 30, 4, and 19, and order 60 * 19
   - old MPC has edge case: it does 2 < cycle_count; it does 4 -> 5 pieces
   - devise a scheme to make MPC incorporate piece counts
-  - is possible_order.0.simd_ne(Simd::splat(0)) really needed
 
 ## CCS
 

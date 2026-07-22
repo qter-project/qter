@@ -434,6 +434,9 @@ fn details_thread<const N: usize>(
         debug!("Details: Pinned {core_id:?}");
     }
     let mut cycle_combinations = CCParetoFront::default();
+    let collector = Collector::new();
+    let mut details =
+        CycleCombinationDetails::new(exact_register_count, possible_orders_except_one, puzzle_def);
     let mut processed_candidate_count = 0;
     let mut post_candidate_count = 0;
     let raw_pruning_len = NonZeroUsize::new(usize::from(
@@ -443,7 +446,6 @@ fn details_thread<const N: usize>(
     let real_time = Instant::now();
     let cpu_time = ThreadTime::now();
     let mut alloc_time = Duration::default();
-    let collector = Collector::new();
     loop {
         let maybe_batch_packed_queue = match candidates_receiver.try_recv() {
             Ok(batch_packed_queue) => Some(batch_packed_queue),
@@ -495,12 +497,7 @@ fn details_thread<const N: usize>(
                     disjoint_registers,
                     |dominating_registers| {
                         post_candidate_count += 1;
-                        CycleCombinationDetails::new(
-                            dominating_registers,
-                            possible_orders_except_one,
-                            puzzle_def,
-                        )
-                        .map(|details| {
+                        details.calculate(dominating_registers).map(|detail| {
                             let registers = if log_enabled!(Level::Debug) {
                                 let now = Instant::now();
                                 let registers = dominating_registers.iter().collect::<Box<_>>();
@@ -509,7 +506,7 @@ fn details_thread<const N: usize>(
                             } else {
                                 dominating_registers.iter().collect::<Box<_>>()
                             };
-                            let inner = Arc::new(CycleCombinationInner { registers, details });
+                            let inner = Arc::new(CycleCombinationInner { registers, detail });
                             assert!(
                                 solutions_sender
                                     .send((

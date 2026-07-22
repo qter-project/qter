@@ -61,7 +61,9 @@ impl OrbitDef {
                 even_parity_orders,
                 maybe_odd_parity_orders: match self.parity_constraint {
                     ParityConstraint::Even => None,
-                    ParityConstraint::None => Some(OrdersSet::default()),
+                    ParityConstraint::None | ParityConstraint::Dependent => {
+                        Some(OrdersSet::default())
+                    }
                 },
             }
         };
@@ -305,7 +307,7 @@ impl<const N: usize> PuzzleDef<N> {
                         };
                         component_possible_orders
                     }
-                    ParityConstraint::None => {
+                    ParityConstraint::None | ParityConstraint::Dependent => {
                         orbit_def.combined_parity_possible_orders(always_maximize_orientation)
                     }
                 });

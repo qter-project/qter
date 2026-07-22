@@ -53,7 +53,8 @@ pub enum PuzzleDefCreationError {
 pub struct PuzzleDef<const N: usize> {
     orbit_defs: NonemptyVec<OrbitDef>,
     even_parity_constraints: BitMatrix,
-    connected_components: Vec<Vec<usize>>,
+    connected_components: Box<[Box<[usize]>]>,
+    orbit_index_to_component_index: Box<[usize]>,
     orientations_exps: NonemptyVec<OrderExps<N>>,
     orientations_exps_lcm: OrderExps<N>,
 }
@@ -91,9 +92,10 @@ pub enum OrientationSumConstraint {
 #[derive(Clone, Debug)]
 pub struct EvenParityConstraints(pub Vec<Vec<usize>>);
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ParityConstraint {
     Even,
+    Dependent,
     None,
 }
 
@@ -261,17 +263,21 @@ impl<const N: usize> PuzzleDef<N> {
                 .or_default()
                 .push(orbit_index);
         }
-        let connected_components = connected_components.into_values().collect::<Vec<_>>();
+        let connected_components = connected_components
+            .into_values()
+            .map(std::vec::Vec::into_boxed_slice)
+            .collect::<Box<[_]>>();
+        let mut orbit_index_to_component_index = vec![0; orbit_defs.len().get()].into_boxed_slice();
 
-        for singular_component in connected_components
-            .iter()
-            .filter_map(|connected_component| {
-                let [singular_component] = *connected_component.as_slice() else {
-                    return None;
-                };
-                Some(singular_component)
-            })
-        {
+        for (component_index, connected_component) in connected_components.iter().enumerate() {
+            for &orbit_index in connected_component {
+                orbit_index_to_component_index[orbit_index] = component_index;
+            }
+
+            let &[singular_component] = &**connected_component else {
+                continue;
+            };
+
             match (0..rows)
                 .filter(|&row| even_parity_constraints[(row, singular_component)])
                 .count()
@@ -309,6 +315,7 @@ impl<const N: usize> PuzzleDef<N> {
             orbit_defs,
             even_parity_constraints,
             connected_components,
+            orbit_index_to_component_index,
             orientations_exps,
             orientations_exps_lcm,
         })
@@ -325,7 +332,7 @@ impl<const N: usize> PuzzleDef<N> {
     }
 
     #[must_use]
-    pub fn connected_components(&self) -> &[Vec<usize>] {
+    pub fn connected_components(&self) -> &[Box<[usize]>] {
         &self.connected_components
     }
 
@@ -337,6 +344,11 @@ impl<const N: usize> PuzzleDef<N> {
     #[must_use]
     pub fn orientations_exps_lcm(&self) -> &OrderExps<N> {
         &self.orientations_exps_lcm
+    }
+
+    #[must_use]
+    pub fn orbit_index_to_component_index(&self, orbit_index: usize) -> usize {
+        self.orbit_index_to_component_index[orbit_index]
     }
 }
 
