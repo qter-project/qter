@@ -60,7 +60,7 @@ impl<const N: usize> MinPieceCount<'_, N> {
         let mut leftover_prime_powers_mask = self.leftover_prime_powers_mask;
         while leftover_prime_powers_mask != 0 {
             let prime_power_index = leftover_prime_powers_mask.trailing_zeros() as usize;
-            let exp = possible_order.exponent(prime_power_index);
+            let exp = possible_order.prime_exponent(prime_power_index);
             let prime = FIRST_65_PRIMES[prime_power_index];
 
             let leftover_prime_power = prime_power_cycle_piece_count(prime, exp);
@@ -114,7 +114,9 @@ impl<const N: usize> MinPieceCount<'_, N> {
                 maybe_two_orientation_contribution_orbit_index = Some(orbit_index);
             }
             *self.orbit_orientation_contributions[orbit_index].exponent_mut(prime_power_index) =
-                self.puzzle_def.orientations_exps_lcm().exponent(prime_power_index);
+                self.puzzle_def
+                    .orientations_exps_lcm()
+                    .prime_exponent(prime_power_index);
         }
 
         // The maximum number of contributing orbits is the max N, one for every prime.
@@ -132,7 +134,7 @@ impl<const N: usize> MinPieceCount<'_, N> {
             let mut needs_orientation_cycles_count = true;
             while contributing_prime_powers_mask != 0 {
                 let prime_power_index = contributing_prime_powers_mask.trailing_zeros() as usize;
-                let exp = required_cycle_prime_powers.exponent(prime_power_index);
+                let exp = required_cycle_prime_powers.prime_exponent(prime_power_index);
                 let prime = FIRST_65_PRIMES[prime_power_index];
                 let cycle_piece_count = prime_power_cycle_piece_count(prime, exp);
                 if cycle_piece_count != 0 {

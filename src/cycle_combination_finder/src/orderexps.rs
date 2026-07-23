@@ -77,7 +77,7 @@ impl<const N: usize> OrderExps<N> {
 
     #[inline]
     #[must_use]
-    pub fn exponent(&self, prime_index: usize) -> u8 {
+    pub fn prime_exponent(&self, prime_index: usize) -> u8 {
         self.0[prime_index]
     }
 
@@ -102,8 +102,7 @@ impl<const N: usize> OrderExps<N> {
     #[must_use]
     pub fn prime_power_sum_u16_unchecked(&self) -> u16 {
         #[allow(clippy::missing_panics_doc)]
-        (self.0.cast::<u16>() * Simd::from_array(*FIRST_65_PRIMES.split_array_ref().0))
-            .reduce_sum()
+        (self.0.cast::<u16>() * Simd::from_array(*FIRST_65_PRIMES.split_array_ref().0)).reduce_sum()
     }
 
     /// Compute the prime power sum as a `u8`. Note that overflow behavior is
@@ -117,14 +116,8 @@ impl<const N: usize> OrderExps<N> {
     pub fn prime_power_sum_u8_unchecked(&self) -> u8 {
         assert_matches!(N, 8 | 16 | 32);
         #[allow(clippy::missing_panics_doc, clippy::cast_possible_truncation)]
-        (self.0
-            * Simd::from_array(
-                FIRST_65_PRIMES
-                    .split_array_ref()
-                    .0
-                    .map(|prime| prime as u8),
-            ))
-        .reduce_sum()
+        (self.0 * Simd::from_array(FIRST_65_PRIMES.split_array_ref().0.map(|prime| prime as u8)))
+            .reduce_sum()
     }
 }
 

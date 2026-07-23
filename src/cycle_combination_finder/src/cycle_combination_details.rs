@@ -186,7 +186,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                 if !exactly_prime_factors {
                     continue;
                 }
-                let orbit_orientation_exp = orientation_exps.exponent(prime_index);
+                let orbit_orientation_exp = orientation_exps.prime_exponent(prime_index);
                 let required_extra_pieces = if prime_index == 0
                     && (orbit_def.parity_constraint == ParityConstraint::Even
                         || orbit_def.parity_constraint == ParityConstraint::None)
@@ -228,7 +228,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                     .iter_orders(self.possible_orders_except_one)
                     .enumerate()
                     .filter_map(|(register_index, possible_order)| {
-                        let register_order_exp = possible_order.order.exponent(prime_index);
+                        let register_order_exp = possible_order.order.prime_exponent(prime_index);
                         // - 2^1 is not always best
                         // at register_order_exp==0, we no longer have primes in this register
                         // order, so there is nothing to assign
