@@ -244,9 +244,12 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                  -> ControlFlow<()> {
                     let orbit_remaining_piece_count =
                         &mut self.orbit_remaining_piece_counts[orbit_index];
-                    let cycle_piece_count = prime.pow(u32::from(
-                        register_order_exp.saturating_sub(orbit_orientation_exp),
-                    ));
+                    let exp = register_order_exp.saturating_sub(orbit_orientation_exp);
+                    let cycle_piece_count = if exp == 0 {
+                        0
+                    } else {
+                        prime.pow(u32::from(exp))
+                    };
 
                     if let Some(next_orbit_remaining_piece_count) =
                         orbit_remaining_piece_count.checked_sub(cycle_piece_count)
@@ -344,6 +347,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                 registers.get_order(i, self.possible_orders_except_one)
             );
         }
+        println!("{:?}", self.orbit_remaining_piece_counts);
         todo!()
     }
 }
