@@ -77,6 +77,7 @@ pub struct PartialOrbitDef {
 #[derive(Clone, Copy, Debug)]
 pub enum OrientationStatus {
     CanOrient {
+        // Integer size cannot easily be changed; look at cycle_combination_details
         count: u8,
         sum_constraint: OrientationSumConstraint,
     },
