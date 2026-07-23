@@ -1,6 +1,5 @@
 use std::{
     num::{NonZeroU16, NonZeroU32, NonZeroUsize},
-    ops::ControlFlow,
     simd::{Mask, Simd, cmp::SimdPartialEq},
 };
 
@@ -73,11 +72,26 @@ enum SaturatingOrbit {
 }
 
 impl SharingState {
-    fn required_pieces(self) -> u16 {
+    fn required_pieces(self, have_orienting_sharing_cycle: bool) -> u16 {
         match self {
             SharingState::None => 0,
+            SharingState::Orientation if have_orienting_sharing_cycle => 0,
             SharingState::Orientation => 1,
             SharingState::Parity => 2,
+        }
+    }
+
+    fn enough_leftover_pieces(
+        self,
+        orbit_remaining_piece_count: u16,
+        component_remaining_piece_count: u32,
+        have_orienting_sharing_cycle: bool,
+    ) -> bool {
+        let required_pieces = self.required_pieces(have_orienting_sharing_cycle);
+        match self {
+            SharingState::None => true,
+            SharingState::Orientation => orbit_remaining_piece_count >= required_pieces,
+            SharingState::Parity => component_remaining_piece_count >= u32::from(required_pieces),
         }
     }
 }
@@ -151,7 +165,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
             let prime = FIRST_65_PRIMES[prime_index];
             self.best_orientations_queue
                 .fill(BestOrientation::Unassigned);
-            for (orbit_index, (orientation_exps, orbit_def)) in self
+            for (orbit_index, (orientation_exps, &orbit_def)) in self
                 .puzzle_def
                 .orientations_exps()
                 .iter()
@@ -229,9 +243,9 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                 .sort_unstable_by_key(|&(_, register_order_exp)| {
                     std::cmp::Reverse(register_order_exp)
                 });
+
             // Try to fit a register's prime power cycle into an orbit such that it would
             // benefit the most from a share
-
             for (register_index, register_order_exp) in self.register_exponent_sorter.drain(..) {
                 let slot @ PPCycleAssignment::Unassigned =
                     &mut self.reg_to_cycle_orbit[register_index][prime_index]
@@ -241,7 +255,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                 let mut try_assign_pp_to_orbit = |orbit_index: usize,
                                                   orbit_orientation_exp: u8,
                                                   required_extra_pieces: SharingState|
-                 -> ControlFlow<()> {
+                 -> bool {
                     let orbit_remaining_piece_count =
                         &mut self.orbit_remaining_piece_counts[orbit_index];
                     let exp = register_order_exp.saturating_sub(orbit_orientation_exp);
@@ -260,26 +274,22 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                         let next_component_remaining_piece_count =
                             *component_remaining_piece_count - u32::from(cycle_piece_count);
 
-                        let enough_leftover_pieces = match required_extra_pieces {
-                            SharingState::None => true,
-                            SharingState::Orientation => {
-                                next_orbit_remaining_piece_count
-                                    >= required_extra_pieces.required_pieces()
-                            }
-                            SharingState::Parity => {
-                                next_component_remaining_piece_count
-                                    >= u32::from(required_extra_pieces.required_pieces())
-                            }
-                        };
-                        if enough_leftover_pieces {
+                        if required_extra_pieces.enough_leftover_pieces(
+                            next_orbit_remaining_piece_count,
+                            next_component_remaining_piece_count,
+                            // Assume worse case; it is otherwise not simple to keep track of when
+                            // an orbit has an orienting cycle during this stage (it requires at
+                            // least a pass of all primes)
+                            false,
+                        ) {
                             *orbit_remaining_piece_count = next_orbit_remaining_piece_count;
                             *component_remaining_piece_count = next_component_remaining_piece_count;
 
                             *slot = PPCycleAssignment::Orbit(orbit_index, required_extra_pieces);
-                            return ControlFlow::Break(());
+                            return true;
                         }
                     }
-                    ControlFlow::Continue(())
+                    false
                 };
                 // Descending exp order of available orientation-sharing cycles
                 let mut saturated_orbit_found = SaturatingOrbit::None;
@@ -318,9 +328,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                         orbit_index,
                         orbit_orientation_exp,
                         required_extra_pieces,
-                    )
-                    .is_break()
-                    {
+                    ) {
                         break;
                     }
                 }
@@ -330,7 +338,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                     required_extra_pieces,
                 ) = saturated_orbit_found
                 {
-                    let _ = try_assign_pp_to_orbit(
+                    try_assign_pp_to_orbit(
                         orbit_index,
                         orbit_orientation_exp,
                         required_extra_pieces,
