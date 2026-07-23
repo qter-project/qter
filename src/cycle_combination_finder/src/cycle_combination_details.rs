@@ -6,10 +6,7 @@ use std::{
 use log::trace;
 
 use crate::{
-    FIRST_65_PRIMES,
-    cycle_combinations_tree::DisjointRegisters,
-    finder::PossibleOrder,
-    puzzle::{OrientationStatus, OrientationSumConstraint, ParityConstraint, PuzzleDef},
+    FIRST_65_PRIMES, cycle_combinations_tree::DisjointRegisters, finder::PossibleOrder, puzzle::{OrientationStatus, OrientationSumConstraint, ParityConstraint, PuzzleDef, orbit_index_cast, register_index_cast},
 };
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
@@ -33,7 +30,7 @@ pub struct CycleCombinationDetails<'a, 'b, const N: usize> {
     possible_orders_except_one: &'a [PossibleOrder<N>],
     puzzle_def: &'b PuzzleDef<N>,
     /// Map of every register, to its cycles, to which orbit its prime power
-    /// component is assigned to
+    /// component is assigned to and bitmask
     reg_to_cycle_orbit: Box<[[PPCycleAssignment; N]]>,
     /// Remaining piece count for every orbit
     orbit_remaining_piece_counts: Box<[u16]>,
@@ -45,28 +42,28 @@ pub struct CycleCombinationDetails<'a, 'b, const N: usize> {
     /// Read-only
     component_remaining_piece_counts2: Box<[u32]>,
     /// Gives the best registers
-    register_exponent_sorter: Vec<(usize, u8)>,
+    register_exponent_sorter: Vec<(u16, u8)>,
     /// Gives the best orientation orders
     best_orientations_queue: [BestOrientation; 9],
 }
 
 #[derive(Debug, Clone, Copy)]
 enum PPCycleAssignment {
-    Orbit(usize, SharingState),
-    // Unused,
+    Orbit(u16, SharingState),
+    Unused,
     Unassigned,
 }
 
 #[derive(Debug, Clone, Copy)]
 enum BestOrientation {
-    Orbit(usize, SharingState),
+    Orbit(u16, SharingState),
     Ambiguous,
     Unassigned,
 }
 
 #[derive(Debug, Clone, Copy)]
 enum SaturatingOrbit {
-    Orbit(usize, u8, SharingState),
+    Orbit(u16, u8, SharingState),
     Ambiguous,
     None,
 }
@@ -104,11 +101,9 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
         puzzle_def: &'b PuzzleDef<N>,
     ) -> Self {
         // TODO: allocator
-        let reg_to_cycle_orbit = vec![
-            [PPCycleAssignment::Unassigned; N];
-            NonZeroUsize::from(exact_register_count).get()
-        ]
-        .into_boxed_slice();
+        let reg_to_cycle_orbit =
+            vec![[PPCycleAssignment::Unused; N]; NonZeroUsize::from(exact_register_count).get()]
+                .into_boxed_slice();
         let orbit_remaining_piece_counts = puzzle_def
             .orbit_defs()
             .iter()
@@ -121,7 +116,12 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
             .map(|connected_component| {
                 connected_component
                     .iter()
-                    .map(|&j| NonZeroU32::from(puzzle_def.orbit_defs()[j].piece_count).get())
+                    .map(|&orbit_index| {
+                        NonZeroU32::from(
+                            puzzle_def.orbit_defs()[usize::from(orbit_index)].piece_count,
+                        )
+                        .get()
+                    })
                     .sum()
             })
             .collect::<Box<[_]>>();
@@ -144,20 +144,31 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
 
     #[must_use]
     pub fn calculate(&mut self, registers: DisjointRegisters) -> Option<CycleCombinationDetail> {
-        self.reg_to_cycle_orbit
-            .fill([PPCycleAssignment::Unassigned; N]);
+        self.reg_to_cycle_orbit.fill([PPCycleAssignment::Unused; N]);
         self.orbit_remaining_piece_counts
             .clone_from_slice(&self.orbit_remaining_piece_counts2);
         self.component_remaining_piece_counts
             .clone_from_slice(&self.component_remaining_piece_counts2);
 
         // Every prime used by the register orders
-        let orienting_registers_prime_mask = registers
+        let mut orienting_registers_prime_mask = Mask::splat(false);
+
+        for (register_index, possible_order) in registers
             .iter_orders(self.possible_orders_except_one)
-            .fold(Mask::splat(false), |acc, x| {
-                acc | x.order.0.simd_ne(Simd::splat(0))
-            })
-            .to_bitmask();
+            .enumerate()
+        {
+            let all_exponents = possible_order.order.0.simd_ne(Simd::splat(0));
+            orienting_registers_prime_mask |= all_exponents;
+            // Set which
+            let mut all_exponents_mask = all_exponents.to_bitmask();
+            while all_exponents_mask != 0 {
+                let prime_index = all_exponents_mask.trailing_zeros() as usize;
+                self.reg_to_cycle_orbit[register_index][prime_index] =
+                    PPCycleAssignment::Unassigned;
+                all_exponents_mask ^= all_exponents_mask.isolate_lowest_one();
+            }
+        }
+        let orienting_registers_prime_mask = orienting_registers_prime_mask.to_bitmask();
 
         let mut orienting_registers_prime_mask2 = orienting_registers_prime_mask;
         while orienting_registers_prime_mask2 != 0 {
@@ -172,6 +183,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                 .zip(self.puzzle_def.orbit_defs().iter())
                 .enumerate()
             {
+                let orbit_index = orbit_index_cast(orbit_index);
                 // counterexample:
                 // o1: 5 pieces 48 ori
                 //
@@ -228,6 +240,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                     .iter_orders(self.possible_orders_except_one)
                     .enumerate()
                     .filter_map(|(register_index, possible_order)| {
+                        let register_index = register_index_cast(register_index);
                         let register_order_exp = possible_order.order.prime_exponent(prime_index);
                         // - 2^1 is not always best
                         // at register_order_exp==0, we no longer have primes in this register
@@ -248,16 +261,16 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
             // benefit the most from a share
             for (register_index, register_order_exp) in self.register_exponent_sorter.drain(..) {
                 let slot @ PPCycleAssignment::Unassigned =
-                    &mut self.reg_to_cycle_orbit[register_index][prime_index]
+                    &mut self.reg_to_cycle_orbit[usize::from(register_index)][prime_index]
                 else {
                     unreachable!();
                 };
-                let mut try_assign_pp_to_orbit = |orbit_index: usize,
+                let mut try_assign_pp_to_orbit = |orbit_index: u16,
                                                   orbit_orientation_exp: u8,
                                                   required_extra_pieces: SharingState|
                  -> bool {
                     let orbit_remaining_piece_count =
-                        &mut self.orbit_remaining_piece_counts[orbit_index];
+                        &mut self.orbit_remaining_piece_counts[usize::from(orbit_index)];
                     let exp = register_order_exp.saturating_sub(orbit_orientation_exp);
                     let cycle_piece_count = if exp == 0 {
                         0
@@ -269,8 +282,9 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                         orbit_remaining_piece_count.checked_sub(cycle_piece_count)
                     {
                         let component_remaining_piece_count = &mut self
-                            .component_remaining_piece_counts
-                            [self.puzzle_def.orbit_index_to_component_index(orbit_index)];
+                            .component_remaining_piece_counts[usize::from(
+                            self.puzzle_def.orbit_index_to_component_index(orbit_index),
+                        )];
                         let next_component_remaining_piece_count =
                             *component_remaining_piece_count - u32::from(cycle_piece_count);
 
@@ -349,13 +363,16 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
             orienting_registers_prime_mask2 ^= orienting_registers_prime_mask2.isolate_lowest_one();
         }
 
-        // for (i, r) in self.reg_to_cycle_orbit.iter().enumerate() {
-        //     println!(
-        //         "reg: {:?}: {r:#?}",
-        //         registers.get_order(i, self.possible_orders_except_one)
-        //     );
-        // }
-        // println!("{:?}", self.orbit_remaining_piece_counts);
+        for (i, r) in self.reg_to_cycle_orbit.iter().enumerate() {
+            println!(
+                "reg: {:?}: {r:#?}",
+                registers.get_order(i, self.possible_orders_except_one)
+            );
+        }
+        println!("{:?}", self.orbit_remaining_piece_counts);
+
+        // select cycle
+        // assign cycle to every orbit, dfs
         todo!()
     }
 }

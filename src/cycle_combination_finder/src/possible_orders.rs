@@ -287,7 +287,7 @@ impl<const N: usize> PuzzleDef<N> {
     /// Compute all possible orders for a connected component of orbits.
     fn connected_component_possible_orders(
         &self,
-        connected_component: &[usize],
+        connected_component: &[u16],
         always_maximize_orientation: bool,
     ) -> LcmOrders<N> {
         let even_parity_constraints = self.even_parity_constraints();
@@ -295,7 +295,7 @@ impl<const N: usize> PuzzleDef<N> {
         match *connected_component {
             [] => panic!("it is a logic error for a connected component to have no orbits"),
             [singular_component] => {
-                let orbit_def = self.orbit_defs()[singular_component];
+                let orbit_def = self.orbit_defs()[usize::from(singular_component)];
                 return LcmOrders::OrbitOrders(match orbit_def.parity_constraint {
                     ParityConstraint::Even => {
                         let (component_possible_orders, None) = orbit_def
@@ -318,7 +318,7 @@ impl<const N: usize> PuzzleDef<N> {
         let mut connected_component_parity_constraints = BitMatrix::build(
             even_parity_constraints.rows(),
             connected_component.len(),
-            |i, j| even_parity_constraints[(i, j + connected_component[0])],
+            |i, j| even_parity_constraints[(i, j + usize::from(connected_component[0]))],
         );
 
         gauss_jordan_without_zero_rows(
@@ -345,9 +345,9 @@ impl<const N: usize> PuzzleDef<N> {
             .iter()
             .enumerate()
             .flat_map(|(symbol, &orbit_index)| {
-                let (even_parity_orders, Some(odd_parity_orders)) = self.orbit_defs()[orbit_index]
-                    .uncombined_parity_possible_orders(always_maximize_orientation)
-                else {
+                let (even_parity_orders, Some(odd_parity_orders)) = self.orbit_defs()
+                    [usize::from(orbit_index)]
+                .uncombined_parity_possible_orders(always_maximize_orientation) else {
                     // We would have broken on the guard clause earlier if we only record even
                     // parity orders
                     unreachable!();

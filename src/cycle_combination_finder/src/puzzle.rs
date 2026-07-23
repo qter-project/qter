@@ -53,8 +53,8 @@ pub enum PuzzleDefCreationError {
 pub struct PuzzleDef<const N: usize> {
     orbit_defs: NonemptyVec<OrbitDef>,
     even_parity_constraints: BitMatrix,
-    connected_components: Box<[Box<[usize]>]>,
-    orbit_index_to_component_index: Box<[usize]>,
+    connected_components: Box<[Box<[u16]>]>,
+    orbit_index_to_component_index: Box<[u16]>,
     orientations_exps: NonemptyVec<OrderExps<N>>,
     orientations_exps_lcm: OrderExps<N>,
 }
@@ -98,6 +98,22 @@ pub enum ParityConstraint {
     Even,
     Dependent,
     None,
+}
+
+#[must_use]
+pub fn orbit_index_cast(orbit_index: usize) -> u16 {
+    // We guarantee only `u16` number of orbits
+    #[allow(clippy::cast_possible_truncation)]
+    let orbit_index = orbit_index as u16;
+    orbit_index
+}
+
+#[must_use]
+pub fn register_index_cast(register_index: usize) -> u16 {
+    // We guarantee only `u16` number of registers
+    #[allow(clippy::cast_possible_truncation)]
+    let register_index = register_index as u16;
+    register_index
 }
 
 // impl From<&KSolveSet> for OrbitDef {
@@ -257,22 +273,24 @@ impl<const N: usize> PuzzleDef<N> {
             }
         }
 
-        let mut connected_components = FxHashMap::<usize, Vec<usize>>::default();
+        let mut connected_components = FxHashMap::<usize, Vec<u16>>::default();
         for (orbit_index, &root) in uf.link_parent().iter().enumerate() {
             connected_components
                 .entry(root)
                 .or_default()
-                .push(orbit_index);
+                .push(orbit_index_cast(orbit_index));
         }
         let connected_components = connected_components
             .into_values()
             .map(std::vec::Vec::into_boxed_slice)
             .collect::<Box<[_]>>();
-        let mut orbit_index_to_component_index = vec![0; orbit_defs.len().get()].into_boxed_slice();
+        let mut orbit_index_to_component_index =
+            vec![0u16; orbit_defs.len().get()].into_boxed_slice();
 
         for (component_index, connected_component) in connected_components.iter().enumerate() {
             for &orbit_index in connected_component {
-                orbit_index_to_component_index[orbit_index] = component_index;
+                orbit_index_to_component_index[usize::from(orbit_index)] =
+                    orbit_index_cast(component_index);
             }
 
             let &[singular_component] = &**connected_component else {
@@ -280,13 +298,14 @@ impl<const N: usize> PuzzleDef<N> {
             };
 
             match (0..rows)
-                .filter(|&row| even_parity_constraints[(row, singular_component)])
+                .filter(|&row| even_parity_constraints[(row, usize::from(singular_component))])
                 .count()
             {
                 // This case is handled in possible_orders
                 0 => (),
                 1 => {
-                    orbit_defs[singular_component].parity_constraint = ParityConstraint::Even;
+                    orbit_defs[usize::from(singular_component)].parity_constraint =
+                        ParityConstraint::Even;
                 }
                 // It should never be the case that two or more 1s exist in a singular component
                 // because:
@@ -333,7 +352,7 @@ impl<const N: usize> PuzzleDef<N> {
     }
 
     #[must_use]
-    pub fn connected_components(&self) -> &[Box<[usize]>] {
+    pub fn connected_components(&self) -> &[Box<[u16]>] {
         &self.connected_components
     }
 
@@ -348,8 +367,8 @@ impl<const N: usize> PuzzleDef<N> {
     }
 
     #[must_use]
-    pub fn orbit_index_to_component_index(&self, orbit_index: usize) -> usize {
-        self.orbit_index_to_component_index[orbit_index]
+    pub fn orbit_index_to_component_index(&self, orbit_index: u16) -> u16 {
+        self.orbit_index_to_component_index[usize::from(orbit_index)]
     }
 }
 
