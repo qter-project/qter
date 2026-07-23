@@ -105,7 +105,7 @@ impl OrbitDef {
             // or add all powers of prime
             let prime = FIRST_65_PRIMES[prime_index];
             let mut prime_power_exps = OrderExps::one();
-            prime_power_exps.0[prime_index] = 1;
+            *prime_power_exps.exponent_mut(prime_index) = 1;
             let mut prime_power = prime;
             while prime_power <= remaining_pieces_count {
                 stack.push((
@@ -113,7 +113,7 @@ impl OrbitDef {
                     remaining_pieces_count - prime_power,
                     acc_order.clone() * prime_power_exps.clone(),
                 ));
-                prime_power_exps.0[prime_index] += 1;
+                *prime_power_exps.exponent_mut(prime_index) += 1;
                 prime_power *= prime;
             }
         }

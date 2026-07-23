@@ -186,7 +186,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                 if !exactly_prime_factors {
                     continue;
                 }
-                let orbit_orientation_exp = orientation_exps.0[prime_index];
+                let orbit_orientation_exp = orientation_exps.exponent(prime_index);
                 let required_extra_pieces = if prime_index == 0
                     && (orbit_def.parity_constraint == ParityConstraint::Even
                         || orbit_def.parity_constraint == ParityConstraint::None)
@@ -228,7 +228,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                     .iter_orders(self.possible_orders_except_one)
                     .enumerate()
                     .filter_map(|(register_index, possible_order)| {
-                        let register_order_exp = possible_order.order.0.as_array()[prime_index];
+                        let register_order_exp = possible_order.order.exponent(prime_index);
                         // - 2^1 is not always best
                         // at register_order_exp==0, we no longer have primes in this register
                         // order, so there is nothing to assign
@@ -349,13 +349,13 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
             orienting_registers_prime_mask2 ^= orienting_registers_prime_mask2.isolate_lowest_one();
         }
 
-        for (i, r) in self.reg_to_cycle_orbit.iter().enumerate() {
-            println!(
-                "reg: {:?}: {r:#?}",
-                registers.get_order(i, self.possible_orders_except_one)
-            );
-        }
-        println!("{:?}", self.orbit_remaining_piece_counts);
+        // for (i, r) in self.reg_to_cycle_orbit.iter().enumerate() {
+        //     println!(
+        //         "reg: {:?}: {r:#?}",
+        //         registers.get_order(i, self.possible_orders_except_one)
+        //     );
+        // }
+        // println!("{:?}", self.orbit_remaining_piece_counts);
         todo!()
     }
 }

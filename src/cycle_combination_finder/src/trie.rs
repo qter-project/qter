@@ -33,7 +33,7 @@ impl<const N: usize> MaxOrderTrie<N> {
 
         if self.level != N {
             self.children
-                .entry(order.0[self.level])
+                .entry(order.exponent(self.level))
                 .or_insert_with(|| Self::new(self.level + 1))
                 .insert(order);
         }
@@ -55,7 +55,7 @@ impl<const N: usize> MaxOrderTrie<N> {
             out.insert(OrderExps(exps));
         } else {
             for (&exp, child) in &self.children {
-                let old = std::mem::replace(&mut acc[self.level], order.0[self.level].max(exp));
+                let old = std::mem::replace(&mut acc[self.level], order.exponent(self.level).max(exp));
                 child.collect_distinct_orders(order, acc, out);
                 acc[self.level] = old;
             }

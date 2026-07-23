@@ -71,6 +71,18 @@ impl<const N: usize> OrderExps<N> {
 
     #[inline]
     #[must_use]
+    pub fn exponent_mut(&mut self, prime_index: usize) -> &mut u8 {
+        &mut self.0[prime_index]
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn exponent(&self, prime_index: usize) -> u8 {
+        self.0[prime_index]
+    }
+
+    #[inline]
+    #[must_use]
     pub fn two_exponent(&self) -> u8 {
         self.0[0]
     }
