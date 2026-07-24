@@ -71,7 +71,7 @@ impl<const N: usize> OrderExps<N> {
 
     #[inline]
     #[must_use]
-    pub fn exponent_mut(&mut self, prime_index: usize) -> &mut u8 {
+    pub fn prime_exponent_mut(&mut self, prime_index: usize) -> &mut u8 {
         &mut self.0[prime_index]
     }
 

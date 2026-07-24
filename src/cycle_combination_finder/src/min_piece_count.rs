@@ -113,10 +113,11 @@ impl<const N: usize> MinPieceCount<'_, N> {
             if prime_power_index == 0 && required_cycle_prime_powers.two_exponent() != 0 {
                 maybe_two_orientation_contribution_orbit_index = Some(orbit_index);
             }
-            *self.orbit_orientation_contributions[orbit_index].exponent_mut(prime_power_index) =
-                self.puzzle_def
-                    .orientations_exps_lcm()
-                    .prime_exponent(prime_power_index);
+            *self.orbit_orientation_contributions[orbit_index]
+                .prime_exponent_mut(prime_power_index) = self
+                .puzzle_def
+                .orientations_exps_lcm()
+                .prime_exponent(prime_power_index);
         }
 
         // The maximum number of contributing orbits is the max N, one for every prime.

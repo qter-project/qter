@@ -35,14 +35,14 @@ pub fn divisors<const N: usize>(n: NonZeroU8) -> Vec<OrderExps<N>> {
             divisors.reserve(divisors.len() * usize::from(max_exp));
 
             let org_len = divisors.len();
-            *divisor.exponent_mut(prime_index) = 1;
+            *divisor.prime_exponent_mut(prime_index) = 1;
             while divisor.0[prime_index] <= max_exp {
                 for i in 0..org_len {
                     divisors.push(divisors[i].clone() * divisor.clone());
                 }
-                *divisor.exponent_mut(prime_index) += 1;
+                *divisor.prime_exponent_mut(prime_index) += 1;
             }
-            *divisor.exponent_mut(prime_index) = 0;
+            *divisor.prime_exponent_mut(prime_index) = 0;
             max_exp = 0;
             if remainder > 1 {
                 (prime_index, prime) = primes_and_index

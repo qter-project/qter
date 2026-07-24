@@ -325,10 +325,11 @@ impl DisjointRegisters<'_> {
     #[must_use]
     pub fn get_order<const N: usize>(
         self,
-        i: usize,
+        i: u16,
         possible_orders_except_one: &[PossibleOrder<N>],
     ) -> Option<&PossibleOrder<N>> {
-        self.get(i).map(|i| &possible_orders_except_one[i as usize])
+        self.get(usize::from(i))
+            .map(|i| &possible_orders_except_one[i as usize])
     }
 }
 
