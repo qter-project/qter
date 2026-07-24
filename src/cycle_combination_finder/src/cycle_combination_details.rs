@@ -230,6 +230,29 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
 
     #[must_use]
     pub fn calculate(&mut self, registers: DisjointRegisters) -> Option<CycleCombinationDetail> {
+        let now = std::time::Instant::now();
+        while now.elapsed() < std::time::Duration::from_millis(10) {}
+        #[allow(clippy::missing_panics_doc)]
+        return if registers
+            .iter()
+            .map(|register| {
+                u64::try_from(
+                    self.possible_orders_except_one[register as usize]
+                        .order
+                        .as_bigint(),
+                )
+                .unwrap()
+            })
+            .sum::<u64>()
+            .is_multiple_of(28)
+        {
+            Some(CycleCombinationDetail {
+                reg_to_cycles: vec![].into_boxed_slice(),
+            })
+        } else {
+            None
+        };
+
         self.orbit_remaining_piece_counts
             .clone_from_slice(&self.orbit_remaining_piece_counts2);
         self.component_remaining_piece_counts
