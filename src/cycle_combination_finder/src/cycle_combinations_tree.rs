@@ -15,6 +15,7 @@ use std::{
 
 use core_affinity::CoreId;
 use cpu_time::ThreadTime;
+use crossbeam_utils::CachePadded;
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::{Level, debug, log_enabled, trace};
 use seize::{Collector, Guard, reclaim};
@@ -425,7 +426,7 @@ fn details_thread<const N: usize>(
     candidates_receiver: mpmc::Receiver<PackedCycleCombinationCandidateQueue>,
     mut solutions_receiver: tokio::sync::broadcast::Receiver<(CoreId, CycleCombination)>,
     solutions_sender: tokio::sync::broadcast::Sender<(CoreId, CycleCombination)>,
-    pareto_efficient_prunings: &[AtomicPtr<u32>],
+    pareto_efficient_prunings: &[CachePadded<AtomicPtr<u32>>],
     puzzle_def: &PuzzleDef<N>,
     possible_orders_except_one: &[PossibleOrder<N>],
     exact_register_count: NonZeroU16,
@@ -863,7 +864,7 @@ pub(crate) fn search_dfs<const N: usize>(
     let mut smallest_fronts = BinaryHeap::new();
 
     let pareto_efficient_prunings = (0..num_cores)
-        .map(|_| AtomicPtr::default())
+        .map(|_| CachePadded::new(AtomicPtr::default()))
         .collect::<Box<[_]>>();
     // We are allowed to unwrap because `orbit_defs` is non-empty, and `piece_count`
     // is a NonZero. Therefore the sum must be non-zero.
