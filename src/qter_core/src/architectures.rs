@@ -1,6 +1,6 @@
 use std::{
     borrow::Cow,
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap, HashSet},
     fmt::Debug,
     sync::{Arc, LazyLock, OnceLock},
 };
@@ -581,23 +581,24 @@ static THREE_BY_THREE_PRESETS: LazyLock<[Arc<Architecture>; 6]> = LazyLock::new(
 pub fn length_of_substring_that_this_string_is_n_repeated_copies_of<'a>(
     colors: impl Iterator<Item = &'a str>,
 ) -> usize {
-    let mut found = vec![];
-    let mut current_repeat_length = 1;
+    let found = colors.collect_vec();
 
-    for (i, color) in colors.enumerate() {
-        found.push(color);
-
-        if found[i % current_repeat_length] != color {
-            current_repeat_length = i + 1;
+    'next:
+    for i in 0..found.len() {
+        if !found.len().is_multiple_of(i) {
+            continue
         }
+
+        for j in 0..(found.len() - i) {
+            if found[j] != found[j + i] {
+                continue 'next;
+            }
+        }
+
+        return i
     }
 
-    // We didn't match the substring a whole number of times; it actually doesn't work
-    if found.len() % current_repeat_length != 0 {
-        current_repeat_length = found.len();
-    }
-
-    current_repeat_length
+    found.len()
 }
 
 /// Decode the permutation using the register generator and the given facelets.
@@ -713,6 +714,13 @@ mod tests {
                 ["a", "b", "a", "b", "a"].into_iter()
             ),
             5
+        );
+
+        assert_eq!(
+            length_of_substring_that_this_string_is_n_repeated_copies_of(
+                ["a", "b", "a", "a", "b", "a"].into_iter()
+            ),
+            3
         );
 
         assert_eq!(
