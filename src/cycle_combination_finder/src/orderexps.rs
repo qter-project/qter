@@ -84,7 +84,7 @@ impl<const N: usize> OrderExps<N> {
     #[inline]
     #[must_use]
     pub fn two_exponent(&self) -> u8 {
-        self.0[0]
+        self.prime_exponent(0)
     }
 
     /// Compute the prime power sum as a `u32`.

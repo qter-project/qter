@@ -1,3 +1,5 @@
+// TODO: sort orbit defs by piece count and etc
+
 use std::{
     fmt::{self, Debug, Formatter},
     num::{NonZeroU8, NonZeroU16},
@@ -114,6 +116,14 @@ pub fn register_index_cast(register_index: usize) -> u16 {
     #[allow(clippy::cast_possible_truncation)]
     let register_index = register_index as u16;
     register_index
+}
+
+#[must_use]
+pub fn prime_index_cast(prime_index: usize) -> u8 {
+    // There are max 64 primes
+    #[allow(clippy::cast_possible_truncation)]
+    let prime_index = prime_index as u8;
+    prime_index
 }
 
 // impl From<&KSolveSet> for OrbitDef {

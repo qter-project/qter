@@ -307,7 +307,8 @@ impl DisjointRegisters<'_> {
     }
 
     #[must_use]
-    pub fn get(self, i: usize) -> Option<u32> {
+    pub fn get(self, i: u16) -> Option<u32> {
+        let i = usize::from(i);
         if i == self.prefix_registers.len() {
             Some(self.last_register)
         } else {
@@ -328,7 +329,7 @@ impl DisjointRegisters<'_> {
         i: u16,
         possible_orders_except_one: &[PossibleOrder<N>],
     ) -> Option<&PossibleOrder<N>> {
-        self.get(usize::from(i))
+        self.get(i)
             .map(|i| &possible_orders_except_one[i as usize])
     }
 }
