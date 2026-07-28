@@ -144,6 +144,7 @@ impl<C: Connection> RobotLike for RemoteRobot<C> {
     }
 
     async fn compose_perm(&mut self, perm: &Permutation) -> Result<(), Self::Error> {
+        self.current_state = None;
         let writer = self.conn.writer();
         writer.write_all(perm.to_string().as_bytes()).await?;
         writer.write_all(b"\n").await?;
