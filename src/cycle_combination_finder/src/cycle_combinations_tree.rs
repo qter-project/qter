@@ -329,8 +329,7 @@ impl DisjointRegisters<'_> {
         i: u16,
         possible_orders_except_one: &[PossibleOrder<N>],
     ) -> Option<&PossibleOrder<N>> {
-        self.get(i)
-            .map(|i| &possible_orders_except_one[i as usize])
+        self.get(i).map(|i| &possible_orders_except_one[i as usize])
     }
 }
 
@@ -366,7 +365,7 @@ unsafe fn try_next_pareto_efficient_pruning(
         }
         if disjoint_registers.last_register == max_last_register {
             let mut maybe_next_pareto_efficient_pruning: Option<Vec<u32>> = None;
-            for ((i, &prefix_register), pareto_efficient_prune) in disjoint_registers
+            for ((i, &prefix_register), &pareto_efficient_prune) in disjoint_registers
                 .prefix_registers
                 .iter()
                 .enumerate()
@@ -377,7 +376,7 @@ unsafe fn try_next_pareto_efficient_pruning(
                     Some(next_pareto_efficient_pruning) => {
                         next_pareto_efficient_pruning.push(prefix_register);
                     }
-                    None => match prefix_register.cmp(pareto_efficient_prune) {
+                    None => match prefix_register.cmp(&pareto_efficient_prune) {
                         Ordering::Less => return None,
                         Ordering::Equal => (),
                         Ordering::Greater => {
@@ -431,12 +430,12 @@ fn details_thread<const N: usize>(
     possible_orders_except_one: &[PossibleOrder<N>],
     exact_register_count: NonZeroU16,
     batch_size: NonZeroUsize,
+    collector: &Collector,
 ) -> DetailsThreadInfo {
     if core_affinity::set_for_current(core_id) {
         debug!("Details: Pinned {core_id:?}");
     }
     let mut cycle_combinations = CCParetoFront::default();
-    let collector = Collector::new();
     let mut details =
         CycleCombinationDetails::new(exact_register_count, possible_orders_except_one, puzzle_def);
     let mut processed_candidate_count = 0;
@@ -560,7 +559,7 @@ fn details_thread<const N: usize>(
                         }
                         Err(curr_raw_pruning) => {
                             unsafe {
-                                reclaim::boxed(next_raw_pruning.as_ptr(), &collector);
+                                reclaim::boxed(next_raw_pruning.as_ptr(), collector);
                             }
                             maybe_raw_pruning = curr_raw_pruning;
                         }
@@ -590,6 +589,7 @@ fn dfs_thread<const N: usize>(
     mut mutable: CycleCombinationsTreeMutable,
     pareto_efficient_pruning: &AtomicPtr<u32>,
     possible_orders_except_one: &[PossibleOrder<N>],
+    collector: &Collector,
 ) -> TreeThreadInfo {
     if core_affinity::set_for_current(core_id) {
         debug!("DFS: Pinned {core_id:?}");
@@ -599,7 +599,6 @@ fn dfs_thread<const N: usize>(
 
     let mut old_bucket = 0;
     let mut candidate_count = 0;
-    let collector = Collector::new();
     for (i, possible_order) in possible_orders_except_one
         .iter()
         .enumerate()
@@ -662,7 +661,7 @@ fn dfs_thread<const N: usize>(
             *mutable.registers.first_mut() = i_u32;
             unsafe {
                 search_dfs_helper(
-                    &collector,
+                    collector,
                     &mut mutable,
                     pareto_efficient_pruning,
                     next_possible_orders,
@@ -877,6 +876,7 @@ pub(crate) fn search_dfs<const N: usize>(
     )
     .unwrap();
     let real_time = Instant::now();
+    let collector = Collector::new();
     std::thread::scope(|s| {
         let handles = core_ids
             .into_iter()
@@ -890,6 +890,7 @@ pub(crate) fn search_dfs<const N: usize>(
                 mutable
                     .batch_packed_queue
                     .extend(std::iter::repeat_n(0, batch_size.get()));
+                let collector = &collector;
                 let tree_thread_handle = s.spawn(move || {
                     dfs_thread(
                         core_id,
@@ -899,6 +900,7 @@ pub(crate) fn search_dfs<const N: usize>(
                         mutable,
                         pareto_efficient_pruning,
                         possible_orders_except_one,
+                        collector,
                     )
                 });
                 let candidates_receiver = candidates_receiver.clone();
@@ -916,6 +918,7 @@ pub(crate) fn search_dfs<const N: usize>(
                         possible_orders_except_one,
                         exact_register_count,
                         batch_size,
+                        collector,
                     )
                 });
                 (tree_thread_handle, details_thread_handle)
