@@ -25,7 +25,7 @@ enum SharingState {
 #[derive(Debug, Clone, Copy)]
 pub struct Cycle {
     piece_count: u16,
-    orients: bool,
+    orbit_orientation_exp: u8,
 }
 
 #[derive(Debug, Default)]
@@ -79,7 +79,7 @@ struct RegisterCycleAssignments<const N: usize> {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum PPCycleAssignment {
-    Orbit(u16, bool),
+    Orbit(u16, u8),
     Unassigned,
 }
 
@@ -254,7 +254,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                         .prime_exponent(prime_index);
                     // TODO: widen these!!!
                     let cycle_piece_count = prime.pow(u32::from(register_order_exp));
-                    let PPCycleAssignment::Orbit(orbit_index, orients) =
+                    let PPCycleAssignment::Orbit(orbit_index, orbit_orientation_exp) =
                         register_assignment.cycle_assignments[prime_index]
                     else {
                         unreachable!();
@@ -263,7 +263,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                     let orbit_index2 = usize::from(orbit_index);
                     reg_to_orbits_to_cycles[register_index2][orbit_index2].push(Cycle {
                         piece_count: cycle_piece_count,
-                        orients,
+                        orbit_orientation_exp,
                     });
                     all_exponents ^= all_exponents.isolate_lowest_one();
                 }
@@ -298,7 +298,6 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                 .prime_exponent(prime_index2)
                 .min(register_order_exp)
             {
-                let orients = orbit_orientation_exp != 0;
                 let exp = register_order_exp.saturating_sub(orbit_orientation_exp);
                 let cycle_piece_count = if exp == 0 {
                     0
@@ -324,12 +323,12 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                 self.register_assignments[register_index2].unassigned_exponents_mask ^=
                     1 << prime_index2;
                 self.register_assignments[register_index2].cycle_assignments[prime_index2] =
-                    PPCycleAssignment::Orbit(orbit_index, orients);
+                    PPCycleAssignment::Orbit(orbit_index, orbit_orientation_exp);
                 let old = &mut self.orbit_orientation_constraints
                     [register_index2 * self.puzzle_def.orbit_defs().len().get() + orbit_index2];
                 match old {
                     OrbitOrientationConstraint::None => {
-                        if orients {
+                        if orbit_orientation_exp != 0 {
                             *old = OrbitOrientationConstraint::Unsatisfied;
                         }
                     }
@@ -523,7 +522,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
 
                             slot.unassigned_exponents_mask ^= 1 << prime_index;
                             slot.cycle_assignments[prime_index] =
-                                PPCycleAssignment::Orbit(orbit_index, true);
+                                PPCycleAssignment::Orbit(orbit_index, orbit_orientation_exp);
                             return true;
                         }
                     }
