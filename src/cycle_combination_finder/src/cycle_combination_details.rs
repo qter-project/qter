@@ -15,12 +15,12 @@ use crate::{
     },
 };
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
-enum SharingState {
-    None,
-    Orientation,
-    Parity,
-}
+// #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
+// enum SharingState {
+//     None,
+//     Orientation,
+//     Parity,
+// }
 
 #[derive(Debug, Clone, Copy)]
 pub struct Cycle {
@@ -63,10 +63,10 @@ pub struct CycleCombinationDetails<'a, 'b, const N: usize> {
     initial_orbit_remaining_piece_counts: Box<[u16]>,
     /// Read-only
     initial_component_remaining_piece_counts: Box<[u32]>,
-    /// Gives the best registers (register index, the exponent)
-    register_exponent_sorter: Vec<(u16, u8)>,
-    /// Gives the best orientation orders
-    best_orientations_queue: [BestOrientation; 9],
+    // /// Gives the best registers (register index, the exponent)
+    // register_exponent_sorter: Vec<(u16, u8)>,
+    // /// Gives the best orientation orders
+    // best_orientations_queue: [BestOrientation; 9],
 }
 
 #[derive(Debug, Clone)]
@@ -83,19 +83,19 @@ enum PPCycleAssignment {
     Unassigned,
 }
 
-#[derive(Debug, Clone, Copy)]
-enum BestOrientation {
-    Orbit(u16, SharingState),
-    Ambiguous,
-    Unassigned,
-}
+// #[derive(Debug, Clone, Copy)]
+// enum BestOrientation {
+//     Orbit(u16, SharingState),
+//     Ambiguous,
+//     Unassigned,
+// }
 
-#[derive(Debug, Clone, Copy)]
-enum SaturatingOrbit {
-    Orbit(u16, u8, SharingState),
-    Ambiguous,
-    None,
-}
+// #[derive(Debug, Clone, Copy)]
+// enum SaturatingOrbit {
+//     Orbit(u16, u8, SharingState),
+//     Ambiguous,
+//     None,
+// }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 enum OrbitOrientationConstraint {
@@ -106,30 +106,30 @@ enum OrbitOrientationConstraint {
     // SatisfiedByLeftoverPieces,
 }
 
-impl SharingState {
-    fn required_pieces(self, have_orienting_sharing_cycle: bool) -> u16 {
-        match self {
-            SharingState::None => 0,
-            SharingState::Orientation if have_orienting_sharing_cycle => 0,
-            SharingState::Orientation => 1,
-            SharingState::Parity => 2,
-        }
-    }
+// impl SharingState {
+//     fn required_pieces(self, have_orienting_sharing_cycle: bool) -> u16 {
+//         match self {
+//             SharingState::None => 0,
+//             SharingState::Orientation if have_orienting_sharing_cycle => 0,
+//             SharingState::Orientation => 1,
+//             SharingState::Parity => 2,
+//         }
+//     }
 
-    fn enough_leftover_pieces(
-        self,
-        orbit_remaining_piece_count: u16,
-        component_remaining_piece_count: u32,
-        have_orienting_sharing_cycle: bool,
-    ) -> bool {
-        let required_pieces = self.required_pieces(have_orienting_sharing_cycle);
-        match self {
-            SharingState::None => true,
-            SharingState::Orientation => orbit_remaining_piece_count >= required_pieces,
-            SharingState::Parity => component_remaining_piece_count >= u32::from(required_pieces),
-        }
-    }
-}
+//     fn enough_leftover_pieces(
+//         self,
+//         orbit_remaining_piece_count: u16,
+//         component_remaining_piece_count: u32,
+//         have_orienting_sharing_cycle: bool,
+//     ) -> bool {
+//         let required_pieces = self.required_pieces(have_orienting_sharing_cycle);
+//         match self {
+//             SharingState::None => true,
+//             SharingState::Orientation => orbit_remaining_piece_count >= required_pieces,
+//             SharingState::Parity => component_remaining_piece_count >= u32::from(required_pieces),
+//         }
+//     }
+// }
 
 impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
     #[must_use]
@@ -177,9 +177,9 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
             })
             .collect::<Box<[_]>>();
         let initial_component_remaining_piece_counts = component_remaining_piece_counts.clone();
-        let register_exponent_sorter =
-            Vec::with_capacity(NonZeroUsize::from(exact_register_count).get());
-        let best_orientations_queue = [BestOrientation::Unassigned; 9];
+        // let register_exponent_sorter =
+        //     Vec::with_capacity(NonZeroUsize::from(exact_register_count).get());
+        // let best_orientations_queue = [BestOrientation::Unassigned; 9];
         Self {
             possible_orders_except_one,
             puzzle_def,
@@ -191,8 +191,8 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
             component_remaining_piece_counts,
             initial_orbit_remaining_piece_counts,
             initial_component_remaining_piece_counts,
-            register_exponent_sorter,
-            best_orientations_queue,
+            // register_exponent_sorter,
+            // best_orientations_queue,
         }
     }
 
@@ -378,213 +378,213 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                 all_exponents.to_bitmask();
             orienting_registers_prime_mask |= all_exponents;
         }
-        let orienting_registers_prime_mask = orienting_registers_prime_mask.to_bitmask();
+        // let orienting_registers_prime_mask = orienting_registers_prime_mask.to_bitmask();
 
-        let mut orienting_registers_prime_mask2 = orienting_registers_prime_mask;
-        while orienting_registers_prime_mask2 != 0 {
-            let prime_index = orienting_registers_prime_mask2.trailing_zeros() as usize;
-            let prime = FIRST_65_PRIMES[prime_index];
-            self.best_orientations_queue
-                .fill(BestOrientation::Unassigned);
-            for (orbit_index, (orientation_exps, &orbit_def)) in self
-                .puzzle_def
-                .orientations_exps()
-                .iter()
-                .zip(self.puzzle_def.orbit_defs().iter())
-                .enumerate()
-            {
-                let orbit_index = orbit_index_cast(orbit_index);
-                // counterexample:
-                // o1: 5 pieces 48 ori
-                //
-                // fit 576: 3 3 2 2 2 2 2 2
-                //
-                // if you go with 3 (worse); 9 cycle -> 3 cycle; saves 6 pieces
-                // if you go with 2 (better); 64 cycle -> 4 cycle; saves 60 pieces
-                let exactly_prime_factors =
-                    (orientation_exps.0.simd_ne(Simd::splat(0)).to_bitmask()
-                        & orienting_registers_prime_mask)
-                        == (1 << prime_index);
-                if !exactly_prime_factors {
-                    continue;
-                }
-                let orbit_orientation_exp = orientation_exps.prime_exponent(prime_index);
-                let required_extra_pieces = if prime_index == 0
-                    && (orbit_def.parity_constraint == ParityConstraint::Even
-                        || orbit_def.parity_constraint == ParityConstraint::None)
-                {
-                    // - 2^n is not necessarily valid with +1 of space because of parity
-                    // we COULD parity swap with another orbit; however we just focus on the
-                    // worst case
-                    SharingState::Parity
-                } else if matches!(
-                    orbit_def.orientation,
-                    OrientationStatus::CanOrient {
-                        count: _,
-                        sum_constraint: OrientationSumConstraint::Zero
-                    }
-                ) {
-                    // - x^n is not necessarily valid with +0 of space because of
-                    // orientation
-                    SharingState::Orientation
-                } else {
-                    SharingState::None
-                };
+        // let mut orienting_registers_prime_mask2 = orienting_registers_prime_mask;
+        // while orienting_registers_prime_mask2 != 0 {
+        //     let prime_index = orienting_registers_prime_mask2.trailing_zeros() as usize;
+        //     let prime = FIRST_65_PRIMES[prime_index];
+        //     self.best_orientations_queue
+        //         .fill(BestOrientation::Unassigned);
+        //     for (orbit_index, (orientation_exps, &orbit_def)) in self
+        //         .puzzle_def
+        //         .orientations_exps()
+        //         .iter()
+        //         .zip(self.puzzle_def.orbit_defs().iter())
+        //         .enumerate()
+        //     {
+        //         let orbit_index = orbit_index_cast(orbit_index);
+        //         // counterexample:
+        //         // o1: 5 pieces 48 ori
+        //         //
+        //         // fit 576: 3 3 2 2 2 2 2 2
+        //         //
+        //         // if you go with 3 (worse); 9 cycle -> 3 cycle; saves 6 pieces
+        //         // if you go with 2 (better); 64 cycle -> 4 cycle; saves 60 pieces
+        //         let exactly_prime_factors =
+        //             (orientation_exps.0.simd_ne(Simd::splat(0)).to_bitmask()
+        //                 & orienting_registers_prime_mask)
+        //                 == (1 << prime_index);
+        //         if !exactly_prime_factors {
+        //             continue;
+        //         }
+        //         let orbit_orientation_exp = orientation_exps.prime_exponent(prime_index);
+        //         let required_extra_pieces = if prime_index == 0
+        //             && (orbit_def.parity_constraint == ParityConstraint::Even
+        //                 || orbit_def.parity_constraint == ParityConstraint::None)
+        //         {
+        //             // - 2^n is not necessarily valid with +1 of space because of parity
+        //             // we COULD parity swap with another orbit; however we just focus on the
+        //             // worst case
+        //             SharingState::Parity
+        //         } else if matches!(
+        //             orbit_def.orientation,
+        //             OrientationStatus::CanOrient {
+        //                 count: _,
+        //                 sum_constraint: OrientationSumConstraint::Zero
+        //             }
+        //         ) {
+        //             // - x^n is not necessarily valid with +0 of space because of
+        //             // orientation
+        //             SharingState::Orientation
+        //         } else {
+        //             SharingState::None
+        //         };
 
-                // If there is an ambiguity among an exponent between two exponents,
-                // we can assign a register to either; this violates the guarantee
-                let slot = &mut self.best_orientations_queue[usize::from(orbit_orientation_exp)];
-                match slot {
-                    BestOrientation::Orbit(..) => *slot = BestOrientation::Ambiguous,
-                    BestOrientation::Unassigned => {
-                        *slot = BestOrientation::Orbit(orbit_index, required_extra_pieces);
-                    }
-                    BestOrientation::Ambiguous => (),
-                }
-            }
+        //         // If there is an ambiguity among an exponent between two exponents,
+        //         // we can assign a register to either; this violates the guarantee
+        //         let slot = &mut self.best_orientations_queue[usize::from(orbit_orientation_exp)];
+        //         match slot {
+        //             BestOrientation::Orbit(..) => *slot = BestOrientation::Ambiguous,
+        //             BestOrientation::Unassigned => {
+        //                 *slot = BestOrientation::Orbit(orbit_index, required_extra_pieces);
+        //             }
+        //             BestOrientation::Ambiguous => (),
+        //         }
+        //     }
 
-            // For the current prime index, iterate through every register and figure out
-            // which registers have the largest power of this prime.
-            self.register_exponent_sorter.extend(
-                registers
-                    .iter_orders(self.possible_orders_except_one)
-                    .enumerate()
-                    .filter_map(|(register_index2, possible_order)| {
-                        let register_index = register_index_cast(register_index2);
-                        let register_order_exp = possible_order.order.prime_exponent(prime_index);
-                        // - 2^1 is not always best
-                        // at register_order_exp==0, we no longer have primes in this register
-                        // order, so there is nothing to assign
-                        if prime_index == 0 && register_order_exp == 1 || register_order_exp == 0 {
-                            None
-                        } else {
-                            Some((register_index, register_order_exp))
-                        }
-                    }),
-            );
-            self.register_exponent_sorter
-                .sort_unstable_by_key(|&(_, register_order_exp)| {
-                    std::cmp::Reverse(register_order_exp)
-                });
+        //     // For the current prime index, iterate through every register and figure out
+        //     // which registers have the largest power of this prime.
+        //     self.register_exponent_sorter.extend(
+        //         registers
+        //             .iter_orders(self.possible_orders_except_one)
+        //             .enumerate()
+        //             .filter_map(|(register_index2, possible_order)| {
+        //                 let register_index = register_index_cast(register_index2);
+        //                 let register_order_exp = possible_order.order.prime_exponent(prime_index);
+        //                 // - 2^1 is not always best
+        //                 // at register_order_exp==0, we no longer have primes in this register
+        //                 // order, so there is nothing to assign
+        //                 if prime_index == 0 && register_order_exp == 1 || register_order_exp == 0 {
+        //                     None
+        //                 } else {
+        //                     Some((register_index, register_order_exp))
+        //                 }
+        //             }),
+        //     );
+        //     self.register_exponent_sorter
+        //         .sort_unstable_by_key(|&(_, register_order_exp)| {
+        //             std::cmp::Reverse(register_order_exp)
+        //         });
 
-            // Try to fit a register's prime power cycle into an orbit such that it would
-            // benefit the most from a share
-            for (register_index, register_order_exp) in self.register_exponent_sorter.drain(..) {
-                let register_index2 = usize::from(register_index);
-                let slot = &mut self.register_assignments[register_index2];
-                let mut try_assign_pp_to_orbit = |orbit_index: u16,
-                                                  orbit_orientation_exp: u8,
-                                                  required_extra_pieces: SharingState|
-                 -> bool {
-                    let orbit_index2 = usize::from(orbit_index);
-                    let orbit_remaining_piece_count =
-                        &mut self.orbit_remaining_piece_counts[orbit_index2];
-                    let orbit_orientation_constraint = &mut self.orbit_orientation_constraints
-                        [register_index2 * self.puzzle_def.orbit_defs().len().get() + orbit_index2];
-                    let exp = register_order_exp.saturating_sub(orbit_orientation_exp);
-                    let cycle_piece_count = if exp == 0 {
-                        0
-                    } else {
-                        prime.pow(u32::from(exp))
-                    };
+        //     // Try to fit a register's prime power cycle into an orbit such that it would
+        //     // benefit the most from a share
+        //     for (register_index, register_order_exp) in self.register_exponent_sorter.drain(..) {
+        //         let register_index2 = usize::from(register_index);
+        //         let slot = &mut self.register_assignments[register_index2];
+        //         let mut try_assign_pp_to_orbit = |orbit_index: u16,
+        //                                           orbit_orientation_exp: u8,
+        //                                           required_extra_pieces: SharingState|
+        //          -> bool {
+        //             let orbit_index2 = usize::from(orbit_index);
+        //             let orbit_remaining_piece_count =
+        //                 &mut self.orbit_remaining_piece_counts[orbit_index2];
+        //             let orbit_orientation_constraint = &mut self.orbit_orientation_constraints
+        //                 [register_index2 * self.puzzle_def.orbit_defs().len().get() + orbit_index2];
+        //             let exp = register_order_exp.saturating_sub(orbit_orientation_exp);
+        //             let cycle_piece_count = if exp == 0 {
+        //                 0
+        //             } else {
+        //                 prime.pow(u32::from(exp))
+        //             };
 
-                    if let Some(next_orbit_remaining_piece_count) =
-                        orbit_remaining_piece_count.checked_sub(cycle_piece_count)
-                    {
-                        let component_remaining_piece_count = &mut self
-                            .component_remaining_piece_counts[usize::from(
-                            self.puzzle_def.orbit_index_to_component_index(orbit_index),
-                        )];
-                        let next_component_remaining_piece_count =
-                            *component_remaining_piece_count - u32::from(cycle_piece_count);
+        //             if let Some(next_orbit_remaining_piece_count) =
+        //                 orbit_remaining_piece_count.checked_sub(cycle_piece_count)
+        //             {
+        //                 let component_remaining_piece_count = &mut self
+        //                     .component_remaining_piece_counts[usize::from(
+        //                     self.puzzle_def.orbit_index_to_component_index(orbit_index),
+        //                 )];
+        //                 let next_component_remaining_piece_count =
+        //                     *component_remaining_piece_count - u32::from(cycle_piece_count);
 
-                        if required_extra_pieces.enough_leftover_pieces(
-                            next_orbit_remaining_piece_count,
-                            next_component_remaining_piece_count,
-                            // Assume worse case; it is otherwise not simple to keep track of when
-                            // an orbit has an orienting cycle during this stage (it requires at
-                            // least a pass of all primes)
-                            false,
-                        ) {
-                            *orbit_remaining_piece_count = next_orbit_remaining_piece_count;
-                            *component_remaining_piece_count = next_component_remaining_piece_count;
-                            let orbit_def = self.puzzle_def.orbit_defs()[orbit_index2];
-                            if matches!(
-                                orbit_def.orientation,
-                                OrientationStatus::CanOrient {
-                                    count: _,
-                                    sum_constraint: OrientationSumConstraint::Zero
-                                }
-                            ) {
-                                *orbit_orientation_constraint =
-                                    OrbitOrientationConstraint::Unsatisfied;
-                            }
+        //                 if required_extra_pieces.enough_leftover_pieces(
+        //                     next_orbit_remaining_piece_count,
+        //                     next_component_remaining_piece_count,
+        //                     // Assume worse case; it is otherwise not simple to keep track of when
+        //                     // an orbit has an orienting cycle during this stage (it requires at
+        //                     // least a pass of all primes)
+        //                     false,
+        //                 ) {
+        //                     *orbit_remaining_piece_count = next_orbit_remaining_piece_count;
+        //                     *component_remaining_piece_count = next_component_remaining_piece_count;
+        //                     let orbit_def = self.puzzle_def.orbit_defs()[orbit_index2];
+        //                     if matches!(
+        //                         orbit_def.orientation,
+        //                         OrientationStatus::CanOrient {
+        //                             count: _,
+        //                             sum_constraint: OrientationSumConstraint::Zero
+        //                         }
+        //                     ) {
+        //                         *orbit_orientation_constraint =
+        //                             OrbitOrientationConstraint::Unsatisfied;
+        //                     }
 
-                            slot.unassigned_exponents_mask ^= 1 << prime_index;
-                            slot.cycle_assignments[prime_index] =
-                                PPCycleAssignment::Orbit(orbit_index, orbit_orientation_exp);
-                            return true;
-                        }
-                    }
-                    false
-                };
-                // Descending exp order of available orientation-sharing cycles
-                let mut saturated_orbit_found = SaturatingOrbit::None;
-                for (orbit_index, orbit_orientation_exp, required_extra_pieces) in self
-                    .best_orientations_queue
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(orbit_orientation_exp, &slot)| {
-                        if let BestOrientation::Orbit(orbit_index, required_share) = slot {
-                            // array is 9 elements long
-                            #[allow(clippy::cast_possible_truncation)]
-                            Some((orbit_index, orbit_orientation_exp as u8, required_share))
-                        } else {
-                            None
-                        }
-                    })
-                    .rev()
-                {
-                    // Orbit provides more orientation than needed for this register order. We may
-                    // still have the ambiguous case
-                    if orbit_orientation_exp >= register_order_exp {
-                        trace!(
-                            "prime={prime}; reg={register_index}; {orbit_orientation_exp:?} > \
-                             {register_order_exp}"
-                        );
-                        if let SaturatingOrbit::Orbit(..) = saturated_orbit_found {
-                            saturated_orbit_found = SaturatingOrbit::Ambiguous;
-                        } else {
-                            saturated_orbit_found = SaturatingOrbit::Orbit(
-                                orbit_index,
-                                orbit_orientation_exp,
-                                required_extra_pieces,
-                            );
-                        }
-                    } else if try_assign_pp_to_orbit(
-                        orbit_index,
-                        orbit_orientation_exp,
-                        required_extra_pieces,
-                    ) {
-                        break;
-                    }
-                }
-                if let SaturatingOrbit::Orbit(
-                    orbit_index,
-                    orbit_orientation_exp,
-                    required_extra_pieces,
-                ) = saturated_orbit_found
-                {
-                    try_assign_pp_to_orbit(
-                        orbit_index,
-                        orbit_orientation_exp,
-                        required_extra_pieces,
-                    );
-                }
-            }
+        //                     slot.unassigned_exponents_mask ^= 1 << prime_index;
+        //                     slot.cycle_assignments[prime_index] =
+        //                         PPCycleAssignment::Orbit(orbit_index, orbit_orientation_exp);
+        //                     return true;
+        //                 }
+        //             }
+        //             false
+        //         };
+        //         // Descending exp order of available orientation-sharing cycles
+        //         let mut saturated_orbit_found = SaturatingOrbit::None;
+        //         for (orbit_index, orbit_orientation_exp, required_extra_pieces) in self
+        //             .best_orientations_queue
+        //             .iter()
+        //             .enumerate()
+        //             .filter_map(|(orbit_orientation_exp, &slot)| {
+        //                 if let BestOrientation::Orbit(orbit_index, required_share) = slot {
+        //                     // array is 9 elements long
+        //                     #[allow(clippy::cast_possible_truncation)]
+        //                     Some((orbit_index, orbit_orientation_exp as u8, required_share))
+        //                 } else {
+        //                     None
+        //                 }
+        //             })
+        //             .rev()
+        //         {
+        //             // Orbit provides more orientation than needed for this register order. We may
+        //             // still have the ambiguous case
+        //             if orbit_orientation_exp >= register_order_exp {
+        //                 trace!(
+        //                     "prime={prime}; reg={register_index}; {orbit_orientation_exp:?} > \
+        //                      {register_order_exp}"
+        //                 );
+        //                 if let SaturatingOrbit::Orbit(..) = saturated_orbit_found {
+        //                     saturated_orbit_found = SaturatingOrbit::Ambiguous;
+        //                 } else {
+        //                     saturated_orbit_found = SaturatingOrbit::Orbit(
+        //                         orbit_index,
+        //                         orbit_orientation_exp,
+        //                         required_extra_pieces,
+        //                     );
+        //                 }
+        //             } else if try_assign_pp_to_orbit(
+        //                 orbit_index,
+        //                 orbit_orientation_exp,
+        //                 required_extra_pieces,
+        //             ) {
+        //                 break;
+        //             }
+        //         }
+        //         if let SaturatingOrbit::Orbit(
+        //             orbit_index,
+        //             orbit_orientation_exp,
+        //             required_extra_pieces,
+        //         ) = saturated_orbit_found
+        //         {
+        //             try_assign_pp_to_orbit(
+        //                 orbit_index,
+        //                 orbit_orientation_exp,
+        //                 required_extra_pieces,
+        //             );
+        //         }
+        //     }
 
-            orienting_registers_prime_mask2 ^= orienting_registers_prime_mask2.isolate_lowest_one();
-        }
+        //     orienting_registers_prime_mask2 ^= orienting_registers_prime_mask2.isolate_lowest_one();
+        // }
 
         // for (i, x) in self.reg_to_assignments.iter().enumerate() {
         //     #[allow(clippy::missing_panics_doc)]
