@@ -315,6 +315,7 @@ mod tests {
     use std::num::NonZeroU16;
 
     use crate::{
+        cycle_combinations_tree::dbg_registers,
         finder::{CycleCombinationFinder, CycleCombinations},
         puzzle::{
             cubeN::CUBE3,
@@ -406,11 +407,21 @@ mod tests {
     #[test_log::test]
     fn cube3_optimal_2() {
         let cube3 = CUBE3.clone();
-        CycleCombinationFinder::builder()
+        let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(cube3)
             .with_register_count(NonZeroU16::new(2).unwrap())
             .with_expected_length_assertion(5)
             .find()
             .unwrap();
+        // println!("{:?}", ret.data);
+        for x in ret.data {
+            println!(
+                "{}",
+                dbg_registers(
+                    x.inner.registers.iter().copied(),
+                    &ret.possible_orders_except_one,
+                )
+            );
+        }
     }
 }

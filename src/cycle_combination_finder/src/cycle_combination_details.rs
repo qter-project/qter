@@ -53,7 +53,7 @@ pub struct CycleCombinationDetails<'a, 'b, const N: usize> {
     /// Map of every register, to its cycles, to which orbit its prime power
     /// component is assigned to and bitmask
     register_assignments: Box<[RegisterCycleAssignments<N>]>,
-    register_orbits_constraints: Box<[RegisterOrbitConstraint]>,
+    orbit_orientation_constraints: Box<[OrbitOrientationConstraint]>,
     /// Remaining piece count for every orbit
     orbit_remaining_piece_counts: Box<[u16]>,
     /// Remaining piece count for every connected orbit; used for parity
@@ -62,16 +62,11 @@ pub struct CycleCombinationDetails<'a, 'b, const N: usize> {
     /// Read-only
     initial_orbit_remaining_piece_counts: Box<[u16]>,
     /// Read-only
-    component_remaining_piece_counts2: Box<[u32]>,
+    initial_component_remaining_piece_counts: Box<[u32]>,
     /// Gives the best registers (register index, the exponent)
     register_exponent_sorter: Vec<(u16, u8)>,
     /// Gives the best orientation orders
     best_orientations_queue: [BestOrientation; 9],
-}
-
-#[derive(Debug, Clone, Copy)]
-struct RegisterOrbitConstraint {
-    orbit_orientation_constraint: OrbitOrientationConstraint,
 }
 
 #[derive(Debug, Clone)]
@@ -84,7 +79,7 @@ struct RegisterCycleAssignments<const N: usize> {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum PPCycleAssignment {
-    Orbit(u16, SharingState),
+    Orbit(u16, bool),
     Unassigned,
 }
 
@@ -107,9 +102,9 @@ enum OrbitOrientationConstraint {
     None,
     Unsatisfied,
     Satisfied,
+    // SatisfiedByRegisterCycle,
+    // SatisfiedByLeftoverPieces,
 }
-
-// TODO: make this work with none orientation sum constraint
 
 impl SharingState {
     fn required_pieces(self, have_orienting_sharing_cycle: bool) -> u16 {
@@ -154,10 +149,8 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
             NonZeroUsize::from(exact_register_count).get()
         ]
         .into_boxed_slice();
-        let register_orbits_constraints = vec![
-            RegisterOrbitConstraint {
-                orbit_orientation_constraint: OrbitOrientationConstraint::None,
-            };
+        let orbit_orientation_constraints = vec![
+            OrbitOrientationConstraint::None;
             NonZeroUsize::from(exact_register_count).get()
                 * puzzle_def.orbit_defs().len().get()
         ]
@@ -183,7 +176,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                     .sum()
             })
             .collect::<Box<[_]>>();
-        let component_remaining_piece_counts2 = component_remaining_piece_counts.clone();
+        let initial_component_remaining_piece_counts = component_remaining_piece_counts.clone();
         let register_exponent_sorter =
             Vec::with_capacity(NonZeroUsize::from(exact_register_count).get());
         let best_orientations_queue = [BestOrientation::Unassigned; 9];
@@ -193,11 +186,11 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
             solutions: None,
             exact_register_count,
             register_assignments,
-            register_orbits_constraints,
+            orbit_orientation_constraints,
             orbit_remaining_piece_counts,
             component_remaining_piece_counts,
             initial_orbit_remaining_piece_counts,
-            component_remaining_piece_counts2,
+            initial_component_remaining_piece_counts,
             register_exponent_sorter,
             best_orientations_queue,
         }
@@ -216,16 +209,15 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
             // we do not have to care about the mod 2 case; when we have more than 1 cycle
             // we can always fit by just picking two to orient
             if self
-                .register_orbits_constraints
+                .orbit_orientation_constraints
                 .iter()
                 .skip(register_index2 * self.puzzle_def.orbit_defs().len().get())
                 .take(self.puzzle_def.orbit_defs().len().get())
                 .zip(&self.orbit_remaining_piece_counts)
                 .any(
-                    |(register_orbits_constraint, &orbit_remaining_piece_count)| {
+                    |(&orbit_orientation_constraint, &orbit_remaining_piece_count)| {
                         // TODO: this logic works but is weird
-                        register_orbits_constraint.orbit_orientation_constraint
-                            == OrbitOrientationConstraint::Unsatisfied
+                        orbit_orientation_constraint == OrbitOrientationConstraint::Unsatisfied
                             && orbit_remaining_piece_count == 0
                     },
                 )
@@ -269,7 +261,6 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                     };
 
                     let orbit_index2 = usize::from(orbit_index);
-                    let orients = orients == SharingState::Orientation;
                     reg_to_orbits_to_cycles[register_index2][orbit_index2].push(Cycle {
                         piece_count: cycle_piece_count,
                         orients,
@@ -295,61 +286,73 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
             .order
             .prime_exponent(prime_index2);
 
-        let cycle_piece_count = prime.pow(u32::from(register_order_exp));
-
         for orbit_index2 in 0..self.puzzle_def.orbit_defs().len().get() {
             // TODO: min piece count pruning
             let orbit_index = orbit_index_cast(orbit_index2);
+            let orientation_exp = &self.puzzle_def.orientations_exps()[orbit_index2];
             let orbit_remaining_piece_count = self.orbit_remaining_piece_counts[orbit_index2];
             let component_remaining_piece_count = self.component_remaining_piece_counts
                 [usize::from(self.puzzle_def.orbit_index_to_component_index(orbit_index))];
 
-            let Some(next_orbit_remaining_piece_count) =
-                orbit_remaining_piece_count.checked_sub(cycle_piece_count)
-            else {
-                continue;
-            };
+            for orbit_orientation_exp in 0..=orientation_exp
+                .prime_exponent(prime_index2)
+                .min(register_order_exp)
+            {
+                let orients = orbit_orientation_exp != 0;
+                let exp = register_order_exp.saturating_sub(orbit_orientation_exp);
+                let cycle_piece_count = if exp == 0 {
+                    0
+                } else {
+                    prime.pow(u32::from(exp))
+                };
+                let Some(next_orbit_remaining_piece_count) =
+                    orbit_remaining_piece_count.checked_sub(cycle_piece_count)
+                else {
+                    continue;
+                };
 
-            let next_component_remaining_piece_count =
-                component_remaining_piece_count - u32::from(cycle_piece_count);
+                let next_component_remaining_piece_count =
+                    component_remaining_piece_count - u32::from(cycle_piece_count);
 
-            self.orbit_remaining_piece_counts[orbit_index2] = next_orbit_remaining_piece_count;
-            self.component_remaining_piece_counts
-                [usize::from(self.puzzle_def.orbit_index_to_component_index(orbit_index))] =
-                next_component_remaining_piece_count;
-            // TODO: orientation constraints were worst-case in preassignment; consider
-            // those TODO: parity swap and orientation swap the 2 cycles
-            // that were ignored
-            self.register_assignments[register_index2].unassigned_exponents_mask ^=
-                1 << prime_index2;
-            self.register_assignments[register_index2].cycle_assignments[prime_index2] =
-                PPCycleAssignment::Orbit(orbit_index, SharingState::None);
-            let old = self.register_orbits_constraints
-                [register_index2 * self.puzzle_def.orbit_defs().len().get() + orbit_index2];
-            match old.orbit_orientation_constraint {
-                OrbitOrientationConstraint::None => {
-                    // TODO: make unsatisfied if this orbit orients.
+                self.orbit_remaining_piece_counts[orbit_index2] = next_orbit_remaining_piece_count;
+                self.component_remaining_piece_counts
+                    [usize::from(self.puzzle_def.orbit_index_to_component_index(orbit_index))] =
+                    next_component_remaining_piece_count;
+                // TODO: orientation constraints were worst-case in preassignment; consider
+                // those TODO: parity swap and orientation swap the 2 cycles
+                // that were ignored
+                self.register_assignments[register_index2].unassigned_exponents_mask ^=
+                    1 << prime_index2;
+                self.register_assignments[register_index2].cycle_assignments[prime_index2] =
+                    PPCycleAssignment::Orbit(orbit_index, orients);
+                let old = &mut self.orbit_orientation_constraints
+                    [register_index2 * self.puzzle_def.orbit_defs().len().get() + orbit_index2];
+                match old {
+                    OrbitOrientationConstraint::None => {
+                        if orients {
+                            *old = OrbitOrientationConstraint::Unsatisfied;
+                        }
+                    }
+                    OrbitOrientationConstraint::Unsatisfied => {
+                        *old = OrbitOrientationConstraint::Satisfied;
+                    }
+                    OrbitOrientationConstraint::Satisfied => (),
                 }
-                OrbitOrientationConstraint::Unsatisfied => {
-                    self.register_orbits_constraints[register_index2
-                        * self.puzzle_def.orbit_defs().len().get()
-                        + orbit_index2]
-                        .orbit_orientation_constraint = OrbitOrientationConstraint::Satisfied;
-                }
-                OrbitOrientationConstraint::Satisfied => (),
+                let old = *old;
+
+                self.recursive_backtrack(registers, register_index, component_parity_constraint);
+
+                self.orbit_remaining_piece_counts[orbit_index2] = orbit_remaining_piece_count;
+                self.component_remaining_piece_counts
+                    [usize::from(self.puzzle_def.orbit_index_to_component_index(orbit_index))] =
+                    component_remaining_piece_count;
+                self.register_assignments[register_index2].unassigned_exponents_mask |=
+                    1 << prime_index2;
+                // We don't need to unassign the orbit because it will get overwritten later
+                self.orbit_orientation_constraints
+                    [register_index2 * self.puzzle_def.orbit_defs().len().get() + orbit_index2] =
+                    old;
             }
-
-            self.recursive_backtrack(registers, register_index, component_parity_constraint);
-
-            self.orbit_remaining_piece_counts[orbit_index2] = orbit_remaining_piece_count;
-            self.component_remaining_piece_counts
-                [usize::from(self.puzzle_def.orbit_index_to_component_index(orbit_index))] =
-                component_remaining_piece_count;
-            self.register_assignments[register_index2].unassigned_exponents_mask |=
-                1 << prime_index2;
-            // We don't need to unassign the orbit because it will get overwritten later
-            self.register_orbits_constraints
-                [register_index2 * self.puzzle_def.orbit_defs().len().get() + orbit_index2] = old;
         }
     }
 
@@ -358,7 +361,9 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
         self.orbit_remaining_piece_counts
             .clone_from_slice(&self.initial_orbit_remaining_piece_counts);
         self.component_remaining_piece_counts
-            .clone_from_slice(&self.component_remaining_piece_counts2);
+            .clone_from_slice(&self.initial_component_remaining_piece_counts);
+        self.orbit_orientation_constraints
+            .fill(OrbitOrientationConstraint::None);
 
         // Every prime used by the register orders
         let mut orienting_registers_prime_mask = Mask::splat(false);
@@ -475,7 +480,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                     let orbit_index2 = usize::from(orbit_index);
                     let orbit_remaining_piece_count =
                         &mut self.orbit_remaining_piece_counts[orbit_index2];
-                    let register_orbit_constraint = &mut self.register_orbits_constraints
+                    let orbit_orientation_constraint = &mut self.orbit_orientation_constraints
                         [register_index2 * self.puzzle_def.orbit_defs().len().get() + orbit_index2];
                     let exp = register_order_exp.saturating_sub(orbit_orientation_exp);
                     let cycle_piece_count = if exp == 0 {
@@ -512,13 +517,13 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                                     sum_constraint: OrientationSumConstraint::Zero
                                 }
                             ) {
-                                register_orbit_constraint.orbit_orientation_constraint =
+                                *orbit_orientation_constraint =
                                     OrbitOrientationConstraint::Unsatisfied;
                             }
 
                             slot.unassigned_exponents_mask ^= 1 << prime_index;
                             slot.cycle_assignments[prime_index] =
-                                PPCycleAssignment::Orbit(orbit_index, required_extra_pieces);
+                                PPCycleAssignment::Orbit(orbit_index, true);
                             return true;
                         }
                     }
