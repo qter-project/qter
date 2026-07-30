@@ -55,7 +55,7 @@
   - any puzzle https://github.com/cubing/twsearch/blob/main/src/cpp/index.cpp
 - spam debug_assert!()
 - special version of a decrement algorithm for each register that would be allowed to mess up the entire rest of the cube?
-- solve for all cycle structures from CCF at once vs many runs of single cycle structure at a time
+- solve for all cycle structures from CCF at once
 - ⭐pruning table
   - generate table during the solve
     - if the number of probes exceeds the number of set values in the table by a certain factor (3x?) it considers generating another level of the table, if there is enough memory to do so
