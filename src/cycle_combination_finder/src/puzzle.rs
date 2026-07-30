@@ -49,6 +49,12 @@ pub enum PuzzleDefCreationError {
     OrbitTooManyPieces { actual: u16, max: u16 },
     #[error("Orbit has too much orientation. Expected a maximum of {max} but found {actual}")]
     OrbitTooMuchOrientation { actual: u8, max: u16 },
+    #[error(
+        "The CCF only supports puzzle with prime power orientations, due to implementation \
+         difficulty reasons. There is currently progress in making this happen, and support will \
+         be added in a future release."
+    )]
+    NonPrimePowerOrientation { actual: u8 },
 }
 
 #[derive(Clone)]
@@ -331,10 +337,22 @@ impl<const N: usize> PuzzleDef<N> {
             orbit_defs
                 .iter()
                 .map(|orbit_def| {
-                    OrderExps::<N>::try_from(NonZeroU16::from(orbit_def.orientation_count()))
-                        .expect("all u8s are prime power representable")
+                    let orientation_exp =
+                        OrderExps::<N>::try_from(NonZeroU16::from(orbit_def.orientation_count()))
+                            .expect(
+                                "all orientations less than the maximum orientation are prime \
+                                 power representable",
+                            );
+                    if orbit_def.orientation_count().get() == 1 || orientation_exp.is_prime_power()
+                    {
+                        Ok(orientation_exp)
+                    } else {
+                        Err(PuzzleDefCreationError::NonPrimePowerOrientation {
+                            actual: orbit_def.orientation_count().get(),
+                        })
+                    }
                 })
-                .collect::<Vec<_>>(),
+                .collect::<Result<Vec<_>, PuzzleDefCreationError>>()?,
         )
         .expect("`orbit_defs` is non empty");
         #[allow(clippy::missing_panics_doc)]
@@ -566,7 +584,7 @@ mod tests {
                 vec![PartialOrbitDef {
                     piece_count: 1.try_into().unwrap(),
                     orientation: OrientationStatus::CanOrient {
-                        count: u8::try_from(FIRST_65_PRIMES[8]).unwrap() - 1,
+                        count: u8::try_from(FIRST_65_PRIMES[7]).unwrap(),
                         sum_constraint: OrientationSumConstraint::None,
                     },
                 }],
@@ -631,6 +649,36 @@ mod tests {
                     },
                 }],
                 EvenParityConstraints(vec![vec![0]]),
+            )
+            .is_ok()
+        );
+    }
+
+    #[test_log::test]
+    fn non_prime_power_orientation() {
+        assert_matches!(
+            PuzzleDef::<8>::new(
+                vec![PartialOrbitDef {
+                    piece_count: 1.try_into().unwrap(),
+                    orientation: OrientationStatus::CanOrient {
+                        count: 6,
+                        sum_constraint: OrientationSumConstraint::None,
+                    },
+                }],
+                EvenParityConstraints(vec![]),
+            ),
+            Err(PuzzleDefCreationError::NonPrimePowerOrientation { actual: 6 })
+        );
+        assert!(
+            PuzzleDef::<8>::new(
+                vec![PartialOrbitDef {
+                    piece_count: 1.try_into().unwrap(),
+                    orientation: OrientationStatus::CanOrient {
+                        count: 4,
+                        sum_constraint: OrientationSumConstraint::None,
+                    },
+                }],
+                EvenParityConstraints(vec![]),
             )
             .is_ok()
         );
