@@ -264,7 +264,7 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<N>> {
                 None
             };
             let possible_orders = puzzle_def
-                .possible_orders(maybe_pool, true)
+                .possible_orders(maybe_pool)
                 .ok_or(CycleCombinationFinderError::PuzzleTooManyOrders)?;
             let possible_orders_except_one =
                 mk_possible_orders_except_one(puzzle_def, possible_orders);

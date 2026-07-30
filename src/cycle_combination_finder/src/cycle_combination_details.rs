@@ -739,7 +739,7 @@ mod tests {
     fn foo_() {
         let minx3 = MINX3.clone();
         let possible_orders_except_one =
-            mk_possible_orders_except_one(&minx3, minx3.possible_orders(None, true).unwrap());
+            mk_possible_orders_except_one(&minx3, minx3.possible_orders(None).unwrap());
         // 2520 630 420
         let detail = CycleCombinationDetails::new(
             NonZeroU16::new(3).unwrap(),

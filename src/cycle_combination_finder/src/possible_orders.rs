@@ -35,7 +35,6 @@ impl OrbitDef {
     fn possible_orders<const N: usize>(
         self,
         combine_parity_orders: bool,
-        always_maximize_orientation: bool,
     ) -> OrbitPossibleOrders<N> {
         let piece_count = self.piece_count.get();
         let orientation_count = self.orientation_count();
@@ -118,14 +117,7 @@ impl OrbitDef {
             }
         }
 
-        let orientation_order_factors = if always_maximize_orientation {
-            vec![
-                OrderExps::one(),
-                OrderExps::try_from(NonZeroU16::from(orientation_count)).unwrap(),
-            ]
-        } else {
-            divisors(orientation_count)
-        };
+        let orientation_order_factors = divisors(orientation_count);
         let maybe_prime_power_piece_count = if let OrientationStatus::CanOrient {
             count: _,
             sum_constraint: OrientationSumConstraint::Zero,
@@ -180,13 +172,9 @@ impl OrbitDef {
     }
 
     #[must_use]
-    pub fn combined_parity_possible_orders<const N: usize>(
-        self,
-        always_maximize_orientation: bool,
-    ) -> OrdersSet<N> {
+    pub fn combined_parity_possible_orders<const N: usize>(self) -> OrdersSet<N> {
         #[allow(clippy::missing_panics_doc)]
-        let OrbitPossibleOrders::CombinedOrders(combined_orders) =
-            self.possible_orders(true, always_maximize_orientation)
+        let OrbitPossibleOrders::CombinedOrders(combined_orders) = self.possible_orders(true)
         else {
             // `true` returns the `CombinedOrders` variant
             unreachable!();
@@ -197,13 +185,12 @@ impl OrbitDef {
     #[must_use]
     pub fn uncombined_parity_possible_orders<const N: usize>(
         self,
-        always_maximize_orientation: bool,
     ) -> (OrdersSet<N>, Option<OrdersSet<N>>) {
         #[allow(clippy::missing_panics_doc)]
         let OrbitPossibleOrders::ParityOrders {
             even_parity_orders,
             maybe_odd_parity_orders,
-        } = self.possible_orders(false, always_maximize_orientation)
+        } = self.possible_orders(false)
         else {
             // `false` returns the `ParityOrders` variant
             unreachable!();
@@ -285,11 +272,7 @@ fn combine<'a, const N: usize>(
 
 impl<const N: usize> PuzzleDef<N> {
     /// Compute all possible orders for a connected component of orbits.
-    fn connected_component_possible_orders(
-        &self,
-        connected_component: &[u16],
-        always_maximize_orientation: bool,
-    ) -> LcmOrders<N> {
+    fn connected_component_possible_orders(&self, connected_component: &[u16]) -> LcmOrders<N> {
         let even_parity_constraints = self.even_parity_constraints();
 
         match *connected_component {
@@ -298,8 +281,8 @@ impl<const N: usize> PuzzleDef<N> {
                 let orbit_def = self.orbit_defs()[usize::from(singular_component)];
                 return LcmOrders::OrbitOrders(match orbit_def.parity_constraint {
                     ParityConstraint::Even => {
-                        let (component_possible_orders, None) = orbit_def
-                            .uncombined_parity_possible_orders(always_maximize_orientation)
+                        let (component_possible_orders, None) =
+                            orbit_def.uncombined_parity_possible_orders()
                         else {
                             // When this orbit is set to "must be even," `OrbitDef::possible_orders`
                             // does not record odd parity orders.
@@ -308,7 +291,7 @@ impl<const N: usize> PuzzleDef<N> {
                         component_possible_orders
                     }
                     ParityConstraint::None | ParityConstraint::Dependent => {
-                        orbit_def.combined_parity_possible_orders(always_maximize_orientation)
+                        orbit_def.combined_parity_possible_orders()
                     }
                 });
             }
@@ -345,9 +328,9 @@ impl<const N: usize> PuzzleDef<N> {
             .iter()
             .enumerate()
             .flat_map(|(symbol, &orbit_index)| {
-                let (even_parity_orders, Some(odd_parity_orders)) = self.orbit_defs()
-                    [usize::from(orbit_index)]
-                .uncombined_parity_possible_orders(always_maximize_orientation) else {
+                let (even_parity_orders, Some(odd_parity_orders)) =
+                    self.orbit_defs()[usize::from(orbit_index)].uncombined_parity_possible_orders()
+                else {
                     // We would have broken on the guard clause earlier if we only record even
                     // parity orders
                     unreachable!();
@@ -488,19 +471,12 @@ impl<const N: usize> PuzzleDef<N> {
     }
 
     #[must_use]
-    pub fn possible_orders(
-        &self,
-        maybe_pool: Option<ThreadPool>,
-        always_maximize_orientation: bool,
-    ) -> Option<OrdersDashSet<N>> {
+    pub fn possible_orders(&self, maybe_pool: Option<ThreadPool>) -> Option<OrdersDashSet<N>> {
         let work = || {
             self.connected_components()
                 .par_iter()
                 .map(|connected_component| {
-                    Cow::Owned(self.connected_component_possible_orders(
-                        connected_component,
-                        always_maximize_orientation,
-                    ))
+                    Cow::Owned(self.connected_component_possible_orders(connected_component))
                 })
                 .reduce(
                     || Cow::Owned(LcmOrders::OrbitOrders(OrdersSet::default())),
@@ -556,35 +532,25 @@ mod orbit {
 
     const DEBUG: bool = false;
 
-    fn test_possible_orders(
-        orbit_def: OrbitDef,
-        expected: Expected,
-        // always_maximize_orientation: bool,
-    ) {
-        let always_maximize_orientation = false;
+    fn test_possible_orders(orbit_def: OrbitDef, expected: Expected) {
         match orbit_def.piece_count.get() {
-            1..P9 => test_possible_orders_n::<8>(orbit_def, expected, always_maximize_orientation),
+            1..P9 => test_possible_orders_n::<8>(orbit_def, expected),
             P9..P17 => {
-                test_possible_orders_n::<16>(orbit_def, expected, always_maximize_orientation);
+                test_possible_orders_n::<16>(orbit_def, expected);
             }
             P17..P33 => {
-                test_possible_orders_n::<32>(orbit_def, expected, always_maximize_orientation);
+                test_possible_orders_n::<32>(orbit_def, expected);
             }
             P33..P65 => {
-                test_possible_orders_n::<64>(orbit_def, expected, always_maximize_orientation);
+                test_possible_orders_n::<64>(orbit_def, expected);
             }
             _ => panic!("piece count too big"),
         }
     }
 
-    fn test_possible_orders_n<const N: usize>(
-        orbit_def: OrbitDef,
-        expected: Expected,
-        always_maximize_orientation: bool,
-    ) {
+    fn test_possible_orders_n<const N: usize>(orbit_def: OrbitDef, expected: Expected) {
         let mut start = Instant::now();
-        let possible_orders =
-            orbit_def.combined_parity_possible_orders::<N>(always_maximize_orientation);
+        let possible_orders = orbit_def.combined_parity_possible_orders::<N>();
         trace!(
             "Combined orbit orders for {orbit_def:#?} in {}",
             start.elapsed().human(Truncate::Micro)
@@ -615,7 +581,7 @@ mod orbit {
 
         start = Instant::now();
         let (even_parity_possible_orders, maybe_odd_parity_possible_orders) =
-            orbit_def.uncombined_parity_possible_orders::<N>(always_maximize_orientation);
+            orbit_def.uncombined_parity_possible_orders::<N>();
         trace!(
             "Uncombined orbit orders for {orbit_def:#?} in {}",
             start.elapsed().human(Truncate::Micro)
@@ -761,7 +727,7 @@ mod orbit {
             };
             assert_eq!(
                 orbit_def
-                    .combined_parity_possible_orders::<64>(false)
+                    .combined_parity_possible_orders::<64>()
                     .into_iter()
                     .map(|possible_order| u64::try_from(possible_order.as_bigint()).unwrap())
                     .max()
@@ -1195,7 +1161,7 @@ mod puzzle {
         expected_highest_ten: &[Int<U>; 10],
     ) {
         let start = Instant::now();
-        let possible_orders = puzzle_def.possible_orders(None, false).unwrap();
+        let possible_orders = puzzle_def.possible_orders(None).unwrap();
         info!(
             "Possible puzzle orders for {puzzle_def:?} in {}",
             start.elapsed().human(Truncate::Micro)
