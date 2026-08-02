@@ -405,17 +405,16 @@ unsafe fn try_next_pareto_efficient_pruning(
             // A C D can be a solution, followed by B C D
             return maybe_next_pareto_efficient_pruning.map(|next_pareto_efficient_pruning| {
                 debug_assert_eq!(next_pareto_efficient_pruning.len(), raw_pruning_len.get());
-                NonNull::from_mut(Box::leak(next_pareto_efficient_pruning.into_boxed_slice()))
-                    .cast()
+                Box::into_non_null(next_pareto_efficient_pruning.into_boxed_slice()).cast()
             });
         }
     }
     Some(
-        NonNull::from_mut(Box::leak(
+        Box::into_non_null(
             std::iter::once(disjoint_registers.last_register)
                 .chain(disjoint_registers.prefix_registers.iter().copied().skip(1))
                 .collect::<Box<_>>(),
-        ))
+        )
         .cast(),
     )
 }
