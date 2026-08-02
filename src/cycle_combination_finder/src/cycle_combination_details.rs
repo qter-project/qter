@@ -27,19 +27,14 @@ pub struct Cycle {
     must_orient: bool,
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct OrbitCycles {
-    orbit_cycles: Vec<Cycle>,
-}
-
 #[derive(Debug, Default)]
 pub struct CycleCombinationDetail {
-    detail: Vec<(Box<[OrbitRemainingPieceCount]>, Box<[OrbitCycles]>)>,
+    detail: Vec<(Box<[OrbitRemainingPieceCount]>, Box<[Vec<Cycle>]>)>,
 }
 
 impl CycleCombinationDetail {
     #[must_use]
-    pub fn detail(self) -> Vec<(Box<[OrbitRemainingPieceCount]>, Box<[OrbitCycles]>)> {
+    pub fn detail(self) -> Vec<(Box<[OrbitRemainingPieceCount]>, Box<[Vec<Cycle>]>)> {
         self.detail
     }
 }
@@ -263,7 +258,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
 
             // TODO: allocator
             let mut reg_to_orbits_to_cycles = vec![
-                OrbitCycles::default();
+                vec![];
                 NonZeroUsize::from(self.exact_register_count)
                     .get()
                     * self.puzzle_def.orbit_defs().len().get()
@@ -290,12 +285,10 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                         let reg_orbit_index = register_index2
                             * self.puzzle_def.orbit_defs().len().get()
                             + orbit_index2;
-                        reg_to_orbits_to_cycles[reg_orbit_index]
-                            .orbit_cycles
-                            .push(Cycle {
-                                piece_count: cycle_piece_count,
-                                must_orient,
-                            });
+                        reg_to_orbits_to_cycles[reg_orbit_index].push(Cycle {
+                            piece_count: cycle_piece_count,
+                            must_orient,
+                        });
                         // only the last register has the most recent share state propagation
                         if register_index == self.exact_register_count.get() - 1 {
                             self.orbit_remaining_piece_counts[orbit_index2].ignored =

@@ -277,8 +277,8 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<N>> {
                 possible_orders_except_one,
                 exact_register_count,
                 self.config.num_cores,
-                10,
-                NonZeroUsize::new(1).unwrap(),
+                1,
+                NonZeroUsize::new(100).unwrap(),
             ),
         };
         if self.config.sorted {
