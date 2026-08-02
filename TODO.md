@@ -43,6 +43,7 @@
 ## CCS
 
 - https://sebastiano.tronto.net/blog/2026-01-28-prefetch/
+- update swizzle_dyn build script
 - solver.rs
   - 😎figure out move ordering dependence
   - F B cycle type is NOT checked!!

@@ -111,6 +111,7 @@ pub enum KSolveConversionError {
     TooManyMoveClasses,
     #[error("Invalid transformation while processing the KSolve definition: {0}")]
     TransformsMetaError(#[from] TransformationsMetaError),
+    NonPrimePowerOrientation,
 }
 
 #[derive(Debug, Clone)]
