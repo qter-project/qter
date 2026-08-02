@@ -370,6 +370,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
 
                 // If not the current orbit
                 let assign_cycle_orient = orbit_orientation_exp == 0
+                    && orbit_orientation_contributing_prime_index != 64
                     && unassigned_exponents_mask
                         & (1 << orbit_orientation_contributing_prime_index)
                         != 0
