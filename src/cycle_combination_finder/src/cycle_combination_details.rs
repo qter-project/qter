@@ -360,6 +360,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                 } else {
                     prime.pow(u32::from(register_order_exp))
                 };
+                // TODO: figure out if prime powers are allowed (like 27, 81, etc)
                 let Some(next_orbit_unused_piece_count) =
                     orbit_unused_piece_count.checked_sub(cycle_piece_count)
                 else {

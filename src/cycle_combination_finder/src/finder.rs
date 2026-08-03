@@ -3,12 +3,16 @@ use std::{
     cmp::Ordering,
     fmt::{self},
     num::{NonZeroU16, NonZeroU32, NonZeroUsize},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{self, AtomicUsize},
+        nonpoison::Mutex,
+    },
     time::Instant,
 };
 
 use humanize_duration::{Truncate, prelude::DurationExt};
-use log::{debug, trace};
+use log::{Level, debug, log_enabled, trace};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use thiserror::Error;
 
@@ -343,7 +347,10 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'_, N
         if self.config.sorted {
             possible_registers.sort_unstable();
         }
-        let work = || {
+        let expansion_percent_done = AtomicUsize::new(0);
+        let logged_bucket = Mutex::new(0);
+
+        let expand = || {
             possible_registers
                 .par_iter()
                 .map_init(
@@ -359,19 +366,34 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'_, N
                             NonemptySlice::try_from(&**possible_register)
                                 .expect("The number of registers is non-zero"),
                         );
-                        CycleCombination {
+                        let cycle_combination = CycleCombination {
                             registers: Arc::clone(possible_register),
                             detail: details
                                 .calculate_all(possible_register2)
                                 .expect("This solution is in the front and therefore exists"),
+                        };
+
+                        if log_enabled!(Level::Debug) {
+                            const PERCENT: usize = 1;
+
+                            let done =
+                                expansion_percent_done.fetch_add(1, atomic::Ordering::Relaxed) + 1;
+                            let new_bucket = done * 100 / (PERCENT * possible_registers.len());
+                            let mut bucket = logged_bucket.lock();
+                            if new_bucket > *bucket {
+                                *bucket = new_bucket;
+                                debug!("Expansion: {}%", done * 100 / possible_registers.len());
+                            }
                         }
+
+                        cycle_combination
                     },
                 )
                 .collect::<Box<[_]>>()
         };
 
         let now = Instant::now();
-        let cycle_combinations = maybe_pool.map_or_else(work, |pool| pool.install(work));
+        let cycle_combinations = maybe_pool.map_or_else(expand, |pool| pool.install(expand));
         debug!("Find all took: {}", now.elapsed().human(Truncate::Micro));
         if let Some(expected_length) = self.config.maybe_expected_length {
             assert_eq!(

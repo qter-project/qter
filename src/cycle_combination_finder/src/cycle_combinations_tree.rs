@@ -579,7 +579,7 @@ fn dfs_thread<const N: usize>(
     pareto_efficient_pruning: &AtomicPtr<u32>,
     possible_orders_except_one: &[PossibleOrder<N>],
     collector: &Collector,
-    old_bucket: &Mutex<u8>,
+    old_bucket: &Mutex<usize>,
 ) -> TreeThreadInfo {
     if core_affinity::set_for_current(core_id) {
         debug!("DFS: Pinned {core_id:?}");
@@ -600,31 +600,29 @@ fn dfs_thread<const N: usize>(
         let guard = collector.enter();
         // Synchronize with the data in the try_update CAS loop
         let maybe_raw_pruning = guard.protect(pareto_efficient_pruning, atomic::Ordering::Acquire);
-        let max_last_register = if let Some(raw_pruning) = NonNull::new(maybe_raw_pruning) {
+        if let Some(raw_pruning) = NonNull::new(maybe_raw_pruning) {
             // SAFETY: `details_thread` guarantees `raw_pruning` points to at least one
             // element
             let max_last_register = unsafe { raw_pruning.read() };
             if i_u32 <= max_last_register {
+                println!("{:?}", "broke");
                 break;
             }
-            max_last_register
-        } else {
-            0
-        };
+        }
         drop(guard);
 
         // We validated `possible_orders` to be of len `u32` or less
-        let len = possible_orders_len_cast(possible_orders_except_one.len());
         if log_enabled!(Level::Debug) {
-            const PERCENT: f64 = 1.0;
-            
-            let new_percent = f64::from(len - i_u32) / f64::from(len - max_last_register);
-            #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-            let new_bucket = (new_percent * 100.0 / PERCENT).floor() as u8;
+            const PERCENT: usize = 1;
+
+            let num = possible_orders_except_one.len() - i;
+            // We don't subtract `max_last_register` here. Cores with large `max_last_register` values are going to exist early, while those with lower values will persist and perform this logging, so the % meter typically goes up to 100%.
+            let den = possible_orders_except_one.len();
+            let new_bucket = num * 100 / (PERCENT * den);
             let mut bucket = old_bucket.lock();
             if new_bucket > *bucket {
                 *bucket = new_bucket;
-                debug!("DFS: {}% complete", (new_percent * 100.0).floor());
+                debug!("DFS: {}% complete", num * 100 / den);
             }
         }
 
