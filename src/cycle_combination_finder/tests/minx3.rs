@@ -15,7 +15,7 @@ mod common;
 fn optimal_2() {
     let minx3 = MINX3.clone();
     let cycle_combinations = CycleCombinationFinder::builder()
-        .with_puzzle_def(minx3)
+        .with_puzzle_def(&minx3)
         .with_register_count(NonZeroU16::new(2).unwrap())
         .with_sorted(true)
         .find()
@@ -45,7 +45,7 @@ fn optimal_2() {
 fn optimal_3() {
     let minx3 = MINX3.clone();
     let cycle_combinations = CycleCombinationFinder::builder()
-        .with_puzzle_def(minx3)
+        .with_puzzle_def(&minx3)
         .with_register_count(NonZeroU16::new(3).unwrap())
         .with_sorted(true)
         .find()
@@ -76,7 +76,7 @@ fn optimal_3() {
 fn equivalent_2() {
     let minx3 = MINX3.clone();
     let cycle_combinations = CycleCombinationFinder::builder()
-        .with_puzzle_def(minx3)
+        .with_puzzle_def(&minx3)
         .with_register_count(NonZeroU16::new(2).unwrap())
         .with_optimality(Optimality::Equivalent)
         .with_sorted(true)
@@ -89,7 +89,7 @@ fn equivalent_2() {
 fn equivalent_3() {
     let minx3 = MINX3.clone();
     let cycle_combinations = CycleCombinationFinder::builder()
-        .with_puzzle_def(minx3)
+        .with_puzzle_def(&minx3)
         .with_register_count(NonZeroU16::new(3).unwrap())
         .with_optimality(Optimality::Equivalent)
         .with_sorted(true)

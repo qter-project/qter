@@ -12,7 +12,7 @@ mod common;
 fn optimal_2() {
     let big = BIG1.clone();
     let cycle_combinations = CycleCombinationFinder::builder()
-        .with_puzzle_def(big)
+        .with_puzzle_def(&big)
         .with_register_count(NonZeroU16::new(2).unwrap())
         .with_sorted(true)
         .find()

@@ -195,6 +195,14 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
             let next_register_index2 = usize::from(next_register_index);
             let leaf = next_register_index2 == self.register_assignments.len();
 
+            // TODO: is this valid?
+            //                                             cycle
+            // .piece_count
+            // .div_exact(u16::from(
+            //     orbit_def.orientation_count().get()
+            // ))
+            // .unwrap_or(cycle.piece_count)
+
             let (orbits_constraints, next_orbits_constraints) = self.reg_to_orbits_constraints
                 [register_index2 * self.puzzle_def.orbit_defs().len().get()..]
                 .split_at_mut(self.puzzle_def.orbit_defs().len().get());

@@ -6,6 +6,7 @@
     clippy::similar_names
 )]
 #![feature(
+    exact_div,
     box_vec_non_null,
     once_cell_try,
     mpmc_channel,
