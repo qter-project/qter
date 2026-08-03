@@ -9,6 +9,7 @@ use std::{
         atomic::{self, AtomicPtr},
         mpmc,
         mpsc::{RecvError, TryRecvError},
+        nonpoison::Mutex,
     },
     time::{Duration, Instant},
 };
@@ -578,6 +579,7 @@ fn dfs_thread<const N: usize>(
     pareto_efficient_pruning: &AtomicPtr<u32>,
     possible_orders_except_one: &[PossibleOrder<N>],
     collector: &Collector,
+    old_bucket: &Mutex<u8>,
 ) -> TreeThreadInfo {
     if core_affinity::set_for_current(core_id) {
         debug!("DFS: Pinned {core_id:?}");
@@ -585,7 +587,6 @@ fn dfs_thread<const N: usize>(
     let real_time = Instant::now();
     let cpu_time = ThreadTime::now();
 
-    let mut old_bucket = 0;
     let mut candidate_count = 0;
     for (i, possible_order) in possible_orders_except_one
         .iter()
@@ -612,17 +613,18 @@ fn dfs_thread<const N: usize>(
         };
         drop(guard);
 
-        if thread_index == 0 {
+        // We validated `possible_orders` to be of len `u32` or less
+        let len = possible_orders_len_cast(possible_orders_except_one.len());
+        if log_enabled!(Level::Debug) {
             const PERCENT: f64 = 1.0;
-
-            // We validated `possible_orders` to be of len `u32` or less
-            let len = possible_orders_len_cast(possible_orders_except_one.len());
+            
             let new_percent = f64::from(len - i_u32) / f64::from(len - max_last_register);
             #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
             let new_bucket = (new_percent * 100.0 / PERCENT).floor() as u8;
-            if new_bucket > old_bucket {
+            let mut bucket = old_bucket.lock();
+            if new_bucket > *bucket {
+                *bucket = new_bucket;
                 debug!("DFS: {}% complete", (new_percent * 100.0).floor());
-                old_bucket = new_bucket;
             }
         }
 
@@ -867,6 +869,7 @@ pub(crate) fn search_dfs<const N: usize>(
     .unwrap();
     let real_time = Instant::now();
     let collector = Collector::new();
+    let old_bucket = Mutex::new(0);
     std::thread::scope(|s| {
         let handles = core_ids
             .into_iter()
@@ -881,6 +884,7 @@ pub(crate) fn search_dfs<const N: usize>(
                     .batch_packed_queue
                     .extend(std::iter::repeat_n(0, batch_size.get()));
                 let collector = &collector;
+                let old_bucket = &old_bucket;
                 let tree_thread_handle = s.spawn(move || {
                     dfs_thread(
                         core_id,
@@ -891,6 +895,7 @@ pub(crate) fn search_dfs<const N: usize>(
                         pareto_efficient_pruning,
                         possible_orders_except_one,
                         collector,
+                        old_bucket,
                     )
                 });
                 let candidates_receiver = candidates_receiver.clone();

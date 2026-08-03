@@ -177,11 +177,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
         }
     }
 
-    fn recursive_backtrack_fast(
-        &mut self,
-        registers: DisjointRegisters,
-        register_index: u16,
-    ) -> bool {
+    fn recursive_backtrack(&mut self, registers: DisjointRegisters, register_index: u16) -> bool {
         let register_index2 = usize::from(register_index);
         let unassigned_exponents_mask =
             self.register_assignments[register_index2].unassigned_exponents_mask;
@@ -232,7 +228,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
             }
 
             if !leaf {
-                let found = self.recursive_backtrack_fast(registers, next_register_index);
+                let found = self.recursive_backtrack(registers, next_register_index);
 
                 if let Some(prev_register_index2) = register_index2.checked_sub(1) {
                     let (prev_orbits_constraints, orbits_constraints) = self
@@ -431,7 +427,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                 self.register_assignments[register_index2].cycle_assignments[prime_index2] =
                     PPCycleAssignment::Orbit(orbit_index, must_orient);
 
-                let exists = self.recursive_backtrack_fast(registers, register_index);
+                let exists = self.recursive_backtrack(registers, register_index);
                 if exists && !self.find_all {
                     return true;
                 }
@@ -704,10 +700,10 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
         // TODO: if an orbit has at least the first highest cycle + second highest cycle
         // number of pieces, we will never not satisfy an orientation constraint
         if self.find_all {
-            self.recursive_backtrack_fast(registers, 0);
+            self.recursive_backtrack(registers, 0);
             DetailsCalculation::FindAll(self.detail.take())
         } else {
-            DetailsCalculation::Existence(self.recursive_backtrack_fast(registers, 0))
+            DetailsCalculation::Existence(self.recursive_backtrack(registers, 0))
         }
     }
 
