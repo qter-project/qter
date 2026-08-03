@@ -126,29 +126,26 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
             NonZeroUsize::from(exact_register_count).get()
         ]
         .into_boxed_slice();
-        let reg_to_orbits_constraints = puzzle_def
-            .orbit_defs()
-            .iter()
-            .flat_map(|&orbit_def| {
-                let orbit_orientation_constraint = if matches!(
-                    orbit_def.orientation,
-                    OrientationStatus::CanOrient {
-                        count: _,
-                        sum_constraint: OrientationSumConstraint::Zero
-                    }
-                ) {
-                    OrbitOrientationConstraint::None
-                } else {
-                    OrbitOrientationConstraint::SatisfiedByRegisterCycle
-                };
-
-                std::iter::repeat_n(
+        let orbit_defs = puzzle_def.orbit_defs();
+        let reg_to_orbits_constraints = (0..NonZeroUsize::from(exact_register_count).get())
+            .flat_map(|_| {
+                orbit_defs.iter().map(|&orbit_def| {
+                    let orientation_constraint = if matches!(
+                        orbit_def.orientation,
+                        OrientationStatus::CanOrient {
+                            count: _,
+                            sum_constraint: OrientationSumConstraint::Zero
+                        }
+                    ) {
+                        OrbitOrientationConstraint::None
+                    } else {
+                        OrbitOrientationConstraint::SatisfiedByRegisterCycle
+                    };
                     OrbitConstraint {
                         share_state: ShareState::default(),
-                        orientation_constraint: orbit_orientation_constraint,
-                    },
-                    NonZeroUsize::from(exact_register_count).get(),
-                )
+                        orientation_constraint,
+                    }
+                })
             })
             .collect::<Box<[_]>>();
         let initial_reg_to_orbits_constraints = reg_to_orbits_constraints.clone();
@@ -346,6 +343,8 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                 orientation_constraint: _,
             } = self.reg_to_orbits_constraints[reg_orbit_constraint_index];
             let orbit_unused_piece_count = self.orbit_remaining_piece_counts[orbit_index2].unused;
+
+            // FIXME: do parity by checking ParityConstraint::Even first in OrbitDef
 
             // Does the orbit have a non-zero exponent of the prime power we're fitting?
             let canonically_orients = if orbit_orientation_exp == 0 {
@@ -746,7 +745,7 @@ mod tests {
         orderexps::OrderExps,
         puzzle::{
             EvenParityConstraints, OrientationStatus, OrientationSumConstraint, PartialOrbitDef,
-            PuzzleDef, minxN::MINX3,
+            PuzzleDef, cubeN::CUBE4, minxN::MINX3,
         },
     };
 
@@ -901,7 +900,7 @@ mod tests {
     }
 
     #[test_log::test]
-    fn foo_() {
+    fn foo1() {
         let minx3 = MINX3.clone();
         let possible_orders_except_one =
             mk_possible_orders_except_one(&minx3, minx3.possible_orders(None).unwrap());
@@ -916,6 +915,53 @@ mod tests {
             NonemptySlice::try_from(&[504, 251, 196][..]).unwrap(),
         ));
         println!("{}", now.elapsed().human(Truncate::Micro));
+
+        // 2520 630 420
+        //
+        // 2 2 2 3 3 5 7 : 4e 3c
+        // 2     3 3 5 7 : 3c
+        // 2 2   3   5 7 : 2e
+        //
+        // 24 edges 5 5 7 7
+        // 14 corners 7 5
+        //
+        // 2520:
+        //
+        // e: (4+, 5+); total 9/30
+        // c: (3+, 7+); total 10/20
+        //
+        // 630:
+        //
+        // e: (5+, 7+); total 12/30
+        // c: (3+); total 3/20
+        //
+        // 420:
+        //
+        // e: (2+, 7+); total 9/30
+        // c: (5+); total 5/20
+        //
+        // parity share 2 edges or corners
+        //
+        // 30/30
+        // 18/20
+
+        println!("{detail:#?}");
+        panic!();
+    }
+
+    #[test_log::test]
+    fn foo4() {
+        let cube4 = CUBE4.clone();
+        let possible_orders_except_one =
+            mk_possible_orders_except_one(&cube4, cube4.possible_orders(None).unwrap());
+        let mut detail = CycleCombinationDetails::new(
+            NonZeroU16::new(2).unwrap(),
+            &possible_orders_except_one,
+            &cube4,
+        );
+        detail.calculate_existence(DisjointRegisters::from(
+            NonemptySlice::try_from(&[875, 1][..]).unwrap(),
+        ));
 
         // 2520 630 420
         //
