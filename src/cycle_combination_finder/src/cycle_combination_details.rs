@@ -35,7 +35,7 @@ pub struct CycleCombinationDetail {
 pub struct CycleCombinationDetails<'a, 'b, const N: usize> {
     find_all: bool,
     possible_orders_except_one: &'a [PossibleOrder<N>],
-    maybe_remaining_fitting_tries: Option<u32>,
+    maybe_fitting_tries: Option<(u32, u32)>,
     puzzle_def: &'b PuzzleDef<N>,
     exact_register_count: NonZeroU16,
 
@@ -167,7 +167,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
             possible_orders_except_one,
             puzzle_def,
             detail: None,
-            maybe_remaining_fitting_tries: max_fitting_tries,
+            maybe_fitting_tries: max_fitting_tries.map(|i| (i, i)),
             exact_register_count,
             register_assignments,
             reg_to_orbits_constraints,
@@ -181,10 +181,13 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
     }
 
     fn recursive_backtrack(&mut self, registers: DisjointRegisters, register_index: u16) -> bool {
-        if let Some(remaining_fitting_tries) = self.maybe_remaining_fitting_tries.as_mut() {
+        if let Some(&mut (initial_fitting_tries, ref mut remaining_fitting_tries)) =
+            self.maybe_fitting_tries.as_mut()
+        {
             if let Some(next_remaining_fitting_tries) = remaining_fitting_tries.checked_sub(1) {
                 *remaining_fitting_tries = next_remaining_fitting_tries;
             } else {
+                *remaining_fitting_tries = initial_fitting_tries;
                 return false;
             }
         }
