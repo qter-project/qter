@@ -10,12 +10,14 @@ use std::{
 
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::{debug, trace};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use thiserror::Error;
 
 use crate::{
-    cycle_combination_details::CycleCombinationDetail,
-    cycle_combinations_tree::{dbg_registers, search_dfs},
+    cycle_combination_details::{CycleCombinationDetail, CycleCombinationDetails},
+    cycle_combinations_tree::{DisjointRegisters, dbg_registers, search_dfs},
     min_piece_count::MinPieceCount,
+    nonemptyvec::NonemptySlice,
     orderexps::OrderExps,
     possible_orders::OrdersDashSet,
     puzzle::PuzzleDef,
@@ -41,19 +43,14 @@ pub struct PossibleOrder<const N: usize> {
     pub(crate) min_piece_count: NonZeroU32,
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct CycleCombination {
-    pub(crate) inner: Arc<CycleCombinationInner>,
-}
-
 #[derive(Debug)]
-pub(crate) struct CycleCombinationInner {
-    pub(crate) registers: Box<[u32]>,
-    pub(crate) detail: CycleCombinationDetail,
+pub(crate) struct CycleCombination {
+    registers: Arc<[u32]>,
+    detail: CycleCombinationDetail,
 }
 
 pub struct CycleCombinations<const N: usize> {
-    data: Box<[CycleCombination]>,
+    cycle_combinations: Box<[CycleCombination]>,
     possible_orders_except_one: Arc<[PossibleOrder<N>]>,
 }
 
@@ -98,7 +95,7 @@ pub struct CycleCombinationFinderConfig {
 
 impl Ord for CycleCombination {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.inner.registers.iter().cmp(&other.inner.registers)
+        self.registers.iter().cmp(&*other.registers)
     }
 }
 
@@ -112,26 +109,17 @@ impl Eq for CycleCombination {}
 
 impl PartialEq for CycleCombination {
     fn eq(&self, other: &Self) -> bool {
-        self.inner.registers == other.inner.registers
+        self.registers == other.registers
     }
 }
 
 impl<const N: usize> CycleCombinations<N> {
     pub fn registers(&self) -> impl Iterator<Item = impl Iterator<Item = &OrderExps<N>>> {
-        self.data.iter().map(|x| {
-            x.inner
-                .registers
+        self.cycle_combinations.iter().map(|x| {
+            x.registers
                 .iter()
                 .map(|&i| &self.possible_orders_except_one[i as usize].order)
         })
-    }
-}
-
-impl Deref for CycleCombination {
-    type Target = CycleCombinationDetail;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner.detail
     }
 }
 
@@ -252,25 +240,26 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<N>> {
             puzzle_def,
             possible_orders_except_one,
         } = &*self.puzzle_def;
+        let maybe_pool = if let NumCores::Num(num_cores) = self.config.num_cores {
+            Some(
+                rayon::ThreadPoolBuilder::new()
+                    .num_threads(num_cores.get())
+                    .build()
+                    .unwrap(),
+            )
+        } else {
+            None
+        };
+
         let possible_orders_except_one = possible_orders_except_one.get_or_try_init(|| {
-            let maybe_pool = if let NumCores::Num(num_cores) = self.config.num_cores {
-                Some(
-                    rayon::ThreadPoolBuilder::new()
-                        .num_threads(num_cores.get())
-                        .build()
-                        .unwrap(),
-                )
-            } else {
-                None
-            };
             let possible_orders = puzzle_def
-                .possible_orders(maybe_pool)
+                .possible_orders(maybe_pool.as_ref())
                 .ok_or(CycleCombinationFinderError::PuzzleTooManyOrders)?;
             let possible_orders_except_one =
                 mk_possible_orders_except_one(puzzle_def, possible_orders);
             Ok(Arc::from(possible_orders_except_one.into_boxed_slice()))
         })?;
-        let mut cycle_combinations = match self.config.optimality {
+        let mut possible_registers = match self.config.optimality {
             Optimality::Equivalent => unimplemented!(),
             Optimality::Optimal => search_dfs(
                 puzzle_def,
@@ -282,9 +271,38 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<N>> {
             ),
         };
         if self.config.sorted {
-            cycle_combinations.sort_unstable();
+            possible_registers.sort_unstable();
         }
-        let cycle_combinations = cycle_combinations.into_boxed_slice();
+        let work = || {
+            possible_registers
+                .par_iter()
+                .map_init(
+                    || {
+                        CycleCombinationDetails::new(
+                            exact_register_count,
+                            possible_orders_except_one,
+                            puzzle_def,
+                        )
+                    },
+                    |details, possible_register| {
+                        let possible_register2 = DisjointRegisters::from(
+                            NonemptySlice::try_from(&**possible_register)
+                                .expect("The number of registers is non-zero"),
+                        );
+                        CycleCombination {
+                            registers: Arc::clone(possible_register),
+                            detail: details
+                                .calculate_all(possible_register2)
+                                .expect("This solution is in the front and therefore exists"),
+                        }
+                    },
+                )
+                .collect::<Box<[_]>>()
+        };
+
+        let now = Instant::now();
+        let cycle_combinations = maybe_pool.map_or_else(work, |pool| pool.install(work));
+        debug!("Find all took: {}", now.elapsed().human(Truncate::Micro));
         if let Some(expected_length) = self.config.maybe_expected_length {
             assert_eq!(
                 cycle_combinations.len(),
@@ -293,10 +311,7 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<N>> {
                 cycle_combinations.len(),
                 cycle_combinations
                     .into_iter()
-                    .map(|i| dbg_registers(
-                        i.inner.registers.iter().copied(),
-                        possible_orders_except_one
-                    ))
+                    .map(|i| dbg_registers(i.registers.iter().copied(), possible_orders_except_one))
                     .collect::<Vec<_>>()
                     .join("\n")
             );
@@ -304,7 +319,7 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<N>> {
             trace!("{cycle_combinations:?}");
         }
         Ok(CycleCombinations {
-            data: cycle_combinations,
+            cycle_combinations,
             possible_orders_except_one: Arc::clone(possible_orders_except_one),
         })
     }
@@ -318,7 +333,7 @@ mod tests {
         cycle_combinations_tree::dbg_registers,
         finder::{CycleCombinationFinder, CycleCombinations},
         puzzle::{
-            cubeN::CUBE3,
+            cubeN::{CUBE3, CUBE4},
             minxN::{MINX3, MINX4},
         },
     };
@@ -405,23 +420,22 @@ mod tests {
     }
 
     #[test_log::test]
-    fn cube3_optimal_2() {
-        let cube3 = CUBE3.clone();
+    fn cube4_optimal_2() {
+        let cube3 = CUBE4.clone();
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(cube3)
             .with_register_count(NonZeroU16::new(2).unwrap())
-            .with_expected_length_assertion(5)
+            .with_expected_length_assertion(13)
+            .with_sorted(true)
             .find()
             .unwrap();
         // println!("{:?}", ret.data);
-        for x in ret.data {
+        for x in ret.cycle_combinations {
             println!(
                 "{}",
-                dbg_registers(
-                    x.inner.registers.iter().copied(),
-                    &ret.possible_orders_except_one,
-                )
+                dbg_registers(x.registers.iter().copied(), &ret.possible_orders_except_one)
             );
+            println!("{:?}", x.detail.detail());
         }
     }
 }

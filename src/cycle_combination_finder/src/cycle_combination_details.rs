@@ -12,12 +12,9 @@ use crate::{
     puzzle::{OrientationStatus, OrientationSumConstraint, PuzzleDef, orbit_index_cast},
 };
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Default)]
-enum ShareState {
-    #[default]
-    None = 0,
-    Orientation = 1,
-    Parity = 2,
+enum DetailsCalculation {
+    Existence(bool),
+    FindAll(Option<CycleCombinationDetail>),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -42,6 +39,7 @@ impl CycleCombinationDetail {
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct CycleCombinationDetails<'a, 'b, const N: usize> {
+    find_all: bool,
     possible_orders_except_one: &'a [PossibleOrder<N>],
     puzzle_def: &'b PuzzleDef<N>,
     exact_register_count: NonZeroU16,
@@ -60,6 +58,14 @@ pub struct CycleCombinationDetails<'a, 'b, const N: usize> {
     // register_exponent_sorter: Vec<(u16, u8)>,
     // /// Gives the best orientation orders
     // best_orientations_queue: [BestOrientation; 9],
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Default)]
+enum ShareState {
+    #[default]
+    None = 0,
+    Orientation = 1,
+    Parity = 2,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -174,6 +180,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
             initial_reg_to_orbits_constraints,
             orbit_remaining_piece_counts,
             initial_orbit_remaining_piece_counts,
+            find_all: false,
             // register_exponent_sorter,
             // best_orientations_queue,
         }
@@ -318,6 +325,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
         let register_order_exp = register_order.prime_exponent(prime_index2);
 
         for orbit_index2 in 0..self.puzzle_def.orbit_defs().len().get() {
+            // TODO: optimization to not place same cycle in orbit with 1 orientation
             // TODO: min piece count pruning
             let orbit_index = orbit_index_cast(orbit_index2);
             let reg_orbit_constraint_index =
@@ -422,8 +430,8 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                 self.register_assignments[register_index2].cycle_assignments[prime_index2] =
                     PPCycleAssignment::Orbit(orbit_index, must_orient);
 
-                let found = self.recursive_backtrack_fast(registers, register_index);
-                if found {
+                let exists = self.recursive_backtrack_fast(registers, register_index);
+                if exists && !self.find_all {
                     return true;
                 }
 
@@ -452,7 +460,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
     }
 
     #[must_use]
-    pub fn calculate(&mut self, registers: DisjointRegisters) -> Option<CycleCombinationDetail> {
+    fn calculate(&mut self, registers: DisjointRegisters) -> DetailsCalculation {
         self.reg_to_orbits_constraints
             .clone_from_slice(&self.initial_reg_to_orbits_constraints);
         self.orbit_remaining_piece_counts
@@ -694,8 +702,31 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
         // println!("{:?}", self.orbit_remaining_piece_counts);
         // TODO: if an orbit has at least the first highest cycle + second highest cycle
         // number of pieces, we will never not satisfy an orientation constraint
-        self.recursive_backtrack_fast(registers, 0);
-        self.detail.take()
+        if self.find_all {
+            self.recursive_backtrack_fast(registers, 0);
+            DetailsCalculation::FindAll(self.detail.take())
+        } else {
+            DetailsCalculation::Existence(self.recursive_backtrack_fast(registers, 0))
+        }
+    }
+
+    pub fn calculate_existence(&mut self, registers: DisjointRegisters) -> bool {
+        self.find_all = false;
+        let DetailsCalculation::Existence(exists) = self.calculate(registers) else {
+            unreachable!();
+        };
+        exists
+    }
+
+    pub fn calculate_all(
+        &mut self,
+        registers: DisjointRegisters,
+    ) -> Option<CycleCombinationDetail> {
+        self.find_all = true;
+        let DetailsCalculation::FindAll(detail) = self.calculate(registers) else {
+            unreachable!();
+        };
+        detail
     }
 }
 
@@ -740,7 +771,7 @@ mod tests {
         )
         .unwrap();
 
-        let detail = CycleCombinationDetails::new(
+        CycleCombinationDetails::new(
             NonZeroU16::new(1).unwrap(),
             &[PossibleOrder {
                 order: OrderExps::try_from(NonZeroU16::new(3).unwrap()).unwrap(),
@@ -748,10 +779,9 @@ mod tests {
             }],
             &crazy,
         )
-        .calculate(DisjointRegisters::from(
+        .calculate_existence(DisjointRegisters::from(
             NonemptySlice::try_from(&[0][..]).unwrap(),
-        ))
-        .unwrap();
+        ));
     }
 
     #[test_log::test]
@@ -833,7 +863,7 @@ mod tests {
         )
         .unwrap();
 
-        let detail = CycleCombinationDetails::new(
+        CycleCombinationDetails::new(
             NonZeroU16::new(6).unwrap(),
             &[
                 PossibleOrder {
@@ -863,10 +893,9 @@ mod tests {
             ],
             &crazy,
         )
-        .calculate(DisjointRegisters::from(
+        .calculate_existence(DisjointRegisters::from(
             NonemptySlice::try_from(&[0, 1, 2, 3, 4, 5][..]).unwrap(),
-        ))
-        .unwrap();
+        ));
     }
 
     #[test_log::test]
@@ -881,11 +910,9 @@ mod tests {
             &minx3,
         );
         let now = Instant::now();
-        let detail = detail
-            .calculate(DisjointRegisters::from(
-                NonemptySlice::try_from(&[504, 251, 196][..]).unwrap(),
-            ))
-            .unwrap();
+        detail.calculate_existence(DisjointRegisters::from(
+            NonemptySlice::try_from(&[504, 251, 196][..]).unwrap(),
+        ));
         println!("{}", now.elapsed().human(Truncate::Micro));
 
         // 2520 630 420

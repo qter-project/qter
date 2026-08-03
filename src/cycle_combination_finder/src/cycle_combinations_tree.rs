@@ -22,7 +22,7 @@ use tokio::sync::broadcast::error::TryRecvError as TokioTryRecvError;
 
 use crate::{
     cycle_combination_details::CycleCombinationDetails,
-    finder::{CycleCombination, CycleCombinationInner, NumCores, PossibleOrder},
+    finder::{NumCores, PossibleOrder},
     nonemptyvec::{NonemptySlice, NonemptyVec},
     pareto_front::CCParetoFront,
     puzzle::PuzzleDef,
@@ -76,7 +76,7 @@ struct TreeThreadInfo {
     sender_lens: usize,
 }
 
-struct ProfileInfo {
+struct TreeProfileInfo {
     candidate_count: u64,
     processed_candidate_count: u64,
     post_candidate_count: u64,
@@ -159,7 +159,7 @@ impl CycleCombinationsTreeMutable {
     }
 }
 
-impl Debug for ProfileInfo {
+impl Debug for TreeProfileInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         #[allow(clippy::cast_precision_loss)]
         let num_cores = self.num_cores as f64;
@@ -422,8 +422,8 @@ unsafe fn try_next_pareto_efficient_pruning(
 fn details_thread<const N: usize>(
     core_id: CoreId,
     candidates_receiver: mpmc::Receiver<PackedCycleCombinationCandidateQueue>,
-    mut solutions_receiver: tokio::sync::broadcast::Receiver<(CoreId, CycleCombination)>,
-    solutions_sender: tokio::sync::broadcast::Sender<(CoreId, CycleCombination)>,
+    mut solutions_receiver: tokio::sync::broadcast::Receiver<(CoreId, Arc<[u32]>)>,
+    solutions_sender: tokio::sync::broadcast::Sender<(CoreId, Arc<[u32]>)>,
     pareto_efficient_prunings: &[AtomicPtr<u32>],
     puzzle_def: &PuzzleDef<N>,
     possible_orders_except_one: &[PossibleOrder<N>],
@@ -497,28 +497,23 @@ fn details_thread<const N: usize>(
                     disjoint_registers,
                     |dominating_registers| {
                         post_candidate_count += 1;
-                        details.calculate(dominating_registers).map(|detail| {
-                            let registers = if log_enabled!(Level::Debug) {
-                                let now = Instant::now();
-                                let registers = dominating_registers.iter().collect::<Box<_>>();
-                                alloc_time += now.elapsed();
-                                registers
-                            } else {
-                                dominating_registers.iter().collect::<Box<_>>()
-                            };
-                            let inner = Arc::new(CycleCombinationInner { registers, detail });
-                            assert!(
-                                solutions_sender
-                                    .send((
-                                        core_id,
-                                        CycleCombination {
-                                            inner: Arc::clone(&inner),
-                                        },
-                                    ))
-                                    .is_ok()
-                            );
-                            CycleCombination { inner }
-                        })
+                        if !details.calculate_existence(dominating_registers) {
+                            return None;
+                        }
+                        let possible_registers = if log_enabled!(Level::Debug) {
+                            let now = Instant::now();
+                            let registers = dominating_registers.iter().collect::<Arc<[_]>>();
+                            alloc_time += now.elapsed();
+                            registers
+                        } else {
+                            dominating_registers.iter().collect::<Arc<[_]>>()
+                        };
+                        assert!(
+                            solutions_sender
+                                .send((core_id, Arc::clone(&possible_registers)))
+                                .is_ok()
+                        );
+                        Some(possible_registers)
                     },
                 ) {
                     continue;
@@ -809,7 +804,7 @@ pub(crate) fn search_dfs<const N: usize>(
     num_cores: NumCores,
     capacity_multipler: usize,
     batch_size: NonZeroUsize,
-) -> Vec<CycleCombination> {
+) -> Vec<Arc<[u32]>> {
     // If we return a None here then /shrug
     #[allow(clippy::missing_panics_doc)]
     let mut core_ids = core_affinity::get_core_ids().unwrap();
@@ -961,9 +956,9 @@ pub(crate) fn search_dfs<const N: usize>(
             .iter()
             .filter_map(|x| {
                 let s = dbg_registers_iter(
-                    x.inner
+                    x.possible_registers
                         .iter()
-                        .map(|combination| combination.inner.registers.iter().copied()),
+                        .map(|combination| combination.iter().copied()),
                     possible_orders_except_one,
                 );
                 if s.is_empty() { None } else { Some(s) }
@@ -1016,7 +1011,7 @@ pub(crate) fn search_dfs<const N: usize>(
         .saturating_sub(details_cpu_time)
         .saturating_sub(details_alloc_time);
 
-    let profile_info = ProfileInfo {
+    let tree_profile_info = TreeProfileInfo {
         candidate_count,
         processed_candidate_count,
         post_candidate_count,
@@ -1035,7 +1030,7 @@ pub(crate) fn search_dfs<const N: usize>(
     };
 
     debug!("Search tree complete");
-    debug!("{profile_info:#?}");
+    debug!("{tree_profile_info:#?}");
 
     combined_cycle_combinations.into()
 }

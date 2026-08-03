@@ -471,7 +471,7 @@ impl<const N: usize> PuzzleDef<N> {
     }
 
     #[must_use]
-    pub fn possible_orders(&self, maybe_pool: Option<ThreadPool>) -> Option<OrdersDashSet<N>> {
+    pub fn possible_orders(&self, maybe_pool: Option<&ThreadPool>) -> Option<OrdersDashSet<N>> {
         let work = || {
             self.connected_components()
                 .par_iter()
