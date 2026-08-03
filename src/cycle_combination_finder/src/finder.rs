@@ -1,8 +1,8 @@
 use std::{
     cell::OnceCell,
     cmp::Ordering,
+    fmt::{self},
     num::{NonZeroU16, NonZeroU32, NonZeroUsize},
-    ops::Deref,
     rc::Rc,
     sync::Arc,
     time::Instant,
@@ -20,7 +20,7 @@ use crate::{
     nonemptyvec::NonemptySlice,
     orderexps::OrderExps,
     possible_orders::OrdersDashSet,
-    puzzle::PuzzleDef,
+    puzzle::{PuzzleDef, possible_order_index_cast},
 };
 
 #[derive(Clone, Copy, Default)]
@@ -44,7 +44,7 @@ pub struct PossibleOrder<const N: usize> {
 }
 
 #[derive(Debug)]
-pub(crate) struct CycleCombination {
+pub struct CycleCombination {
     registers: Arc<[u32]>,
     detail: CycleCombinationDetail,
 }
@@ -91,6 +91,64 @@ pub struct CycleCombinationFinderConfig {
     num_cores: NumCores,
     sorted: bool,
     maybe_expected_length: Option<usize>,
+}
+
+impl CycleCombination {
+    #[must_use]
+    pub fn display_fmt<'a, const N: usize>(
+        &'a self,
+        possible_orders_except_one: &'a [PossibleOrder<N>],
+    ) -> String {
+        struct CycleCombinationDisplay<'a, const N: usize> {
+            inner: &'a CycleCombination,
+            possible_orders_except_one: &'a [PossibleOrder<N>],
+        }
+        impl<const N: usize> fmt::Display for CycleCombinationDisplay<'_, N> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                for (remaining_piece_counts, reg_orbit_cycles) in &self.inner.detail.detail {
+                    let orbit_count = remaining_piece_counts.len();
+                    let mut reg_orbit_cycles = reg_orbit_cycles.iter();
+                    for register_index in 0..self.inner.registers.len() {
+                        writeln!(
+                            f,
+                            "{:?}:",
+                            self.possible_orders_except_one
+                                [possible_order_index_cast(self.inner.registers[register_index])]
+                            .order
+                        )?;
+                        writeln!(f)?;
+                        for orbit_index in 0..orbit_count {
+                            let s = reg_orbit_cycles
+                                .next()
+                                .unwrap()
+                                .iter()
+                                .map(|cycle| {
+                                    if cycle.must_orient {
+                                        format!("{}+", cycle.piece_count)
+                                    } else {
+                                        format!("{}", cycle.piece_count)
+                                    }
+                                })
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            writeln!(f, "{orbit_index}: ({s})")?;
+                        }
+                        writeln!(f)?;
+                    }
+                    writeln!(f, "{remaining_piece_counts:#?}")?;
+                    writeln!(f)?;
+                }
+                Ok(())
+            }
+        }
+        format!(
+            "\n{}----------",
+            CycleCombinationDisplay {
+                inner: self,
+                possible_orders_except_one,
+            }
+        )
+    }
 }
 
 impl Ord for CycleCombination {
@@ -330,7 +388,6 @@ mod tests {
     use std::num::NonZeroU16;
 
     use crate::{
-        cycle_combinations_tree::dbg_registers,
         finder::{CycleCombinationFinder, CycleCombinations},
         puzzle::{
             cubeN::{CUBE3, CUBE4},
@@ -431,11 +488,7 @@ mod tests {
             .unwrap();
         // println!("{:?}", ret.data);
         for x in ret.cycle_combinations {
-            println!(
-                "{}",
-                dbg_registers(x.registers.iter().copied(), &ret.possible_orders_except_one)
-            );
-            println!("{:?}", x.detail.detail());
+            println!("{}", x.display_fmt(&ret.possible_orders_except_one));
         }
     }
 }

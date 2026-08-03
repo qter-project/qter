@@ -25,7 +25,7 @@ use crate::{
     finder::{NumCores, PossibleOrder},
     nonemptyvec::{NonemptySlice, NonemptyVec},
     pareto_front::CCParetoFront,
-    puzzle::PuzzleDef,
+    puzzle::{PuzzleDef, possible_orders_len_cast},
 };
 
 #[derive(Clone)]
@@ -266,12 +266,6 @@ impl Debug for TreeProfileInfo {
             .field(&format!("{:>25}", "num_cores"), &self.num_cores)
             .finish()
     }
-}
-
-fn possible_orders_len_cast(len: usize) -> u32 {
-    #[allow(clippy::cast_possible_truncation)]
-    let len = len as u32;
-    len
 }
 
 #[must_use]

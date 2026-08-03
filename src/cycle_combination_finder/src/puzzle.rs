@@ -125,11 +125,24 @@ pub fn register_index_cast(register_index: usize) -> u16 {
 }
 
 #[must_use]
+pub fn possible_order_index_cast(possible_order_index: u32) -> usize {
+    // We guarantee only `u32` number of orders for now
+    possible_order_index as usize
+}
+
+#[must_use]
 pub fn prime_index_cast(prime_index: usize) -> u8 {
     // There are max 64 primes
     #[allow(clippy::cast_possible_truncation)]
     let prime_index = prime_index as u8;
     prime_index
+}
+
+#[must_use]
+pub fn possible_orders_len_cast(len: usize) -> u32 {
+    #[allow(clippy::cast_possible_truncation)]
+    let len = len as u32;
+    len
 }
 
 // impl From<&KSolveSet> for OrbitDef {

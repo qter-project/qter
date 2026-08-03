@@ -1,4 +1,5 @@
 use std::{
+    fmt::Debug,
     num::{NonZeroU16, NonZeroUsize},
     simd::{Mask, Simd, cmp::SimdPartialEq},
 };
@@ -19,21 +20,14 @@ enum DetailsCalculation {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Cycle {
-    piece_count: u16,
+    pub(crate) piece_count: u16,
     // we don't have to permute all ways to orient this way
-    must_orient: bool,
+    pub(crate) must_orient: bool,
 }
 
 #[derive(Debug, Default)]
 pub struct CycleCombinationDetail {
-    detail: Vec<(Box<[OrbitRemainingPieceCount]>, Box<[Vec<Cycle>]>)>,
-}
-
-impl CycleCombinationDetail {
-    #[must_use]
-    pub fn detail(self) -> Vec<(Box<[OrbitRemainingPieceCount]>, Box<[Vec<Cycle>]>)> {
-        self.detail
-    }
+    pub(crate) detail: Vec<(Box<[OrbitRemainingPieceCount]>, Box<[Vec<Cycle>]>)>,
 }
 
 #[derive(Debug)]
@@ -931,7 +925,7 @@ mod tests {
         //
         // 630:
         //
-        // e: (5+, 7+); total 10/30
+        // e: (5+, 7+); total 12/30
         // c: (3+); total 3/20
         //
         // 420:
@@ -941,7 +935,7 @@ mod tests {
         //
         // parity share 2 edges or corners
         //
-        // 28/30
+        // 30/30
         // 18/20
 
         println!("{detail:#?}");
