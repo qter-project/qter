@@ -613,11 +613,13 @@ fn dfs_thread<const N: usize>(
         drop(guard);
 
         if thread_index == 0 {
+            const PERCENT: f64 = 1.0;
+
             // We validated `possible_orders` to be of len `u32` or less
             let len = possible_orders_len_cast(possible_orders_except_one.len());
             let new_percent = f64::from(len - i_u32) / f64::from(len - max_last_register);
             #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-            let new_bucket = (new_percent * 20.0).floor() as u8;
+            let new_bucket = (new_percent * 100.0 / PERCENT).floor() as u8;
             if new_bucket > old_bucket {
                 debug!("DFS: {}% complete", (new_percent * 100.0).floor());
                 old_bucket = new_bucket;
