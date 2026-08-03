@@ -22,11 +22,7 @@ use seize::{Collector, Guard, reclaim};
 use tokio::sync::broadcast::error::TryRecvError as TokioTryRecvError;
 
 use crate::{
-    cycle_combination_details::CycleCombinationDetails,
-    finder::{NumCores, PossibleOrder},
-    nonemptyvec::{NonemptySlice, NonemptyVec},
-    pareto_front::CCParetoFront,
-    puzzle::{PuzzleDef, possible_orders_len_cast},
+    cycle_combination_details::CycleCombinationDetails, finder::{CycleCombinationFinderConfig, NumCores, PossibleOrder}, nonemptyvec::{NonemptySlice, NonemptyVec}, pareto_front::CCParetoFront, puzzle::{PuzzleDef, possible_orders_len_cast},
 };
 
 #[derive(Clone)]
@@ -425,13 +421,14 @@ fn details_thread<const N: usize>(
     exact_register_count: NonZeroU16,
     batch_size: NonZeroUsize,
     collector: &Collector,
+    max_fitting_tries: Option<u32>,
 ) -> DetailsThreadInfo {
     if core_affinity::set_for_current(core_id) {
         debug!("Details: Pinned {core_id:?}");
     }
     let mut cycle_combinations = CCParetoFront::default();
     let mut details =
-        CycleCombinationDetails::new(exact_register_count, possible_orders_except_one, puzzle_def);
+        CycleCombinationDetails::new(exact_register_count, possible_orders_except_one, max_fitting_tries, puzzle_def);
     let mut processed_candidate_count = 0;
     let mut post_candidate_count = 0;
     let raw_pruning_len = NonZeroUsize::new(usize::from(
@@ -794,16 +791,16 @@ unsafe fn search_dfs_helper<const N: usize>(
 
 pub(crate) fn search_dfs<const N: usize>(
     puzzle_def: &PuzzleDef<N>,
+    config: &CycleCombinationFinderConfig,
     possible_orders_except_one: &[PossibleOrder<N>],
     exact_register_count: NonZeroU16,
-    num_cores: NumCores,
     capacity_multipler: usize,
     batch_size: NonZeroUsize,
 ) -> Vec<Arc<[u32]>> {
     // If we return a None here then /shrug
     #[allow(clippy::missing_panics_doc)]
     let mut core_ids = core_affinity::get_core_ids().unwrap();
-    if let NumCores::Num(num_cores) = num_cores {
+    if let NumCores::Num(num_cores) = config.num_cores {
         core_ids.truncate(num_cores.get());
     }
     let num_cores = core_ids.len();
@@ -911,6 +908,7 @@ pub(crate) fn search_dfs<const N: usize>(
                         exact_register_count,
                         batch_size,
                         collector,
+                        config.max_fitting_tries
                     )
                 });
                 (tree_thread_handle, details_thread_handle)

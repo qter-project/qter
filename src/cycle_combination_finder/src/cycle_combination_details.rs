@@ -35,6 +35,7 @@ pub struct CycleCombinationDetail {
 pub struct CycleCombinationDetails<'a, 'b, const N: usize> {
     find_all: bool,
     possible_orders_except_one: &'a [PossibleOrder<N>],
+    maybe_remaining_fitting_tries: Option<u32>,
     puzzle_def: &'b PuzzleDef<N>,
     exact_register_count: NonZeroU16,
 
@@ -114,6 +115,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
     pub fn new(
         exact_register_count: NonZeroU16,
         possible_orders_except_one: &'a [PossibleOrder<N>],
+        max_fitting_tries: Option<u32>,
         puzzle_def: &'b PuzzleDef<N>,
     ) -> Self {
         let register_assignments = vec![
@@ -165,6 +167,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
             possible_orders_except_one,
             puzzle_def,
             detail: None,
+            maybe_remaining_fitting_tries: max_fitting_tries,
             exact_register_count,
             register_assignments,
             reg_to_orbits_constraints,
@@ -178,6 +181,13 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
     }
 
     fn recursive_backtrack(&mut self, registers: DisjointRegisters, register_index: u16) -> bool {
+        if let Some(remaining_fitting_tries) = self.maybe_remaining_fitting_tries.as_mut() {
+            if let Some(next_remaining_fitting_tries) = remaining_fitting_tries.checked_sub(1) {
+                *remaining_fitting_tries = next_remaining_fitting_tries;
+            } else {
+                return false;
+            }
+        }
         // TODO: if too many recursions, then say this is false, setting
         let register_index2 = usize::from(register_index);
         let unassigned_exponents_mask =
@@ -779,6 +789,7 @@ mod tests {
                 order: OrderExps::try_from(NonZeroU16::new(3).unwrap()).unwrap(),
                 min_piece_count: 1.try_into().unwrap(),
             }],
+            None,
             &crazy,
         )
         .calculate_existence(DisjointRegisters::from(
@@ -893,6 +904,7 @@ mod tests {
                     min_piece_count: 1.try_into().unwrap(),
                 },
             ],
+            None,
             &crazy,
         )
         .calculate_existence(DisjointRegisters::from(
@@ -909,6 +921,7 @@ mod tests {
         let mut detail = CycleCombinationDetails::new(
             NonZeroU16::new(3).unwrap(),
             &possible_orders_except_one,
+            None,
             &minx3,
         );
         let now = Instant::now();
@@ -958,6 +971,7 @@ mod tests {
         let mut detail = CycleCombinationDetails::new(
             NonZeroU16::new(2).unwrap(),
             &possible_orders_except_one,
+            None,
             &cube4,
         );
         detail.calculate_existence(DisjointRegisters::from(

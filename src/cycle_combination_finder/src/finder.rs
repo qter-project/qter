@@ -91,9 +91,10 @@ pub struct CycleCombinationFinder<R, P> {
 #[derive(Clone, Copy, Default)]
 pub struct CycleCombinationFinderConfig {
     optimality: Optimality,
-    num_cores: NumCores,
+    pub(crate) num_cores: NumCores,
     sorted: bool,
     maybe_expected_length: Option<usize>,
+    pub(crate) max_fitting_tries: Option<u32>,
 }
 
 impl CycleCombination {
@@ -234,6 +235,12 @@ impl<R, P> CycleCombinationFinder<R, P> {
     }
 
     #[must_use]
+    pub fn with_max_fitting_tries(mut self, max_fitting_tries: u32) -> Self {
+        self.config.max_fitting_tries = Some(max_fitting_tries);
+        self
+    }
+
+    #[must_use]
     pub fn with_register_count(
         self,
         register_count: NonZeroU16,
@@ -337,9 +344,9 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'_, N
             Optimality::Equivalent => unimplemented!(),
             Optimality::Optimal => search_dfs(
                 puzzle_def,
+                &self.config,
                 possible_orders_except_one,
                 exact_register_count,
-                self.config.num_cores,
                 1,
                 NonZeroUsize::new(100).unwrap(),
             ),
@@ -358,6 +365,7 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'_, N
                         CycleCombinationDetails::new(
                             exact_register_count,
                             possible_orders_except_one,
+                            self.config.max_fitting_tries,
                             puzzle_def,
                         )
                     },
