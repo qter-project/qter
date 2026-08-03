@@ -605,7 +605,6 @@ fn dfs_thread<const N: usize>(
             // element
             let max_last_register = unsafe { raw_pruning.read() };
             if i_u32 <= max_last_register {
-                println!("{:?}", "broke");
                 break;
             }
         }

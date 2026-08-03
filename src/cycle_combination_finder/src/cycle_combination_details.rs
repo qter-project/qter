@@ -178,6 +178,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
     }
 
     fn recursive_backtrack(&mut self, registers: DisjointRegisters, register_index: u16) -> bool {
+        // TODO: if too many recursions, then say this is false, setting
         let register_index2 = usize::from(register_index);
         let unassigned_exponents_mask =
             self.register_assignments[register_index2].unassigned_exponents_mask;
@@ -258,53 +259,55 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                 return found;
             }
 
-            // TODO: allocator
-            let mut reg_to_orbits_to_cycles = vec![
-                vec![];
-                NonZeroUsize::from(self.exact_register_count)
-                    .get()
-                    * self.puzzle_def.orbit_defs().len().get()
-            ]
-            .into_boxed_slice();
-            for register_index in 0..self.exact_register_count.get() {
-                let register_index2 = usize::from(register_index);
-                let register_assignment = &self.register_assignments[register_index2];
-                let mut all_exponents = register_assignment.all_exponents_mask;
-                while all_exponents != 0 {
-                    let prime_index = all_exponents.trailing_zeros() as usize;
-                    let prime = FIRST_65_PRIMES[prime_index];
-                    let register_order_exp = registers
-                        .get_order(register_index, self.possible_orders_except_one)
-                        .unwrap()
-                        .order
-                        .prime_exponent(prime_index);
-                    let cycle_piece_count = prime.pow(u32::from(register_order_exp));
-                    // We can have a 7+ on edges to serve as following the 2 cycle and a 7 cycle, in the false case
-                    if let PPCycleAssignment::Orbit(orbit_index, must_orient) =
-                        register_assignment.cycle_assignments[prime_index]
-                    {
-                        let orbit_index2 = usize::from(orbit_index);
-                        let reg_orbit_index = register_index2
+            if self.find_all {
+                // TODO: allocator
+                let mut reg_to_orbits_to_cycles =
+                    vec![
+                        vec![];
+                        NonZeroUsize::from(self.exact_register_count).get()
                             * self.puzzle_def.orbit_defs().len().get()
-                            + orbit_index2;
-                        reg_to_orbits_to_cycles[reg_orbit_index].push(Cycle {
-                            piece_count: cycle_piece_count,
-                            must_orient,
-                        });
-                        // only the last register has the most recent share state propagation
-                        if register_index == self.exact_register_count.get() - 1 {
-                            self.orbit_remaining_piece_counts[orbit_index2].ignored =
-                                self.reg_to_orbits_constraints[reg_orbit_index].share_state as u16;
+                    ]
+                    .into_boxed_slice();
+                for register_index in 0..self.exact_register_count.get() {
+                    let register_index2 = usize::from(register_index);
+                    let register_assignment = &self.register_assignments[register_index2];
+                    let mut all_exponents = register_assignment.all_exponents_mask;
+                    while all_exponents != 0 {
+                        let prime_index = all_exponents.trailing_zeros() as usize;
+                        let prime = FIRST_65_PRIMES[prime_index];
+                        let register_order_exp = registers
+                            .get_order(register_index, self.possible_orders_except_one)
+                            .unwrap()
+                            .order
+                            .prime_exponent(prime_index);
+                        let cycle_piece_count = prime.pow(u32::from(register_order_exp));
+                        // We can have a 7+ on edges to serve as following the 2 cycle and a 7 cycle, in the false case
+                        if let PPCycleAssignment::Orbit(orbit_index, must_orient) =
+                            register_assignment.cycle_assignments[prime_index]
+                        {
+                            let orbit_index2 = usize::from(orbit_index);
+                            let reg_orbit_index = register_index2
+                                * self.puzzle_def.orbit_defs().len().get()
+                                + orbit_index2;
+                            reg_to_orbits_to_cycles[reg_orbit_index].push(Cycle {
+                                piece_count: cycle_piece_count,
+                                must_orient,
+                            });
+                            // only the last register has the most recent share state propagation
+                            if register_index == self.exact_register_count.get() - 1 {
+                                self.orbit_remaining_piece_counts[orbit_index2].ignored =
+                                    self.reg_to_orbits_constraints[reg_orbit_index].share_state
+                                        as u16;
+                            }
                         }
+                        all_exponents ^= all_exponents.isolate_lowest_one();
                     }
-                    all_exponents ^= all_exponents.isolate_lowest_one();
                 }
+                self.detail.get_or_insert_default().detail.push((
+                    self.orbit_remaining_piece_counts.clone(),
+                    reg_to_orbits_to_cycles,
+                ));
             }
-            self.detail.get_or_insert_default().detail.push((
-                self.orbit_remaining_piece_counts.clone(),
-                reg_to_orbits_to_cycles,
-            ));
-
             return true;
         }
 
@@ -319,6 +322,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
             .order;
         let register_order_exp = register_order.prime_exponent(prime_index2);
 
+        // TODO: smarter orbit ordering, ignore identical orbits
         for orbit_index2 in 0..self.puzzle_def.orbit_defs().len().get() {
             // TODO: optimization to not place same cycle in orbit with 1 orientation
             // TODO: min piece count pruning
