@@ -96,7 +96,7 @@ pub struct CycleCombinationFinder<R, P> {
     puzzle_def: P,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy)]
 pub struct CycleCombinationFinderConfig {
     pub optimality: Optimality,
     pub num_cores: NumCores,
@@ -104,6 +104,21 @@ pub struct CycleCombinationFinderConfig {
     pub maybe_expected_length: Option<usize>,
     pub maybe_max_fitting_tries: Option<u32>,
     pub solution_expansion: SolutionExpansion,
+    pub mss_batch_size: NonZeroUsize,
+}
+
+impl Default for CycleCombinationFinderConfig {
+    fn default() -> Self {
+        Self {
+            optimality: Optimality::default(),
+            num_cores: NumCores::default(),
+            sorted: false,
+            maybe_expected_length: None,
+            maybe_max_fitting_tries: None,
+            solution_expansion: SolutionExpansion::default(),
+            mss_batch_size: NonZeroUsize::new(10).unwrap(),
+        }
+    }
 }
 
 impl CycleCombination {
@@ -256,6 +271,12 @@ impl<R, P> CycleCombinationFinder<R, P> {
     }
 
     #[must_use]
+    pub fn with_mss_batch_size(mut self, mss_batch_size: NonZeroUsize) -> Self {
+        self.config.mss_batch_size = mss_batch_size;
+        self
+    }
+
+    #[must_use]
     pub fn with_register_count(
         self,
         register_count: NonZeroU16,
@@ -363,8 +384,6 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'_, N
                 possible_orders_except_one,
                 exact_register_count,
                 None,
-                1,
-                NonZeroUsize::new(1).unwrap(),
             ),
             Optimality::MaxOrderRatio(max_order_ratio) => search_dfs(
                 puzzle_def,
@@ -372,8 +391,6 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'_, N
                 possible_orders_except_one,
                 exact_register_count,
                 Some(max_order_ratio),
-                1,
-                NonZeroUsize::new(1).unwrap(),
             ),
         };
         if self.config.sorted {

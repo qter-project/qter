@@ -424,7 +424,6 @@ fn details_thread<const N: usize>(
     puzzle_def: &PuzzleDef<N>,
     possible_orders_except_one: &[PossibleOrder<N>],
     exact_register_count: NonZeroU16,
-    batch_size: NonZeroUsize,
     collector: &Collector,
     config: &CycleCombinationFinderConfig,
 ) -> DetailsThreadInfo {
@@ -476,7 +475,7 @@ fn details_thread<const N: usize>(
         let (&thread_index, candidate_counts_and_packed_candidates) =
             batch_packed_queue.split_first().unwrap();
         let (candidate_counts, mut packed_candidates) =
-            candidate_counts_and_packed_candidates.split_at(batch_size.get());
+            candidate_counts_and_packed_candidates.split_at(config.mss_batch_size.get());
         let thread_index = thread_index as usize;
         for &candidate_count in candidate_counts {
             if candidate_count == 0 {
@@ -817,8 +816,6 @@ pub(crate) fn search_dfs<const N: usize>(
     possible_orders_except_one: &[PossibleOrder<N>],
     exact_register_count: NonZeroU16,
     maybe_max_order_ratio: Option<u32>,
-    capacity_multipler: usize,
-    batch_size: NonZeroUsize,
 ) -> Vec<Arc<[u32]>> {
     // If we return a None here then /shrug
     #[allow(clippy::missing_panics_doc)]
@@ -829,12 +826,13 @@ pub(crate) fn search_dfs<const N: usize>(
     let num_cores = core_ids.len();
 
     // We do not use `0` as to allow a buffer for every core to prevent starvation
-    let candidates_sender_capacity = num_cores * capacity_multipler;
+    let candidates_sender_capacity = num_cores * 2;
     let (candidates_sender, candidates_receiver) =
         mpmc::sync_channel::<PackedCycleCombinationCandidateQueue>(candidates_sender_capacity);
     // I will only send at most `batch_size` solutions before receiving the queue,
     // so I can make the capacity equal to this
-    let (solutions_sender, _) = tokio::sync::broadcast::channel(num_cores * batch_size.get());
+    let (solutions_sender, _) =
+        tokio::sync::broadcast::channel(num_cores * config.mss_batch_size.get());
 
     // We can unwrap because `exact_register_count` is NonZero.
     #[allow(clippy::missing_panics_doc)]
@@ -853,7 +851,7 @@ pub(crate) fn search_dfs<const N: usize>(
         candidate_count: 0,
 
         candidates_sender_capacity,
-        batch_size,
+        batch_size: config.mss_batch_size,
     };
 
     let mut candidate_count = 0;
@@ -900,7 +898,7 @@ pub(crate) fn search_dfs<const N: usize>(
                     .push(u32::try_from(thread_index).expect("You have too many threads."));
                 mutable
                     .batch_packed_queue
-                    .extend(std::iter::repeat_n(0, batch_size.get()));
+                    .extend(std::iter::repeat_n(0, config.mss_batch_size.get()));
                 let collector = &collector;
                 let old_bucket = &old_bucket;
                 let tree_thread_handle = s.spawn(move || {
@@ -931,7 +929,6 @@ pub(crate) fn search_dfs<const N: usize>(
                         puzzle_def,
                         possible_orders_except_one,
                         exact_register_count,
-                        batch_size,
                         collector,
                         config,
                     )
