@@ -7,13 +7,15 @@ one structure for each combination, rather than every structure.
 There are also a few more assumptions, and as such there may be some missed combinations.
 """
 # TODO allow for orientation to be composite
-import timeit
 import collections
 import copy
 import math
 import operator
-import puzzle_orbit_definitions
+import timeit
+
 from sympy import primerange
+
+import puzzle_orbit_definitions
 from common_types import OrientationStatus  # , OrientationSumConstraint
 
 CycleCombination = collections.namedtuple(

@@ -11,9 +11,7 @@
 
 - orbit names
 
-- // orbits with no orientation and the same piece count act the same. we should
-// only check the first one continue if this is a duplicate of
-// an orbit that was already checked.
+- FIGURE OUT WHY CANDIDATE COUNT IS WEIRD with batch=1 and batch=100
 
 - work around using Arc in tree
 - use pruning information when each mpmc solution is pushed: multithread pareto efficient pruning and ignore the first register descending
