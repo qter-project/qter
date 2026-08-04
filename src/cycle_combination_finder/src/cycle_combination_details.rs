@@ -9,7 +9,7 @@ use log::trace;
 use crate::{
     FIRST_65_PRIMES,
     cycle_combinations_tree::DisjointRegisters,
-    finder::PossibleOrder,
+    finder::{PossibleOrder, SolutionExpansion},
     puzzle::{OrbitDef, OrientationStatus, OrientationSumConstraint, PuzzleDef, orbit_index_cast},
 };
 
@@ -32,11 +32,12 @@ pub struct CycleCombinationDetail {
 
 #[derive(Debug)]
 #[non_exhaustive]
-pub struct CycleCombinationDetails<'a, 'b, const N: usize> {
-    find_all: bool,
+pub struct CycleCombinationDetails<'a, const N: usize> {
+    expansion: bool,
     possible_orders_except_one: &'a [PossibleOrder<N>],
     maybe_fitting_tries: Option<(u32, u32)>,
-    puzzle_def: &'b PuzzleDef<N>,
+    solution_expansion: SolutionExpansion,
+    puzzle_def: &'a PuzzleDef<N>,
     exact_register_count: NonZeroU16,
 
     detail: Option<CycleCombinationDetail>,
@@ -110,13 +111,14 @@ enum OrbitOrientationConstraint {
     SatisfiedByLeftoverPieces,
 }
 
-impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
+impl<'a, const N: usize> CycleCombinationDetails<'a, N> {
     #[must_use]
     pub fn new(
         exact_register_count: NonZeroU16,
         possible_orders_except_one: &'a [PossibleOrder<N>],
         max_fitting_tries: Option<u32>,
-        puzzle_def: &'b PuzzleDef<N>,
+        solution_expansion: SolutionExpansion,
+        puzzle_def: &'a PuzzleDef<N>,
     ) -> Self {
         let register_assignments = vec![
             RegisterCycleAssignments {
@@ -168,13 +170,14 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
             puzzle_def,
             detail: None,
             maybe_fitting_tries: max_fitting_tries.map(|i| (i, i)),
+            solution_expansion,
             exact_register_count,
             register_assignments,
             reg_to_orbits_constraints,
             initial_reg_to_orbits_constraints,
             orbit_remaining_piece_counts,
             initial_orbit_remaining_piece_counts,
-            find_all: false,
+            expansion: false,
             // register_exponent_sorter,
             // best_orientations_queue,
         }
@@ -271,7 +274,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                 return found;
             }
 
-            if self.find_all {
+            if self.expansion {
                 // TODO: allocator
                 let mut reg_to_orbits_to_cycles =
                     vec![
@@ -473,7 +476,9 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                     PPCycleAssignment::Orbit(orbit_index, must_orient);
 
                 let exists = self.recursive_backtrack(registers, register_index);
-                if exists && !self.find_all {
+                if exists
+                    && (!self.expansion || self.solution_expansion == SolutionExpansion::First)
+                {
                     return true;
                 }
 
@@ -745,7 +750,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
         // println!("{:?}", self.orbit_remaining_piece_counts);
         // TODO: if an orbit has at least the first highest cycle + second highest cycle
         // number of pieces, we will never not satisfy an orientation constraint
-        if self.find_all {
+        if self.expansion {
             self.recursive_backtrack(registers, 0);
             DetailsCalculation::Expansion(self.detail.take())
         } else {
@@ -754,18 +759,18 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
     }
 
     pub fn calculate_existence(&mut self, registers: DisjointRegisters) -> bool {
-        self.find_all = false;
+        self.expansion = false;
         let DetailsCalculation::Existence(exists) = self.calculate(registers) else {
             unreachable!();
         };
         exists
     }
 
-    pub fn calculate_all(
+    pub fn calculate_expansion(
         &mut self,
         registers: DisjointRegisters,
     ) -> Option<CycleCombinationDetail> {
-        self.find_all = true;
+        self.expansion = true;
         let DetailsCalculation::Expansion(detail) = self.calculate(registers) else {
             unreachable!();
         };
@@ -782,7 +787,7 @@ mod tests {
     use crate::{
         cycle_combination_details::CycleCombinationDetails,
         cycle_combinations_tree::DisjointRegisters,
-        finder::{PossibleOrder, mk_possible_orders_except_one},
+        finder::{PossibleOrder, SolutionExpansion, mk_possible_orders_except_one},
         nonemptyvec::NonemptySlice,
         orderexps::OrderExps,
         puzzle::{
@@ -821,6 +826,7 @@ mod tests {
                 min_piece_count: 1.try_into().unwrap(),
             }],
             None,
+            SolutionExpansion::All,
             &crazy,
         )
         .calculate_existence(DisjointRegisters::from(
@@ -936,6 +942,7 @@ mod tests {
                 },
             ],
             None,
+            SolutionExpansion::All,
             &crazy,
         )
         .calculate_existence(DisjointRegisters::from(
@@ -953,6 +960,7 @@ mod tests {
             NonZeroU16::new(3).unwrap(),
             &possible_orders_except_one,
             None,
+            SolutionExpansion::All,
             &minx3,
         );
         let now = Instant::now();
@@ -1003,6 +1011,7 @@ mod tests {
             NonZeroU16::new(2).unwrap(),
             &possible_orders_except_one,
             None,
+            SolutionExpansion::All,
             &cube4,
         );
         detail.calculate_existence(DisjointRegisters::from(

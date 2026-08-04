@@ -26,7 +26,7 @@ use crate::{
     puzzle::{PuzzleDef, possible_order_index_cast},
 };
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, Debug)]
 pub enum Optimality {
     Equivalent,
     #[default]
@@ -34,11 +34,18 @@ pub enum Optimality {
     MaxOrderRatio(u32),
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, Debug)]
 pub enum NumCores {
     #[default]
     AllCores,
     Num(NonZeroUsize),
+}
+
+#[derive(Clone, Copy, Default, Debug, PartialEq)]
+pub enum SolutionExpansion {
+    First,
+    #[default]
+    All,
 }
 
 #[derive(Debug, Clone)]
@@ -89,13 +96,14 @@ pub struct CycleCombinationFinder<R, P> {
     puzzle_def: P,
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct CycleCombinationFinderConfig {
-    optimality: Optimality,
-    pub(crate) num_cores: NumCores,
-    sorted: bool,
-    maybe_expected_length: Option<usize>,
-    pub(crate) max_fitting_tries: Option<u32>,
+    pub optimality: Optimality,
+    pub num_cores: NumCores,
+    pub sorted: bool,
+    pub maybe_expected_length: Option<usize>,
+    pub maybe_max_fitting_tries: Option<u32>,
+    pub solution_expansion: SolutionExpansion,
 }
 
 impl CycleCombination {
@@ -237,7 +245,13 @@ impl<R, P> CycleCombinationFinder<R, P> {
 
     #[must_use]
     pub fn with_max_fitting_tries(mut self, max_fitting_tries: u32) -> Self {
-        self.config.max_fitting_tries = Some(max_fitting_tries);
+        self.config.maybe_max_fitting_tries = Some(max_fitting_tries);
+        self
+    }
+
+    #[must_use]
+    pub fn with_solution_expansion(mut self, solution_expansion: SolutionExpansion) -> Self {
+        self.config.solution_expansion = solution_expansion;
         self
     }
 
@@ -376,7 +390,8 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'_, N
                         CycleCombinationDetails::new(
                             exact_register_count,
                             possible_orders_except_one,
-                            self.config.max_fitting_tries,
+                            self.config.maybe_max_fitting_tries,
+                            self.config.solution_expansion,
                             puzzle_def,
                         )
                     },
@@ -388,7 +403,7 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'_, N
                         let cycle_combination = CycleCombination {
                             registers: Arc::clone(possible_register),
                             detail: details
-                                .calculate_all(possible_register2)
+                                .calculate_expansion(possible_register2)
                                 .expect("This solution is in the front and therefore exists"),
                         };
 

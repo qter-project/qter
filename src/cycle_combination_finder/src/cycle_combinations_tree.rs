@@ -426,7 +426,7 @@ fn details_thread<const N: usize>(
     exact_register_count: NonZeroU16,
     batch_size: NonZeroUsize,
     collector: &Collector,
-    max_fitting_tries: Option<u32>,
+    config: &CycleCombinationFinderConfig,
 ) -> DetailsThreadInfo {
     if core_affinity::set_for_current(core_id) {
         debug!("Details: Pinned {core_id:?}");
@@ -435,7 +435,8 @@ fn details_thread<const N: usize>(
     let mut details = CycleCombinationDetails::new(
         exact_register_count,
         possible_orders_except_one,
-        max_fitting_tries,
+        config.maybe_max_fitting_tries,
+        config.solution_expansion,
         puzzle_def,
     );
     let mut processed_candidate_count = 0;
@@ -932,7 +933,7 @@ pub(crate) fn search_dfs<const N: usize>(
                         exact_register_count,
                         batch_size,
                         collector,
-                        config.max_fitting_tries,
+                        config,
                     )
                 });
                 (tree_thread_handle, details_thread_handle)
