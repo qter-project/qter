@@ -116,6 +116,12 @@ impl<'a, T> NonemptySlice<'a, T> {
     }
 
     #[must_use]
+    pub fn last(&self) -> &T {
+        // SAFETY: this collection has at least one element
+        unsafe { self.0.last().unwrap_unchecked() }
+    }
+
+    #[must_use]
     pub fn split_first(self) -> (&'a T, &'a [T]) {
         // SAFETY: this collection has at least one element
         unsafe { self.0.split_first().unwrap_unchecked() }

@@ -29,6 +29,7 @@
 
 - possible orders
   - store next trie levels inline
+  - cache orbit orders
   - daniel's SIMD gcd algorithm
   - compute minimum piece count
   - can we just remove parity constraints?

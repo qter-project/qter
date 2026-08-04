@@ -39,6 +39,7 @@ struct CycleCombinationsTreeMutable {
     sender_lens: usize,
     curr_batch_len: usize,
     registers: NonemptyVec<u32>,
+    register_cutoff: u32,
     candidates_sender: mpmc::Sender<PackedCycleCombinationCandidateQueue>,
     alloc_time: Duration,
     candidate_count: u64,
@@ -585,6 +586,7 @@ fn dfs_thread<const N: usize>(
     possible_orders_except_one: &[PossibleOrder<N>],
     collector: &Collector,
     old_bucket: &Mutex<usize>,
+    maybe_max_order_ratio: Option<u32>,
 ) -> TreeThreadInfo {
     if core_affinity::set_for_current(core_id) {
         debug!("DFS: Pinned {core_id:?}");
@@ -653,6 +655,14 @@ fn dfs_thread<const N: usize>(
                 NonemptySlice::try_from(&possible_orders_except_one[..=i])
         {
             *mutable.registers.first_mut() = i_u32;
+            if let Some(max_order_ratio) = maybe_max_order_ratio {
+                mutable.register_cutoff = possible_orders_len_cast(
+                    next_possible_orders.partition_point(|possible_order| {
+                        possible_order.order.ln() + f64::from(max_order_ratio).ln()
+                            < next_possible_orders.last().order.ln()
+                    }),
+                );
+            }
             unsafe {
                 search_dfs_helper(
                     collector,
@@ -704,6 +714,9 @@ unsafe fn search_dfs_helper<const N: usize>(
     loop {
         let (possible_order, next_possible_orders) = curr_possible_orders.split_last();
         let i = possible_orders_len_cast(next_possible_orders.len());
+        if i < mutable.register_cutoff {
+            break;
+        }
 
         let guard = collector.enter();
         let maybe_raw_pruning = guard.protect(pareto_efficient_pruning, atomic::Ordering::Acquire);
@@ -802,6 +815,7 @@ pub(crate) fn search_dfs<const N: usize>(
     config: &CycleCombinationFinderConfig,
     possible_orders_except_one: &[PossibleOrder<N>],
     exact_register_count: NonZeroU16,
+    maybe_max_order_ratio: Option<u32>,
     capacity_multipler: usize,
     batch_size: NonZeroUsize,
 ) -> Vec<Arc<[u32]>> {
@@ -832,6 +846,7 @@ pub(crate) fn search_dfs<const N: usize>(
         sender_lens: 0,
         curr_batch_len: 0,
         registers: NonemptyVec::try_from(vec![0; usize::from(exact_register_count.get())]).unwrap(),
+        register_cutoff: 0,
         candidates_sender,
         alloc_time: Duration::default(),
         candidate_count: 0,
@@ -898,6 +913,7 @@ pub(crate) fn search_dfs<const N: usize>(
                         possible_orders_except_one,
                         collector,
                         old_bucket,
+                        maybe_max_order_ratio,
                     )
                 });
                 let candidates_receiver = candidates_receiver.clone();
@@ -916,7 +932,7 @@ pub(crate) fn search_dfs<const N: usize>(
                         exact_register_count,
                         batch_size,
                         collector,
-                        config.max_fitting_tries
+                        config.max_fitting_tries,
                     )
                 });
                 (tree_thread_handle, details_thread_handle)

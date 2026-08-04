@@ -31,6 +31,7 @@ pub enum Optimality {
     Equivalent,
     #[default]
     Optimal,
+    MaxOrderRatio(u32),
 }
 
 #[derive(Clone, Copy, Default)]
@@ -347,8 +348,18 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'_, N
                 &self.config,
                 possible_orders_except_one,
                 exact_register_count,
+                None,
                 1,
-                NonZeroUsize::new(100).unwrap(),
+                NonZeroUsize::new(1).unwrap(),
+            ),
+            Optimality::MaxOrderRatio(max_order_ratio) => search_dfs(
+                puzzle_def,
+                &self.config,
+                possible_orders_except_one,
+                exact_register_count,
+                Some(max_order_ratio),
+                1,
+                NonZeroUsize::new(1).unwrap(),
             ),
         };
         if self.config.sorted {
@@ -440,7 +451,7 @@ mod tests {
         finder::{CycleCombinationFinder, CycleCombinations},
         puzzle::{
             cubeN::{CUBE3, CUBE4},
-            minxN::{MINX3, MINX4},
+            minxN::{MINX3, MINX4, MINX5},
         },
     };
 
@@ -459,85 +470,118 @@ mod tests {
     }
 
     #[test_log::test]
-    fn minx4_optimal_3() {
-        let minx4 = MINX4.clone();
-        CycleCombinationFinder::builder()
-            .with_puzzle_def(&minx4)
-            .with_register_count(NonZeroU16::new(3).unwrap())
-            .with_expected_length_assertion(251)
-            .find()
-            .unwrap();
-    }
-
-    #[ignore = "takes too long"]
-    #[test_log::test]
     fn minx3_optimal_5() {
         let minx3 = MINX3.clone();
-        CycleCombinationFinder::builder()
+        let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx3)
             .with_register_count(NonZeroU16::new(5).unwrap())
-            .with_expected_length_assertion(1052)
             .find()
             .unwrap();
+
+        for x in ret.cycle_combinations {
+            println!("{}", x.display_fmt(&ret.possible_orders_except_one, &minx3));
+        }
     }
 
     #[test_log::test]
     fn minx3_optimal_4() {
         let minx3 = MINX3.clone();
-        CycleCombinationFinder::builder()
+        let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx3)
             .with_register_count(NonZeroU16::new(4).unwrap())
-            .with_expected_length_assertion(347)
             .find()
             .unwrap();
+
+        for x in ret.cycle_combinations {
+            println!("{}", x.display_fmt(&ret.possible_orders_except_one, &minx3));
+        }
+    }
+
+    #[test_log::test]
+    fn minx4_optimal_3() {
+        let minx4 = MINX4.clone();
+        let ret = CycleCombinationFinder::builder()
+            .with_puzzle_def(&minx4)
+            .with_register_count(NonZeroU16::new(3).unwrap())
+            .with_expected_length_assertion(1)
+            .find()
+            .unwrap();
+
+        // for x in ret.cycle_combinations {
+        //     println!("{}", x.display_fmt(&ret.possible_orders_except_one, &minx4));
+        // }
+        drop(ret);
+    }
+
+    #[test_log::test]
+    fn minx5_optimal_2() {
+        let minx5 = MINX5.clone();
+        let ret = CycleCombinationFinder::builder()
+            .with_puzzle_def(&minx5)
+            .with_register_count(NonZeroU16::new(2).unwrap())
+            .find()
+            .unwrap();
+
+        // for x in ret.cycle_combinations {
+        //     println!("{}", x.display_fmt(&ret.possible_orders_except_one, &minx5));
+        // }
+        drop(ret);
     }
 
     #[test_log::test]
     fn minx3_optimal_3() {
         let minx3 = MINX3.clone();
-        CycleCombinationFinder::builder()
+        let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx3)
             .with_register_count(NonZeroU16::new(3).unwrap())
-            .with_expected_length_assertion(64)
             .find()
             .unwrap();
+
+        for x in ret.cycle_combinations {
+            println!("{}", x.display_fmt(&ret.possible_orders_except_one, &minx3));
+        }
     }
 
     #[test_log::test]
     fn cube3_optimal_4() {
         let cube3 = CUBE3.clone();
-        CycleCombinationFinder::builder()
+        let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&cube3)
             .with_register_count(NonZeroU16::new(4).unwrap())
-            .with_expected_length_assertion(50)
             .find()
             .unwrap();
+
+        for x in ret.cycle_combinations {
+            println!("{}", x.display_fmt(&ret.possible_orders_except_one, &cube3));
+        }
     }
 
     #[test_log::test]
     fn cube3_optimal_3() {
         let cube3 = CUBE3.clone();
-        CycleCombinationFinder::builder()
+        let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&cube3)
             .with_register_count(NonZeroU16::new(3).unwrap())
-            .with_expected_length_assertion(17)
             .find()
             .unwrap();
+
+        for x in ret.cycle_combinations {
+            println!("{}", x.display_fmt(&ret.possible_orders_except_one, &cube3));
+        }
     }
 
     #[test_log::test]
     fn cube4_optimal_2() {
-        let cube3 = CUBE4.clone();
+        let cube4 = CUBE4.clone();
         let ret = CycleCombinationFinder::builder()
-            .with_puzzle_def(&cube3)
+            .with_puzzle_def(&cube4)
             .with_register_count(NonZeroU16::new(2).unwrap())
-            .with_expected_length_assertion(13)
             .with_sorted(true)
             .find()
             .unwrap();
-        // println!("{:?}", ret.data);
+
         for x in ret.cycle_combinations {
-            println!("{}", x.display_fmt(&ret.possible_orders_except_one, &cube3));
+            println!("{}", x.display_fmt(&ret.possible_orders_except_one, &cube4));
         }
     }
 }

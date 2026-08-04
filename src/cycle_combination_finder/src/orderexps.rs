@@ -65,6 +65,17 @@ impl<const N: usize> OrderExps<N> {
 
     #[inline]
     #[must_use]
+    pub fn ln(&self) -> f64 {
+        FIRST_65_PRIMES
+            .into_iter()
+            .zip(self.0.as_array().iter())
+            .take(N)
+            .map(|(p, &e)| f64::from(e) * f64::from(p).ln())
+            .sum()
+    }
+
+    #[inline]
+    #[must_use]
     pub fn remove_factors(&self, removing: &Self) -> Self {
         Self(self.0.saturating_sub(removing.0))
     }
@@ -182,23 +193,9 @@ impl<const N: usize> Ord for OrderExps<N> {
             (false, true) => Ordering::Greater,
             (true, false) => Ordering::Less,
             (false, false) => {
-                // Note that it is slower to use exponent/product compared to product/sum. It is
-                // also slower to subtract `min` from `self` and `other`.
-                let a: f32 = FIRST_65_PRIMES
-                    .into_iter()
-                    .zip(self.0.as_array().iter())
-                    .take(N)
-                    .map(|(p, &e)| f32::from(e) * f32::from(p).ln())
-                    .sum();
-                let b: f32 = FIRST_65_PRIMES
-                    .into_iter()
-                    .zip(other.0.as_array().iter())
-                    .take(N)
-                    .map(|(p, &e)| f32::from(e) * f32::from(p).ln())
-                    .sum();
                 // SAFETY: the input to `f32::from` are all regular integer numbers. Therefore,
                 // there `a` and `b` are also numbers.
-                unsafe { a.partial_cmp(&b).unwrap_unchecked() }
+                unsafe { self.ln().partial_cmp(&other.ln()).unwrap_unchecked() }
             }
         }
     }
