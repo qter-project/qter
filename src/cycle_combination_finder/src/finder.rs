@@ -291,7 +291,7 @@ pub(crate) fn mk_possible_orders_except_one<const N: usize>(
     );
     possible_orders_except_one.sort_unstable_by(|a, b| a.order.cmp(&b.order));
     trace!(
-        "100 Possible orders: {}",
+        "Possible orders done; first 100: {}",
         possible_orders_except_one
             .iter()
             .map(|a| format!("{:?}", a.order))
@@ -402,7 +402,15 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'_, N
 
         let now = Instant::now();
         let cycle_combinations = maybe_pool.map_or_else(expand, |pool| pool.install(expand));
-        debug!("Find all took: {}", now.elapsed().human(Truncate::Micro));
+        debug!("Expansion took: {}", now.elapsed().human(Truncate::Micro));
+        debug!(
+            "Found {} solutions, with {} expansions average",
+            cycle_combinations.len(),
+            cycle_combinations
+                .iter()
+                .map(|cycle_combination| cycle_combination.detail.detail.len())
+                .sum::<usize>()
+        );
         if let Some(expected_length) = self.config.maybe_expected_length {
             assert_eq!(
                 cycle_combinations.len(),
@@ -415,7 +423,6 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'_, N
                     .collect::<Vec<_>>()
                     .join("\n")
             );
-            debug!("Successfully found {} solutions", cycle_combinations.len());
             trace!("{cycle_combinations:?}");
         }
         Ok(CycleCombinations {

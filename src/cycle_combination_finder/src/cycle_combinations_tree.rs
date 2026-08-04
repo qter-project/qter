@@ -22,7 +22,11 @@ use seize::{Collector, Guard, reclaim};
 use tokio::sync::broadcast::error::TryRecvError as TokioTryRecvError;
 
 use crate::{
-    cycle_combination_details::CycleCombinationDetails, finder::{CycleCombinationFinderConfig, NumCores, PossibleOrder}, nonemptyvec::{NonemptySlice, NonemptyVec}, pareto_front::CCParetoFront, puzzle::{PuzzleDef, possible_orders_len_cast},
+    cycle_combination_details::CycleCombinationDetails,
+    finder::{CycleCombinationFinderConfig, NumCores, PossibleOrder},
+    nonemptyvec::{NonemptySlice, NonemptyVec},
+    pareto_front::CCParetoFront,
+    puzzle::{PuzzleDef, possible_orders_len_cast},
 };
 
 #[derive(Clone)]
@@ -427,8 +431,12 @@ fn details_thread<const N: usize>(
         debug!("Details: Pinned {core_id:?}");
     }
     let mut cycle_combinations = CCParetoFront::default();
-    let mut details =
-        CycleCombinationDetails::new(exact_register_count, possible_orders_except_one, max_fitting_tries, puzzle_def);
+    let mut details = CycleCombinationDetails::new(
+        exact_register_count,
+        possible_orders_except_one,
+        max_fitting_tries,
+        puzzle_def,
+    );
     let mut processed_candidate_count = 0;
     let mut post_candidate_count = 0;
     let raw_pruning_len = NonZeroUsize::new(usize::from(
@@ -698,8 +706,8 @@ unsafe fn search_dfs_helper<const N: usize>(
         let i = possible_orders_len_cast(next_possible_orders.len());
 
         let guard = collector.enter();
-        let raw_pruning = guard.protect(pareto_efficient_pruning, atomic::Ordering::Acquire);
-        if let Some(raw_pruning) = NonNull::new(raw_pruning) {
+        let maybe_raw_pruning = guard.protect(pareto_efficient_pruning, atomic::Ordering::Acquire);
+        if let Some(raw_pruning) = NonNull::new(maybe_raw_pruning) {
             // SAFETY: `raw_pruning` is guaranteed to point to
             // `mutable.exact_register_count().get().saturating_sub(2) + 1` u32s. The caller
             // guarantees `register_index` is less than `mutable.exact_register_count()`;
@@ -717,7 +725,7 @@ unsafe fn search_dfs_helper<const N: usize>(
                     .iter()
                     .skip(1)
                     .zip(pareto_efficent_prunes)
-                    .all(|(register, pareto_efficient_prune)| register <= pareto_efficient_prune)
+                    .all(|(&register, &pareto_efficient_prune)| register <= pareto_efficient_prune)
             {
                 break;
             }

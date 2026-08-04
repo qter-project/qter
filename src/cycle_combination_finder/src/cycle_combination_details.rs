@@ -10,12 +10,12 @@ use crate::{
     FIRST_65_PRIMES,
     cycle_combinations_tree::DisjointRegisters,
     finder::PossibleOrder,
-    puzzle::{OrientationStatus, OrientationSumConstraint, PuzzleDef, orbit_index_cast},
+    puzzle::{OrbitDef, OrientationStatus, OrientationSumConstraint, PuzzleDef, orbit_index_cast},
 };
 
 enum DetailsCalculation {
     Existence(bool),
-    FindAll(Option<CycleCombinationDetail>),
+    Expansion(Option<CycleCombinationDetail>),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -191,7 +191,6 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                 return false;
             }
         }
-        // TODO: if too many recursions, then say this is false, setting
         let register_index2 = usize::from(register_index);
         let unassigned_exponents_mask =
             self.register_assignments[register_index2].unassigned_exponents_mask;
@@ -336,7 +335,35 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
         let register_order_exp = register_order.prime_exponent(prime_index2);
 
         // TODO: smarter orbit ordering, ignore identical orbits
-        for orbit_index2 in 0..self.puzzle_def.orbit_defs().len().get() {
+        let mut prev_idx_and_piece_count: Option<(usize, NonZeroU16)> = None;
+        for _ in 0..self.puzzle_def.orbit_defs().len().get() {
+            let (orbit_index2, piece_count) = self
+                .puzzle_def
+                .orbit_defs()
+                .iter()
+                .enumerate()
+                .filter_map(|(orbit_index, &OrbitDef { piece_count, .. })| {
+                    if prev_idx_and_piece_count.is_none_or(
+                        |(prev_orbit_index, prev_piece_count)| {
+                            piece_count > prev_piece_count
+                                || (piece_count == prev_piece_count
+                                    && orbit_index > prev_orbit_index)
+                        },
+                    ) {
+                        Some((orbit_index, piece_count))
+                    } else {
+                        None
+                    }
+                })
+                .min_by(
+                    |&(orbit_index1, piece_count1), &(orbit_index2, piece_count2)| {
+                        piece_count1
+                            .cmp(&piece_count2)
+                            .then_with(|| orbit_index1.cmp(&orbit_index2))
+                    },
+                )
+                .expect("there are exactly <number of orbits> distinct (index, value) pairs");
+
             // TODO: optimization to not place same cycle in orbit with 1 orientation
             // TODO: min piece count pruning
             let orbit_index = orbit_index_cast(orbit_index2);
@@ -470,6 +497,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
                 self.reg_to_orbits_constraints[reg_orbit_constraint_index].orientation_constraint =
                     old;
             }
+            prev_idx_and_piece_count = Some((orbit_index2, piece_count));
         }
         false
     }
@@ -719,7 +747,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
         // number of pieces, we will never not satisfy an orientation constraint
         if self.find_all {
             self.recursive_backtrack(registers, 0);
-            DetailsCalculation::FindAll(self.detail.take())
+            DetailsCalculation::Expansion(self.detail.take())
         } else {
             DetailsCalculation::Existence(self.recursive_backtrack(registers, 0))
         }
@@ -738,7 +766,7 @@ impl<'a, 'b, const N: usize> CycleCombinationDetails<'a, 'b, N> {
         registers: DisjointRegisters,
     ) -> Option<CycleCombinationDetail> {
         self.find_all = true;
-        let DetailsCalculation::FindAll(detail) = self.calculate(registers) else {
+        let DetailsCalculation::Expansion(detail) = self.calculate(registers) else {
             unreachable!();
         };
         detail

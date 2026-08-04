@@ -6,11 +6,13 @@ This is more efficient version of the optimal CCF. The goal is to return
 one structure for each combination, rather than every structure.
 There are also a few more assumptions, and as such there may be some missed combinations.
 """
+
 # TODO allow for orientation to be composite
 import collections
 import copy
 import math
 import operator
+import sys
 import timeit
 
 from sympy import primerange
@@ -301,6 +303,7 @@ def efficient_cycle_combinations(puzzle_orbit_definition, num_registers):
                     puzzle_orbit_definition,
                 )
             ]
+    sys.exit()
 
 
 def cycle_combination_objs_stats(cycle_combination_objs):
@@ -333,19 +336,14 @@ def main():
         puzzle_orbit_definition=puzzle_orbit_definitions.PUZZLE_6x6,
         num_registers=3,
     )
-    cycle_combinations = sorted(
-        cycle_combinations, key=lambda x: x.order_product, reverse=True
-    )
+    cycle_combinations.sort(key=lambda x: x.order_product, reverse=True)
     print(timeit.default_timer() - start)
     return cycle_combinations
 
 
 if __name__ == "__main__":
     cycle_combination_objs = main()
-    try:
-        stats = cycle_combination_objs_stats(cycle_combination_objs)
-    except Exception:
-        stats = None
+    stats = cycle_combination_objs_stats(cycle_combination_objs)
     with open("./output_equivalent.py", "w") as f:
         f.write(
             f"Cycle = 1\nCycleCombination = 1\nCubiePartition = 1\n{stats}\n{cycle_combination_objs}"
