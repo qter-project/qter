@@ -116,7 +116,7 @@ impl<'a, const N: usize> CycleCombinationDetails<'a, N> {
     pub fn new(
         exact_register_count: NonZeroU16,
         possible_orders_except_one: &'a [PossibleOrder<N>],
-        max_fitting_tries: Option<u32>,
+        maybe_max_fitting_tries: Option<u32>,
         solution_expansion: SolutionExpansion,
         puzzle_def: &'a PuzzleDef<N>,
     ) -> Self {
@@ -169,7 +169,8 @@ impl<'a, const N: usize> CycleCombinationDetails<'a, N> {
             possible_orders_except_one,
             puzzle_def,
             detail: None,
-            maybe_fitting_tries: max_fitting_tries.map(|i| (i, i)),
+            maybe_fitting_tries: maybe_max_fitting_tries
+                .map(|max_fitting_tries| (max_fitting_tries, max_fitting_tries)),
             solution_expansion,
             exact_register_count,
             register_assignments,
@@ -476,12 +477,18 @@ impl<'a, const N: usize> CycleCombinationDetails<'a, N> {
                     PPCycleAssignment::Orbit(orbit_index, must_orient);
 
                 let exists = self.recursive_backtrack(registers, register_index);
-                if exists
-                    && (!self.expansion || self.solution_expansion == SolutionExpansion::First)
-                {
-                    return true;
+                if exists {
+                    if !self.expansion {
+                        return true;
+                    } else if let SolutionExpansion::Limit(limit) = self.solution_expansion
+                        && self
+                            .detail
+                            .as_ref()
+                            .is_some_and(|d| d.detail.len() >= limit.get())
+                    {
+                        return true;
+                    }
                 }
-
                 trace!(
                     "{register_index} {orbit_index}: undo {old:?} <- {:?}; unassigned {prime} \
                      (share state {share_state:?})",

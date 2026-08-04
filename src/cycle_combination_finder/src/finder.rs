@@ -43,7 +43,7 @@ pub enum NumCores {
 
 #[derive(Clone, Copy, Default, Debug, PartialEq)]
 pub enum SolutionExpansion {
-    First,
+    Limit(NonZeroUsize),
     #[default]
     All,
 }
