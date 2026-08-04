@@ -31,7 +31,7 @@ pub enum Optimality {
     Equivalent,
     #[default]
     Optimal,
-    MaxOrderRatio(u32),
+    MaxOrderRatio(f64),
 }
 
 #[derive(Clone, Copy, Default, Debug)]

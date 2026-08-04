@@ -586,7 +586,7 @@ fn dfs_thread<const N: usize>(
     possible_orders_except_one: &[PossibleOrder<N>],
     collector: &Collector,
     old_bucket: &Mutex<usize>,
-    maybe_max_order_ratio: Option<u32>,
+    maybe_max_order_ratio: Option<f64>,
 ) -> TreeThreadInfo {
     if core_affinity::set_for_current(core_id) {
         debug!("DFS: Pinned {core_id:?}");
@@ -658,7 +658,7 @@ fn dfs_thread<const N: usize>(
             if let Some(max_order_ratio) = maybe_max_order_ratio {
                 mutable.register_cutoff = possible_orders_len_cast(
                     next_possible_orders.partition_point(|possible_order| {
-                        possible_order.order.ln() + f64::from(max_order_ratio).ln()
+                        possible_order.order.ln() + max_order_ratio.ln()
                             < next_possible_orders.last().order.ln()
                     }),
                 );
@@ -815,7 +815,7 @@ pub(crate) fn search_dfs<const N: usize>(
     config: &CycleCombinationFinderConfig,
     possible_orders_except_one: &[PossibleOrder<N>],
     exact_register_count: NonZeroU16,
-    maybe_max_order_ratio: Option<u32>,
+    maybe_max_order_ratio: Option<f64>,
 ) -> Vec<Arc<[u32]>> {
     // If we return a None here then /shrug
     #[allow(clippy::missing_panics_doc)]
