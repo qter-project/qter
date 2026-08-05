@@ -17,12 +17,9 @@
 - use pruning information when each mpmc solution is pushed: multithread pareto efficient pruning and ignore the first register descending
 
 - after MKP
-  - note that batching "ramps up" the mkp threads when the batch size is large; there are few solutions/batch in the beginning which helps make sure the
-  - experiment with num_cores * 10
-  - max solutions per register count setting
+  - note that batching "ramps up" the mkp threads when the batch size is large; there are few solutions/batch in the beginning which helps make sure the 
   - SubOptimal Optimality which uses the naive pareto front dominate approach; could also assume a lesser min piece count threshold; uses naive register_index <= 1
   - reuse possible orders list if two orbits are the same
-  - throw out order case if we ever compute it has a non-+1 orientation factor
   - is possible_order.0.simd_ne(Simd::splat(0)) really needed
   - better log tracing messages
 

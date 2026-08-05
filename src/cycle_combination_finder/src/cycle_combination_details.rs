@@ -4,11 +4,11 @@ use std::{
     simd::{Mask, Simd, cmp::SimdPartialEq},
 };
 
-use log::trace;
+use log::{debug, trace};
 
 use crate::{
     FIRST_65_PRIMES,
-    cycle_combinations_tree::DisjointRegisters,
+    cycle_combinations_tree::{DisjointRegisters, dbg_registers},
     finder::{PossibleOrder, SolutionExpansion},
     puzzle::{OrbitDef, OrientationStatus, OrientationSumConstraint, PuzzleDef, orbit_index_cast},
 };

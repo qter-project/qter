@@ -242,7 +242,13 @@ impl<R, P> CycleCombinationFinder<R, P> {
 
     #[must_use]
     pub fn with_optimality(mut self, optimality: Optimality) -> Self {
-        self.config.optimality = optimality;
+        self.config.optimality = if let Optimality::MaxOrderRatio(max_order_ratio) = optimality
+            && max_order_ratio <= 1.0
+        {
+            Optimality::Equivalent
+        } else {
+            optimality
+        };
         self
     }
 
@@ -253,14 +259,14 @@ impl<R, P> CycleCombinationFinder<R, P> {
     }
 
     #[must_use]
-    pub fn with_expected_length_assertion(mut self, expected_length: usize) -> Self {
-        self.config.maybe_expected_length = Some(expected_length);
+    pub fn with_expected_length_assertion(mut self, maybe_expected_length: Option<usize>) -> Self {
+        self.config.maybe_expected_length = maybe_expected_length;
         self
     }
 
     #[must_use]
-    pub fn with_max_fitting_tries(mut self, max_fitting_tries: u32) -> Self {
-        self.config.maybe_max_fitting_tries = Some(max_fitting_tries);
+    pub fn with_max_fitting_tries(mut self, maybe_max_fitting_tries: Option<u32>) -> Self {
+        self.config.maybe_max_fitting_tries = maybe_max_fitting_tries;
         self
     }
 
@@ -477,10 +483,10 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'_, N
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZeroU16;
+    use std::num::{NonZeroU16, NonZeroUsize};
 
     use crate::{
-        finder::{CycleCombinationFinder, CycleCombinations},
+        finder::{CycleCombinationFinder, CycleCombinations, Optimality, SolutionExpansion},
         puzzle::{
             cubeN::{CUBE3, CUBE4},
             minxN::{MINX3, MINX4, MINX5},
@@ -502,11 +508,13 @@ mod tests {
     }
 
     #[test_log::test]
-    fn minx3_optimal_5() {
+    fn minx3_optimal_3() {
         let minx3 = MINX3.clone();
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx3)
-            .with_register_count(NonZeroU16::new(5).unwrap())
+            .with_optimality(Optimality::MaxOrderRatio(1.01))
+            .with_register_count(NonZeroU16::new(3).unwrap())
+            .with_sorted(true)
             .find()
             .unwrap();
 
@@ -530,12 +538,26 @@ mod tests {
     }
 
     #[test_log::test]
+    fn minx3_optimal_5() {
+        let minx3 = MINX3.clone();
+        let ret = CycleCombinationFinder::builder()
+            .with_puzzle_def(&minx3)
+            .with_register_count(NonZeroU16::new(5).unwrap())
+            .find()
+            .unwrap();
+
+        for x in ret.cycle_combinations {
+            println!("{}", x.display_fmt(&ret.possible_orders_except_one, &minx3));
+        }
+    }
+
+    #[test_log::test]
     fn minx4_optimal_3() {
         let minx4 = MINX4.clone();
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx4)
             .with_register_count(NonZeroU16::new(3).unwrap())
-            .with_expected_length_assertion(1)
+            .with_expected_length_assertion(Some(1))
             .find()
             .unwrap();
 
@@ -561,16 +583,21 @@ mod tests {
     }
 
     #[test_log::test]
-    fn minx3_optimal_3() {
-        let minx3 = MINX3.clone();
+    fn minx5_optimal_3() {
+        let minx5 = MINX5.clone();
         let ret = CycleCombinationFinder::builder()
-            .with_puzzle_def(&minx3)
+            .with_puzzle_def(&minx5)
             .with_register_count(NonZeroU16::new(3).unwrap())
+            .with_max_fitting_tries(Some(500))
+            .with_optimality(Optimality::MaxOrderRatio(1.0))
+            .with_solution_expansion(SolutionExpansion::Limit(NonZeroUsize::new(10).unwrap()))
+            .with_mss_batch_size(NonZeroUsize::new(1).unwrap())
+            .with_sorted(true)
             .find()
             .unwrap();
 
         for x in ret.cycle_combinations {
-            println!("{}", x.display_fmt(&ret.possible_orders_except_one, &minx3));
+            println!("{}", x.display_fmt(&ret.possible_orders_except_one, &minx5));
         }
     }
 
