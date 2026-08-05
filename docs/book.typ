@@ -4,7 +4,7 @@
 #show: book
 
 #book-meta(
-  title: "Qter Documentation",
+  title: "Qter Docs",
   repository: "https://github.com/qter-project/qter",
   repository-edit: "https://github.com/qter-project/qter/edit/main/docs/{path}",
   discord: "https://discord.gg/geEhJ6DjBb",
