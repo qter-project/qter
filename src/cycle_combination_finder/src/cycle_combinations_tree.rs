@@ -353,8 +353,15 @@ unsafe fn try_next_pareto_efficient_pruning(
         // SAFETY: the called guarantees `pareto_efficient_pruning` is valid. Also later
         // in this block we always initialize `pareto_efficient_pruning` to be of
         // `raw_pruning_len` length.
-        let raw_pruning =
-            unsafe { NonemptySlice::from_raw_parts(raw_pruning.as_ptr(), raw_pruning_len) };
+        let raw_pruning = unsafe {
+            NonemptySlice::from_raw_parts(
+                NonNull::slice_from_raw_parts(raw_pruning, raw_pruning_len.get())
+                    .as_uninit_slice()
+                    .assume_init_ref()
+                    .as_ptr(),
+                raw_pruning_len,
+            )
+        };
         let (&max_last_register, pareto_efficent_prunes) = raw_pruning.split_first();
         if disjoint_registers.last_register < max_last_register {
             return None;
@@ -727,7 +734,10 @@ unsafe fn search_dfs_helper<const N: usize>(
             // therefore we are in bounds
             let raw_pruning = unsafe {
                 NonemptySlice::from_raw_parts(
-                    raw_pruning.as_ptr(),
+                    NonNull::slice_from_raw_parts(raw_pruning, usize::from(register_index.get()))
+                        .as_uninit_slice()
+                        .assume_init_ref()
+                        .as_ptr(),
                     NonZeroUsize::from(register_index),
                 )
             };

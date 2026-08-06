@@ -1,9 +1,9 @@
 from common_types import (
-    PuzzleOrbitDefinition,
-    OrientationSumConstraint,
-    OrientationStatus,
-    Orbit,
     EvenParityConstraint,
+    Orbit,
+    OrientationStatus,
+    OrientationSumConstraint,
+    PuzzleOrbitDefinition,
 )
 
 

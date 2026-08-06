@@ -6,6 +6,7 @@
     clippy::similar_names
 )]
 #![feature(
+    ptr_as_uninit,
     nonpoison_mutex,
     sync_nonpoison,
     exact_div,
