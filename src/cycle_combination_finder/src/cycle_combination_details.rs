@@ -90,6 +90,12 @@ enum PPCycleAssignment {
     Unassigned,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct OrbitTraversalState {
+    orbit_index2: usize,
+    piece_count: NonZeroU16,
+}
+
 // #[derive(Debug, Clone, Copy)]
 // enum BestOrientation {
 //     Orbit(u16, SharingState),
@@ -223,6 +229,7 @@ impl<'a, const N: usize> CycleCombinationDetails<'a, N> {
             ) in orbits_constraints.iter_mut().enumerate()
             {
                 // Promote only if we have no other share rn
+                // TODO: parity
                 if running_share_state_satisfies == ShareState::Orientation
                     && *share_state == ShareState::None
                 {
@@ -321,7 +328,7 @@ impl<'a, const N: usize> CycleCombinationDetails<'a, N> {
                         all_exponents ^= all_exponents.isolate_lowest_one();
                     }
                 }
-                trace!(
+                eprintln!(
                     "{:#?} {:#?} {:#?}",
                     self.orbit_remaining_piece_counts,
                     self.reg_to_orbits_constraints,
@@ -348,35 +355,59 @@ impl<'a, const N: usize> CycleCombinationDetails<'a, N> {
         let register_order_exp = register_order.prime_exponent(prime_index2);
 
         // TODO: smarter orbit ordering, ignore identical orbits
-        let mut prev_idx_and_piece_count: Option<(usize, NonZeroU16)> = None;
-        for _ in 0..self.puzzle_def.orbit_defs().len().get() {
-            let (orbit_index2, piece_count) = self
+        let mut traverse_orienting_orbits = false;
+        let mut maybe_prev_traversal_state: Option<OrbitTraversalState> = None;
+        loop {
+            let Some(orbit_traversal_state) = self
                 .puzzle_def
                 .orbit_defs()
                 .iter()
+                .zip(self.puzzle_def.orientations_exps().iter())
                 .enumerate()
-                .filter_map(|(orbit_index, &OrbitDef { piece_count, .. })| {
-                    if prev_idx_and_piece_count.is_none_or(
-                        |(prev_orbit_index, prev_piece_count)| {
-                            piece_count
-                                .cmp(&prev_piece_count)
-                                .then_with(|| orbit_index.cmp(&prev_orbit_index))
-                                .is_gt()
-                        },
-                    ) {
-                        Some((orbit_index, piece_count))
-                    } else {
-                        None
-                    }
-                })
-                .min_by(
-                    |&(orbit_index1, piece_count1), &(orbit_index2, piece_count2)| {
-                        piece_count1
-                            .cmp(&piece_count2)
-                            .then_with(|| orbit_index1.cmp(&orbit_index2))
+                .filter_map(
+                    |(orbit_index2, (&OrbitDef { piece_count, .. }, orientation_exps))| {
+                        let orientation_exps_mask =
+                            orientation_exps.0.simd_ne(Simd::splat(0)).to_bitmask();
+                        if traverse_orienting_orbits
+                            == (orientation_exps_mask & unassigned_exponents_mask
+                                == orientation_exps_mask)
+                            && maybe_prev_traversal_state.is_none_or(
+                                |OrbitTraversalState {
+                                     orbit_index2: prev_orbit_index2,
+                                     piece_count: prev_piece_count,
+                                 }| {
+                                    piece_count
+                                        .cmp(&prev_piece_count)
+                                        .then_with(|| orbit_index2.cmp(&prev_orbit_index2))
+                                        .is_gt()
+                                },
+                            )
+                        {
+                            Some(OrbitTraversalState {
+                                orbit_index2,
+                                piece_count,
+                            })
+                        } else {
+                            None
+                        }
                     },
                 )
-                .expect("there are exactly <number of orbits> distinct (index, value) pairs");
+                // TODO: reduce instead of min_by to avoid extra loop
+                .min_by(|a, b| {
+                    a.piece_count
+                        .cmp(&b.piece_count)
+                        .then_with(|| b.orbit_index2.cmp(&b.orbit_index2))
+                })
+            else {
+                if traverse_orienting_orbits {
+                    break;
+                }
+                traverse_orienting_orbits = true;
+                maybe_prev_traversal_state = None;
+                continue;
+            };
+            maybe_prev_traversal_state = Some(orbit_traversal_state);
+            let orbit_index2 = orbit_traversal_state.orbit_index2;
 
             // TODO: optimization to not place same cycle in orbit with 1 orientation
             // TODO: min piece count pruning
@@ -408,13 +439,13 @@ impl<'a, const N: usize> CycleCombinationDetails<'a, N> {
                 &[true, false][..]
             };
             for &canonically_orient in canonically_orients {
-                let slot = &mut self.reg_to_orbits_constraints[reg_orbit_constraint_index]
-                    .running_share_state_satisfies;
+                let orbit_constraint_mut =
+                    &mut self.reg_to_orbits_constraints[reg_orbit_constraint_index];
                 let cycle_piece_count = if canonically_orient {
                     // TODO: assume we visit orienting orbits last. add orients=true when setting
                     let exp = register_order_exp.saturating_sub(orbit_orientation_exp);
                     if exp == 0 {
-                        match *slot {
+                        match orbit_constraint_mut.running_share_state_satisfies {
                             ShareState::None => 2,
                             ShareState::Orientation => 1,
                             ShareState::Parity => 0,
@@ -452,12 +483,13 @@ impl<'a, const N: usize> CycleCombinationDetails<'a, N> {
                 let must_orient = assign_cycle_orient || canonically_orient;
 
                 // Do we already share something?
-                let share_anything =
-                    known_share_state == ShareState::Orientation || known_share_state == ShareState::Parity;
+                let share_anything = known_share_state == ShareState::Orientation
+                    || known_share_state == ShareState::Parity;
 
+                let a = orbit_constraint_mut.running_share_state_satisfies;
                 let old = std::mem::replace(
-                    slot,
-                    match *slot {
+                    &mut orbit_constraint_mut.running_share_state_satisfies,
+                    match a {
                         ShareState::None => {
                             if must_orient && !share_anything {
                                 // If we orient this cycle, and there is no room left, and the constraint is unsatisfied (i.e. we have a zero sum constraint), and we don't already have ignored pieces, then this is impossible.
@@ -474,9 +506,9 @@ impl<'a, const N: usize> CycleCombinationDetails<'a, N> {
                 );
                 trace!(
                     "{register_index} {orbit_index}: updated {old:?} -> {:?}; assigned {prime} \
-                     (share state {known_share_state:?}) ({orbit_unused_piece_count} -> \
-                     {next_orbit_unused_piece_count}); assign_cycle_orient {assign_cycle_orient}",
-                    *slot
+                     ({orbit_unused_piece_count} -> {next_orbit_unused_piece_count}); \
+                     assign_cycle_orient {assign_cycle_orient}",
+                    *orbit_constraint_mut
                 );
 
                 self.orbit_remaining_piece_counts[orbit_index2].unused =
@@ -523,7 +555,6 @@ impl<'a, const N: usize> CycleCombinationDetails<'a, N> {
                 self.reg_to_orbits_constraints[reg_orbit_constraint_index]
                     .running_share_state_satisfies = old;
             }
-            prev_idx_and_piece_count = Some((orbit_index2, piece_count));
         }
         false
     }
@@ -801,10 +832,7 @@ impl<'a, const N: usize> CycleCombinationDetails<'a, N> {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        num::{NonZeroU16, NonZeroUsize},
-        time::Instant,
-    };
+    use std::{num::NonZeroU16, time::Instant};
 
     use humanize_duration::{Truncate, prelude::DurationExt};
 
@@ -988,7 +1016,7 @@ mod tests {
             &minx3,
         );
         let now = Instant::now();
-        detail.calculate_existence(DisjointRegisters::from(
+        detail.calculate_expansion(DisjointRegisters::from(
             NonemptySlice::try_from(&[504, 251, 196][..]).unwrap(),
         ));
         println!("{}", now.elapsed().human(Truncate::Micro));
@@ -1004,25 +1032,39 @@ mod tests {
         //
         // 2520:
         //
-        // e: (4+, 5+); total 9/30
         // c: (3+, 7+); total 10/20
+        // e: (4+, 5+); total 9/30
         //
         // 630:
         //
-        // e: (5+, 7+); total 12/30
         // c: (3+); total 3/20
+        // e: (5+, 7+); total 12/30
         //
         // 420:
         //
-        // e: (2+, 7+); total 9/30
         // c: (5+); total 5/20
+        // e: (2+, 7+); total 9/30
         //
-        // parity share 2 edges or corners
+        // parity share 2 corners
         //
-        // 30/30
-        // 18/20
+        // 2520:
+        //
+        // c: (3+, 5+); total 8/20
+        // e: (4+, 7+); total 11/30
+        //
+        // 630:
+        //
+        // c: (3+); total 3/20
+        // e: (5+, 7+); total 12/30
+        //
+        // 420:
+        //
+        // c: (7+); total 7/20
+        // e: (2+, 5+); total 7/30
+        //
+        // parity share 2 corners
 
-        println!("{detail:#?}");
+        // println!("{detail:#?}");
         panic!();
     }
 
@@ -1084,7 +1126,7 @@ mod tests {
             NonZeroU16::new(3).unwrap(),
             &possible_orders_except_one,
             None,
-            SolutionExpansion::Limit(NonZeroUsize::new(1).unwrap()),
+            SolutionExpansion::All,
             &minx3,
         );
         detail.calculate_expansion(DisjointRegisters::from(
