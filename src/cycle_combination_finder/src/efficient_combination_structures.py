@@ -7,13 +7,15 @@ one structure for each combination, rather than every structure.
 There are also a few more assumptions, and as such there may be some missed combinations.
 """
 
-import timeit
 import collections
 import copy
 import math
 import operator
-import puzzle_orbit_definitions
+import timeit
+
 from sympy import primerange
+
+import puzzle_orbit_definitions
 from common_types import OrientationStatus  # , OrientationSumConstraint
 
 CycleCombination = collections.namedtuple(
@@ -359,7 +361,7 @@ def cycle_combination_dominates(this, other):
 
 def main():
     start = timeit.default_timer()
-    cycle_combinations, dummy = efficient_cycle_combinations(
+    cycle_combinations, _ = efficient_cycle_combinations(
         puzzle_orbit_definition=puzzle_orbit_definitions.PUZZLE_4x4,
         num_registers=2,
     )
@@ -372,10 +374,7 @@ def main():
 
 if __name__ == "__main__":
     cycle_combination_objs = main()
-    try:
-        stats = cycle_combination_objs_stats(cycle_combination_objs)
-    except Exception:
-        stats = None
+    stats = cycle_combination_objs_stats(cycle_combination_objs)
     with open("./output_efficient.py", "w") as f:
         f.write(
             f"Cycle = 1\nCycleCombination = 1\nCubiePartition = 1\n{stats}\n{cycle_combination_objs}"
