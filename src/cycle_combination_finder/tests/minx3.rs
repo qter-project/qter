@@ -17,7 +17,6 @@ fn optimal_2() {
     let cycle_combinations = CycleCombinationFinder::builder()
         .with_puzzle_def(&minx3)
         .with_register_count(NonZeroU16::new(2).unwrap())
-        .with_sorted(true)
         .find()
         .unwrap();
     assert_eq!(
@@ -47,7 +46,6 @@ fn optimal_3() {
     let cycle_combinations = CycleCombinationFinder::builder()
         .with_puzzle_def(&minx3)
         .with_register_count(NonZeroU16::new(3).unwrap())
-        .with_sorted(true)
         .find()
         .unwrap();
     assert_eq!(
@@ -79,7 +77,6 @@ fn equivalent_2() {
         .with_puzzle_def(&minx3)
         .with_register_count(NonZeroU16::new(2).unwrap())
         .with_optimality(Optimality::Equivalent)
-        .with_sorted(true)
         .find()
         .unwrap();
     assert_eq!(cycles(cycle_combinations), vec![vec![5040, 5040]]);
@@ -92,7 +89,6 @@ fn equivalent_3() {
         .with_puzzle_def(&minx3)
         .with_register_count(NonZeroU16::new(3).unwrap())
         .with_optimality(Optimality::Equivalent)
-        .with_sorted(true)
         .find()
         .unwrap();
     assert_eq!(cycles(cycle_combinations), vec![vec![630, 630, 630]]);

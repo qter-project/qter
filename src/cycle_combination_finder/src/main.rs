@@ -15,7 +15,6 @@ fn main() {
     env_logger::init();
 
     let ccf = CycleCombinationFinder::builder()
-        .with_sorted(true)
         .with_num_cores(NumCores::AllCores);
     if p == "minx3" {
         let minx3 = minxN::MINX3.clone();

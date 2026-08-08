@@ -31,6 +31,7 @@ pub enum Optimality {
     Equivalent,
     #[default]
     Optimal,
+    // TODO: min order ratio
     MaxOrderRatio(f64),
 }
 
@@ -112,7 +113,7 @@ impl Default for CycleCombinationFinderConfig {
         Self {
             optimality: Optimality::default(),
             num_cores: NumCores::default(),
-            sorted: false,
+            sorted: true,
             maybe_expected_length: None,
             maybe_max_fitting_tries: None,
             solution_expansion: SolutionExpansion::default(),
@@ -486,7 +487,11 @@ mod tests {
     use std::num::{NonZeroU16, NonZeroUsize};
 
     use crate::{
-        finder::{CycleCombinationFinder, CycleCombinations, Optimality, SolutionExpansion},
+        finder::{
+            CycleCombinationFinder, CycleCombinations,
+            NumCores::{self},
+            Optimality, SolutionExpansion,
+        },
         puzzle::{
             cubeN::{CUBE3, CUBE4},
             minxN::{MINX3, MINX4, MINX5},
@@ -513,8 +518,8 @@ mod tests {
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx3)
             .with_optimality(Optimality::MaxOrderRatio(1.01))
+            .with_num_cores(NumCores::Num(NonZeroUsize::new(1).unwrap()))
             .with_register_count(NonZeroU16::new(3).unwrap())
-            .with_sorted(true)
             .find()
             .unwrap();
 
@@ -543,6 +548,22 @@ mod tests {
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx3)
             .with_register_count(NonZeroU16::new(5).unwrap())
+            .with_optimality(Optimality::MaxOrderRatio(10.0))
+            .find()
+            .unwrap();
+
+        for x in ret.cycle_combinations {
+            println!("{}", x.display_fmt(&ret.possible_orders_except_one, &minx3));
+        }
+    }
+
+    #[test_log::test]
+    fn minx3_optimal_6() {
+        let minx3 = MINX3.clone();
+        let ret = CycleCombinationFinder::builder()
+            .with_puzzle_def(&minx3)
+            .with_register_count(NonZeroU16::new(6).unwrap())
+            .with_optimality(Optimality::MaxOrderRatio(10.0))
             .find()
             .unwrap();
 
@@ -557,7 +578,6 @@ mod tests {
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx4)
             .with_register_count(NonZeroU16::new(3).unwrap())
-            .with_expected_length_assertion(Some(1))
             .find()
             .unwrap();
 
@@ -565,6 +585,36 @@ mod tests {
         //     println!("{}", x.display_fmt(&ret.possible_orders_except_one, &minx4));
         // }
         drop(ret);
+    }
+
+    #[test_log::test]
+    fn minx4_optimal_4() {
+        let minx4 = MINX4.clone();
+        let ret = CycleCombinationFinder::builder()
+            .with_puzzle_def(&minx4)
+            .with_register_count(NonZeroU16::new(4).unwrap())
+            .with_optimality(Optimality::MaxOrderRatio(10.0))
+            .find()
+            .unwrap();
+
+        for x in ret.cycle_combinations {
+            println!("{}", x.display_fmt(&ret.possible_orders_except_one, &minx4));
+        }
+    }
+
+    #[test_log::test]
+    fn minx4_optimal_5() {
+        let minx4 = MINX4.clone();
+        let ret = CycleCombinationFinder::builder()
+            .with_puzzle_def(&minx4)
+            .with_register_count(NonZeroU16::new(5).unwrap())
+            .with_optimality(Optimality::MaxOrderRatio(10.0))
+            .find()
+            .unwrap();
+
+        for x in ret.cycle_combinations {
+            println!("{}", x.display_fmt(&ret.possible_orders_except_one, &minx4));
+        }
     }
 
     #[test_log::test]
@@ -592,7 +642,6 @@ mod tests {
             .with_optimality(Optimality::MaxOrderRatio(1.0))
             .with_solution_expansion(SolutionExpansion::Limit(NonZeroUsize::new(10).unwrap()))
             .with_mss_batch_size(NonZeroUsize::new(1).unwrap())
-            .with_sorted(true)
             .find()
             .unwrap();
 
@@ -635,7 +684,6 @@ mod tests {
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&cube4)
             .with_register_count(NonZeroU16::new(2).unwrap())
-            .with_sorted(true)
             .find()
             .unwrap();
 
