@@ -907,11 +907,7 @@ impl<'a, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        num::{NonZeroU16, NonZeroUsize},
-        sync::Arc,
-        time::Instant,
-    };
+    use std::{num::NonZeroU16, sync::Arc, time::Instant};
 
     use humanize_duration::{Truncate, prelude::DurationExt};
 
@@ -925,12 +921,56 @@ mod tests {
         orderexps::OrderExps,
         puzzle::{
             EvenParityConstraints, OrientationStatus, OrientationSumConstraint, PartialOrbitDef,
-            PuzzleDef, cubeN::CUBE4, minxN::MINX3,
+            PuzzleDef, minxN::MINX3, possible_orders_len_cast,
         },
     };
 
+    fn do_test<const N: usize>(
+        mut solutions_calculator: CycleCombinationSolutionsCalculator<N>,
+        puzzle_def: &PuzzleDef<N>,
+        possible_orders_except_one: &[PossibleOrder<N>],
+        register_orders: Vec<u64>,
+        expected: &'static str,
+    ) {
+        let mut registers = register_orders
+            .into_iter()
+            .map(|register_order| {
+                possible_orders_len_cast(
+                    possible_orders_except_one
+                        .iter()
+                        .position(|possible_order| {
+                            u64::try_from(possible_order.order.as_bigint()).unwrap()
+                                == register_order
+                        })
+                        .unwrap(),
+                )
+            })
+            .collect::<Box<[_]>>();
+        registers.sort_by_key(|&r| std::cmp::Reverse(r));
+        let registers = Arc::from(registers);
+        let now = Instant::now();
+        let solutions = solutions_calculator
+            .expansion(DisjointRegisters::from(
+                NonemptySlice::try_from(&*registers).unwrap(),
+            ))
+            .unwrap();
+        println!("{}", now.elapsed().human(Truncate::Micro));
+        let cycle_combination = CycleCombination {
+            registers: Arc::clone(&registers),
+            solutions,
+        };
+
+        let mut expected = expected.to_string();
+        expected.retain(|c| !c.is_whitespace());
+        let mut actual = cycle_combination.display_fmt(possible_orders_except_one, puzzle_def);
+        let actual_copy = actual.clone();
+        actual.retain(|c| !c.is_whitespace());
+
+        assert_eq!(expected, actual, "\n{actual_copy}");
+    }
+
     #[test_log::test]
-    fn foo3() {
+    fn preassignment_1() {
         let crazy = PuzzleDef::<32>::new(
             vec![
                 PartialOrbitDef {
@@ -968,293 +1008,147 @@ mod tests {
     }
 
     #[test_log::test]
-    fn foo2() {
-        let crazy = PuzzleDef::<32>::new(
-            vec![
-                PartialOrbitDef {
-                    piece_count: 5.try_into().unwrap(),
-                    orientation: OrientationStatus::CanOrient {
-                        count: 85,
-                        sum_constraint: OrientationSumConstraint::Zero,
-                    },
+    fn minx3_optimal_3() {
+        let minx3 = MINX3.clone();
+        let possible_orders_except_one =
+            mk_possible_orders_except_one(&minx3, minx3.possible_orders(None).unwrap());
+        let solutions_calculator = CycleCombinationSolutionsCalculator::new(
+            &minx3,
+            &possible_orders_except_one,
+            NonZeroU16::new(3).unwrap(),
+            SolutionExpansion::All,
+            None,
+        );
+        // 2520 630 420
+        //
+        // 2 2 2 3 3 5 7 : 4e 3c
+        // 2     3 3 5 7 : 3c
+        // 2 2   3   5 7 : 2e
+        let register_orders = vec![2520, 630, 420];
+
+        let expected = "
+            2520: 0: (3+, 7) 1: (4+, 5)
+             630: 0: (3+) 1: (5, 7+)
+             420: 0: (5+) 1: (2+, 7)
+
+            0: 1 ignored, 1 unused
+            1: 0 ignored, 0 unused
+
+            2520: 0: (3+, 5) 1: (4+, 7)
+             630: 0: (3+) 1: (5, 7+)
+             420: 0: (7+) 1: (2+, 5)
+
+            0: 1 ignored, 1 unused
+            1: 0 ignored, 0 unused
+
+            2520: 0: (3+) 1: (4+, 5, 7)
+             630: 0: (3+, 7) 1: (5+)
+             420: 0: (5+) 1: (2+, 7)
+
+            0: 1 ignored, 1 unused
+            1: 0 ignored, 0 unused
+
+            2520: 0: (3+) 1: (4+, 5, 7)
+             630: 0: (3+, 5) 1: (7+)
+             420: 0: (7+) 1: (2+, 5)
+
+            0: 1 ignored, 1 unused
+            1: 0 ignored, 0 unused
+        ";
+
+        do_test(
+            solutions_calculator,
+            &minx3,
+            &possible_orders_except_one,
+            register_orders,
+            expected,
+        );
+    }
+
+    #[test_log::test]
+    fn minx3_equivalent_3() {
+        let minx3 = MINX3.clone();
+        let possible_orders_except_one =
+            mk_possible_orders_except_one(&minx3, minx3.possible_orders(None).unwrap());
+        let solutions_calculator = CycleCombinationSolutionsCalculator::new(
+            &minx3,
+            &possible_orders_except_one,
+            NonZeroU16::new(3).unwrap(),
+            SolutionExpansion::All,
+            None,
+        );
+        // 840: 2 2 2 3 5 7
+        let register_orders = vec![840, 840, 840];
+
+        let expected = "
+            840: 0: (7+) 1: (4+, 5)
+            840: 0: (7+) 1: (4+, 5)
+            840: 0: (5+) 1: (4+, 7)
+
+            0: 0 ignored, 1 unused
+            1: 0 ignored, 1 unused
+
+            840: 0: (7+) 1: (4+, 5)
+            840: 0: (5+) 1: (4+, 7)
+            840: 0: (7+) 1: (4+, 5)
+
+            0: 0 ignored, 1 unused
+            1: 0 ignored, 1 unused
+
+            840: 0: (5+) 1: (4+, 7)
+            840: 0: (7+) 1: (4+, 5)
+            840: 0: (7+) 1: (4+, 5)
+
+            0: 0 ignored, 1 unused
+            1: 0 ignored, 1 unused
+        ";
+
+        do_test(
+            solutions_calculator,
+            &minx3,
+            &possible_orders_except_one,
+            register_orders,
+            expected,
+        );
+    }
+
+    #[test_log::test]
+    fn orienting_3_cycle() {
+        let crazy = PuzzleDef::<64>::new(
+            vec![PartialOrbitDef {
+                piece_count: 4.try_into().unwrap(),
+                orientation: OrientationStatus::CanOrient {
+                    count: 2,
+                    sum_constraint: OrientationSumConstraint::Zero,
                 },
-                PartialOrbitDef {
-                    piece_count: 5.try_into().unwrap(),
-                    orientation: OrientationStatus::CanOrient {
-                        count: 77,
-                        sum_constraint: OrientationSumConstraint::Zero,
-                    },
-                },
-                PartialOrbitDef {
-                    piece_count: 5.try_into().unwrap(),
-                    orientation: OrientationStatus::CanOrient {
-                        count: 59,
-                        sum_constraint: OrientationSumConstraint::Zero,
-                    },
-                },
-                PartialOrbitDef {
-                    piece_count: 3.try_into().unwrap(),
-                    orientation: OrientationStatus::CanOrient {
-                        count: 56,
-                        sum_constraint: OrientationSumConstraint::Zero,
-                    },
-                },
-                PartialOrbitDef {
-                    piece_count: 5.try_into().unwrap(),
-                    orientation: OrientationStatus::CanOrient {
-                        count: 50,
-                        sum_constraint: OrientationSumConstraint::Zero,
-                    },
-                },
-                PartialOrbitDef {
-                    piece_count: 5.try_into().unwrap(),
-                    orientation: OrientationStatus::CanOrient {
-                        count: 48,
-                        sum_constraint: OrientationSumConstraint::Zero,
-                    },
-                },
-                PartialOrbitDef {
-                    piece_count: 5.try_into().unwrap(),
-                    orientation: OrientationStatus::CanOrient {
-                        count: 48,
-                        sum_constraint: OrientationSumConstraint::Zero,
-                    },
-                },
-                PartialOrbitDef {
-                    piece_count: 5.try_into().unwrap(),
-                    orientation: OrientationStatus::CanOrient {
-                        count: 34,
-                        sum_constraint: OrientationSumConstraint::Zero,
-                    },
-                },
-                PartialOrbitDef {
-                    piece_count: 5.try_into().unwrap(),
-                    orientation: OrientationStatus::CanOrient {
-                        count: 25,
-                        sum_constraint: OrientationSumConstraint::Zero,
-                    },
-                },
-                PartialOrbitDef {
-                    piece_count: 5.try_into().unwrap(),
-                    orientation: OrientationStatus::CanOrient {
-                        count: 15,
-                        sum_constraint: OrientationSumConstraint::Zero,
-                    },
-                },
-            ],
-            EvenParityConstraints(vec![vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]]),
+            }],
+            EvenParityConstraints(vec![vec![]]),
         )
         .unwrap();
-
-        CycleCombinationSolutionsCalculator::new(
+        let possible_orders_except_one =
+            mk_possible_orders_except_one(&crazy, crazy.possible_orders(None).unwrap());
+        let solutions_calculator = CycleCombinationSolutionsCalculator::new(
             &crazy,
-            &[
-                PossibleOrder {
-                    order: OrderExps::try_from(NonZeroU16::new(2).unwrap()).unwrap(),
-                    min_piece_count: 1.try_into().unwrap(),
-                },
-                PossibleOrder {
-                    order: OrderExps::try_from(NonZeroU16::new(4).unwrap()).unwrap(),
-                    min_piece_count: 1.try_into().unwrap(),
-                },
-                PossibleOrder {
-                    order: OrderExps::try_from(NonZeroU16::new(5).unwrap()).unwrap(),
-                    min_piece_count: 1.try_into().unwrap(),
-                },
-                PossibleOrder {
-                    order: OrderExps::try_from(NonZeroU16::new(25).unwrap()).unwrap(),
-                    min_piece_count: 1.try_into().unwrap(),
-                },
-                PossibleOrder {
-                    order: OrderExps::try_from(NonZeroU16::new(12).unwrap()).unwrap(),
-                    min_piece_count: 1.try_into().unwrap(),
-                },
-                PossibleOrder {
-                    order: OrderExps::try_from(NonZeroU16::new(16).unwrap()).unwrap(),
-                    min_piece_count: 1.try_into().unwrap(),
-                },
-            ],
-            NonZeroU16::new(6).unwrap(),
-            SolutionExpansion::All,
-            None,
-        )
-        .existence(DisjointRegisters::from(
-            NonemptySlice::try_from(&[0, 1, 2, 3, 4, 5][..]).unwrap(),
-        ));
-    }
-
-    #[test_log::test]
-    fn foo1() {
-        let minx3 = MINX3.clone();
-        let possible_orders_except_one =
-            mk_possible_orders_except_one(&minx3, minx3.possible_orders(None).unwrap());
-        // 2520 630 420
-        let mut solutions_calculator = CycleCombinationSolutionsCalculator::new(
-            &minx3,
             &possible_orders_except_one,
-            NonZeroU16::new(3).unwrap(),
+            NonZeroU16::new(1).unwrap(),
             SolutionExpansion::All,
             None,
         );
-        let now = Instant::now();
-        solutions_calculator.expansion(DisjointRegisters::from(
-            NonemptySlice::try_from(&[504, 251, 196][..]).unwrap(),
-        ));
-        println!("{}", now.elapsed().human(Truncate::Micro));
+        // 840: 2 2 2 3 5 7
+        let register_orders = vec![6];
 
-        // 2520 630 420
-        //
-        // 2 2 2 3 3 5 7 : 4e 3c
-        // 2     3 3 5 7 : 3c
-        // 2 2   3   5 7 : 2e
-        //
-        // 24 edges 5 5 7 7
-        // 14 corners 7 5
-        //
-        // 2520:
-        //
-        // c: (3+, 7+); total 10/20
-        // e: (4+, 5+); total 9/30
-        //
-        // 630:
-        //
-        // c: (3+); total 3/20
-        // e: (5+, 7+); total 12/30
-        //
-        // 420:
-        //
-        // c: (5+); total 5/20
-        // e: (2+, 7+); total 9/30
-        //
-        // parity share 2 corners
-        //
-        // 2520:
-        //
-        // c: (3+, 5+); total 8/20
-        // e: (4+, 7+); total 11/30
-        //
-        // 630:
-        //
-        // c: (3+); total 3/20
-        // e: (5+, 7+); total 12/30
-        //
-        // 420:
-        //
-        // c: (7+); total 7/20
-        // e: (2+, 5+); total 7/30
-        //
-        // parity share 2 corners
+        let expected = "
+            6: 0: (3+)
 
-        // println!("{detail:#?}");
-        panic!();
-    }
+            0: 0 ignored, 1 unused
+        ";
 
-    #[test_log::test]
-    fn foo4() {
-        let cube4 = CUBE4.clone();
-        let possible_orders_except_one =
-            mk_possible_orders_except_one(&cube4, cube4.possible_orders(None).unwrap());
-        let mut solutions_calculator = CycleCombinationSolutionsCalculator::new(
-            &cube4,
+        do_test(
+            solutions_calculator,
+            &crazy,
             &possible_orders_except_one,
-            NonZeroU16::new(2).unwrap(),
-            SolutionExpansion::All,
-            None,
+            register_orders,
+            expected,
         );
-        solutions_calculator.existence(DisjointRegisters::from(
-            NonemptySlice::try_from(&[875, 1][..]).unwrap(),
-        ));
-
-        // 2520 630 420
-        //
-        // 2 2 2 3 3 5 7 : 4e 3c
-        // 2     3 3 5 7 : 3c
-        // 2 2   3   5 7 : 2e
-        //
-        // 24 edges 5 5 7 7
-        // 14 corners 7 5
-        //
-        // 2520:
-        //
-        // e: (4+, 5+); total 9/30
-        // c: (3+, 7+); total 10/20
-        //
-        // 630:
-        //
-        // e: (5+, 7+); total 12/30
-        // c: (3+); total 3/20
-        //
-        // 420:
-        //
-        // e: (2+, 7+); total 9/30
-        // c: (5+); total 5/20
-        //
-        // parity share 2 edges or corners
-        //
-        // 30/30
-        // 18/20
-
-        println!("{solutions_calculator:#?}");
-        panic!();
-    }
-
-    #[test_log::test]
-    fn foo5() {
-        let minx3 = MINX3.clone();
-        let possible_orders_except_one =
-            mk_possible_orders_except_one(&minx3, minx3.possible_orders(None).unwrap());
-        let mut solutions_calculator = CycleCombinationSolutionsCalculator::new(
-            &minx3,
-            &possible_orders_except_one,
-            NonZeroU16::new(3).unwrap(),
-            SolutionExpansion::Limit(NonZeroUsize::new(1).unwrap()),
-            None,
-        );
-        let registers = Arc::from(vec![292, 292, 292]);
-        let solutions = solutions_calculator
-            .expansion(DisjointRegisters::from(
-                NonemptySlice::try_from(&*registers).unwrap(),
-            ))
-            .unwrap();
-        let cycle_combination = CycleCombination {
-            registers: Arc::clone(&registers),
-            solutions,
-        };
-        println!(
-            "{}",
-            cycle_combination.display_fmt(&possible_orders_except_one, &minx3)
-        );
-
-        // 2520 630 420
-        //
-        // 2 2 2 3 3 5 7 : 4e 3c
-        // 2     3 3 5 7 : 3c
-        // 2 2   3   5 7 : 2e
-        //
-        // 24 edges 5 5 7 7
-        // 14 corners 7 5
-        //
-        // 2520:
-        //
-        // e: (4+, 5+); total 9/30
-        // c: (3+, 7+); total 10/20
-        //
-        // 630:
-        //
-        // e: (5+, 7+); total 12/30
-        // c: (3+); total 3/20
-        //
-        // 420:
-        //
-        // e: (2+, 7+); total 9/30
-        // c: (5+); total 5/20
-        //
-        // parity share 2 edges or corners
-        //
-        // 30/30
-        // 18/20
-
-        // println!("{detail:#?}");
-        panic!();
     }
 }
