@@ -22,7 +22,7 @@ use seize::{Collector, Guard, reclaim};
 use tokio::sync::broadcast::error::TryRecvError as TokioTryRecvError;
 
 use crate::{
-    cycle_combination_details::CycleCombinationDetails,
+    cycle_combination_solutions::CycleCombinationSolutionsCalculator,
     finder::{CycleCombinationFinderConfig, NumCores, PossibleOrder},
     nonemptyvec::{NonemptySlice, NonemptyVec},
     pareto_front::CCParetoFront,
@@ -57,7 +57,7 @@ pub struct DisjointRegisters<'a> {
     last_register: u32,
 }
 
-struct DetailsThreadInfo {
+struct SolutionsThreadInfo {
     real_time: Duration,
     cpu_time: Duration,
     alloc_time: Duration,
@@ -90,9 +90,9 @@ struct TreeProfileInfo {
     dfs_alloc_time: Duration,
     dfs_cpu_time: Duration,
     dfs_io_time: Duration,
-    details_alloc_time: Duration,
-    details_cpu_time: Duration,
-    details_io_time: Duration,
+    solutions_alloc_time: Duration,
+    solutions_cpu_time: Duration,
+    solutions_io_time: Duration,
     num_cores: usize,
 }
 
@@ -204,7 +204,7 @@ impl Debug for TreeProfileInfo {
                 &format!("{:>25}", "single_cpu_time"),
                 &format!(
                     "{}",
-                    (self.dfs_cpu_time + self.details_cpu_time)
+                    (self.dfs_cpu_time + self.solutions_cpu_time)
                         .div_f64(num_cores)
                         .human(Truncate::Millis)
                 ),
@@ -236,31 +236,31 @@ impl Debug for TreeProfileInfo {
                 ),
             )
             .field(
-                &format!("{:>25}", "details_alloc_time"),
+                &format!("{:>25}", "solutions_alloc_time"),
                 &format!(
                     "{:05.2}% ({})",
-                    self.details_alloc_time.div_duration_f64(cpu_time) * 100.0,
-                    self.details_alloc_time
+                    self.solutions_alloc_time.div_duration_f64(cpu_time) * 100.0,
+                    self.solutions_alloc_time
                         .div_f64(num_cores)
                         .human(Truncate::Millis)
                 ),
             )
             .field(
-                &format!("{:>25}", "details_cpu_time"),
+                &format!("{:>25}", "solutions_cpu_time"),
                 &format!(
                     "{:05.2}% ({})",
-                    self.details_cpu_time.div_duration_f64(cpu_time) * 100.0,
-                    self.details_cpu_time
+                    self.solutions_cpu_time.div_duration_f64(cpu_time) * 100.0,
+                    self.solutions_cpu_time
                         .div_f64(num_cores)
                         .human(Truncate::Millis)
                 ),
             )
             .field(
-                &format!("{:>25}", "details_io_time"),
+                &format!("{:>25}", "solutions_io_time"),
                 &format!(
                     "{:05.2}% ({})",
-                    self.details_io_time.div_duration_f64(cpu_time) * 100.0,
-                    self.details_io_time
+                    self.solutions_io_time.div_duration_f64(cpu_time) * 100.0,
+                    self.solutions_io_time
                         .div_f64(num_cores)
                         .human(Truncate::Millis)
                 ),
@@ -422,7 +422,7 @@ unsafe fn try_next_pareto_efficient_pruning(
     )
 }
 
-fn details_thread<const N: usize>(
+fn solutions_thread<const N: usize>(
     core_id: CoreId,
     candidates_receiver: mpmc::Receiver<PackedCycleCombinationCandidateQueue>,
     mut solutions_receiver: tokio::sync::broadcast::Receiver<(CoreId, Arc<[u32]>)>,
@@ -433,12 +433,12 @@ fn details_thread<const N: usize>(
     exact_register_count: NonZeroU16,
     collector: &Collector,
     config: &CycleCombinationFinderConfig,
-) -> DetailsThreadInfo {
+) -> SolutionsThreadInfo {
     if core_affinity::set_for_current(core_id) {
-        debug!("Details: Pinned {core_id:?}");
+        debug!("Solutions: Pinned {core_id:?}");
     }
     let mut cycle_combinations = CCParetoFront::default();
-    let mut details = CycleCombinationDetails::new(
+    let mut solutions_calculator = CycleCombinationSolutionsCalculator::new(
         exact_register_count,
         possible_orders_except_one,
         config.maybe_max_fitting_tries,
@@ -505,7 +505,7 @@ fn details_thread<const N: usize>(
                     disjoint_registers,
                     |dominating_registers| {
                         post_candidate_count += 1;
-                        if !details.calculate_existence(dominating_registers) {
+                        if !solutions_calculator.existence(dominating_registers) {
                             return None;
                         }
                         let possible_registers = if log_enabled!(Level::Debug) {
@@ -573,7 +573,7 @@ fn details_thread<const N: usize>(
     }
     drop(solutions_sender);
     drop(candidates_receiver);
-    DetailsThreadInfo {
+    SolutionsThreadInfo {
         cpu_time: cpu_time.elapsed(),
         real_time: real_time.elapsed(),
         alloc_time,
@@ -615,7 +615,7 @@ fn dfs_thread<const N: usize>(
         // Synchronize with the data in the try_update CAS loop
         let maybe_raw_pruning = guard.protect(pareto_efficient_pruning, atomic::Ordering::Acquire);
         if let Some(raw_pruning) = NonNull::new(maybe_raw_pruning) {
-            // SAFETY: `details_thread` guarantees `raw_pruning` points to at least one
+            // SAFETY: `solutions_thread` guarantees `raw_pruning` points to at least one
             // element
             let max_last_register = unsafe { raw_pruning.read() };
             if i_u32 <= max_last_register {
@@ -869,9 +869,9 @@ pub(crate) fn search_dfs<const N: usize>(
     let mut dfs_cpu_time = Duration::default();
     let mut dfs_alloc_time = Duration::default();
 
-    let mut details_real_time = Duration::default();
-    let mut details_cpu_time = Duration::default();
-    let mut details_alloc_time = Duration::default();
+    let mut solutions_real_time = Duration::default();
+    let mut solutions_cpu_time = Duration::default();
+    let mut solutions_alloc_time = Duration::default();
     let mut processed_candidate_count = 0;
     let mut post_candidate_count = 0;
     let mut sends = 0;
@@ -929,8 +929,8 @@ pub(crate) fn search_dfs<const N: usize>(
                 let solutions_receiver = solutions_sender.subscribe();
                 let solutions_sender = solutions_sender.clone();
                 let pareto_efficient_prunings = &pareto_efficient_prunings;
-                let details_thread_handle = s.spawn(move || {
-                    details_thread(
+                let solutions_thread_handle = s.spawn(move || {
+                    solutions_thread(
                         core_id,
                         candidates_receiver,
                         solutions_receiver,
@@ -943,19 +943,19 @@ pub(crate) fn search_dfs<const N: usize>(
                         config,
                     )
                 });
-                (tree_thread_handle, details_thread_handle)
+                (tree_thread_handle, solutions_thread_handle)
             })
             .collect::<Vec<_>>();
         drop(mutable);
         drop(solutions_sender);
 
-        for (tree_thread_info, details_thread_info) in
+        for (tree_thread_info, solutions_thread_info) in
             handles
                 .into_iter()
-                .map(|(tree_thread_handle, details_thread_handle)| {
+                .map(|(tree_thread_handle, solutions_thread_handle)| {
                     (
                         tree_thread_handle.join().unwrap(),
-                        details_thread_handle.join().unwrap(),
+                        solutions_thread_handle.join().unwrap(),
                     )
                 })
         {
@@ -968,12 +968,12 @@ pub(crate) fn search_dfs<const N: usize>(
             full_sends += tree_thread_info.full_sends;
             sender_lens += tree_thread_info.sender_lens;
 
-            details_cpu_time += details_thread_info.cpu_time;
-            details_real_time += details_thread_info.real_time;
-            details_alloc_time += details_thread_info.alloc_time;
-            processed_candidate_count += details_thread_info.processed_candidate_count;
-            post_candidate_count += details_thread_info.post_candidate_count;
-            smallest_fronts.push(details_thread_info.cycle_combinations);
+            solutions_cpu_time += solutions_thread_info.cpu_time;
+            solutions_real_time += solutions_thread_info.real_time;
+            solutions_alloc_time += solutions_thread_info.alloc_time;
+            processed_candidate_count += solutions_thread_info.processed_candidate_count;
+            post_candidate_count += solutions_thread_info.post_candidate_count;
+            smallest_fronts.push(solutions_thread_info.cycle_combinations);
         }
     });
 
@@ -1014,7 +1014,7 @@ pub(crate) fn search_dfs<const N: usize>(
             u64::from(if max_last_register.is_null() {
                 0
             } else {
-                // SAFETY: `details_thread` guarantees `raw_pruning` points to at least one
+                // SAFETY: `solutions_thread` guarantees `raw_pruning` points to at least one
                 // element
                 unsafe { *max_last_register }
             })
@@ -1035,9 +1035,9 @@ pub(crate) fn search_dfs<const N: usize>(
     let dfs_io_time = dfs_real_time
         .saturating_sub(dfs_cpu_time)
         .saturating_sub(dfs_alloc_time);
-    let details_io_time = details_real_time
-        .saturating_sub(details_cpu_time)
-        .saturating_sub(details_alloc_time);
+    let solutions_io_time = solutions_real_time
+        .saturating_sub(solutions_cpu_time)
+        .saturating_sub(solutions_alloc_time);
 
     let tree_profile_info = TreeProfileInfo {
         candidate_count,
@@ -1051,9 +1051,9 @@ pub(crate) fn search_dfs<const N: usize>(
         dfs_alloc_time,
         dfs_cpu_time,
         dfs_io_time,
-        details_alloc_time,
-        details_cpu_time,
-        details_io_time,
+        solutions_alloc_time,
+        solutions_cpu_time,
+        solutions_io_time,
         num_cores,
     };
 

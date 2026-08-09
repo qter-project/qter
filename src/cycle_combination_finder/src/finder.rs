@@ -17,7 +17,9 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use thiserror::Error;
 
 use crate::{
-    cycle_combination_details::{CycleCombinationDetail, CycleCombinationDetails},
+    cycle_combination_solutions::{
+        CycleCombinationSolution, CycleCombinationSolutions, CycleCombinationSolutionsCalculator,
+    },
     cycle_combinations_tree::{DisjointRegisters, dbg_registers, search_dfs},
     min_piece_count::MinPieceCount,
     nonemptyvec::NonemptySlice,
@@ -58,7 +60,7 @@ pub struct PossibleOrder<const N: usize> {
 #[derive(Debug)]
 pub struct CycleCombination {
     registers: Arc<[u32]>,
-    detail: CycleCombinationDetail,
+    solutions: CycleCombinationSolutions,
 }
 
 pub struct CycleCombinations<const N: usize> {
@@ -136,8 +138,12 @@ impl CycleCombination {
         }
         impl<const N: usize> fmt::Display for CycleCombinationDisplay<'_, N> {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                for (remaining_piece_counts, reg_orbit_cycles) in &self.inner.detail.detail {
-                    let mut reg_orbit_cycles = reg_orbit_cycles.iter();
+                for CycleCombinationSolution {
+                    orbit_remaining_pieces,
+                    register_orbit_cycles,
+                } in &self.inner.solutions.0
+                {
+                    let mut reg_orbit_cycles = register_orbit_cycles.iter();
                     for register_index in 0..self.inner.registers.len() {
                         writeln!(
                             f,
@@ -176,7 +182,7 @@ impl CycleCombination {
                         }
                         writeln!(f)?;
                     }
-                    writeln!(f, "{remaining_piece_counts:#?}")?;
+                    writeln!(f, "{orbit_remaining_pieces:#?}")?;
                     writeln!(f)?;
                 }
                 Ok(())
@@ -411,7 +417,7 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'_, N
                 .par_iter()
                 .map_init(
                     || {
-                        CycleCombinationDetails::new(
+                        CycleCombinationSolutionsCalculator::new(
                             exact_register_count,
                             possible_orders_except_one,
                             self.config.maybe_max_fitting_tries,
@@ -419,15 +425,15 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'_, N
                             puzzle_def,
                         )
                     },
-                    |details, possible_register| {
+                    |solutions_calculator, possible_register| {
                         let possible_register2 = DisjointRegisters::from(
                             NonemptySlice::try_from(&**possible_register)
                                 .expect("The number of registers is non-zero"),
                         );
                         let cycle_combination = CycleCombination {
                             registers: Arc::clone(possible_register),
-                            detail: details
-                                .calculate_expansion(possible_register2)
+                            solutions: solutions_calculator
+                                .expansion(possible_register2)
                                 .expect("This solution is in the front and therefore exists"),
                         };
 
@@ -458,7 +464,7 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'_, N
             cycle_combinations.len(),
             cycle_combinations
                 .iter()
-                .map(|cycle_combination| cycle_combination.detail.detail.len())
+                .map(|cycle_combination| cycle_combination.solutions.0.len())
                 .sum::<usize>()
         );
         if let Some(expected_length) = self.config.maybe_expected_length {

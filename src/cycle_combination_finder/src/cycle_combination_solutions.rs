@@ -14,9 +14,9 @@ use crate::{
     puzzle::{OrbitDef, OrientationStatus, OrientationSumConstraint, PuzzleDef, orbit_index_cast},
 };
 
-enum DetailsCalculation {
+enum SolutionsCalculation {
     Existence(bool),
-    Expansion(Option<CycleCombinationDetail>),
+    Expansion(Option<CycleCombinationSolutions>),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -27,13 +27,17 @@ pub struct Cycle {
 }
 
 #[derive(Debug, Default)]
-pub struct CycleCombinationDetail {
-    pub(crate) detail: Vec<(Box<[OrbitRemainingPieceCount]>, Box<[Vec<Cycle>]>)>,
+pub struct CycleCombinationSolutions(pub(crate) Vec<CycleCombinationSolution>);
+
+#[derive(Debug, Default)]
+pub struct CycleCombinationSolution {
+    pub(crate) orbit_remaining_pieces: Box<[OrbitRemainingPieces]>,
+    pub(crate) register_orbit_cycles: Box<[Vec<Cycle>]>,
 }
 
 #[derive(Debug)]
 #[non_exhaustive]
-pub struct CycleCombinationDetails<'a, const N: usize> {
+pub struct CycleCombinationSolutionsCalculator<'a, const N: usize> {
     expansion: bool,
     possible_orders_except_one: &'a [PossibleOrder<N>],
     maybe_fitting_tries: Option<(u32, u32)>,
@@ -41,7 +45,7 @@ pub struct CycleCombinationDetails<'a, const N: usize> {
     puzzle_def: &'a PuzzleDef<N>,
     exact_register_count: NonZeroU16,
 
-    detail: Option<CycleCombinationDetail>,
+    maybe_solutions: Option<CycleCombinationSolutions>,
 
     /// Map of every register, to its cycles, to which orbit its prime power
     /// component is assigned to and bitmask
@@ -49,8 +53,8 @@ pub struct CycleCombinationDetails<'a, const N: usize> {
     register_orbit_constraints: Box<[RegisterOrbitConstraint]>,
     initial_register_orbit_constraints: Box<[RegisterOrbitConstraint]>,
     /// Remaining piece count for every orbit
-    orbit_remaining_piece_counts: Box<[OrbitRemainingPieceCount]>,
-    initial_orbit_remaining_piece_counts: Box<[OrbitRemainingPieceCount]>,
+    orbit_remaining_pieces: Box<[OrbitRemainingPieces]>,
+    initial_orbit_remaining_piece_counts: Box<[OrbitRemainingPieces]>,
     // /// Gives the best registers (register index, the exponent)
     // register_exponent_sorter: Vec<(u16, u8)>,
     // /// Gives the best orientation orders
@@ -73,7 +77,7 @@ enum OrientationSatisfiedBy {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct OrbitRemainingPieceCount {
+pub struct OrbitRemainingPieces {
     unused: u16,
     ignored: u16,
 }
@@ -120,7 +124,7 @@ struct OrbitTraversalState<'a, const N: usize> {
 //     None,
 // }
 
-impl<'a, const N: usize> CycleCombinationDetails<'a, N> {
+impl<'a, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
     #[must_use]
     pub fn new(
         exact_register_count: NonZeroU16,
@@ -162,22 +166,22 @@ impl<'a, const N: usize> CycleCombinationDetails<'a, N> {
             })
             .collect::<Box<[_]>>();
         let initial_register_orbit_constraints = register_orbit_constraints.clone();
-        let orbit_remaining_piece_counts = puzzle_def
+        let orbit_remaining_pieces = puzzle_def
             .orbit_defs()
             .iter()
-            .map(|orbit_def| OrbitRemainingPieceCount {
+            .map(|orbit_def| OrbitRemainingPieces {
                 unused: orbit_def.piece_count.get(),
                 ignored: 0,
             })
             .collect::<Box<[_]>>();
-        let initial_orbit_remaining_piece_counts = orbit_remaining_piece_counts.clone();
+        let initial_orbit_remaining_piece_counts = orbit_remaining_pieces.clone();
         // let register_exponent_sorter =
         //     Vec::with_capacity(NonZeroUsize::from(exact_register_count).get());
         // let best_orientations_queue = [BestOrientation::Unassigned; 9];
         Self {
             possible_orders_except_one,
             puzzle_def,
-            detail: None,
+            maybe_solutions: None,
             maybe_fitting_tries: maybe_max_fitting_tries
                 .map(|max_fitting_tries| (max_fitting_tries, max_fitting_tries)),
             solution_expansion,
@@ -185,7 +189,7 @@ impl<'a, const N: usize> CycleCombinationDetails<'a, N> {
             register_assignments,
             register_orbit_constraints,
             initial_register_orbit_constraints,
-            orbit_remaining_piece_counts,
+            orbit_remaining_pieces,
             initial_orbit_remaining_piece_counts,
             expansion: false,
             // register_exponent_sorter,
@@ -224,7 +228,7 @@ impl<'a, const N: usize> CycleCombinationDetails<'a, N> {
 
             trace!(
                 "before: {:?} {:?}",
-                self.orbit_remaining_piece_counts, self.register_orbit_constraints,
+                self.orbit_remaining_pieces, self.register_orbit_constraints,
             );
 
             let (orbits_constraints, next_orbits_constraints) = self.register_orbit_constraints
@@ -243,7 +247,7 @@ impl<'a, const N: usize> CycleCombinationDetails<'a, N> {
                 if running_share_state_satisfies == OrientationSatisfiedBy::LeftoverPiece
                     && *share_state == ShareState::None
                 {
-                    assert_ne!(self.orbit_remaining_piece_counts[orbit_index2].unused, 0);
+                    assert_ne!(self.orbit_remaining_pieces[orbit_index2].unused, 0);
                     *share_state = ShareState::Orientation;
                 }
                 if let Some(RegisterOrbitConstraint {
@@ -251,10 +255,10 @@ impl<'a, const N: usize> CycleCombinationDetails<'a, N> {
                     ..
                 }) = next_orbits_constraints.get_mut(orbit_index2)
                 {
-                    assert!(!leaf);
+                    debug_assert!(!leaf);
                     *next_share_state = *share_state;
                 } else {
-                    assert!(leaf);
+                    debug_assert!(leaf);
                 }
             }
 
@@ -294,13 +298,13 @@ impl<'a, const N: usize> CycleCombinationDetails<'a, N> {
 
             if self.expansion {
                 // TODO: allocator
-                let mut register_orbit_constraints =
-                    vec![
-                        vec![];
-                        NonZeroUsize::from(self.exact_register_count).get()
-                            * self.puzzle_def.orbit_defs().len().get()
-                    ]
-                    .into_boxed_slice();
+                let mut register_orbit_cycles = vec![
+                    vec![];
+                    NonZeroUsize::from(self.exact_register_count)
+                        .get()
+                        * self.puzzle_def.orbit_defs().len().get()
+                ]
+                .into_boxed_slice();
                 for register_index in 0..self.exact_register_count.get() {
                     let register_index2 = usize::from(register_index);
                     let register_order = &registers
@@ -323,13 +327,13 @@ impl<'a, const N: usize> CycleCombinationDetails<'a, N> {
                             let reg_orbit_index = register_index2
                                 * self.puzzle_def.orbit_defs().len().get()
                                 + orbit_index2;
-                            register_orbit_constraints[reg_orbit_index].push(Cycle {
+                            register_orbit_cycles[reg_orbit_index].push(Cycle {
                                 piece_count: cycle_piece_count,
                                 must_orient,
                             });
                             // only the last register has the most recent share state propagation
                             if register_index == self.exact_register_count.get() - 1 {
-                                self.orbit_remaining_piece_counts[orbit_index2].ignored = self
+                                self.orbit_remaining_pieces[orbit_index2].ignored = self
                                     .register_orbit_constraints[reg_orbit_index]
                                     .known_share_state
                                     as u16;
@@ -345,10 +349,13 @@ impl<'a, const N: usize> CycleCombinationDetails<'a, N> {
                 //     reg_to_orbits_to_cycles
                 // );
 
-                self.detail.get_or_insert_default().detail.push((
-                    self.orbit_remaining_piece_counts.clone(),
-                    register_orbit_constraints,
-                ));
+                self.maybe_solutions
+                    .get_or_insert_default()
+                    .0
+                    .push(CycleCombinationSolution {
+                        orbit_remaining_pieces: self.orbit_remaining_pieces.clone(),
+                        register_orbit_cycles,
+                    });
             }
             return true;
         }
@@ -443,7 +450,7 @@ impl<'a, const N: usize> CycleCombinationDetails<'a, N> {
                 register_index2 * self.puzzle_def.orbit_defs().len().get() + orbit_index2;
 
             let orientation_exp = orientation_exps.prime_exponent(prime_index2);
-            let orbit_unused_piece_count = self.orbit_remaining_piece_counts[orbit_index2].unused;
+            let orbit_unused_piece_count = self.orbit_remaining_pieces[orbit_index2].unused;
 
             // TODO: do parity by checking ParityConstraint::Even first in OrbitDef
 
@@ -512,6 +519,12 @@ impl<'a, const N: usize> CycleCombinationDetails<'a, N> {
                 // 2^1 ori , 2^2 exponent is bad
                 // claim: traverse_canonically_orients and assign_cycle_orient together cannot be true
                 // 5 then 2
+                // let must_noncanonically_orient = !traverse_canonically_orients
+                //     && orientation_prime_index != 64
+                //     && unassigned_exponents_mask & (1 << orientation_prime_index) != 0
+                //     && orientation_exps.prime_exponent(orientation_prime_index)
+                //         >= register_order.prime_exponent(orientation_prime_index);
+                // let must_orient = must_noncanonically_orient || must_canonically_orient;
 
                 // Do we already share something?
                 // TODO: do we need to visit 2s first, or last, or it doesnt matter?
@@ -567,8 +580,7 @@ impl<'a, const N: usize> CycleCombinationDetails<'a, N> {
                     *orientation_satisfied_by,
                 );
 
-                self.orbit_remaining_piece_counts[orbit_index2].unused =
-                    next_orbit_unused_piece_count;
+                self.orbit_remaining_pieces[orbit_index2].unused = next_orbit_unused_piece_count;
                 self.register_assignments[register_index2].unassigned_exponents_mask ^=
                     1 << prime_index2;
                 if must_noncanonically_orient {
@@ -586,10 +598,9 @@ impl<'a, const N: usize> CycleCombinationDetails<'a, N> {
                     if !self.expansion {
                         return true;
                     } else if let SolutionExpansion::Limit(limit) = self.solution_expansion
-                        && self
-                            .detail
-                            .as_ref()
-                            .is_some_and(|d| d.detail.len() >= limit.get())
+                        && self.maybe_solutions.as_ref().is_some_and(
+                            |CycleCombinationSolutions(solutions)| solutions.len() >= limit.get(),
+                        )
                     {
                         return true;
                     }
@@ -603,7 +614,7 @@ impl<'a, const N: usize> CycleCombinationDetails<'a, N> {
                         .known_share_state
                 );
 
-                self.orbit_remaining_piece_counts[orbit_index2].unused = orbit_unused_piece_count;
+                self.orbit_remaining_pieces[orbit_index2].unused = orbit_unused_piece_count;
                 self.register_assignments[register_index2].unassigned_exponents_mask |=
                     1 << prime_index2;
                 if must_noncanonically_orient {
@@ -621,10 +632,10 @@ impl<'a, const N: usize> CycleCombinationDetails<'a, N> {
     }
 
     #[must_use]
-    fn calculate(&mut self, registers: DisjointRegisters) -> DetailsCalculation {
+    fn calculate(&mut self, registers: DisjointRegisters) -> SolutionsCalculation {
         self.register_orbit_constraints
             .clone_from_slice(&self.initial_register_orbit_constraints);
-        self.orbit_remaining_piece_counts
+        self.orbit_remaining_pieces
             .clone_from_slice(&self.initial_orbit_remaining_piece_counts);
 
         // Every prime used by the register orders
@@ -865,29 +876,26 @@ impl<'a, const N: usize> CycleCombinationDetails<'a, N> {
         // number of pieces, we will never not satisfy an orientation constraint
         if self.expansion {
             self.recursive_backtrack(registers, 0);
-            DetailsCalculation::Expansion(self.detail.take())
+            SolutionsCalculation::Expansion(self.maybe_solutions.take())
         } else {
-            DetailsCalculation::Existence(self.recursive_backtrack(registers, 0))
+            SolutionsCalculation::Existence(self.recursive_backtrack(registers, 0))
         }
     }
 
-    pub fn calculate_existence(&mut self, registers: DisjointRegisters) -> bool {
+    pub fn existence(&mut self, registers: DisjointRegisters) -> bool {
         self.expansion = false;
-        let DetailsCalculation::Existence(exists) = self.calculate(registers) else {
+        let SolutionsCalculation::Existence(exists) = self.calculate(registers) else {
             unreachable!();
         };
         exists
     }
 
-    pub fn calculate_expansion(
-        &mut self,
-        registers: DisjointRegisters,
-    ) -> Option<CycleCombinationDetail> {
+    pub fn expansion(&mut self, registers: DisjointRegisters) -> Option<CycleCombinationSolutions> {
         self.expansion = true;
-        let DetailsCalculation::Expansion(detail) = self.calculate(registers) else {
+        let SolutionsCalculation::Expansion(maybe_solutions) = self.calculate(registers) else {
             unreachable!();
         };
-        detail
+        maybe_solutions
     }
 }
 
@@ -901,7 +909,7 @@ mod tests {
     use humanize_duration::{Truncate, prelude::DurationExt};
 
     use crate::{
-        cycle_combination_details::CycleCombinationDetails,
+        cycle_combination_solutions::CycleCombinationSolutionsCalculator,
         cycle_combinations_tree::DisjointRegisters,
         finder::{PossibleOrder, SolutionExpansion, mk_possible_orders_except_one},
         nonemptyvec::NonemptySlice,
@@ -935,7 +943,7 @@ mod tests {
         )
         .unwrap();
 
-        CycleCombinationDetails::new(
+        CycleCombinationSolutionsCalculator::new(
             NonZeroU16::new(1).unwrap(),
             &[PossibleOrder {
                 order: OrderExps::try_from(NonZeroU16::new(3).unwrap()).unwrap(),
@@ -945,7 +953,7 @@ mod tests {
             SolutionExpansion::All,
             &crazy,
         )
-        .calculate_existence(DisjointRegisters::from(
+        .existence(DisjointRegisters::from(
             NonemptySlice::try_from(&[0][..]).unwrap(),
         ));
     }
@@ -1029,7 +1037,7 @@ mod tests {
         )
         .unwrap();
 
-        CycleCombinationDetails::new(
+        CycleCombinationSolutionsCalculator::new(
             NonZeroU16::new(6).unwrap(),
             &[
                 PossibleOrder {
@@ -1061,7 +1069,7 @@ mod tests {
             SolutionExpansion::All,
             &crazy,
         )
-        .calculate_existence(DisjointRegisters::from(
+        .existence(DisjointRegisters::from(
             NonemptySlice::try_from(&[0, 1, 2, 3, 4, 5][..]).unwrap(),
         ));
     }
@@ -1072,7 +1080,7 @@ mod tests {
         let possible_orders_except_one =
             mk_possible_orders_except_one(&minx3, minx3.possible_orders(None).unwrap());
         // 2520 630 420
-        let mut detail = CycleCombinationDetails::new(
+        let mut solutions_calculator = CycleCombinationSolutionsCalculator::new(
             NonZeroU16::new(3).unwrap(),
             &possible_orders_except_one,
             None,
@@ -1080,7 +1088,7 @@ mod tests {
             &minx3,
         );
         let now = Instant::now();
-        detail.calculate_expansion(DisjointRegisters::from(
+        solutions_calculator.expansion(DisjointRegisters::from(
             NonemptySlice::try_from(&[504, 251, 196][..]).unwrap(),
         ));
         println!("{}", now.elapsed().human(Truncate::Micro));
@@ -1137,14 +1145,14 @@ mod tests {
         let cube4 = CUBE4.clone();
         let possible_orders_except_one =
             mk_possible_orders_except_one(&cube4, cube4.possible_orders(None).unwrap());
-        let mut detail = CycleCombinationDetails::new(
+        let mut solutions_calculator = CycleCombinationSolutionsCalculator::new(
             NonZeroU16::new(2).unwrap(),
             &possible_orders_except_one,
             None,
             SolutionExpansion::All,
             &cube4,
         );
-        detail.calculate_existence(DisjointRegisters::from(
+        solutions_calculator.existence(DisjointRegisters::from(
             NonemptySlice::try_from(&[875, 1][..]).unwrap(),
         ));
 
@@ -1177,7 +1185,7 @@ mod tests {
         // 30/30
         // 18/20
 
-        println!("{detail:#?}");
+        println!("{solutions_calculator:#?}");
         panic!();
     }
 
@@ -1186,17 +1194,17 @@ mod tests {
         let minx3 = MINX3.clone();
         let possible_orders_except_one =
             mk_possible_orders_except_one(&minx3, minx3.possible_orders(None).unwrap());
-        let mut detail = CycleCombinationDetails::new(
+        let mut solutions_calculator = CycleCombinationSolutionsCalculator::new(
             NonZeroU16::new(3).unwrap(),
             &possible_orders_except_one,
             None,
             SolutionExpansion::Limit(NonZeroUsize::new(1).unwrap()),
             &minx3,
         );
-        let a = detail.calculate_expansion(DisjointRegisters::from(
+        let a = solutions_calculator.expansion(DisjointRegisters::from(
             NonemptySlice::try_from(&[292, 292, 292][..]).unwrap(),
         ));
-        println!("{:#?}", a);
+        println!("{a:#?}");
 
         // 2520 630 420
         //
