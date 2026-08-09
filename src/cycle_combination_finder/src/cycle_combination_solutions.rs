@@ -86,8 +86,8 @@ enum CycleOrientState {
 
 #[derive(Debug, Clone, Copy)]
 pub struct OrbitRemainingPieces {
-    unused: u16,
-    ignored: u16,
+    pub(crate) unused: u16,
+    pub(crate) ignored: u16,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -317,7 +317,6 @@ impl<'a, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
                         let prime_index = all_exponents.trailing_zeros() as usize;
                         let prime = FIRST_65_PRIMES[prime_index];
                         let register_order_exp = register_order.prime_exponent(prime_index);
-                        // TODO: sort cycle properly
                         // We can have a 7+ on edges to serve as following the 2 cycle and a 7 cycle, in the false case
                         if let PrimePowerCycleAssignment::Orbit(orbit_index, orient_state) =
                             register_assignment.cycle_assignments[prime_index]
@@ -325,8 +324,12 @@ impl<'a, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
                             let orbit_index2 = usize::from(orbit_index);
                             let orientation_exps =
                                 &self.puzzle_def.orientations_exps()[orbit_index2];
-                            let orientation_exp = orientation_exps.prime_exponent(prime_index);
-                            let exp = register_order_exp.saturating_sub(orientation_exp);
+                            let exp = if orient_state == CycleOrientState::Canonical {
+                                let orientation_exp = orientation_exps.prime_exponent(prime_index);
+                                register_order_exp.saturating_sub(orientation_exp)
+                            } else {
+                                register_order_exp
+                            };
                             let register_orbit_index = register_index2
                                 * self.puzzle_def.orbit_defs().len().get()
                                 + orbit_index2;
@@ -387,6 +390,7 @@ impl<'a, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
         // if p is 7, visit oris 2 3
         loop {
             // TODO: smarter orbit ordering, ignore identical orbits
+            // optimization to not place same cycle in orbit with same orientations
             let Some(orbit_traversal_state) = self
                 .puzzle_def
                 .orbit_defs()
@@ -450,7 +454,6 @@ impl<'a, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
                 ..
             } = orbit_traversal_state;
 
-            // TODO: optimization to not place same cycle in orbit with same orientations
             // TODO: min piece count pruning
             let orbit_index = orbit_index_cast(orbit_index2);
             let register_orbit_constraint_index =

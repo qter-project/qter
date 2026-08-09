@@ -153,36 +153,37 @@ impl CycleCombination {
                             .order
                         )?;
                         writeln!(f)?;
-                        // for orbit_index in 0..self.puzzle_def.orbit_defs().len().get() {
-                        for (orbit_index, &orbit_def) in
-                            self.puzzle_def.orbit_defs().iter().enumerate()
-                        {
+                        for orbit_index2 in 0..self.puzzle_def.orbit_defs().len().get() {
                             let s = reg_orbit_cycles
                                 .next()
                                 .unwrap()
                                 .iter()
                                 .map(|cycle| {
+                                    let mut s = format!("{}", cycle.piece_count);
                                     if cycle.must_orient {
-                                        format!(
-                                            "{}+",
-                                            cycle
-                                                .piece_count
-                                                .div_exact(u16::from(
-                                                    orbit_def.orientation_count().get()
-                                                ))
-                                                .unwrap_or(cycle.piece_count)
-                                        )
-                                    } else {
-                                        format!("{}", cycle.piece_count)
+                                        s.push('+');
                                     }
+                                    s
                                 })
                                 .collect::<Vec<_>>()
                                 .join(", ");
-                            writeln!(f, "{orbit_index}: ({s})")?;
+                            writeln!(f, "{orbit_index2}: ({s})")?;
                         }
                         writeln!(f)?;
                     }
-                    writeln!(f, "{orbit_remaining_pieces:#?}")?;
+                    for (orbit_index2, orbit_remaining_piece) in
+                        orbit_remaining_pieces.iter().enumerate()
+                    {
+                        writeln!(
+                            f,
+                            "{orbit_index2}: {} ignored, {} unused",
+                            orbit_remaining_piece.ignored,
+                            orbit_remaining_piece
+                                .unused
+                                .checked_sub(orbit_remaining_piece.ignored)
+                                .unwrap()
+                        )?;
+                    }
                     writeln!(f)?;
                 }
                 Ok(())

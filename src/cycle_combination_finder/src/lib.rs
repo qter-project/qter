@@ -9,7 +9,6 @@
     ptr_as_uninit,
     nonpoison_mutex,
     sync_nonpoison,
-    exact_div,
     box_vec_non_null,
     once_cell_try,
     mpmc_channel,
