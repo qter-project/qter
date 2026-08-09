@@ -59,8 +59,8 @@ pub struct PossibleOrder<const N: usize> {
 
 #[derive(Debug)]
 pub struct CycleCombination {
-    registers: Arc<[u32]>,
-    solutions: CycleCombinationSolutions,
+    pub(crate) registers: Arc<[u32]>,
+    pub(crate) solutions: CycleCombinationSolutions,
 }
 
 pub struct CycleCombinations<const N: usize> {
@@ -189,7 +189,7 @@ impl CycleCombination {
             }
         }
         format!(
-            "\n{}----------",
+            "{}",
             CycleCombinationDisplay {
                 inner: self,
                 puzzle_def,
@@ -418,11 +418,11 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'_, N
                 .map_init(
                     || {
                         CycleCombinationSolutionsCalculator::new(
-                            exact_register_count,
-                            possible_orders_except_one,
-                            self.config.maybe_max_fitting_tries,
-                            self.config.solution_expansion,
                             puzzle_def,
+                            possible_orders_except_one,
+                            exact_register_count,
+                            self.config.solution_expansion,
+                            self.config.maybe_max_fitting_tries,
                         )
                     },
                     |solutions_calculator, possible_register| {

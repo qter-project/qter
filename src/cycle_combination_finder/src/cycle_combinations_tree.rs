@@ -439,11 +439,11 @@ fn solutions_thread<const N: usize>(
     }
     let mut cycle_combinations = CCParetoFront::default();
     let mut solutions_calculator = CycleCombinationSolutionsCalculator::new(
-        exact_register_count,
-        possible_orders_except_one,
-        config.maybe_max_fitting_tries,
-        config.solution_expansion,
         puzzle_def,
+        possible_orders_except_one,
+        exact_register_count,
+        config.solution_expansion,
+        config.maybe_max_fitting_tries,
     );
     let mut processed_candidate_count = 0;
     let mut post_candidate_count = 0;

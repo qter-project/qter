@@ -16,7 +16,7 @@ use crate::{
 
 enum SolutionsCalculation {
     Existence(bool),
-    Expansion(Option<CycleCombinationSolutions>),
+    MaybeExpansion(Option<CycleCombinationSolutions>),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -127,11 +127,11 @@ struct OrbitTraversalState<'a, const N: usize> {
 impl<'a, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
     #[must_use]
     pub fn new(
-        exact_register_count: NonZeroU16,
-        possible_orders_except_one: &'a [PossibleOrder<N>],
-        maybe_max_fitting_tries: Option<u32>,
-        solution_expansion: SolutionExpansion,
         puzzle_def: &'a PuzzleDef<N>,
+        possible_orders_except_one: &'a [PossibleOrder<N>],
+        exact_register_count: NonZeroU16,
+        solution_expansion: SolutionExpansion,
+        maybe_max_fitting_tries: Option<u32>,
     ) -> Self {
         let register_assignments = vec![
             RegisterCycleAssignments {
@@ -217,14 +217,6 @@ impl<'a, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
             let next_register_index = register_index + 1;
             let next_register_index2 = usize::from(next_register_index);
             let leaf = next_register_index2 == self.register_assignments.len();
-
-            // TODO: is this valid?
-            //                                             cycle
-            // .piece_count
-            // .div_exact(u16::from(
-            //     orbit_def.orientation_count().get()
-            // ))
-            // .unwrap_or(cycle.piece_count)
 
             trace!(
                 "before: {:?} {:?}",
@@ -318,23 +310,24 @@ impl<'a, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
                         let prime = FIRST_65_PRIMES[prime_index];
                         let register_order_exp = register_order.prime_exponent(prime_index);
                         // TODO: wrong value
+                        // TODO: sort cycle properly
                         let cycle_piece_count = prime.pow(u32::from(register_order_exp));
                         // We can have a 7+ on edges to serve as following the 2 cycle and a 7 cycle, in the false case
                         if let PPCycleAssignment::Orbit(orbit_index, must_orient) =
                             register_assignment.cycle_assignments[prime_index]
                         {
                             let orbit_index2 = usize::from(orbit_index);
-                            let reg_orbit_index = register_index2
+                            let register_orbit_index = register_index2
                                 * self.puzzle_def.orbit_defs().len().get()
                                 + orbit_index2;
-                            register_orbit_cycles[reg_orbit_index].push(Cycle {
+                            register_orbit_cycles[register_orbit_index].push(Cycle {
                                 piece_count: cycle_piece_count,
                                 must_orient,
                             });
                             // only the last register has the most recent share state propagation
                             if register_index == self.exact_register_count.get() - 1 {
                                 self.orbit_remaining_pieces[orbit_index2].ignored = self
-                                    .register_orbit_constraints[reg_orbit_index]
+                                    .register_orbit_constraints[register_orbit_index]
                                     .known_share_state
                                     as u16;
                             }
@@ -876,7 +869,7 @@ impl<'a, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
         // number of pieces, we will never not satisfy an orientation constraint
         if self.expansion {
             self.recursive_backtrack(registers, 0);
-            SolutionsCalculation::Expansion(self.maybe_solutions.take())
+            SolutionsCalculation::MaybeExpansion(self.maybe_solutions.take())
         } else {
             SolutionsCalculation::Existence(self.recursive_backtrack(registers, 0))
         }
@@ -892,7 +885,8 @@ impl<'a, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
 
     pub fn expansion(&mut self, registers: DisjointRegisters) -> Option<CycleCombinationSolutions> {
         self.expansion = true;
-        let SolutionsCalculation::Expansion(maybe_solutions) = self.calculate(registers) else {
+        let SolutionsCalculation::MaybeExpansion(maybe_solutions) = self.calculate(registers)
+        else {
             unreachable!();
         };
         maybe_solutions
@@ -903,6 +897,7 @@ impl<'a, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
 mod tests {
     use std::{
         num::{NonZeroU16, NonZeroUsize},
+        sync::Arc,
         time::Instant,
     };
 
@@ -911,7 +906,9 @@ mod tests {
     use crate::{
         cycle_combination_solutions::CycleCombinationSolutionsCalculator,
         cycle_combinations_tree::DisjointRegisters,
-        finder::{PossibleOrder, SolutionExpansion, mk_possible_orders_except_one},
+        finder::{
+            CycleCombination, PossibleOrder, SolutionExpansion, mk_possible_orders_except_one,
+        },
         nonemptyvec::NonemptySlice,
         orderexps::OrderExps,
         puzzle::{
@@ -944,14 +941,14 @@ mod tests {
         .unwrap();
 
         CycleCombinationSolutionsCalculator::new(
-            NonZeroU16::new(1).unwrap(),
+            &crazy,
             &[PossibleOrder {
                 order: OrderExps::try_from(NonZeroU16::new(3).unwrap()).unwrap(),
                 min_piece_count: 1.try_into().unwrap(),
             }],
-            None,
+            NonZeroU16::new(1).unwrap(),
             SolutionExpansion::All,
-            &crazy,
+            None,
         )
         .existence(DisjointRegisters::from(
             NonemptySlice::try_from(&[0][..]).unwrap(),
@@ -1038,7 +1035,7 @@ mod tests {
         .unwrap();
 
         CycleCombinationSolutionsCalculator::new(
-            NonZeroU16::new(6).unwrap(),
+            &crazy,
             &[
                 PossibleOrder {
                     order: OrderExps::try_from(NonZeroU16::new(2).unwrap()).unwrap(),
@@ -1065,9 +1062,9 @@ mod tests {
                     min_piece_count: 1.try_into().unwrap(),
                 },
             ],
-            None,
+            NonZeroU16::new(6).unwrap(),
             SolutionExpansion::All,
-            &crazy,
+            None,
         )
         .existence(DisjointRegisters::from(
             NonemptySlice::try_from(&[0, 1, 2, 3, 4, 5][..]).unwrap(),
@@ -1081,11 +1078,11 @@ mod tests {
             mk_possible_orders_except_one(&minx3, minx3.possible_orders(None).unwrap());
         // 2520 630 420
         let mut solutions_calculator = CycleCombinationSolutionsCalculator::new(
-            NonZeroU16::new(3).unwrap(),
-            &possible_orders_except_one,
-            None,
-            SolutionExpansion::All,
             &minx3,
+            &possible_orders_except_one,
+            NonZeroU16::new(3).unwrap(),
+            SolutionExpansion::All,
+            None,
         );
         let now = Instant::now();
         solutions_calculator.expansion(DisjointRegisters::from(
@@ -1146,11 +1143,11 @@ mod tests {
         let possible_orders_except_one =
             mk_possible_orders_except_one(&cube4, cube4.possible_orders(None).unwrap());
         let mut solutions_calculator = CycleCombinationSolutionsCalculator::new(
-            NonZeroU16::new(2).unwrap(),
-            &possible_orders_except_one,
-            None,
-            SolutionExpansion::All,
             &cube4,
+            &possible_orders_except_one,
+            NonZeroU16::new(2).unwrap(),
+            SolutionExpansion::All,
+            None,
         );
         solutions_calculator.existence(DisjointRegisters::from(
             NonemptySlice::try_from(&[875, 1][..]).unwrap(),
@@ -1195,16 +1192,26 @@ mod tests {
         let possible_orders_except_one =
             mk_possible_orders_except_one(&minx3, minx3.possible_orders(None).unwrap());
         let mut solutions_calculator = CycleCombinationSolutionsCalculator::new(
-            NonZeroU16::new(3).unwrap(),
-            &possible_orders_except_one,
-            None,
-            SolutionExpansion::Limit(NonZeroUsize::new(1).unwrap()),
             &minx3,
+            &possible_orders_except_one,
+            NonZeroU16::new(3).unwrap(),
+            SolutionExpansion::Limit(NonZeroUsize::new(1).unwrap()),
+            None,
         );
-        let a = solutions_calculator.expansion(DisjointRegisters::from(
-            NonemptySlice::try_from(&[292, 292, 292][..]).unwrap(),
-        ));
-        println!("{a:#?}");
+        let registers = Arc::from(vec![292, 292, 292]);
+        let solutions = solutions_calculator
+            .expansion(DisjointRegisters::from(
+                NonemptySlice::try_from(&*registers).unwrap(),
+            ))
+            .unwrap();
+        let cycle_combination = CycleCombination {
+            registers: Arc::clone(&registers),
+            solutions,
+        };
+        println!(
+            "{}",
+            cycle_combination.display_fmt(&possible_orders_except_one, &minx3)
+        );
 
         // 2520 630 420
         //
