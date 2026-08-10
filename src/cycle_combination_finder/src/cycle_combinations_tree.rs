@@ -594,6 +594,7 @@ fn dfs_thread<const N: usize>(
     collector: &Collector,
     old_bucket: &Mutex<usize>,
     maybe_max_order_ratio: Option<f64>,
+    maybe_time_limit: Option<Duration>,
 ) -> TreeThreadInfo {
     if core_affinity::set_for_current(core_id) {
         debug!("DFS: Pinned {core_id:?}");
@@ -609,6 +610,11 @@ fn dfs_thread<const N: usize>(
         .skip(thread_index)
         .step_by(num_cores)
     {
+        if let Some(time_limit) = maybe_time_limit
+            && real_time.elapsed() >= time_limit
+        {
+            break;
+        }
         let i_u32 = possible_orders_len_cast(i);
 
         let guard = collector.enter();
@@ -923,6 +929,7 @@ pub(crate) fn search_dfs<const N: usize>(
                         collector,
                         old_bucket,
                         maybe_max_order_ratio,
+                        config.maybe_time_limit,
                     )
                 });
                 let candidates_receiver = candidates_receiver.clone();

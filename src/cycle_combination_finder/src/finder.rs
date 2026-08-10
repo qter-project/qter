@@ -108,6 +108,7 @@ pub struct CycleCombinationFinderConfig {
     pub maybe_max_fitting_tries: Option<u32>,
     pub solution_expansion: SolutionExpansion,
     pub mss_batch_size: NonZeroUsize,
+    pub maybe_time_limit: Option<Duration>,
 }
 
 impl Default for CycleCombinationFinderConfig {
@@ -120,6 +121,7 @@ impl Default for CycleCombinationFinderConfig {
             maybe_max_fitting_tries: None,
             solution_expansion: SolutionExpansion::default(),
             mss_batch_size: NonZeroUsize::new(10).unwrap(),
+            maybe_time_limit: None,
         }
     }
 }
@@ -287,6 +289,12 @@ impl<R, P> CycleCombinationFinder<R, P> {
     #[must_use]
     pub fn with_mss_batch_size(mut self, mss_batch_size: NonZeroUsize) -> Self {
         self.config.mss_batch_size = mss_batch_size;
+        self
+    }
+
+    #[must_use]
+    pub fn with_time_limit(mut self, maybe_time_limit: Option<Duration>) -> Self {
+        self.config.maybe_time_limit = maybe_time_limit;
         self
     }
 
@@ -585,6 +593,8 @@ mod tests {
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx4)
             .with_register_count(NonZeroU16::new(3).unwrap())
+            .with_time_limit(Some(Duration::from_secs(2)))
+            .with_optimality(Optimality::MaxOrderRatio(5.0))
             .find()
             .unwrap();
 
