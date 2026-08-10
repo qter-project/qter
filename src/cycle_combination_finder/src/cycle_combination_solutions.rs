@@ -562,8 +562,17 @@ impl<'a, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
                                                 .prime_exponent(orientation_prime_index)
                                     {
                                         orient_state = CycleOrientState::Noncanonical;
+                                        if share_anything {
+                                            OrientationSatisfiedBy::Satisfied
+                                        } else {
+                                            if next_orbit_unused_piece_count == 0 {
+                                                continue;
+                                            }
+                                            OrientationSatisfiedBy::LeftoverPiece
+                                        }
+                                    } else {
+                                        OrientationSatisfiedBy::Satisfied
                                     }
-                                    OrientationSatisfiedBy::Satisfied
                                 }
                                 // We have an orienting cycle and no shared piece in this orbit. We need leftover pieces.
                                 (true, false) => {
@@ -1036,20 +1045,6 @@ mod tests {
 
             2520: 0: (3+, 5) 1: (4+, 7)
              630: 0: (3+) 1: (5, 7+)
-             420: 0: (7+) 1: (2+, 5)
-
-            0: 1 ignored, 1 unused
-            1: 0 ignored, 0 unused
-
-            2520: 0: (3+) 1: (4+, 5, 7)
-             630: 0: (3+, 7) 1: (5+)
-             420: 0: (5+) 1: (2+, 7)
-
-            0: 1 ignored, 1 unused
-            1: 0 ignored, 0 unused
-
-            2520: 0: (3+) 1: (4+, 5, 7)
-             630: 0: (3+, 5) 1: (7+)
              420: 0: (7+) 1: (2+, 5)
 
             0: 1 ignored, 1 unused
