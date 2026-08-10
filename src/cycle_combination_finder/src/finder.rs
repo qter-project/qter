@@ -8,7 +8,7 @@ use std::{
         atomic::{self, AtomicUsize},
         nonpoison::Mutex,
     },
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use humanize_duration::{Truncate, prelude::DurationExt};
@@ -128,17 +128,54 @@ impl Default for CycleCombinationFinderConfig {
 
 impl CycleCombination {
     #[must_use]
-    pub fn display_fmt<'a, const N: usize>(
+    pub fn orders_fmt<'a, const N: usize>(
+        &'a self,
+        possible_orders_except_one: &'a [PossibleOrder<N>],
+    ) -> String {
+        struct OrdersDisplay<'a, const N: usize> {
+            inner: &'a CycleCombination,
+            possible_orders_except_one: &'a [PossibleOrder<N>],
+        }
+        impl<const N: usize> fmt::Display for OrdersDisplay<'_, N> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                let orders = self
+                    .inner
+                    .registers
+                    .iter()
+                    .map(|&register_index| {
+                        self.possible_orders_except_one[possible_order_index_cast(register_index)]
+                            .order
+                            .as_bigint()
+                            .to_string()
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                write!(f, "{orders}")?;
+                Ok(())
+            }
+        }
+        format!(
+            "{}",
+            OrdersDisplay {
+                inner: self,
+                possible_orders_except_one,
+            }
+        )
+    }
+
+    #[must_use]
+    pub fn solutions_fmt<'a, const N: usize>(
         &'a self,
         possible_orders_except_one: &'a [PossibleOrder<N>],
         puzzle_def: &'a PuzzleDef<N>,
     ) -> String {
-        struct CycleCombinationDisplay<'a, const N: usize> {
+        struct SolutionsDisplay<'a, const N: usize> {
             inner: &'a CycleCombination,
             possible_orders_except_one: &'a [PossibleOrder<N>],
             puzzle_def: &'a PuzzleDef<N>,
         }
-        impl<const N: usize> fmt::Display for CycleCombinationDisplay<'_, N> {
+        impl<const N: usize> fmt::Display for SolutionsDisplay<'_, N> {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 for CycleCombinationSolution {
                     orbit_remaining_pieces,
@@ -193,7 +230,7 @@ impl CycleCombination {
         }
         format!(
             "{}",
-            CycleCombinationDisplay {
+            SolutionsDisplay {
                 inner: self,
                 puzzle_def,
                 possible_orders_except_one,
@@ -539,7 +576,10 @@ mod tests {
             .unwrap();
 
         for x in ret.cycle_combinations {
-            println!("{}", x.display_fmt(&ret.possible_orders_except_one, &minx3));
+            println!(
+                "{}",
+                x.solutions_fmt(&ret.possible_orders_except_one, &minx3)
+            );
         }
     }
 
@@ -553,7 +593,10 @@ mod tests {
             .unwrap();
 
         for x in ret.cycle_combinations {
-            println!("{}", x.display_fmt(&ret.possible_orders_except_one, &minx3));
+            println!(
+                "{}",
+                x.solutions_fmt(&ret.possible_orders_except_one, &minx3)
+            );
         }
     }
 
@@ -568,7 +611,10 @@ mod tests {
             .unwrap();
 
         for x in ret.cycle_combinations {
-            println!("{}", x.display_fmt(&ret.possible_orders_except_one, &minx3));
+            println!(
+                "{}",
+                x.solutions_fmt(&ret.possible_orders_except_one, &minx3)
+            );
         }
     }
 
@@ -583,7 +629,10 @@ mod tests {
             .unwrap();
 
         for x in ret.cycle_combinations {
-            println!("{}", x.display_fmt(&ret.possible_orders_except_one, &minx3));
+            println!(
+                "{}",
+                x.solutions_fmt(&ret.possible_orders_except_one, &minx3)
+            );
         }
     }
 
@@ -593,15 +642,14 @@ mod tests {
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx4)
             .with_register_count(NonZeroU16::new(3).unwrap())
-            .with_time_limit(Some(Duration::from_secs(2)))
+            .with_time_limit(None)
             .with_optimality(Optimality::MaxOrderRatio(5.0))
             .find()
             .unwrap();
 
-        // for x in ret.cycle_combinations {
-        //     println!("{}", x.display_fmt(&ret.possible_orders_except_one, &minx4));
-        // }
-        drop(ret);
+        for x in ret.cycle_combinations {
+            println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
+        }
     }
 
     #[test_log::test]
@@ -615,7 +663,10 @@ mod tests {
             .unwrap();
 
         for x in ret.cycle_combinations {
-            println!("{}", x.display_fmt(&ret.possible_orders_except_one, &minx4));
+            println!(
+                "{}",
+                x.solutions_fmt(&ret.possible_orders_except_one, &minx4)
+            );
         }
     }
 
@@ -630,7 +681,10 @@ mod tests {
             .unwrap();
 
         for x in ret.cycle_combinations {
-            println!("{}", x.display_fmt(&ret.possible_orders_except_one, &minx4));
+            println!(
+                "{}",
+                x.solutions_fmt(&ret.possible_orders_except_one, &minx4)
+            );
         }
     }
 
@@ -643,10 +697,9 @@ mod tests {
             .find()
             .unwrap();
 
-        // for x in ret.cycle_combinations {
-        //     println!("{}", x.display_fmt(&ret.possible_orders_except_one, &minx5));
-        // }
-        drop(ret);
+        for x in ret.cycle_combinations {
+            println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
+        }
     }
 
     #[test_log::test]
@@ -663,7 +716,10 @@ mod tests {
             .unwrap();
 
         for x in ret.cycle_combinations {
-            println!("{}", x.display_fmt(&ret.possible_orders_except_one, &minx5));
+            println!(
+                "{}",
+                x.solutions_fmt(&ret.possible_orders_except_one, &minx5)
+            );
         }
     }
 
@@ -677,7 +733,10 @@ mod tests {
             .unwrap();
 
         for x in ret.cycle_combinations {
-            println!("{}", x.display_fmt(&ret.possible_orders_except_one, &cube3));
+            println!(
+                "{}",
+                x.solutions_fmt(&ret.possible_orders_except_one, &cube3)
+            );
         }
     }
 
@@ -691,7 +750,10 @@ mod tests {
             .unwrap();
 
         for x in ret.cycle_combinations {
-            println!("{}", x.display_fmt(&ret.possible_orders_except_one, &cube3));
+            println!(
+                "{}",
+                x.solutions_fmt(&ret.possible_orders_except_one, &cube3)
+            );
         }
     }
 
@@ -705,7 +767,10 @@ mod tests {
             .unwrap();
 
         for x in ret.cycle_combinations {
-            println!("{}", x.display_fmt(&ret.possible_orders_except_one, &cube4));
+            println!(
+                "{}",
+                x.solutions_fmt(&ret.possible_orders_except_one, &cube4)
+            );
         }
     }
 }

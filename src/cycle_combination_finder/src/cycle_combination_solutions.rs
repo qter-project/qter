@@ -1026,7 +1026,7 @@ mod tests {
 
         let mut expected = expected.to_string();
         expected.retain(|c| !c.is_whitespace());
-        let mut actual = cycle_combination.display_fmt(possible_orders_except_one, puzzle_def);
+        let mut actual = cycle_combination.solutions_fmt(possible_orders_except_one, puzzle_def);
         let actual_copy = actual.clone();
         actual.retain(|c| !c.is_whitespace());
 
