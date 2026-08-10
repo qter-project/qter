@@ -132,6 +132,15 @@ struct OrbitTraversalState<'a, const N: usize> {
 //     None,
 // }
 
+impl CycleOrientState {
+    fn must_orient(self) -> bool {
+        match self {
+            CycleOrientState::None => false,
+            CycleOrientState::Canonical | CycleOrientState::Noncanonical => true,
+        }
+    }
+}
+
 impl<'a, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
     #[must_use]
     pub fn new(
@@ -205,6 +214,7 @@ impl<'a, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
         }
     }
 
+    // TODO: add these as fields
     fn recursive_backtrack(&mut self, registers: DisjointRegisters, register_index: u16) -> bool {
         if let Some(&mut (initial_fitting_tries, ref mut remaining_fitting_tries)) =
             self.maybe_fitting_tries.as_mut()
@@ -336,8 +346,7 @@ impl<'a, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
                             let cycle_piece_count = prime.pow(u32::from(exp));
                             register_orbit_cycles[register_orbit_index].push(Cycle {
                                 piece_count: cycle_piece_count,
-                                must_orient: orient_state == CycleOrientState::Canonical
-                                    || orient_state == CycleOrientState::Noncanonical,
+                                must_orient: orient_state.must_orient(),
                             });
                             // only the last register has the most recent share state propagation
                             if register_index == self.exact_register_count.get() - 1 {
@@ -468,43 +477,11 @@ impl<'a, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
             let orient_states = if traverse_canonically_orients {
                 // true first so we have a greater chance of finding a solution earlier
                 &[CycleOrientState::Canonical, CycleOrientState::None][..]
-            } else {
-                &[CycleOrientState::None][..]
-            };
-            for &(mut orient_state) in orient_states {
-                let RegisterOrbitConstraint {
-                    known_share_state,
-                    orientation_satisfied_by,
-                } = &mut self.register_orbit_constraints[register_orbit_constraint_index];
-                let cycle_piece_count = if orient_state == CycleOrientState::Canonical {
-                    let exp = register_order_exp.saturating_sub(orientation_exp);
-                    if exp == 0 {
-                        match *orientation_satisfied_by {
-                            OrientationSatisfiedBy::CycleAndLeftoverPiece => 2,
-                            OrientationSatisfiedBy::LeftoverPiece => 1,
-                            OrientationSatisfiedBy::Satisfied => 0,
-                        }
-                    } else {
-                        // TODO: test case with a singular 4 cycle on edges. it should fail
-                        prime.pow(u32::from(exp))
-                    }
-                } else {
-                    prime.pow(u32::from(register_order_exp))
-                };
-                // TODO: figure out if prime powers are allowed (like 27, 81, etc)
-                let Some(next_orbit_unused_piece_count) =
-                    orbit_unused_piece_count.checked_sub(cycle_piece_count)
-                else {
-                    trace!(
-                        "{register_index} {orbit_index} failed: {orbit_unused_piece_count} < \
-                         {cycle_piece_count}; tried {prime}; orient state {orient_state:?}",
-                    );
-                    continue;
-                };
-                if next_orbit_unused_piece_count < *known_share_state as u16 {
-                    continue;
-                }
-
+            } else if orientation_prime_index != 64
+                && unassigned_exponents_mask & (1 << orientation_prime_index) != 0
+                && orientation_exps.prime_exponent(orientation_prime_index)
+                    >= register_order.prime_exponent(orientation_prime_index)
+            {
                 // order 9
                 // 3 ori
                 //
@@ -522,19 +499,40 @@ impl<'a, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
                 // we have exponent 2^1, we get it for free by
                 //
                 // 2+
-                // x
                 //
                 // 2^2 ori , 2^2 exponent is good
                 // 2^3 ori , 2^2 exponent is good
                 // 2^1 ori , 2^2 exponent is bad
                 // claim: traverse_canonically_orients and assign_cycle_orient together cannot be true
                 // 5 then 2
-                // let must_noncanonically_orient = !traverse_canonically_orients
-                //     && orientation_prime_index != 64
-                //     && unassigned_exponents_mask & (1 << orientation_prime_index) != 0
-                //     && orientation_exps.prime_exponent(orientation_prime_index)
-                //         >= register_order.prime_exponent(orientation_prime_index);
-                // let must_orient = must_noncanonically_orient || must_canonically_orient;
+                &[CycleOrientState::Noncanonical][..]
+            } else {
+                &[CycleOrientState::None][..]
+            };
+            for &orient_state in orient_states {
+                let RegisterOrbitConstraint {
+                    known_share_state,
+                    orientation_satisfied_by,
+                } = &mut self.register_orbit_constraints[register_orbit_constraint_index];
+                let cycle_piece_count = if orient_state == CycleOrientState::Canonical {
+                    let exp = register_order_exp.saturating_sub(orientation_exp);
+                    // We should never reach a case when this should be zero here, otherwise we would have noncanonically oriented earlier
+                    prime.pow(u32::from(exp))
+                } else {
+                    prime.pow(u32::from(register_order_exp))
+                };
+                let Some(next_orbit_unused_piece_count) =
+                    orbit_unused_piece_count.checked_sub(cycle_piece_count)
+                else {
+                    trace!(
+                        "{register_index} {orbit_index} failed: {orbit_unused_piece_count} < \
+                         {cycle_piece_count}; tried {prime}; orient state {orient_state:?}",
+                    );
+                    continue;
+                };
+                if next_orbit_unused_piece_count < *known_share_state as u16 {
+                    continue;
+                }
 
                 // Do we already share something?
                 // TODO: do we need to visit 2s first, or last, or it doesnt matter?
@@ -545,40 +543,25 @@ impl<'a, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
                     orientation_satisfied_by,
                     match *orientation_satisfied_by {
                         OrientationSatisfiedBy::CycleAndLeftoverPiece => {
-                            match (orient_state == CycleOrientState::Canonical, share_anything) {
+                            match (orient_state.must_orient(), share_anything) {
                                 // We have a non-orienting cycle. This cycle can orient to satisfy any future orienting cycles.
                                 (false, _) => {
                                     // 7+ on edges
                                     // (7+, 2+) on edges
                                     // We won't have a `true` canonical orient later
                                     // TODO^ does that make sense
-                                    if !traverse_canonically_orients
-                                        && orientation_prime_index != 64
-                                        && unassigned_exponents_mask
-                                            & (1 << orientation_prime_index)
-                                            != 0
-                                        && orientation_exps.prime_exponent(orientation_prime_index)
-                                            >= register_order
-                                                .prime_exponent(orientation_prime_index)
-                                    {
-                                        orient_state = CycleOrientState::Noncanonical;
-                                        if share_anything {
-                                            OrientationSatisfiedBy::Satisfied
-                                        } else {
-                                            if next_orbit_unused_piece_count == 0 {
-                                                continue;
-                                            }
-                                            OrientationSatisfiedBy::LeftoverPiece
-                                        }
-                                    } else {
-                                        OrientationSatisfiedBy::Satisfied
-                                    }
+                                    OrientationSatisfiedBy::Satisfied
                                 }
                                 // We have an orienting cycle and no shared piece in this orbit. We need leftover pieces.
                                 (true, false) => {
                                     // If we have no pieces left to be used as leftover then this is impossible. Note that this is satisfied when the orbit has no orientation sum constraint.
                                     if next_orbit_unused_piece_count == 0 {
                                         continue;
+                                    }
+                                    // the only reason we are allowed to assign the known share state here is because the fact that every orbit only has one prime, and that we visit orienting primes last. Therefore, the orienting prime is the last prime power that is assigned to an orbit for this register.
+                                    // When canonical, we are at the last cycle in this orbit. When noncanonical, we don't know when the last cycle will be added
+                                    if orient_state == CycleOrientState::Canonical {
+                                        *known_share_state = ShareState::Orientation;
                                     }
                                     OrientationSatisfiedBy::LeftoverPiece
                                 }
@@ -590,6 +573,7 @@ impl<'a, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
                         | OrientationSatisfiedBy::Satisfied => OrientationSatisfiedBy::Satisfied,
                     },
                 );
+
                 trace!(
                     "{register_index} {orbit_index}: updated {old_orientation_satisfied_by:?} -> \
                      {:?}; assigned {prime} ({orbit_unused_piece_count} -> \
