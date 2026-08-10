@@ -465,8 +465,6 @@ impl<'a, 'b, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
         //
         // if p is 7, visit oris 2 3
         loop {
-            // TODO: smarter orbit ordering, ignore identical orbits
-            // optimization to not place same cycle in orbit with same orientations
             let Some((orbit_index2, orbit_traversal_state)) = self
                 .immutable
                 .puzzle_def
@@ -475,8 +473,10 @@ impl<'a, 'b, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
                 .zip(orientations_exps.iter())
                 .zip(&self.orbit_remaining_pieces)
                 .enumerate()
-                .filter_map(
-                    |(
+                .fold(
+                    None,
+                    |acc: Option<(usize, OrbitTraversalState<N>)>,
+                     (
                         orbit_index2,
                         ((&OrbitDef { piece_count, .. }, orientation_exps), orbit_remaining_pieces),
                     )| {
@@ -486,6 +486,10 @@ impl<'a, 'b, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
                             .to_bitmask()
                             .trailing_zeros()
                             as usize;
+                        let orbit_can_canonically_orient = orientation_prime_index == prime_index2;
+                        if traverse_canonically_orients != orbit_can_canonically_orient {
+                            return acc;
+                        }
                         let register_orbit_constraint = self.register_orbit_constraints
                             [register_index2 * self.immutable.puzzle_def.orbit_defs().len().get()
                                 + orbit_index2];
@@ -496,18 +500,21 @@ impl<'a, 'b, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
                             register_orbit_constraint,
                             orientation_prime_index,
                         };
-                        let orbit_can_canonically_orient = orientation_prime_index == prime_index2;
-                        if traverse_canonically_orients == orbit_can_canonically_orient
-                            && maybe_prev_traversal_state.is_none_or(|prev| curr.cmp(&prev).is_gt())
+                        // Filter out everything <= the previous traversal state
+                        if maybe_prev_traversal_state.is_some_and(|prev| curr.cmp(&prev).is_le()) {
+                            return acc;
+                        }
+                        // curr is > the previous traversal state. If we have a previous best and curr < best, or if there was no previous best, swap it out with curr.
+                        if acc
+                            .as_ref()
+                            .is_some_and(|(_, best)| best.cmp(&curr).is_le())
                         {
-                            Some((orbit_index2, curr))
+                            acc
                         } else {
-                            None
+                            Some((orbit_index2, curr))
                         }
                     },
                 )
-                // TODO: reduce instead of min_by to avoid extra loop
-                .min_by(|(_, a), (_, b)| a.cmp(b))
             else {
                 if traverse_canonically_orients {
                     trace!("reg {register_index2} finished traversing");
