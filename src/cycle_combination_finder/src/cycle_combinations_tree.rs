@@ -41,7 +41,6 @@ struct CycleCombinationsTreeMutable {
     registers: NonemptyVec<u32>,
     register_cutoff: u32,
     candidates_sender: mpmc::Sender<PackedCycleCombinationCandidateQueue>,
-    alloc_time: Duration,
     candidate_count: u64,
 
     candidates_sender_capacity: usize,
@@ -60,7 +59,6 @@ pub struct DisjointRegisters<'a> {
 struct SolutionsThreadInfo {
     real_time: Duration,
     cpu_time: Duration,
-    alloc_time: Duration,
     processed_candidate_count: u64,
     post_candidate_count: u64,
     cycle_combinations: CCParetoFront,
@@ -70,7 +68,6 @@ struct SolutionsThreadInfo {
 struct TreeThreadInfo {
     real_time: Duration,
     cpu_time: Duration,
-    alloc_time: Duration,
     candidate_count: u64,
     empty_sends: u64,
     full_sends: u64,
@@ -87,10 +84,8 @@ struct TreeProfileInfo {
     empty_sends_percentage: f64,
     full_sends_percentage: f64,
     real_time: Duration,
-    dfs_alloc_time: Duration,
     dfs_cpu_time: Duration,
     dfs_io_time: Duration,
-    solutions_alloc_time: Duration,
     solutions_cpu_time: Duration,
     solutions_io_time: Duration,
     num_cores: usize,
@@ -121,10 +116,8 @@ impl CycleCombinationsTreeMutable {
                 .map(|&candidate_count| u64::from(candidate_count))
                 .sum::<u64>();
             self.candidate_count += candidate_count;
-            let now = Instant::now();
             let payload =
                 PackedCycleCombinationCandidateQueue(Box::clone_from_ref(&self.batch_packed_queue));
-            self.alloc_time += now.elapsed();
 
             let len = self.candidates_sender.len();
             trace!(
@@ -210,16 +203,6 @@ impl Debug for TreeProfileInfo {
                 ),
             )
             .field(
-                &format!("{:>25}", "dfs_alloc_time"),
-                &format!(
-                    "{:05.2}% ({})",
-                    self.dfs_alloc_time.div_duration_f64(cpu_time) * 100.0,
-                    self.dfs_alloc_time
-                        .div_f64(num_cores)
-                        .human(Truncate::Millis)
-                ),
-            )
-            .field(
                 &format!("{:>25}", "dfs_cpu_time"),
                 &format!(
                     "{:05.2}% ({})",
@@ -233,16 +216,6 @@ impl Debug for TreeProfileInfo {
                     "{:05.2}% ({})",
                     self.dfs_io_time.div_duration_f64(cpu_time) * 100.0,
                     self.dfs_io_time.div_f64(num_cores).human(Truncate::Millis)
-                ),
-            )
-            .field(
-                &format!("{:>25}", "solutions_alloc_time"),
-                &format!(
-                    "{:05.2}% ({})",
-                    self.solutions_alloc_time.div_duration_f64(cpu_time) * 100.0,
-                    self.solutions_alloc_time
-                        .div_f64(num_cores)
-                        .human(Truncate::Millis)
                 ),
             )
             .field(
@@ -347,7 +320,6 @@ unsafe fn try_next_pareto_efficient_pruning(
     maybe_raw_pruning: *mut u32,
     disjoint_registers: DisjointRegisters,
     raw_pruning_len: NonZeroUsize,
-    alloc_time: &mut Duration,
 ) -> Option<NonNull<u32>> {
     if let Some(raw_pruning) = NonNull::new(maybe_raw_pruning) {
         // SAFETY: the called guarantees `pareto_efficient_pruning` is valid. Also later
@@ -383,10 +355,8 @@ unsafe fn try_next_pareto_efficient_pruning(
                         Ordering::Less => return None,
                         Ordering::Equal => (),
                         Ordering::Greater => {
-                            let now = Instant::now();
                             let mut next_pareto_efficient_pruning =
                                 Vec::with_capacity(raw_pruning_len.get());
-                            *alloc_time += now.elapsed();
                             next_pareto_efficient_pruning.extend(
                                 std::iter::once(disjoint_registers.last_register).chain(
                                     disjoint_registers
@@ -453,7 +423,6 @@ fn solutions_thread<const N: usize>(
     .unwrap();
     let real_time = Instant::now();
     let cpu_time = ThreadTime::now();
-    let mut alloc_time = Duration::default();
     loop {
         let maybe_batch_packed_queue = match candidates_receiver.try_recv() {
             Ok(batch_packed_queue) => Some(batch_packed_queue),
@@ -508,14 +477,7 @@ fn solutions_thread<const N: usize>(
                         if !solutions_calculator.existence(dominating_registers) {
                             return None;
                         }
-                        let possible_registers = if log_enabled!(Level::Debug) {
-                            let now = Instant::now();
-                            let registers = dominating_registers.iter().collect::<Arc<[_]>>();
-                            alloc_time += now.elapsed();
-                            registers
-                        } else {
-                            dominating_registers.iter().collect::<Arc<[_]>>()
-                        };
+                        let possible_registers = dominating_registers.iter().collect::<Arc<[_]>>();
                         assert!(
                             solutions_sender
                                 .send((core_id, Arc::clone(&possible_registers)))
@@ -542,7 +504,6 @@ fn solutions_thread<const N: usize>(
                         maybe_raw_pruning,
                         disjoint_registers,
                         raw_pruning_len,
-                        &mut alloc_time,
                     )
                 } {
                     match guard.compare_exchange(
@@ -576,7 +537,6 @@ fn solutions_thread<const N: usize>(
     SolutionsThreadInfo {
         cpu_time: cpu_time.elapsed(),
         real_time: real_time.elapsed(),
-        alloc_time,
         processed_candidate_count,
         post_candidate_count,
         cycle_combinations,
@@ -705,7 +665,6 @@ fn dfs_thread<const N: usize>(
     TreeThreadInfo {
         real_time: real_time.elapsed(),
         cpu_time: cpu_time.elapsed(),
-        alloc_time: mutable.alloc_time,
         candidate_count: mutable.candidate_count,
         empty_sends: mutable.empty_sends,
         full_sends: mutable.full_sends,
@@ -869,7 +828,6 @@ pub(crate) fn search_dfs<const N: usize>(
         registers: NonemptyVec::try_from(vec![0; usize::from(exact_register_count.get())]).unwrap(),
         register_cutoff: 0,
         candidates_sender,
-        alloc_time: Duration::default(),
         candidate_count: 0,
 
         candidates_sender_capacity,
@@ -879,11 +837,9 @@ pub(crate) fn search_dfs<const N: usize>(
     let mut candidate_count = 0;
     let mut dfs_real_time = Duration::default();
     let mut dfs_cpu_time = Duration::default();
-    let mut dfs_alloc_time = Duration::default();
 
     let mut solutions_real_time = Duration::default();
     let mut solutions_cpu_time = Duration::default();
-    let mut solutions_alloc_time = Duration::default();
     let mut processed_candidate_count = 0;
     let mut post_candidate_count = 0;
     let mut sends = 0;
@@ -975,7 +931,6 @@ pub(crate) fn search_dfs<const N: usize>(
             candidate_count += tree_thread_info.candidate_count;
             dfs_real_time += tree_thread_info.real_time;
             dfs_cpu_time += tree_thread_info.cpu_time;
-            dfs_alloc_time += tree_thread_info.alloc_time;
             sends += tree_thread_info.sends;
             empty_sends += tree_thread_info.empty_sends;
             full_sends += tree_thread_info.full_sends;
@@ -983,7 +938,6 @@ pub(crate) fn search_dfs<const N: usize>(
 
             solutions_cpu_time += solutions_thread_info.cpu_time;
             solutions_real_time += solutions_thread_info.real_time;
-            solutions_alloc_time += solutions_thread_info.alloc_time;
             processed_candidate_count += solutions_thread_info.processed_candidate_count;
             post_candidate_count += solutions_thread_info.post_candidate_count;
             smallest_fronts.push(solutions_thread_info.cycle_combinations);
@@ -1045,12 +999,8 @@ pub(crate) fn search_dfs<const N: usize>(
     let sender_len_percentage =
         sender_lens as f64 / (candidates_sender_capacity as u64 * sends) as f64;
 
-    let dfs_io_time = dfs_real_time
-        .saturating_sub(dfs_cpu_time)
-        .saturating_sub(dfs_alloc_time);
-    let solutions_io_time = solutions_real_time
-        .saturating_sub(solutions_cpu_time)
-        .saturating_sub(solutions_alloc_time);
+    let dfs_io_time = dfs_real_time.saturating_sub(dfs_cpu_time);
+    let solutions_io_time = solutions_real_time.saturating_sub(solutions_cpu_time);
 
     let tree_profile_info = TreeProfileInfo {
         candidate_count,
@@ -1061,10 +1011,8 @@ pub(crate) fn search_dfs<const N: usize>(
         empty_sends_percentage,
         full_sends_percentage,
         real_time,
-        dfs_alloc_time,
         dfs_cpu_time,
         dfs_io_time,
-        solutions_alloc_time,
         solutions_cpu_time,
         solutions_io_time,
         num_cores,
