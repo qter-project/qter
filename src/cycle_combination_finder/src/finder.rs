@@ -25,7 +25,7 @@ use crate::{
     nonemptyvec::NonemptySlice,
     orderexps::OrderExps,
     possible_orders::OrdersDashSet,
-    puzzle::{PuzzleDef, possible_order_index_cast},
+    puzzle::{PuzzleDef, orbit_index_cast, possible_order_index_cast},
 };
 
 #[derive(Clone, Copy, Default, Debug)]
@@ -170,7 +170,8 @@ impl CycleCombination {
                     .order
                 );
                 let _ = writeln!(&mut ret);
-                for orbit_index2 in 0..puzzle_def.orbit_defs().len().get() {
+                for (orbit_index2, maybe_orbit_name) in puzzle_def.orbit_names().iter().enumerate()
+                {
                     #[allow(clippy::missing_panics_doc)]
                     let s = register_orbit_cycles_iter
                         .next()
@@ -185,14 +186,36 @@ impl CycleCombination {
                         })
                         .collect::<Vec<_>>()
                         .join(", ");
-                    let _ = writeln!(&mut ret, "{orbit_index2}: ({s})");
+                    let _ = writeln!(
+                        &mut ret,
+                        "{}: ({s})",
+                        maybe_orbit_name
+                            .as_ref()
+                            .and_then(|orbit_name| orbit_name.chars().next())
+                            .unwrap_or_else(|| {
+                                #[allow(clippy::missing_panics_doc)]
+                                char::from_digit(u32::from(orbit_index_cast(orbit_index2)), 10)
+                                    .unwrap()
+                            }),
+                    );
                 }
                 let _ = writeln!(&mut ret);
             }
-            for (orbit_index2, orbit_remaining_piece) in orbit_remaining_pieces.iter().enumerate() {
+            for (orbit_index2, (orbit_remaining_piece, maybe_orbit_name)) in orbit_remaining_pieces
+                .iter()
+                .zip(puzzle_def.orbit_names().iter())
+                .enumerate()
+            {
                 let _ = writeln!(
                     &mut ret,
-                    "{orbit_index2}: {} ignored, {} unused",
+                    "{}: {} ignored, {} unused",
+                    maybe_orbit_name
+                        .as_ref()
+                        .and_then(|orbit_name| orbit_name.chars().next())
+                        .unwrap_or_else(|| {
+                            #[allow(clippy::missing_panics_doc)]
+                            char::from_digit(u32::from(orbit_index_cast(orbit_index2)), 10).unwrap()
+                        }),
                     orbit_remaining_piece.ignored,
                     orbit_remaining_piece.unused - orbit_remaining_piece.ignored
                 );

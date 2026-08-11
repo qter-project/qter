@@ -230,6 +230,7 @@ mod tests {
             partial_orbit_defs
                 .iter()
                 .map(|&(piece_count, orientation)| PartialOrbitDef {
+                    name: None,
                     piece_count: piece_count.try_into().unwrap(),
                     orientation: if orientation == 1 {
                         OrientationStatus::CannotOrient
@@ -772,6 +773,7 @@ mod tests {
         let cube3_no_parity_constraint = PuzzleDef::<8>::new(
             vec![
                 PartialOrbitDef {
+                    name: None,
                     piece_count: 8.try_into().unwrap(),
                     orientation: OrientationStatus::CanOrient {
                         count: 3,
@@ -779,6 +781,7 @@ mod tests {
                     },
                 },
                 PartialOrbitDef {
+                    name: None,
                     piece_count: 12.try_into().unwrap(),
                     orientation: OrientationStatus::CanOrient {
                         count: 2,
@@ -793,6 +796,7 @@ mod tests {
         let cube3_corner_parity_constraint = PuzzleDef::<8>::new(
             vec![
                 PartialOrbitDef {
+                    name: None,
                     piece_count: 8.try_into().unwrap(),
                     orientation: OrientationStatus::CanOrient {
                         count: 3,
@@ -800,6 +804,7 @@ mod tests {
                     },
                 },
                 PartialOrbitDef {
+                    name: None,
                     piece_count: 12.try_into().unwrap(),
                     orientation: OrientationStatus::CanOrient {
                         count: 2,
@@ -814,6 +819,7 @@ mod tests {
         let cube3_edge_parity_constraint = PuzzleDef::<8>::new(
             vec![
                 PartialOrbitDef {
+                    name: None,
                     piece_count: 8.try_into().unwrap(),
                     orientation: OrientationStatus::CanOrient {
                         count: 3,
@@ -821,6 +827,7 @@ mod tests {
                     },
                 },
                 PartialOrbitDef {
+                    name: None,
                     piece_count: 12.try_into().unwrap(),
                     orientation: OrientationStatus::CanOrient {
                         count: 2,

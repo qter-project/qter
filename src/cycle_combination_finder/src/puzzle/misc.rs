@@ -8,6 +8,7 @@ pub static BIG1: LazyLock<PuzzleDef<32>> = LazyLock::new(|| {
     PuzzleDef::new(
         vec![
             PartialOrbitDef {
+                name: None,
                 piece_count: 60.try_into().unwrap(),
                 orientation: OrientationStatus::CanOrient {
                     count: 2,
@@ -15,6 +16,7 @@ pub static BIG1: LazyLock<PuzzleDef<32>> = LazyLock::new(|| {
                 },
             },
             PartialOrbitDef {
+                name: None,
                 piece_count: 40.try_into().unwrap(),
                 orientation: OrientationStatus::CanOrient {
                     count: 3,
@@ -31,6 +33,7 @@ pub static BIG2: LazyLock<PuzzleDef<32>> = LazyLock::new(|| {
     PuzzleDef::new(
         vec![
             PartialOrbitDef {
+                name: None,
                 piece_count: 60.try_into().unwrap(),
                 orientation: OrientationStatus::CanOrient {
                     count: 20,
@@ -38,6 +41,7 @@ pub static BIG2: LazyLock<PuzzleDef<32>> = LazyLock::new(|| {
                 },
             },
             PartialOrbitDef {
+                name: None,
                 piece_count: 40.try_into().unwrap(),
                 orientation: OrientationStatus::CanOrient {
                     count: 30,
@@ -54,6 +58,7 @@ pub static BIG3: LazyLock<PuzzleDef<32>> = LazyLock::new(|| {
     PuzzleDef::new(
         vec![
             PartialOrbitDef {
+                name: None,
                 piece_count: 40.try_into().unwrap(),
                 orientation: OrientationStatus::CanOrient {
                     count: 3,
@@ -61,6 +66,7 @@ pub static BIG3: LazyLock<PuzzleDef<32>> = LazyLock::new(|| {
                 },
             },
             PartialOrbitDef {
+                name: None,
                 piece_count: 60.try_into().unwrap(),
                 orientation: OrientationStatus::CanOrient {
                     count: 2,
@@ -68,6 +74,7 @@ pub static BIG3: LazyLock<PuzzleDef<32>> = LazyLock::new(|| {
                 },
             },
             PartialOrbitDef {
+                name: None,
                 piece_count: 20.try_into().unwrap(),
                 orientation: OrientationStatus::CanOrient {
                     count: 6,

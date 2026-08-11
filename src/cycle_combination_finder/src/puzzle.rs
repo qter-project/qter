@@ -60,6 +60,7 @@ pub enum PuzzleDefCreationError {
 #[derive(Clone)]
 pub struct PuzzleDef<const N: usize> {
     orbit_defs: NonemptyVec<OrbitDef>,
+    orbit_names: NonemptyVec<Option<String>>,
     even_parity_constraints: BitMatrix,
     connected_components: Box<[Box<[u16]>]>,
     orbit_index_to_component_index: Box<[u16]>,
@@ -76,8 +77,9 @@ pub struct OrbitDef {
     pub parity_constraint: ParityConstraint,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct PartialOrbitDef {
+    pub name: Option<String>,
     pub piece_count: NonZeroU16,
     pub orientation: OrientationStatus,
 }
@@ -198,6 +200,7 @@ impl<const N: usize> PuzzleDef<N> {
                     }
                 };
                 PartialOrbitDef {
+                    name: None,
                     piece_count,
                     orientation,
                 }
@@ -221,45 +224,47 @@ impl<const N: usize> PuzzleDef<N> {
             });
         }
 
-        let mut orbit_defs = NonemptyVec::try_from(
-            partial_orbit_defs
-                .into_iter()
-                .map(
-                    |PartialOrbitDef {
-                         piece_count,
-                         orientation,
-                     }| {
-                        match orientation {
-                            OrientationStatus::CanOrient { count, .. }
-                                if count == 0 || count == 1 =>
-                            {
-                                return Err(PuzzleDefCreationError::InvalidOrientationCount(count));
-                            }
-                            _ => (),
+        let (orbit_defs, orbit_names): (Vec<OrbitDef>, Vec<Option<String>>) = partial_orbit_defs
+            .into_iter()
+            .map(
+                |PartialOrbitDef {
+                     name,
+                     piece_count,
+                     orientation,
+                 }| {
+                    match orientation {
+                        OrientationStatus::CanOrient { count, .. } if count == 0 || count == 1 => {
+                            return Err(PuzzleDefCreationError::InvalidOrientationCount(count));
                         }
-                        if piece_count.get() >= FIRST_65_PRIMES[N] {
-                            return Err(PuzzleDefCreationError::OrbitTooManyPieces {
-                                max: FIRST_65_PRIMES[N] - 1,
-                                actual: piece_count.get(),
-                            });
-                        }
-                        let ret = OrbitDef {
-                            piece_count,
-                            orientation,
-                            parity_constraint: ParityConstraint::None,
-                        };
-                        if u16::from(ret.orientation_count().get()) >= FIRST_65_PRIMES[N] {
-                            return Err(PuzzleDefCreationError::OrbitTooMuchOrientation {
-                                max: FIRST_65_PRIMES[N] - 1,
-                                actual: ret.orientation_count().get(),
-                            });
-                        }
-                        Ok(ret)
-                    },
-                )
-                .collect::<Result<Vec<_>, PuzzleDefCreationError>>()?,
-        )
-        .map_err(|()| PuzzleDefCreationError::NoOrbits)?;
+                        _ => (),
+                    }
+                    if piece_count.get() >= FIRST_65_PRIMES[N] {
+                        return Err(PuzzleDefCreationError::OrbitTooManyPieces {
+                            max: FIRST_65_PRIMES[N] - 1,
+                            actual: piece_count.get(),
+                        });
+                    }
+                    let ret = OrbitDef {
+                        piece_count,
+                        orientation,
+                        parity_constraint: ParityConstraint::None,
+                    };
+                    if u16::from(ret.orientation_count().get()) >= FIRST_65_PRIMES[N] {
+                        return Err(PuzzleDefCreationError::OrbitTooMuchOrientation {
+                            max: FIRST_65_PRIMES[N] - 1,
+                            actual: ret.orientation_count().get(),
+                        });
+                    }
+                    Ok((ret, name))
+                },
+            )
+            .collect::<Result<Vec<_>, PuzzleDefCreationError>>()?
+            .into_iter()
+            .unzip();
+        let mut orbit_defs =
+            NonemptyVec::try_from(orbit_defs).map_err(|()| PuzzleDefCreationError::NoOrbits)?;
+        let orbit_names =
+            NonemptyVec::try_from(orbit_names).map_err(|()| PuzzleDefCreationError::NoOrbits)?;
 
         let cols = orbit_defs.len().get();
         let rows = raw_even_parity_constraints.len();
@@ -374,6 +379,7 @@ impl<const N: usize> PuzzleDef<N> {
 
         Ok(Self {
             orbit_defs,
+            orbit_names,
             even_parity_constraints,
             connected_components,
             orbit_index_to_component_index,
@@ -385,6 +391,11 @@ impl<const N: usize> PuzzleDef<N> {
     #[must_use]
     pub fn orbit_defs(&self) -> NonemptySlice<'_, OrbitDef> {
         self.orbit_defs.as_slice()
+    }
+
+    #[must_use]
+    pub fn orbit_names(&self) -> NonemptySlice<'_, Option<String>> {
+        self.orbit_names.as_slice()
     }
 
     #[must_use]
@@ -470,6 +481,7 @@ mod tests {
         assert!(
             PuzzleDef::<8>::new(
                 vec![PartialOrbitDef {
+                    name: None,
                     piece_count: 1.try_into().unwrap(),
                     orientation: OrientationStatus::CannotOrient
                 }],
@@ -485,6 +497,7 @@ mod tests {
             PuzzleDef::<8>::new(
                 (0..=MAX_ORBIT_COUNT)
                     .map(|_| PartialOrbitDef {
+                        name: None,
                         piece_count: 1.try_into().unwrap(),
                         orientation: OrientationStatus::CannotOrient,
                     })
@@ -503,6 +516,7 @@ mod tests {
         assert_matches!(
             PuzzleDef::<8>::new(
                 vec![PartialOrbitDef {
+                    name: None,
                     piece_count: 1.try_into().unwrap(),
                     orientation: OrientationStatus::CanOrient {
                         count: 0,
@@ -516,6 +530,7 @@ mod tests {
         assert_matches!(
             PuzzleDef::<8>::new(
                 vec![PartialOrbitDef {
+                    name: None,
                     piece_count: 1.try_into().unwrap(),
                     orientation: OrientationStatus::CanOrient {
                         count: 1,
@@ -529,6 +544,7 @@ mod tests {
         assert!(
             PuzzleDef::<8>::new(
                 vec![PartialOrbitDef {
+                    name: None,
                     piece_count: 1.try_into().unwrap(),
                     orientation: OrientationStatus::CanOrient {
                         count: 2,
@@ -546,6 +562,7 @@ mod tests {
         assert_matches!(
             PuzzleDef::<8>::new(
                 vec![PartialOrbitDef {
+                    name: None,
                     piece_count: 23.try_into().unwrap(),
                     orientation: OrientationStatus::CanOrient {
                         count: 2,
@@ -562,6 +579,7 @@ mod tests {
         assert!(
             PuzzleDef::<8>::new(
                 vec![PartialOrbitDef {
+                    name: None,
                     piece_count: 22.try_into().unwrap(),
                     orientation: OrientationStatus::CanOrient {
                         count: 2,
@@ -579,6 +597,7 @@ mod tests {
         assert_matches!(
             PuzzleDef::<8>::new(
                 vec![PartialOrbitDef {
+                    name: None,
                     piece_count: 1.try_into().unwrap(),
                     orientation: OrientationStatus::CanOrient {
                         count: FIRST_65_PRIMES[8].try_into().unwrap(),
@@ -595,6 +614,7 @@ mod tests {
         assert!(
             PuzzleDef::<8>::new(
                 vec![PartialOrbitDef {
+                    name: None,
                     piece_count: 1.try_into().unwrap(),
                     orientation: OrientationStatus::CanOrient {
                         count: u8::try_from(FIRST_65_PRIMES[7]).unwrap(),
@@ -612,6 +632,7 @@ mod tests {
         assert_matches!(
             PuzzleDef::<8>::new(
                 vec![PartialOrbitDef {
+                    name: None,
                     piece_count: 1.try_into().unwrap(),
                     orientation: OrientationStatus::CanOrient {
                         count: 2,
@@ -625,6 +646,7 @@ mod tests {
         assert!(
             PuzzleDef::<8>::new(
                 vec![PartialOrbitDef {
+                    name: None,
                     piece_count: 1.try_into().unwrap(),
                     orientation: OrientationStatus::CanOrient {
                         count: 2,
@@ -642,6 +664,7 @@ mod tests {
         assert_matches!(
             PuzzleDef::<8>::new(
                 vec![PartialOrbitDef {
+                    name: None,
                     piece_count: 1.try_into().unwrap(),
                     orientation: OrientationStatus::CanOrient {
                         count: 2,
@@ -655,6 +678,7 @@ mod tests {
         assert!(
             PuzzleDef::<8>::new(
                 vec![PartialOrbitDef {
+                    name: None,
                     piece_count: 1.try_into().unwrap(),
                     orientation: OrientationStatus::CanOrient {
                         count: 2,
@@ -672,6 +696,7 @@ mod tests {
         assert_matches!(
             PuzzleDef::<8>::new(
                 vec![PartialOrbitDef {
+                    name: None,
                     piece_count: 1.try_into().unwrap(),
                     orientation: OrientationStatus::CanOrient {
                         count: 6,
@@ -685,6 +710,7 @@ mod tests {
         assert!(
             PuzzleDef::<8>::new(
                 vec![PartialOrbitDef {
+                    name: None,
                     piece_count: 1.try_into().unwrap(),
                     orientation: OrientationStatus::CanOrient {
                         count: 4,

@@ -1043,6 +1043,7 @@ mod tests {
         let crazy = PuzzleDef::<32>::new(
             vec![
                 PartialOrbitDef {
+                    name: None,
                     piece_count: 5.try_into().unwrap(),
                     orientation: OrientationStatus::CanOrient {
                         count: 27,
@@ -1050,6 +1051,7 @@ mod tests {
                     },
                 },
                 PartialOrbitDef {
+                    name: None,
                     piece_count: 5.try_into().unwrap(),
                     orientation: OrientationStatus::CanOrient {
                         count: 9,
@@ -1085,7 +1087,7 @@ mod tests {
             &minx3,
             &possible_orders_except_one,
             NonZeroU16::new(3).unwrap(),
-            SolutionExpansion::FIRST,
+            SolutionExpansion::All,
             None,
         );
         // 2520 630 420
@@ -1096,19 +1098,19 @@ mod tests {
         let register_orders = vec![2520, 630, 420];
 
         let expected = "
-            2520: 0: (3+, 7) 1: (4+, 5)
-             630: 0: (3+) 1: (5, 7+)
-             420: 0: (5+) 1: (2+, 7)
+            2520: c: (3+, 7) e: (4+, 5)
+             630: c: (3+) e: (5, 7+)
+             420: c: (5+) e: (2+, 7)
 
-            0: 1 ignored, 1 unused
-            1: 0 ignored, 0 unused
+            c: 1 ignored, 1 unused
+            e: 0 ignored, 0 unused
 
-            2520: 0: (3+, 5) 1: (4+, 7)
-             630: 0: (3+) 1: (5, 7+)
-             420: 0: (7+) 1: (2+, 5)
+            2520: c: (3+, 5) e: (4+, 7)
+             630: c: (3+) e: (5, 7+)
+             420: c: (7+) e: (2+, 5)
 
-            0: 1 ignored, 1 unused
-            1: 0 ignored, 0 unused
+            c: 1 ignored, 1 unused
+            e: 0 ignored, 0 unused
         ";
 
         do_test(
@@ -1136,26 +1138,26 @@ mod tests {
         let register_orders = vec![840, 840, 840];
 
         let expected = "
-            840: 0: (7+) 1: (4+, 5)
-            840: 0: (7+) 1: (4+, 5)
-            840: 0: (5+) 1: (4+, 7)
+            840: c: (7+) e: (4+, 5)
+            840: c: (7+) e: (4+, 5)
+            840: c: (5+) e: (4+, 7)
 
-            0: 1 ignored, 0 unused
-            1: 0 ignored, 1 unused
+            c: 1 ignored, 0 unused
+            e: 0 ignored, 1 unused
 
-            840: 0: (7+) 1: (4+, 5)
-            840: 0: (5+) 1: (4+, 7)
-            840: 0: (7+) 1: (4+, 5)
+            840: c: (7+) e: (4+, 5)
+            840: c: (5+) e: (4+, 7)
+            840: c: (7+) e: (4+, 5)
 
-            0: 1 ignored, 0 unused
-            1: 0 ignored, 1 unused
+            c: 1 ignored, 0 unused
+            e: 0 ignored, 1 unused
 
-            840: 0: (5+) 1: (4+, 7)
-            840: 0: (7+) 1: (4+, 5)
-            840: 0: (7+) 1: (4+, 5)
+            840: c: (5+) e: (4+, 7)
+            840: c: (7+) e: (4+, 5)
+            840: c: (7+) e: (4+, 5)
 
-            0: 1 ignored, 0 unused
-            1: 0 ignored, 1 unused
+            c: 1 ignored, 0 unused
+            e: 0 ignored, 1 unused
         ";
 
         do_test(
@@ -1171,6 +1173,7 @@ mod tests {
     fn orienting_3_cycle() {
         let crazy = PuzzleDef::<64>::new(
             vec![PartialOrbitDef {
+                name: None,
                 piece_count: 4.try_into().unwrap(),
                 orientation: OrientationStatus::CanOrient {
                     count: 2,
@@ -1207,6 +1210,7 @@ mod tests {
 
         let crazy = PuzzleDef::<64>::new(
             vec![PartialOrbitDef {
+                name: None,
                 piece_count: 2.try_into().unwrap(),
                 orientation: OrientationStatus::CanOrient {
                     count: 3,

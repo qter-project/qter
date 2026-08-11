@@ -7,6 +7,7 @@ use crate::puzzle::{
 pub static CUBE2: LazyLock<PuzzleDef<8>> = LazyLock::new(|| {
     PuzzleDef::new(
         vec![PartialOrbitDef {
+            name: Some("corners".to_string()),
             piece_count: 8.try_into().unwrap(),
             orientation: OrientationStatus::CanOrient {
                 count: 3,
@@ -22,6 +23,7 @@ pub static CUBE3: LazyLock<PuzzleDef<8>> = LazyLock::new(|| {
     PuzzleDef::new(
         vec![
             PartialOrbitDef {
+                name: Some("corners".to_string()),
                 piece_count: 8.try_into().unwrap(),
                 orientation: OrientationStatus::CanOrient {
                     count: 3,
@@ -29,6 +31,7 @@ pub static CUBE3: LazyLock<PuzzleDef<8>> = LazyLock::new(|| {
                 },
             },
             PartialOrbitDef {
+                name: Some("edges".to_string()),
                 piece_count: 12.try_into().unwrap(),
                 orientation: OrientationStatus::CanOrient {
                     count: 2,
@@ -45,6 +48,7 @@ pub static CUBE4: LazyLock<PuzzleDef<16>> = LazyLock::new(|| {
     PuzzleDef::new(
         vec![
             PartialOrbitDef {
+                name: Some("corners".to_string()),
                 piece_count: 8.try_into().unwrap(),
                 orientation: OrientationStatus::CanOrient {
                     count: 3,
@@ -52,10 +56,12 @@ pub static CUBE4: LazyLock<PuzzleDef<16>> = LazyLock::new(|| {
                 },
             },
             PartialOrbitDef {
+                name: Some("wings1".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
             PartialOrbitDef {
+                name: Some("xcenters1".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
@@ -69,6 +75,7 @@ pub static CUBE5: LazyLock<PuzzleDef<16>> = LazyLock::new(|| {
     PuzzleDef::new(
         vec![
             PartialOrbitDef {
+                name: Some("corners".to_string()),
                 piece_count: 8.try_into().unwrap(),
                 orientation: OrientationStatus::CanOrient {
                     count: 3,
@@ -76,6 +83,7 @@ pub static CUBE5: LazyLock<PuzzleDef<16>> = LazyLock::new(|| {
                 },
             },
             PartialOrbitDef {
+                name: Some("edges".to_string()),
                 piece_count: 12.try_into().unwrap(),
                 orientation: OrientationStatus::CanOrient {
                     count: 2,
@@ -83,14 +91,17 @@ pub static CUBE5: LazyLock<PuzzleDef<16>> = LazyLock::new(|| {
                 },
             },
             PartialOrbitDef {
+                name: Some("+centers1".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
             PartialOrbitDef {
+                name: Some("wings1".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
             PartialOrbitDef {
+                name: Some("xcenters1".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
@@ -104,6 +115,7 @@ pub static CUBE6: LazyLock<PuzzleDef<16>> = LazyLock::new(|| {
     PuzzleDef::new(
         vec![
             PartialOrbitDef {
+                name: Some("corners".to_string()),
                 piece_count: 8.try_into().unwrap(),
                 orientation: OrientationStatus::CanOrient {
                     count: 3,
@@ -111,26 +123,32 @@ pub static CUBE6: LazyLock<PuzzleDef<16>> = LazyLock::new(|| {
                 },
             },
             PartialOrbitDef {
+                name: Some("wings1".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
             PartialOrbitDef {
+                name: Some("wings2".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
             PartialOrbitDef {
+                name: Some("xcenters1".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
             PartialOrbitDef {
+                name: Some("obliques1;2".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
             PartialOrbitDef {
+                name: Some("obliques2;1".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
             PartialOrbitDef {
+                name: Some("xcenters2".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
@@ -149,6 +167,7 @@ pub static CUBE7: LazyLock<PuzzleDef<16>> = LazyLock::new(|| {
     PuzzleDef::new(
         vec![
             PartialOrbitDef {
+                name: Some("corners".to_string()),
                 piece_count: 8.try_into().unwrap(),
                 orientation: OrientationStatus::CanOrient {
                     count: 3,
@@ -156,6 +175,7 @@ pub static CUBE7: LazyLock<PuzzleDef<16>> = LazyLock::new(|| {
                 },
             },
             PartialOrbitDef {
+                name: Some("edges".to_string()),
                 piece_count: 12.try_into().unwrap(),
                 orientation: OrientationStatus::CanOrient {
                     count: 2,
@@ -163,34 +183,42 @@ pub static CUBE7: LazyLock<PuzzleDef<16>> = LazyLock::new(|| {
                 },
             },
             PartialOrbitDef {
+                name: Some("+centers1".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
             PartialOrbitDef {
+                name: Some("+centers2".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
             PartialOrbitDef {
+                name: Some("wings1".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
             PartialOrbitDef {
+                name: Some("wings2".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
             PartialOrbitDef {
+                name: Some("xcenters1".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
             PartialOrbitDef {
+                name: Some("obliques1;2".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
             PartialOrbitDef {
+                name: Some("obliques2;1".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
             PartialOrbitDef {
+                name: Some("xcenters2".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
@@ -212,6 +240,7 @@ pub static CUBE8: LazyLock<PuzzleDef<16>> = LazyLock::new(|| {
     PuzzleDef::new(
         vec![
             PartialOrbitDef {
+                name: Some("corners".to_string()),
                 piece_count: 8.try_into().unwrap(),
                 orientation: OrientationStatus::CanOrient {
                     count: 3,
@@ -219,50 +248,62 @@ pub static CUBE8: LazyLock<PuzzleDef<16>> = LazyLock::new(|| {
                 },
             },
             PartialOrbitDef {
+                name: Some("wings1".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
             PartialOrbitDef {
+                name: Some("wings2".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
             PartialOrbitDef {
+                name: Some("wings3".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
             PartialOrbitDef {
+                name: Some("xcenters1".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
             PartialOrbitDef {
+                name: Some("obliques1;2".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
             PartialOrbitDef {
+                name: Some("obliques1;3".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
             PartialOrbitDef {
+                name: Some("obliques2;1".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
             PartialOrbitDef {
+                name: Some("xcenters2".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
             PartialOrbitDef {
+                name: Some("obliques2;3".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
             PartialOrbitDef {
+                name: Some("obliques3;1".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
             PartialOrbitDef {
+                name: Some("obliques3;2".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
             PartialOrbitDef {
+                name: Some("xcenters3".to_string()),
                 piece_count: 24.try_into().unwrap(),
                 orientation: OrientationStatus::CannotOrient,
             },
