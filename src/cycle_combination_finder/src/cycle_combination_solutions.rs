@@ -195,7 +195,8 @@ impl<const N: usize> OrbitTraversalState<'_, N> {
             // o2:
             // 8 pieces
             //
-            // We can't treat them the same. Placing a 3 cycle would require a leftover piece for the second orbit but not the first
+            // We can't treat them the same. Placing a 3 cycle would require a leftover piece for
+            // the second orbit but not the first
             .then(
                 register_orbit_constraint
                     .orientation_satisfied_by
@@ -413,7 +414,8 @@ impl<'a, 'b, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
                         let prime_index = all_exponents.trailing_zeros() as usize;
                         let prime = FIRST_65_PRIMES[prime_index];
                         let register_order_exp = register_order.prime_exponent(prime_index);
-                        // We can have a 7+ on edges to serve as following the 2 cycle and a 7 cycle, in the false case
+                        // We can have a 7+ on edges to serve as following the 2 cycle and a 7
+                        // cycle, in the false case
                         if let PrimePowerCycleAssignment::Orbit(orbit_index, orient_state) =
                             register_assignment.cycle_assignments[prime_index]
                         {
@@ -465,7 +467,8 @@ impl<'a, 'b, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
             return true;
         }
 
-        // pop the highest one so we fit large primes first; higher chance of reaching the fail state
+        // pop the highest one so we fit large primes first; higher chance of reaching
+        // the fail state
         let prime_index2 = unassigned_exponents_mask.ilog2() as usize;
         let prime = FIRST_65_PRIMES[prime_index2];
 
@@ -516,7 +519,9 @@ impl<'a, 'b, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
                         // Filter out everything <= the previous traversal state
                         if maybe_prev_traversal_state.is_some_and(|prev| curr.cmp(&prev).is_le()) {
                             acc
-                        // curr is > the previous traversal state. If we have a previous best and curr < min, or if there was no previous best, swap it out with curr.
+                        // curr is > the previous traversal state. If we have a
+                        // previous best and curr < min, or if there was no
+                        // previous best, swap it out with curr.
                         } else if acc.as_ref().is_none_or(|(_, min)| curr.cmp(min).is_lt()) {
                             Some((orbit_index2, curr))
                         } else {
@@ -582,8 +587,8 @@ impl<'a, 'b, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
                 // 2^2 ori , 2^2 exponent is good
                 // 2^3 ori , 2^2 exponent is good
                 // 2^1 ori , 2^2 exponent is bad
-                // claim: traverse_canonically_orients and assign_cycle_orient together cannot be true
-                // 5 then 2
+                // claim: traverse_canonically_orients and assign_cycle_orient together cannot
+                // be true 5 then 2
                 &[CycleOrientState::Noncanonical][..]
             } else {
                 &[CycleOrientState::None][..]
@@ -595,7 +600,8 @@ impl<'a, 'b, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
                 } = &mut self.register_orbit_constraints[register_orbit_constraint_index];
                 let cycle_piece_count = if orient_state == CycleOrientState::Canonical {
                     let exp = register_order_exp.saturating_sub(orientation_exp);
-                    // We should never reach a case when this should be zero here, otherwise we would have noncanonically oriented earlier
+                    // We should never reach a case when this should be zero here, otherwise we
+                    // would have noncanonically oriented earlier
                     prime.pow(u32::from(exp))
                 } else {
                     prime.pow(u32::from(register_order_exp))
@@ -692,7 +698,8 @@ impl<'a, 'b, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
                     self.register_assignments[register_index2].unassigned_exponents_mask |=
                         1 << orientation_prime_index;
                 }
-                // We need to do this now because we don't guarantee to assign every cycle anymore
+                // We need to do this now because we don't guarantee to assign every cycle
+                // anymore
                 self.register_assignments[register_index2].cycle_assignments[prime_index2] =
                     PrimePowerCycleAssignment::Unassigned;
                 self.register_orbit_constraints[register_orbit_constraint_index]

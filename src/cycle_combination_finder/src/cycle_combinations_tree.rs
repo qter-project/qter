@@ -600,7 +600,10 @@ fn dfs_thread<const N: usize>(
             const PERCENT: usize = 1;
 
             let num = possible_orders_except_one.len() - i;
-            // We don't subtract `max_last_register` here. Cores with large `max_last_register` values are going to exist early, while those with lower values will persist and perform this logging, so the % meter typically goes up to 100%.
+            // We don't subtract `max_last_register` here. Cores with large
+            // `max_last_register` values are going to exist early, while those with lower
+            // values will persist and perform this logging, so the % meter typically goes
+            // up to 100%.
             let den = possible_orders_except_one.len();
             let new_bucket = num * 100 / (PERCENT * den);
             let mut bucket = old_bucket.lock();

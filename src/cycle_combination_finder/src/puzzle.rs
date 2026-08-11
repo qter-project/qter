@@ -77,14 +77,14 @@ pub struct OrbitDef {
     pub parity_constraint: ParityConstraint,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PartialOrbitDef {
     pub name: Option<String>,
     pub piece_count: NonZeroU16,
     pub orientation: OrientationStatus,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum OrientationStatus {
     CanOrient {
         // Integer size cannot easily be changed; look at cycle_combination_solutions
@@ -100,7 +100,7 @@ pub enum OrientationSumConstraint {
     None,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct EvenParityConstraints(pub Vec<Vec<usize>>);
 
 #[derive(Clone, Copy, Debug, PartialEq)]

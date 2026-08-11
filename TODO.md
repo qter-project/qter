@@ -9,8 +9,6 @@
 
 ## CCF
 
-- orbit names
-
 - fit equal fitting cycles first into orbis
 
 - use pruning information when each mpmc solution is pushed: multithread pareto efficient pruning and ignore the first register descending
