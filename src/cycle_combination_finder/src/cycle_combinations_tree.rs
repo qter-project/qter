@@ -6,7 +6,7 @@ use std::{
     ptr::NonNull,
     sync::{
         Arc,
-        atomic::{self, AtomicPtr},
+        atomic::{self, AtomicBool, AtomicPtr},
         mpmc,
         mpsc::{RecvError, TryRecvError},
         nonpoison::Mutex,

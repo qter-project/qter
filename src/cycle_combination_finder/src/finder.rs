@@ -1,7 +1,7 @@
 use std::{
     cell::OnceCell,
     cmp::Ordering,
-    fmt::{self},
+    fmt::Write,
     num::{NonZeroU16, NonZeroUsize},
     sync::{
         Arc,
@@ -136,36 +136,16 @@ impl CycleCombination {
         &'a self,
         possible_orders_except_one: &'a [PossibleOrder<N>],
     ) -> String {
-        struct OrdersDisplay<'a, const N: usize> {
-            inner: &'a CycleCombination,
-            possible_orders_except_one: &'a [PossibleOrder<N>],
-        }
-        impl<const N: usize> fmt::Display for OrdersDisplay<'_, N> {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                let orders = self
-                    .inner
-                    .registers
-                    .iter()
-                    .map(|&register_index| {
-                        self.possible_orders_except_one[possible_order_index_cast(register_index)]
-                            .order
-                            .as_bigint()
-                            .to_string()
-                    })
-                    .collect::<Vec<_>>()
-                    .join(", ");
-
-                write!(f, "{orders}")?;
-                Ok(())
-            }
-        }
-        format!(
-            "{}",
-            OrdersDisplay {
-                inner: self,
-                possible_orders_except_one,
-            }
-        )
+        self.registers
+            .iter()
+            .map(|&register_index| {
+                possible_orders_except_one[possible_order_index_cast(register_index)]
+                    .order
+                    .as_bigint()
+                    .to_string()
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 
     #[must_use]
@@ -174,72 +154,52 @@ impl CycleCombination {
         possible_orders_except_one: &'a [PossibleOrder<N>],
         puzzle_def: &'a PuzzleDef<N>,
     ) -> String {
-        struct SolutionsDisplay<'a, const N: usize> {
-            inner: &'a CycleCombination,
-            possible_orders_except_one: &'a [PossibleOrder<N>],
-            puzzle_def: &'a PuzzleDef<N>,
-        }
-        impl<const N: usize> fmt::Display for SolutionsDisplay<'_, N> {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                for CycleCombinationSolution {
-                    orbit_remaining_pieces,
-                    register_orbit_cycles,
-                } in &self.inner.solutions.0
-                {
-                    let mut reg_orbit_cycles = register_orbit_cycles.iter();
-                    for register_index in 0..self.inner.registers.len() {
-                        writeln!(
-                            f,
-                            "{:?}:",
-                            self.possible_orders_except_one
-                                [possible_order_index_cast(self.inner.registers[register_index])]
-                            .order
-                        )?;
-                        writeln!(f)?;
-                        for orbit_index2 in 0..self.puzzle_def.orbit_defs().len().get() {
-                            let s = reg_orbit_cycles
-                                .next()
-                                .unwrap()
-                                .iter()
-                                .map(|cycle| {
-                                    let mut s = format!("{}", cycle.piece_count);
-                                    if cycle.must_orient {
-                                        s.push('+');
-                                    }
-                                    s
-                                })
-                                .collect::<Vec<_>>()
-                                .join(", ");
-                            writeln!(f, "{orbit_index2}: ({s})")?;
-                        }
-                        writeln!(f)?;
-                    }
-                    for (orbit_index2, orbit_remaining_piece) in
-                        orbit_remaining_pieces.iter().enumerate()
-                    {
-                        writeln!(
-                            f,
-                            "{orbit_index2}: {} ignored, {} unused",
-                            orbit_remaining_piece.ignored,
-                            orbit_remaining_piece
-                                .unused
-                                .checked_sub(orbit_remaining_piece.ignored)
-                                .unwrap()
-                        )?;
-                    }
-                    writeln!(f)?;
+        let mut ret = String::new();
+        for CycleCombinationSolution {
+            orbit_remaining_pieces,
+            register_orbit_cycles,
+        } in &self.solutions.0
+        {
+            let mut register_orbit_cycles_iter = register_orbit_cycles.iter();
+            for register_index in 0..self.registers.len() {
+                let _ = writeln!(
+                    &mut ret,
+                    "{:?}:",
+                    possible_orders_except_one
+                        [possible_order_index_cast(self.registers[register_index])]
+                    .order
+                );
+                let _ = writeln!(&mut ret);
+                for orbit_index2 in 0..puzzle_def.orbit_defs().len().get() {
+                    #[allow(clippy::missing_panics_doc)]
+                    let s = register_orbit_cycles_iter
+                        .next()
+                        .unwrap()
+                        .iter()
+                        .map(|cycle| {
+                            let mut s = format!("{}", cycle.piece_count);
+                            if cycle.must_orient {
+                                s.push('+');
+                            }
+                            s
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let _ = writeln!(&mut ret, "{orbit_index2}: ({s})");
                 }
-                Ok(())
+                let _ = writeln!(&mut ret);
             }
+            for (orbit_index2, orbit_remaining_piece) in orbit_remaining_pieces.iter().enumerate() {
+                let _ = writeln!(
+                    &mut ret,
+                    "{orbit_index2}: {} ignored, {} unused",
+                    orbit_remaining_piece.ignored,
+                    orbit_remaining_piece.unused - orbit_remaining_piece.ignored
+                );
+            }
+            let _ = writeln!(&mut ret);
         }
-        format!(
-            "{}",
-            SolutionsDisplay {
-                inner: self,
-                puzzle_def,
-                possible_orders_except_one,
-            }
-        )
+        ret
     }
 }
 

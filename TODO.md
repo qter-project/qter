@@ -13,7 +13,8 @@
 
 - FIGURE OUT WHY CANDIDATE COUNT IS WEIRD with batch=1 and batch=100
 
-- work around using Arc in tree
+- fit equal fitting cycles first into orbis
+
 - use pruning information when each mpmc solution is pushed: multithread pareto efficient pruning and ignore the first register descending
 
 - after MKP
