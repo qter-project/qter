@@ -647,7 +647,7 @@ fn dfs_thread<const N: usize>(
 
         let Some(next_remaining_piece_count) = exact_piece_count
             .get()
-            .checked_sub(possible_order.min_piece_count.get())
+            .checked_sub(u32::from(possible_order.min_piece_count.get()))
         else {
             continue;
         };
@@ -763,7 +763,7 @@ unsafe fn search_dfs_helper<const N: usize>(
 
         if let Some(next_remaining_piece_count) = remaining_piece_count
             .get()
-            .checked_sub(possible_order.min_piece_count.get())
+            .checked_sub(u32::from(possible_order.min_piece_count.get()))
         {
             if next_register_index == mutable.exact_register_count() {
                 if candidate_count == 0 {

@@ -1,5 +1,5 @@
 use std::{
-    num::NonZeroU32,
+    num::NonZeroU16,
     simd::{Simd, cmp::SimdPartialEq},
 };
 
@@ -34,11 +34,11 @@ impl<'a, const N: usize> From<&'a PuzzleDef<N>> for MinPieceCount<'a, N> {
     }
 }
 
-fn prime_power_cycle_piece_count(prime: u16, exp: u8) -> u32 {
+fn prime_power_cycle_piece_count(prime: u16, exp: u8) -> u16 {
     if exp == 0 {
         0
     } else {
-        u32::from(prime).pow(u32::from(exp))
+        prime.pow(u32::from(exp))
     }
 }
 
@@ -52,7 +52,7 @@ impl<const N: usize> MinPieceCount<'_, N> {
     /// This method panics if one is the possible order, since the minimum
     /// number of piece is zero, and it would be preferrable for this function
     /// to always return a `NonZero` type.
-    pub fn calculate(&mut self, possible_order: &OrderExps<N>) -> (NonZeroU32, Option<usize>) {
+    pub fn calculate(&mut self, possible_order: &OrderExps<N>) -> (NonZeroU16, Option<usize>) {
         assert_ne!(possible_order, &OrderExps::one());
 
         let mut leftover_prime_powers_sum = 0;
@@ -121,8 +121,8 @@ impl<const N: usize> MinPieceCount<'_, N> {
         }
 
         // The maximum number of contributing orbits is the max N, one for every prime.
-        // Thus this fits into a u32.
-        let mut needing_orientation_cycles_count = 0u32;
+        // Thus this fits into a u16.
+        let mut needing_orientation_cycles_count = 0u16;
         let mut min_piece_count = leftover_prime_powers_sum;
         for orbit_orientation_contribution in self.orbit_orientation_contributions.iter() {
             let mut contributing_prime_powers_mask = orbit_orientation_contribution
@@ -162,11 +162,11 @@ impl<const N: usize> MinPieceCount<'_, N> {
                     .iter()
                     .zip(FIRST_65_PRIMES)
                     .map(|(&exp, prime)| prime_power_cycle_piece_count(prime, exp))
-                    .sum::<u32>()
+                    .sum::<u16>()
         );
         (
             // Every non-one order requires at least one piece
-            NonZeroU32::new(min_piece_count).unwrap(),
+            NonZeroU16::new(min_piece_count).unwrap(),
             maybe_two_orientation_contribution_orbit_index,
         )
     }
@@ -299,7 +299,7 @@ mod tests {
                     .iter()
                     .zip(FIRST_65_PRIMES)
                     .map(|(&exp, prime)| prime_power_cycle_piece_count(prime, exp))
-                    .sum::<u32>()
+                    .sum::<u16>()
             );
         }
     }

@@ -2,7 +2,7 @@ use std::{
     cell::OnceCell,
     cmp::Ordering,
     fmt::{self},
-    num::{NonZeroU16, NonZeroU32, NonZeroUsize},
+    num::{NonZeroU16, NonZeroUsize},
     sync::{
         Arc,
         atomic::{self, AtomicUsize},
@@ -58,7 +58,7 @@ impl SolutionExpansion {
 #[derive(Debug, Clone)]
 pub struct PossibleOrder<const N: usize> {
     pub(crate) order: OrderExps<N>,
-    pub(crate) min_piece_count: NonZeroU32,
+    pub(crate) min_piece_count: NonZeroU16,
 }
 
 #[derive(Debug)]

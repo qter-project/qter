@@ -340,8 +340,9 @@ impl<'a, 'b, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
                 } else {
                     debug_assert!(leaf);
                 }
-                remaining_pieces_sum +=
-                    u32::from(orbit_remaining_piece.unused - known_share_state.required_ignored_pieces());
+                remaining_pieces_sum += u32::from(
+                    orbit_remaining_piece.unused - known_share_state.required_ignored_pieces(),
+                );
             }
 
             if !leaf {
@@ -352,7 +353,8 @@ impl<'a, 'b, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
                         self.immutable.possible_orders_except_one,
                     )
                     .unwrap();
-                let found = if u32::from(next_register.min_piece_count.get()) > remaining_pieces_sum {
+                let found = if u32::from(next_register.min_piece_count.get()) > remaining_pieces_sum
+                {
                     false
                 } else {
                     self.recursive_backtrack(registers)
