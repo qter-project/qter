@@ -974,10 +974,9 @@ pub(crate) fn search_dfs<const N: usize>(
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
     let pruned_orders_percentage = (pareto_efficient_prunings
-        .iter()
+        .into_iter()
         .map(|max_last_register| {
-            // All threads are finished so there is no point in synchronization
-            let max_last_register = max_last_register.load(atomic::Ordering::Relaxed);
+            let max_last_register = max_last_register.into_inner();
             u64::from(if max_last_register.is_null() {
                 0
             } else {

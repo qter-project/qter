@@ -532,6 +532,24 @@ mod tests {
     }
 
     #[test_log::test]
+    fn minx3_optimal_2() {
+        let minx3 = MINX3.clone();
+        let ret = CycleCombinationFinder::builder()
+            .with_puzzle_def(&minx3)
+            .with_mss_batch_size(NonZeroUsize::new(10).unwrap())
+            .with_register_count(NonZeroU16::new(2).unwrap())
+            .find()
+            .unwrap();
+
+        for x in ret.cycle_combinations {
+            println!(
+                "{}",
+                x.solutions_fmt(&ret.possible_orders_except_one, &minx3)
+            );
+        }
+    }
+
+    #[test_log::test]
     fn minx3_optimal_3() {
         let minx3 = MINX3.clone();
         let ret = CycleCombinationFinder::builder()
@@ -597,6 +615,21 @@ mod tests {
                 "{}",
                 x.solutions_fmt(&ret.possible_orders_except_one, &minx3)
             );
+        }
+    }
+
+    #[test_log::test]
+    fn minx4_optimal_2() {
+        let minx4 = MINX4.clone();
+        let ret = CycleCombinationFinder::builder()
+            .with_puzzle_def(&minx4)
+            .with_register_count(NonZeroU16::new(2).unwrap())
+            .with_mss_batch_size(NonZeroUsize::new(1).unwrap())
+            .find()
+            .unwrap();
+
+        for x in ret.cycle_combinations {
+            println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
         }
     }
 
@@ -676,18 +709,15 @@ mod tests {
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx5)
             .with_register_count(NonZeroU16::new(3).unwrap())
-            .with_max_fitting_tries(Some(500))
-            .with_optimality(Optimality::MaxOrderRatio(1.0))
+            // .with_max_fitting_tries(Some(500))
+            // .with_optimality(Optimality::MaxOrderRatio(1.0))
             .with_solution_expansion(SolutionExpansion::Limit(NonZeroUsize::new(10).unwrap()))
-            .with_mss_batch_size(NonZeroUsize::new(1).unwrap())
+            .with_mss_batch_size(NonZeroUsize::new(100).unwrap())
             .find()
             .unwrap();
 
         for x in ret.cycle_combinations {
-            println!(
-                "{}",
-                x.solutions_fmt(&ret.possible_orders_except_one, &minx5)
-            );
+            println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
         }
     }
 
