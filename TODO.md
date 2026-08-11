@@ -10,6 +10,7 @@
 ## CCF
 
 - orbit names
+- min_piece_count should be U16
 
 - FIGURE OUT WHY CANDIDATE COUNT IS WEIRD with batch=1 and batch=100
 

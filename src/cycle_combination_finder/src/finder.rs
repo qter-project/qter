@@ -46,9 +46,13 @@ pub enum NumCores {
 
 #[derive(Clone, Copy, Default, Debug, PartialEq)]
 pub enum SolutionExpansion {
-    Limit(NonZeroUsize),
     #[default]
     All,
+    Limit(NonZeroUsize),
+}
+
+impl SolutionExpansion {
+    pub const FIRST: Self = SolutionExpansion::Limit(NonZeroUsize::new(1).unwrap());
 }
 
 #[derive(Debug, Clone)]

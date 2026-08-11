@@ -307,20 +307,27 @@ impl<'a, 'b, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
             let (orbits_constraints, next_orbits_constraints) = self.register_orbit_constraints
                 [register_index2 * self.immutable.puzzle_def.orbit_defs().len().get()..]
                 .split_at_mut(self.immutable.puzzle_def.orbit_defs().len().get());
+            let mut remaining_pieces_sum = 0;
             for (
                 orbit_index2,
-                &mut RegisterOrbitConstraint {
-                    ref mut known_share_state,
-                    orientation_satisfied_by: running_share_state_satisfies,
-                },
-            ) in orbits_constraints.iter_mut().enumerate()
+                (
+                    &mut RegisterOrbitConstraint {
+                        ref mut known_share_state,
+                        orientation_satisfied_by: running_share_state_satisfies,
+                    },
+                    orbit_remaining_piece,
+                ),
+            ) in orbits_constraints
+                .iter_mut()
+                .zip(&self.orbit_remaining_pieces)
+                .enumerate()
             {
                 // Promote only if we have no other share rn
                 // TODO: parity
                 if running_share_state_satisfies == OrientationSatisfiedBy::LeftoverPiece
                     && *known_share_state == ShareState::None
                 {
-                    assert_ne!(self.orbit_remaining_pieces[orbit_index2].unused, 0);
+                    assert_ne!(orbit_remaining_piece.unused, 0);
                     *known_share_state = ShareState::Orientation;
                 }
                 if let Some(RegisterOrbitConstraint {
@@ -333,11 +340,23 @@ impl<'a, 'b, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
                 } else {
                     debug_assert!(leaf);
                 }
+                remaining_pieces_sum +=
+                    u32::from(orbit_remaining_piece.unused - known_share_state.required_ignored_pieces());
             }
 
             if !leaf {
                 self.register_index += 1;
-                let found = self.recursive_backtrack(registers);
+                let next_register = registers
+                    .get_order(
+                        self.register_index,
+                        self.immutable.possible_orders_except_one,
+                    )
+                    .unwrap();
+                let found = if u32::from(next_register.min_piece_count.get()) > remaining_pieces_sum {
+                    false
+                } else {
+                    self.recursive_backtrack(registers)
+                };
                 self.register_index -= 1;
 
                 if let Some(prev_register_index2) = register_index2.checked_sub(1) {
@@ -370,6 +389,7 @@ impl<'a, 'b, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
                 return found;
             }
 
+            trace!("Solution");
             if self.expansion {
                 // TODO: allocator
                 let mut register_orbit_cycles =
@@ -534,7 +554,6 @@ impl<'a, 'b, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
                 ..
             } = orbit_traversal_state;
 
-            // TODO: min piece count pruning
             let orbit_index = orbit_index_cast(orbit_index2);
             let register_orbit_constraint_index =
                 register_index2 * self.immutable.puzzle_def.orbit_defs().len().get() + orbit_index2;
@@ -615,24 +634,24 @@ impl<'a, 'b, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
                 *orientation_satisfied_by = match old_orientation_satisfied_by {
                     OrientationSatisfiedBy::CycleAndLeftoverPiece => {
                         match (orient_state.must_orient(), share_anything) {
-                                // We have an orienting cycle and no shared piece in this orbit. We need leftover pieces.
-                                (true, false) => {
-                                    // If we have no pieces left to be used as leftover then this is impossible. Note that this is satisfied when the orbit has no orientation sum constraint.
-                                    if next_orbit_unused_piece_count == 0 {
-                                        continue;
-                                    }
-                                    // the only reason we are allowed to assign the known share state here is because the fact that every orbit only has one prime, and that we visit orienting primes last. Therefore, the orienting prime is the last prime power that is assigned to an orbit for this register.
-                                    // When canonical, we are at the last cycle in this orbit. When noncanonical, we don't know when the last cycle will be added
-                                    if orient_state == CycleOrientState::Canonical {
-                                        *known_share_state = ShareState::Orientation;
-                                    }
-                                    OrientationSatisfiedBy::LeftoverPiece
+                            // We have a non-orienting cycle. This cycle can orient to satisfy any future orienting cycles.
+                            (false, _) |
+                            // We have an orienting cycle and a shared piece in this orbit. This satisfies any future orienting cycles.
+                            (true, true) => OrientationSatisfiedBy::Satisfied,
+                            // We have an orienting cycle and no shared piece in this orbit. We need leftover pieces.
+                            (true, false) => {
+                                // If we have no pieces left to be used as leftover then this is impossible. Note that this is satisfied when the orbit has no orientation sum constraint.
+                                if next_orbit_unused_piece_count == 0 {
+                                    continue;
                                 }
-                                // We have a non-orienting cycle. This cycle can orient to satisfy any future orienting cycles.
-                                (false, _) |
-                                // We have an orienting cycle and a shared piece in this orbit. This satisfies any future orienting cycles.
-                                (true, true) => OrientationSatisfiedBy::Satisfied,
+                                // the only reason we are allowed to assign the known share state here is because the fact that every orbit only has one prime, and that we visit orienting primes last. Therefore, the orienting prime is the last prime power that is assigned to an orbit for this register.
+                                // When canonical, we are at the last cycle in this orbit. When noncanonical, we don't know when the last cycle will be added
+                                if orient_state == CycleOrientState::Canonical {
+                                    *known_share_state = ShareState::Orientation;
+                                }
+                                OrientationSatisfiedBy::LeftoverPiece
                             }
+                        }
                     }
                     OrientationSatisfiedBy::LeftoverPiece | OrientationSatisfiedBy::Satisfied => {
                         OrientationSatisfiedBy::Satisfied
@@ -1091,16 +1110,16 @@ mod tests {
         let register_orders = vec![2520, 630, 420];
 
         let expected = "
-            2520: 0: (3+, 7) 1: (4+, 5)
+            2520: 0: (3+, 5) 1: (4+, 7)
              630: 0: (3+) 1: (5, 7+)
-             420: 0: (5+) 1: (2+, 7)
+             420: 0: (7+) 1: (2+, 5)
 
             0: 1 ignored, 1 unused
             1: 0 ignored, 0 unused
 
-            2520: 0: (3+, 5) 1: (4+, 7)
+            2520: 0: (3+, 7) 1: (4+, 5)
              630: 0: (3+) 1: (5, 7+)
-             420: 0: (7+) 1: (2+, 5)
+             420: 0: (5+) 1: (2+, 7)
 
             0: 1 ignored, 1 unused
             1: 0 ignored, 0 unused
