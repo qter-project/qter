@@ -1,0 +1,5 @@
+#!/bin/sh
+
+# Enable with `ln -s -f ../../git_hooks/pre-commit .git/hooks/pre-commit && chmod ug+x git_hooks/*`
+
+git add TODO.md
