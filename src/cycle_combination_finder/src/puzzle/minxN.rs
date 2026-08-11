@@ -103,30 +103,11 @@ pub fn minx(n: usize) -> (Vec<PartialOrbitDef>, EvenParityConstraints) {
     (partial_orbit_defs, even_parity_constraints)
 }
 
-pub static MINX2: LazyLock<PuzzleDef<8>> = LazyLock::new(|| {
-    let (orbit_defs, even_parity_constraints) = minx(2);
-    PuzzleDef::new(orbit_defs, even_parity_constraints).unwrap()
-});
-
-pub static MINX3: LazyLock<PuzzleDef<16>> = LazyLock::new(|| {
-    let (orbit_defs, even_parity_constraints) = minx(3);
-    PuzzleDef::new(orbit_defs, even_parity_constraints).unwrap()
-});
-
-pub static MINX4: LazyLock<PuzzleDef<32>> = LazyLock::new(|| {
-    let (orbit_defs, even_parity_constraints) = minx(4);
-    PuzzleDef::new(orbit_defs, even_parity_constraints).unwrap()
-});
-
-pub static MINX5: LazyLock<PuzzleDef<32>> = LazyLock::new(|| {
-    let (orbit_defs, even_parity_constraints) = minx(5);
-    PuzzleDef::new(orbit_defs, even_parity_constraints).unwrap()
-});
-
-pub static MINX6: LazyLock<PuzzleDef<32>> = LazyLock::new(|| {
-    let (orbit_defs, even_parity_constraints) = minx(6);
-    PuzzleDef::new(orbit_defs, even_parity_constraints).unwrap()
-});
+pub static MINX2: LazyLock<PuzzleDef<8>> = LazyLock::new(|| PuzzleDef::new(minx(2)).unwrap());
+pub static MINX3: LazyLock<PuzzleDef<16>> = LazyLock::new(|| PuzzleDef::new(minx(3)).unwrap());
+pub static MINX4: LazyLock<PuzzleDef<32>> = LazyLock::new(|| PuzzleDef::new(minx(4)).unwrap());
+pub static MINX5: LazyLock<PuzzleDef<32>> = LazyLock::new(|| PuzzleDef::new(minx(5)).unwrap());
+pub static MINX6: LazyLock<PuzzleDef<32>> = LazyLock::new(|| PuzzleDef::new(minx(6)).unwrap());
 
 #[cfg(test)]
 mod tests {

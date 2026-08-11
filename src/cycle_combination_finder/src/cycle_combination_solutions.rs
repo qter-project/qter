@@ -1047,7 +1047,7 @@ mod tests {
 
     #[test_log::test]
     fn preassignment_1() {
-        let crazy = PuzzleDef::<32>::new(
+        let crazy = PuzzleDef::<32>::new((
             vec![
                 PartialOrbitDef {
                     name: None,
@@ -1067,7 +1067,7 @@ mod tests {
                 },
             ],
             EvenParityConstraints(vec![vec![0, 1]]),
-        )
+        ))
         .unwrap();
 
         CycleCombinationSolutionsCalculator::new(
@@ -1178,7 +1178,7 @@ mod tests {
 
     #[test_log::test]
     fn orienting_3_cycle() {
-        let crazy = PuzzleDef::<64>::new(
+        let crazy = PuzzleDef::<64>::new((
             vec![PartialOrbitDef {
                 name: None,
                 piece_count: 4.try_into().unwrap(),
@@ -1188,7 +1188,7 @@ mod tests {
                 },
             }],
             EvenParityConstraints(vec![vec![]]),
-        )
+        ))
         .unwrap();
         let possible_orders_except_one =
             mk_possible_orders_except_one(&crazy, crazy.possible_orders(None).unwrap());
@@ -1215,7 +1215,7 @@ mod tests {
             expected,
         );
 
-        let crazy = PuzzleDef::<64>::new(
+        let crazy = PuzzleDef::<64>::new((
             vec![PartialOrbitDef {
                 name: None,
                 piece_count: 2.try_into().unwrap(),
@@ -1225,7 +1225,7 @@ mod tests {
                 },
             }],
             EvenParityConstraints(vec![vec![]]),
-        )
+        ))
         .unwrap();
         let possible_orders_except_one =
             mk_possible_orders_except_one(&crazy, crazy.possible_orders(None).unwrap());

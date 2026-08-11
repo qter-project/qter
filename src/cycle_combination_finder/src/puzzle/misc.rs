@@ -5,7 +5,7 @@ use crate::puzzle::{
 };
 
 pub static BIG1: LazyLock<PuzzleDef<32>> = LazyLock::new(|| {
-    PuzzleDef::new(
+    PuzzleDef::new((
         vec![
             PartialOrbitDef {
                 name: None,
@@ -25,12 +25,12 @@ pub static BIG1: LazyLock<PuzzleDef<32>> = LazyLock::new(|| {
             },
         ],
         EvenParityConstraints(vec![vec![0, 1]]),
-    )
+    ))
     .unwrap()
 });
 
 pub static BIG2: LazyLock<PuzzleDef<32>> = LazyLock::new(|| {
-    PuzzleDef::new(
+    PuzzleDef::new((
         vec![
             PartialOrbitDef {
                 name: None,
@@ -50,12 +50,12 @@ pub static BIG2: LazyLock<PuzzleDef<32>> = LazyLock::new(|| {
             },
         ],
         EvenParityConstraints(vec![vec![0, 1]]),
-    )
+    ))
     .unwrap()
 });
 
 pub static BIG3: LazyLock<PuzzleDef<32>> = LazyLock::new(|| {
-    PuzzleDef::new(
+    PuzzleDef::new((
         vec![
             PartialOrbitDef {
                 name: None,
@@ -83,6 +83,6 @@ pub static BIG3: LazyLock<PuzzleDef<32>> = LazyLock::new(|| {
             },
         ],
         EvenParityConstraints(vec![vec![0, 1, 2]]),
-    )
+    ))
     .unwrap()
 });

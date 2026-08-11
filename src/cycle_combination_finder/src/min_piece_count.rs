@@ -226,7 +226,7 @@ mod tests {
     }
 
     pub fn puzzle_with_piece_count_and_oris(partial_orbit_defs: &[(u16, u8)]) -> PuzzleDef<64> {
-        PuzzleDef::new(
+        PuzzleDef::new((
             partial_orbit_defs
                 .iter()
                 .map(|&(piece_count, orientation)| PartialOrbitDef {
@@ -243,7 +243,7 @@ mod tests {
                 })
                 .collect::<Vec<_>>(),
             EvenParityConstraints(vec![]),
-        )
+        ))
         .unwrap()
     }
 
@@ -770,7 +770,7 @@ mod tests {
     fn cube3_even_parity_constraint() {
         let cube3 = CUBE3.clone();
 
-        let cube3_no_parity_constraint = PuzzleDef::<8>::new(
+        let cube3_no_parity_constraint = PuzzleDef::<8>::new((
             vec![
                 PartialOrbitDef {
                     name: None,
@@ -790,10 +790,10 @@ mod tests {
                 },
             ],
             EvenParityConstraints(vec![]),
-        )
+        ))
         .unwrap();
 
-        let cube3_corner_parity_constraint = PuzzleDef::<8>::new(
+        let cube3_corner_parity_constraint = PuzzleDef::<8>::new((
             vec![
                 PartialOrbitDef {
                     name: None,
@@ -813,10 +813,10 @@ mod tests {
                 },
             ],
             EvenParityConstraints(vec![vec![0]]),
-        )
+        ))
         .unwrap();
 
-        let cube3_edge_parity_constraint = PuzzleDef::<8>::new(
+        let cube3_edge_parity_constraint = PuzzleDef::<8>::new((
             vec![
                 PartialOrbitDef {
                     name: None,
@@ -836,7 +836,7 @@ mod tests {
                 },
             ],
             EvenParityConstraints(vec![vec![1]]),
-        )
+        ))
         .unwrap();
 
         for (puzzle_def, expected_results) in [

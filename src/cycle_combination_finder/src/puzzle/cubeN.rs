@@ -114,40 +114,13 @@ pub fn cube(n: usize) -> (Vec<PartialOrbitDef>, EvenParityConstraints) {
     (partial_orbit_dfs, even_parity_constraints)
 }
 
-pub static CUBE2: LazyLock<PuzzleDef<8>> = LazyLock::new(|| {
-    let (orbit_defs, even_parity_constraints) = cube(2);
-    PuzzleDef::new(orbit_defs, even_parity_constraints).unwrap()
-});
-
-pub static CUBE3: LazyLock<PuzzleDef<8>> = LazyLock::new(|| {
-    let (orbit_defs, even_parity_constraints) = cube(3);
-    PuzzleDef::new(orbit_defs, even_parity_constraints).unwrap()
-});
-
-pub static CUBE4: LazyLock<PuzzleDef<16>> = LazyLock::new(|| {
-    let (orbit_defs, even_parity_constraints) = cube(4);
-    PuzzleDef::new(orbit_defs, even_parity_constraints).unwrap()
-});
-
-pub static CUBE5: LazyLock<PuzzleDef<16>> = LazyLock::new(|| {
-    let (orbit_defs, even_parity_constraints) = cube(5);
-    PuzzleDef::new(orbit_defs, even_parity_constraints).unwrap()
-});
-
-pub static CUBE6: LazyLock<PuzzleDef<16>> = LazyLock::new(|| {
-    let (orbit_defs, even_parity_constraints) = cube(6);
-    PuzzleDef::new(orbit_defs, even_parity_constraints).unwrap()
-});
-
-pub static CUBE7: LazyLock<PuzzleDef<16>> = LazyLock::new(|| {
-    let (orbit_defs, even_parity_constraints) = cube(7);
-    PuzzleDef::new(orbit_defs, even_parity_constraints).unwrap()
-});
-
-pub static CUBE8: LazyLock<PuzzleDef<16>> = LazyLock::new(|| {
-    let (orbit_defs, even_parity_constraints) = cube(8);
-    PuzzleDef::new(orbit_defs, even_parity_constraints).unwrap()
-});
+pub static CUBE2: LazyLock<PuzzleDef<8>> = LazyLock::new(|| PuzzleDef::new(cube(2)).unwrap());
+pub static CUBE3: LazyLock<PuzzleDef<8>> = LazyLock::new(|| PuzzleDef::new(cube(3)).unwrap());
+pub static CUBE4: LazyLock<PuzzleDef<16>> = LazyLock::new(|| PuzzleDef::new(cube(4)).unwrap());
+pub static CUBE5: LazyLock<PuzzleDef<16>> = LazyLock::new(|| PuzzleDef::new(cube(5)).unwrap());
+pub static CUBE6: LazyLock<PuzzleDef<16>> = LazyLock::new(|| PuzzleDef::new(cube(6)).unwrap());
+pub static CUBE7: LazyLock<PuzzleDef<16>> = LazyLock::new(|| PuzzleDef::new(cube(7)).unwrap());
+pub static CUBE8: LazyLock<PuzzleDef<16>> = LazyLock::new(|| PuzzleDef::new(cube(8)).unwrap());
 
 #[cfg(test)]
 mod tests {
