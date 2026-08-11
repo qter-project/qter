@@ -1,7 +1,7 @@
 use std::{
     cmp::Ordering,
     collections::BinaryHeap,
-    fmt::{self, Debug},
+    fmt::{self, Debug, Display},
     num::{NonZeroU16, NonZeroU32, NonZeroUsize},
     ptr::NonNull,
     sync::{
@@ -154,7 +154,7 @@ impl CycleCombinationsTreeMutable {
     }
 }
 
-impl Debug for TreeProfileInfo {
+impl Display for TreeProfileInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         #[allow(clippy::cast_precision_loss)]
         let num_cores = self.num_cores as f64;
@@ -555,6 +555,7 @@ fn dfs_thread<const N: usize>(
     old_bucket: &Mutex<usize>,
     maybe_max_order_ratio: Option<f64>,
     maybe_time_limit: Option<Duration>,
+    time_limit_reached: &AtomicBool,
 ) -> TreeThreadInfo {
     if core_affinity::set_for_current(core_id) {
         debug!("DFS: Pinned {core_id:?}");
@@ -570,15 +571,13 @@ fn dfs_thread<const N: usize>(
         .skip(thread_index)
         .step_by(num_cores)
     {
-        static TIME_LIMIT_REACHED: AtomicBool = AtomicBool::new(false);
-
         if thread_index == 0
             && let Some(time_limit) = maybe_time_limit
             && real_time.elapsed() >= time_limit
         {
-            TIME_LIMIT_REACHED.store(true, atomic::Ordering::Relaxed);
+            time_limit_reached.store(true, atomic::Ordering::Relaxed);
         }
-        if TIME_LIMIT_REACHED.load(atomic::Ordering::Relaxed) {
+        if time_limit_reached.load(atomic::Ordering::Relaxed) {
             break;
         }
         let i_u32 = possible_orders_len_cast(i);
@@ -864,6 +863,7 @@ pub(crate) fn search_dfs<const N: usize>(
     let real_time = Instant::now();
     let collector = Collector::new();
     let old_bucket = Mutex::new(0);
+    let time_limit_reached = AtomicBool::new(false);
     std::thread::scope(|s| {
         let handles = core_ids
             .into_iter()
@@ -879,6 +879,7 @@ pub(crate) fn search_dfs<const N: usize>(
                     .extend(std::iter::repeat_n(0, config.mss_batch_size.get()));
                 let collector = &collector;
                 let old_bucket = &old_bucket;
+                let time_limit_reached = &time_limit_reached;
                 let tree_thread_handle = s.spawn(move || {
                     dfs_thread(
                         core_id,
@@ -892,6 +893,7 @@ pub(crate) fn search_dfs<const N: usize>(
                         old_bucket,
                         maybe_max_order_ratio,
                         config.maybe_time_limit,
+                        time_limit_reached,
                     )
                 });
                 let candidates_receiver = candidates_receiver.clone();
@@ -1018,7 +1020,7 @@ pub(crate) fn search_dfs<const N: usize>(
     };
 
     debug!("Search tree complete");
-    debug!("{tree_profile_info:#?}");
+    debug!("{tree_profile_info:#}");
 
     combined_cycle_combinations.into()
 }
