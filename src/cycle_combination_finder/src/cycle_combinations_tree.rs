@@ -610,9 +610,15 @@ fn dfs_thread<const N: usize>(
         .skip(thread_index)
         .step_by(num_cores)
     {
-        if let Some(time_limit) = maybe_time_limit
+        static TIME_LIMIT_REACHED: AtomicBool = AtomicBool::new(false);
+
+        if thread_index == 0
+            && let Some(time_limit) = maybe_time_limit
             && real_time.elapsed() >= time_limit
         {
+            TIME_LIMIT_REACHED.store(true, atomic::Ordering::Relaxed);
+        }
+        if TIME_LIMIT_REACHED.load(atomic::Ordering::Relaxed) {
             break;
         }
         let i_u32 = possible_orders_len_cast(i);
