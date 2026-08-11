@@ -493,14 +493,7 @@ impl<'a, 'b, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
                 .enumerate()
                 .fold(
                     None,
-                    |acc: Option<(usize, OrbitTraversalState<N>)>,
-                     (
-                        orbit_index2,
-                        (
-                            orientation_exps,
-                            &orbit_remaining_pieces,
-                        ),
-                    )| {
+                    |acc, (orbit_index2, (orientation_exps, &orbit_remaining_pieces))| {
                         let orientation_prime_index = orientation_exps
                             .0
                             .simd_ne(Simd::splat(0))
@@ -522,12 +515,9 @@ impl<'a, 'b, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
                         };
                         // Filter out everything <= the previous traversal state
                         if maybe_prev_traversal_state.is_some_and(|prev| curr.cmp(&prev).is_le()) {
-                            return acc;
-                        }
-                        // curr is > the previous traversal state. If we have a previous best and curr < best, or if there was no previous best, swap it out with curr.
-                        if acc
-                            .as_ref()
-                            .is_none_or(|(_, best)| curr.cmp(best).is_lt()) {
+                            acc
+                        // curr is > the previous traversal state. If we have a previous best and curr < min, or if there was no previous best, swap it out with curr.
+                        } else if acc.as_ref().is_none_or(|(_, min)| curr.cmp(min).is_lt()) {
                             Some((orbit_index2, curr))
                         } else {
                             acc

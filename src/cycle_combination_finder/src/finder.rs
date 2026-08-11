@@ -108,7 +108,7 @@ pub struct CycleCombinationFinderConfig {
     pub optimality: Optimality,
     pub num_cores: NumCores,
     pub sorted: bool,
-    pub maybe_expected_length: Option<usize>,
+    pub maybe_expected_solution_count: Option<usize>,
     pub maybe_max_fitting_tries: Option<u32>,
     pub solution_expansion: SolutionExpansion,
     pub mss_batch_size: NonZeroUsize,
@@ -121,7 +121,7 @@ impl Default for CycleCombinationFinderConfig {
             optimality: Optimality::default(),
             num_cores: NumCores::default(),
             sorted: true,
-            maybe_expected_length: None,
+            maybe_expected_solution_count: None,
             maybe_max_fitting_tries: None,
             solution_expansion: SolutionExpansion::default(),
             mss_batch_size: NonZeroUsize::new(10).unwrap(),
@@ -270,8 +270,11 @@ impl<R, P> CycleCombinationFinder<R, P> {
     }
 
     #[must_use]
-    pub fn with_expected_length_assertion(mut self, maybe_expected_length: Option<usize>) -> Self {
-        self.config.maybe_expected_length = maybe_expected_length;
+    pub fn with_expected_solutions_count_assertion(
+        mut self,
+        maybe_expected_solution_count: Option<usize>,
+    ) -> Self {
+        self.config.maybe_expected_solution_count = maybe_expected_solution_count;
         self
     }
 
@@ -477,11 +480,11 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'_, N
                 .map(|cycle_combination| cycle_combination.solutions.0.len())
                 .sum::<usize>()
         );
-        if let Some(expected_length) = self.config.maybe_expected_length {
+        if let Some(expected_solution_count) = self.config.maybe_expected_solution_count {
             assert_eq!(
                 cycle_combinations.len(),
-                expected_length,
-                "Expected {expected_length} solutions, found {}. Solutions: {}",
+                expected_solution_count,
+                "Expected {expected_solution_count} solutions, found {}. Solutions: {}",
                 cycle_combinations.len(),
                 cycle_combinations
                     .into_iter()
@@ -557,10 +560,7 @@ mod tests {
             .unwrap();
 
         for x in ret.cycle_combinations {
-            println!(
-                "{}",
-                x.solutions_fmt(&ret.possible_orders_except_one, &minx3)
-            );
+            println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
         }
     }
 
@@ -606,8 +606,10 @@ mod tests {
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx4)
             .with_register_count(NonZeroU16::new(3).unwrap())
-            .with_time_limit(None)
-            .with_optimality(Optimality::MaxOrderRatio(5.0))
+            .with_mss_batch_size(NonZeroUsize::new(10000).unwrap())
+            .with_expected_solutions_count_assertion(Some(296))
+            // .with_time_limit(None)
+            // .with_optimality(Optimality::MaxOrderRatio(5.0))
             .find()
             .unwrap();
 
@@ -658,6 +660,8 @@ mod tests {
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx5)
             .with_register_count(NonZeroU16::new(2).unwrap())
+            .with_mss_batch_size(NonZeroUsize::new(10000).unwrap())
+            .with_expected_solutions_count_assertion(Some(33))
             .find()
             .unwrap();
 
