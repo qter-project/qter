@@ -9,17 +9,17 @@
 
 ## CCF
 
+- a list of numbers such that every number in the list is in the solutions?
+- parity
+- sort orbit defs by piece count and etc
 - fit equal fitting cycles first into orbis
-
 - use pruning information when each mpmc solution is pushed: multithread pareto efficient pruning and ignore the first register descending
-
-- after MKP
+- generate less possible orders with optimality not equivalent, see asher's code
+- note that batching "ramps up" the mkp threads when the batch size is large; there are few solutions/batch in the beginning which helps make sure the 
+- after MSS
   - min piece count doesnt work with orientation constraint none
-  - note that batching "ramps up" the mkp threads when the batch size is large; there are few solutions/batch in the beginning which helps make sure the 
   - reuse possible orders list if two orbits are the same
   - is possible_order.0.simd_ne(Simd::splat(0)) really needed
-  - better log tracing messages
-
 - possible orders
   - store next trie levels inline
   - cache orbit orders

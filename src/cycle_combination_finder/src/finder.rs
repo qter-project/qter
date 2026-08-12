@@ -3,26 +3,22 @@ use std::{
     cmp::Ordering,
     fmt::Write,
     num::{NonZeroU16, NonZeroUsize},
-    sync::{
-        Arc,
-        atomic::{self, AtomicUsize},
-        nonpoison::Mutex,
-    },
+    sync::{Arc, atomic::AtomicUsize, nonpoison::Mutex},
     time::{Duration, Instant},
 };
 
 use humanize_duration::{Truncate, prelude::DurationExt};
-use log::{Level, debug, log_enabled, trace};
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use log::{debug, trace};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use thiserror::Error;
 
 use crate::{
     cycle_combination_solutions::{
         CycleCombinationSolution, CycleCombinationSolutions, CycleCombinationSolutionsCalculator,
+        expand_possible_register,
     },
-    cycle_combinations_tree::{DisjointRegisters, dbg_registers, search_dfs},
+    cycle_combinations_tree::{dbg_registers, search_dfs},
     min_piece_count::MinPieceCount,
-    nonemptyvec::NonemptySlice,
     orderexps::OrderExps,
     possible_orders::OrdersDashSet,
     puzzle::{PuzzleDef, orbit_index_cast, possible_order_index_cast},
@@ -425,7 +421,7 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'_, N
                 mk_possible_orders_except_one(puzzle_def, possible_orders);
             Ok(Arc::from(possible_orders_except_one.into_boxed_slice()))
         })?;
-        let mut possible_registers = match self.config.optimality {
+        let mut all_possible_registers = match self.config.optimality {
             Optimality::Equivalent => unimplemented!(),
             Optimality::Optimal => search_dfs(
                 puzzle_def,
@@ -443,14 +439,15 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'_, N
             ),
         };
         if self.config.sorted {
-            possible_registers.sort_unstable();
+            all_possible_registers.sort_unstable();
         }
         let expansion_percent_done = AtomicUsize::new(0);
         let logged_bucket = Mutex::new(0);
+        let possible_registers_len = all_possible_registers.len();
 
         let expand = || {
-            possible_registers
-                .par_iter()
+            all_possible_registers
+                .into_par_iter()
                 .map_init(
                     || {
                         CycleCombinationSolutionsCalculator::new(
@@ -461,39 +458,24 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'_, N
                             self.config.maybe_max_fitting_tries,
                         )
                     },
-                    |solutions_calculator, possible_register| {
-                        let possible_register2 = DisjointRegisters::from(
-                            NonemptySlice::try_from(&**possible_register)
-                                .expect("The number of registers is non-zero"),
-                        );
-                        let cycle_combination = CycleCombination {
-                            registers: Arc::clone(possible_register),
-                            solutions: solutions_calculator
-                                .expansion(possible_register2)
-                                .expect("This solution is in the front and therefore exists"),
-                        };
-
-                        if log_enabled!(Level::Debug) {
-                            const PERCENT: usize = 1;
-
-                            let done =
-                                expansion_percent_done.fetch_add(1, atomic::Ordering::Relaxed) + 1;
-                            let new_bucket = done * 100 / (PERCENT * possible_registers.len());
-                            let mut bucket = logged_bucket.lock();
-                            if new_bucket > *bucket {
-                                *bucket = new_bucket;
-                                debug!("Expansion: {}%", done * 100 / possible_registers.len());
-                            }
-                        }
-
-                        cycle_combination
+                    |solutions_calculator, possible_registers| {
+                        expand_possible_register(
+                            solutions_calculator,
+                            possible_registers,
+                            &expansion_percent_done,
+                            &logged_bucket,
+                            possible_registers_len,
+                        )
                     },
                 )
                 .collect::<Box<[_]>>()
         };
 
         let now = Instant::now();
-        let cycle_combinations = maybe_pool.map_or_else(expand, |pool| pool.install(expand));
+        let cycle_combinations = match maybe_pool {
+            Some(pool) => pool.install(expand),
+            None => expand(),
+        };
         debug!("Expansion took: {}", now.elapsed().human(Truncate::Micro));
         debug!(
             "Found {} solutions, with {} expansions average",
