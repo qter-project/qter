@@ -1,5 +1,3 @@
-// TODO: sort orbit defs by piece count and etc
-
 use std::{
     fmt::{self, Debug, Formatter},
     num::{NonZeroU8, NonZeroU16},

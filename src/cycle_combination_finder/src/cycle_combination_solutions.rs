@@ -3,14 +3,20 @@ use std::{
     fmt::Debug,
     num::{NonZeroU16, NonZeroUsize},
     simd::{Mask, Simd, cmp::SimdPartialEq},
+    sync::{
+        Arc,
+        atomic::{self, AtomicUsize},
+        nonpoison::Mutex,
+    },
 };
 
-use log::trace;
+use log::{Level, debug, log_enabled, trace};
 
 use crate::{
     FIRST_65_PRIMES,
     cycle_combinations_tree::DisjointRegisters,
-    finder::{PossibleOrder, SolutionExpansion},
+    finder::{CycleCombination, PossibleOrder, SolutionExpansion},
+    nonemptyvec::NonemptySlice,
     orderexps::OrderExps,
     puzzle::{OrientationStatus, OrientationSumConstraint, PuzzleDef, orbit_index_cast},
 };
@@ -162,19 +168,19 @@ impl CycleOrientState {
 impl<const N: usize> OrbitTraversalState<'_, N> {
     fn cmp(&self, other: &Self) -> Ordering {
         let &OrbitTraversalState {
-            unused_piece_count: used_piece_count,
+            unused_piece_count,
             orientation_exps,
             register_orbit_constraint,
             orientation_prime_index: _,
         } = self;
         let &OrbitTraversalState {
-            unused_piece_count: used_piece_count_1,
+            unused_piece_count: unused_piece_count_1,
             orientation_exps: orientation_exps_1,
             register_orbit_constraint: register_orbit_constraint_1,
             orientation_prime_index: _,
         } = other;
-        used_piece_count
-            .cmp(&used_piece_count_1)
+        unused_piece_count
+            .cmp(&unused_piece_count_1)
             .then(orientation_exps.cmp(orientation_exps_1))
             .then(
                 register_orbit_constraint
@@ -981,6 +987,41 @@ impl<'a, 'b, const N: usize> CycleCombinationSolutionsCalculator<'a, N> {
         };
         maybe_solutions
     }
+}
+
+pub fn expand_possible_register<const N: usize>(
+    solutions_calculator: &mut CycleCombinationSolutionsCalculator<N>,
+    possible_registers: Arc<[u32]>,
+    expansion_percent_done: &AtomicUsize,
+    logged_bucket: &Mutex<usize>,
+    possible_registers_len: usize,
+) -> CycleCombination {
+    #[allow(clippy::missing_panics_doc)]
+    let possible_registers2 = DisjointRegisters::from(
+        NonemptySlice::try_from(&*possible_registers).expect("The number of registers is non-zero"),
+    );
+    #[allow(clippy::missing_panics_doc)]
+    let solutions = solutions_calculator
+        .expansion(possible_registers2)
+        .expect("This solution is in the front and therefore exists");
+    let cycle_combination = CycleCombination {
+        registers: possible_registers,
+        solutions,
+    };
+
+    if log_enabled!(Level::Debug) {
+        const PERCENT: usize = 1;
+
+        let done = expansion_percent_done.fetch_add(1, atomic::Ordering::Relaxed) + 1;
+        let new_bucket = done * 100 / (PERCENT * possible_registers_len);
+        let mut bucket = logged_bucket.lock();
+        if new_bucket > *bucket {
+            *bucket = new_bucket;
+            debug!("Expansion: {}%", done * 100 / possible_registers_len);
+        }
+    }
+
+    cycle_combination
 }
 
 #[cfg(test)]

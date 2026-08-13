@@ -4,7 +4,11 @@ use std::num::{NonZeroU16, NonZeroUsize};
 
 use cycle_combination_finder::{
     finder::{CycleCombinationFinder, NumCores},
-    puzzle::{cubeN, minxN},
+    puzzle::{
+        PuzzleDef,
+        cubeN::{self, cube},
+        minxN,
+    },
 };
 
 fn main() {
