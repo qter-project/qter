@@ -9,12 +9,12 @@
 
 ## CCF
 
-- from_ksolve_naive should record the orbit name
+- use pruning information when each mpmc solution is pushed: multithread pareto efficient pruning and ignore the first register descending
+- maybe_min_order_ratio
 - a list of numbers such that every number in the list is in the solutions?
 - parity
 - sort orbit defs by piece count and etc
 - fit equal fitting cycles first into orbis
-- use pruning information when each mpmc solution is pushed: multithread pareto efficient pruning and ignore the first register descending
 - generate less possible orders with optimality not equivalent, see asher's code
 - note that batching "ramps up" the mkp threads when the batch size is large; there are few solutions/batch in the beginning which helps make sure the 
 - after MSS

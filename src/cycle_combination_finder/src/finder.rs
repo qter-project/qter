@@ -33,6 +33,15 @@ pub enum Optimality {
 
 impl Optimality {
     pub const EQUIVALENT: Self = Self::MaxOrderRatio(1.0);
+
+    pub(crate) fn maybe_min_max_order_ratio(self) -> (Option<f64>, Option<f64>) {
+        match self {
+            Optimality::Optimal => (None, None),
+            Optimality::MaxOrderRatio(max) => (None, Some(max)),
+            Optimality::MinOrderRatio(min) => (Some(min), None),
+            Optimality::ClampOrderRatio(ClampOrderRatio { max, min }) => (Some(min), Some(max)),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -101,17 +110,17 @@ pub enum CycleCombinationFinderError {
 
 #[derive(Error, Debug)]
 pub enum CycleCombinationFinderValidationError {
-    #[error("A")]
+    #[error("Register count must be non-zero.")]
     InvalidRegisterCount,
-    #[error("B")]
+    #[error("Number of cores must be non-zero.")]
     InvalidNumCores,
-    #[error("C")]
+    #[error("MSS batch size must be non-zero.")]
     InvalidMssBatchSize,
-    #[error("D")]
+    #[error("Solution expansion limit must be non-zero.")]
     InvalidSolutionExpansion,
     #[error(
         "Optimality config must have `maybe_min_order_ratio` and `maybe_max_order_ratio` finite \
-         and >= 1.0 if set."
+         and >= 1.0 when set."
     )]
     InvalidOptimality,
 }
@@ -310,12 +319,7 @@ impl<R, P> CycleCombinationFinder<R, P> {
 
     #[must_use]
     pub fn with_optimality(mut self, optimality: Optimality) -> Self {
-        let (maybe_min_order_ratio, maybe_max_order_ratio) = match optimality {
-            Optimality::Optimal => (None, None),
-            Optimality::MaxOrderRatio(max) => (None, Some(max)),
-            Optimality::MinOrderRatio(min) => (Some(min), None),
-            Optimality::ClampOrderRatio(ClampOrderRatio { max, min }) => (Some(min), Some(max)),
-        };
+        let (maybe_min_order_ratio, maybe_max_order_ratio) = optimality.maybe_min_max_order_ratio();
 
         if let Some(min_order_ratio) = maybe_min_order_ratio {
             match min_order_ratio.partial_cmp(&1.0) {
