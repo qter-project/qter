@@ -22,11 +22,10 @@ use seize::{Collector, Guard, reclaim};
 use tokio::sync::broadcast::error::TryRecvError as TokioTryRecvError;
 
 use crate::{
-    cycle_combination_solutions::CycleCombinationSolutionsCalculator,
-    finder::{CycleCombinationFinderConfig, NumCores, PossibleOrder},
+    finder::{PossibleOrder, ValidatedCycleCombinationFinder, ValidatedNumCores},
     nonemptyvec::{NonemptySlice, NonemptyVec},
     pareto_front::CCParetoFront,
-    puzzle::{PuzzleDef, possible_orders_len_cast},
+    puzzle::possible_orders_len_cast,
 };
 
 #[derive(Clone)]
@@ -392,289 +391,6 @@ unsafe fn try_next_pareto_efficient_pruning(
     )
 }
 
-fn solutions_thread<const N: usize>(
-    core_id: CoreId,
-    candidates_receiver: mpmc::Receiver<PackedCycleCombinationCandidateQueue>,
-    mut solutions_receiver: tokio::sync::broadcast::Receiver<(CoreId, Arc<[u32]>)>,
-    solutions_sender: tokio::sync::broadcast::Sender<(CoreId, Arc<[u32]>)>,
-    pareto_efficient_prunings: &[AtomicPtr<u32>],
-    puzzle_def: &PuzzleDef<N>,
-    possible_orders_except_one: &[PossibleOrder<N>],
-    exact_register_count: NonZeroU16,
-    collector: &Collector,
-    config: &CycleCombinationFinderConfig,
-) -> SolutionsThreadInfo {
-    if core_affinity::set_for_current(core_id) {
-        debug!("Solutions: Pinned {core_id:?}");
-    }
-    let mut cycle_combinations = CCParetoFront::default();
-    let mut solutions_calculator = CycleCombinationSolutionsCalculator::new(
-        puzzle_def,
-        possible_orders_except_one,
-        exact_register_count,
-        config.solution_expansion,
-        config.maybe_max_fitting_tries,
-    );
-    let mut processed_candidate_count = 0;
-    let mut post_candidate_count = 0;
-    let raw_pruning_len = NonZeroUsize::new(usize::from(
-        exact_register_count.get().saturating_sub(2) + 1,
-    ))
-    .unwrap();
-    let real_time = Instant::now();
-    let cpu_time = ThreadTime::now();
-    loop {
-        let maybe_batch_packed_queue = match candidates_receiver.try_recv() {
-            Ok(batch_packed_queue) => Some(batch_packed_queue),
-            Err(TryRecvError::Disconnected) => break,
-            Err(TryRecvError::Empty) => None,
-        };
-
-        loop {
-            match solutions_receiver.try_recv() {
-                Ok((c, s)) => {
-                    if c != core_id {
-                        cycle_combinations.push(s);
-                    }
-                }
-                Err(TokioTryRecvError::Closed) => panic!(),
-                Err(TokioTryRecvError::Empty | TokioTryRecvError::Lagged(_)) => break,
-            }
-        }
-
-        let PackedCycleCombinationCandidateQueue(batch_packed_queue) =
-            match maybe_batch_packed_queue.map_or_else(|| candidates_receiver.recv(), Ok) {
-                Ok(batch_packed_queue) => batch_packed_queue,
-                Err(RecvError) => break,
-            };
-
-        let (&thread_index, candidate_counts_and_packed_candidates) =
-            batch_packed_queue.split_first().unwrap();
-        let (candidate_counts, mut packed_candidates) =
-            candidate_counts_and_packed_candidates.split_at(config.mss_batch_size.get());
-        let thread_index = thread_index as usize;
-        for &candidate_count in candidate_counts {
-            if candidate_count == 0 {
-                break;
-            }
-            let candidate_count = candidate_count as usize;
-            let (prefix_registers, last_registers_and_next_packed_candidates) =
-                packed_candidates.split_at(usize::from(exact_register_count.get() - 1));
-            let (last_registers, next_packed_candidates) =
-                last_registers_and_next_packed_candidates.split_at(candidate_count);
-            packed_candidates = next_packed_candidates;
-
-            for &last_register in last_registers {
-                processed_candidate_count += 1;
-                let disjoint_registers = DisjointRegisters {
-                    prefix_registers,
-                    last_register,
-                };
-                if !cycle_combinations.push_and_dominating_check(
-                    disjoint_registers,
-                    |dominating_registers| {
-                        post_candidate_count += 1;
-                        if !solutions_calculator.existence(dominating_registers) {
-                            return None;
-                        }
-                        let possible_registers = dominating_registers.iter().collect::<Arc<[_]>>();
-                        assert!(
-                            solutions_sender
-                                .send((core_id, Arc::clone(&possible_registers)))
-                                .is_ok()
-                        );
-                        Some(possible_registers)
-                    },
-                ) {
-                    continue;
-                }
-                // Note that we are allowed to set
-                // `max_last_register_order_reverse_index` to potentially dominated
-                // solutions. If something is the maximum in our atomic variable,
-                // then it must either be in the front or the atomic variable is an
-                // underestimate, which is permitted since our bound is admissible
-
-                let guard = collector.enter();
-
-                let pareto_efficient_pruning = &pareto_efficient_prunings[thread_index];
-                let mut maybe_raw_pruning =
-                    guard.protect(pareto_efficient_pruning, atomic::Ordering::Acquire);
-                while let Some(next_raw_pruning) = unsafe {
-                    try_next_pareto_efficient_pruning(
-                        maybe_raw_pruning,
-                        disjoint_registers,
-                        raw_pruning_len,
-                    )
-                } {
-                    match guard.compare_exchange(
-                        pareto_efficient_pruning,
-                        maybe_raw_pruning,
-                        next_raw_pruning.as_ptr(),
-                        atomic::Ordering::Release,
-                        atomic::Ordering::Acquire,
-                    ) {
-                        Ok(maybe_curr_raw_pruning) => {
-                            if let Some(curr_raw_pruning) = NonNull::new(maybe_curr_raw_pruning) {
-                                unsafe {
-                                    collector.retire(curr_raw_pruning.as_ptr(), reclaim::boxed);
-                                }
-                            }
-                        }
-                        Err(curr_raw_pruning) => {
-                            unsafe {
-                                reclaim::boxed(next_raw_pruning.as_ptr(), collector);
-                            }
-                            maybe_raw_pruning = curr_raw_pruning;
-                        }
-                    }
-                }
-                break;
-            }
-        }
-    }
-    drop(solutions_sender);
-    drop(candidates_receiver);
-    SolutionsThreadInfo {
-        cpu_time: cpu_time.elapsed(),
-        real_time: real_time.elapsed(),
-        processed_candidate_count,
-        post_candidate_count,
-        cycle_combinations,
-    }
-}
-
-fn dfs_thread<const N: usize>(
-    core_id: CoreId,
-    thread_index: usize,
-    num_cores: usize,
-    exact_piece_count: NonZeroU32,
-    mut mutable: CycleCombinationsTreeMutable,
-    pareto_efficient_pruning: &AtomicPtr<u32>,
-    possible_orders_except_one: &[PossibleOrder<N>],
-    collector: &Collector,
-    old_bucket: &Mutex<usize>,
-    maybe_max_order_ratio: Option<f64>,
-    maybe_time_limit: Option<Duration>,
-    time_limit_reached: &AtomicBool,
-) -> TreeThreadInfo {
-    if core_affinity::set_for_current(core_id) {
-        debug!("DFS: Pinned {core_id:?}");
-    }
-    let real_time = Instant::now();
-    let cpu_time = ThreadTime::now();
-
-    let mut candidate_count = 0;
-    for (i, possible_order) in possible_orders_except_one
-        .iter()
-        .enumerate()
-        .rev()
-        .skip(thread_index)
-        .step_by(num_cores)
-    {
-        if thread_index == 0
-            && let Some(time_limit) = maybe_time_limit
-            && real_time.elapsed() >= time_limit
-        {
-            time_limit_reached.store(true, atomic::Ordering::Relaxed);
-        }
-        if time_limit_reached.load(atomic::Ordering::Relaxed) {
-            break;
-        }
-        let i_u32 = possible_orders_len_cast(i);
-
-        let guard = collector.enter();
-        // Synchronize with the data in the try_update CAS loop
-        let maybe_raw_pruning = guard.protect(pareto_efficient_pruning, atomic::Ordering::Acquire);
-        if let Some(raw_pruning) = NonNull::new(maybe_raw_pruning) {
-            // SAFETY: `solutions_thread` guarantees `raw_pruning` points to at least one
-            // element
-            let max_last_register = unsafe { raw_pruning.read() };
-            if i_u32 <= max_last_register {
-                break;
-            }
-        }
-        drop(guard);
-
-        // We validated `possible_orders` to be of len `u32` or less
-        if log_enabled!(Level::Debug) {
-            const PERCENT: usize = 1;
-
-            let num = possible_orders_except_one.len() - i;
-            // We don't subtract `max_last_register` here. Cores with large
-            // `max_last_register` values are going to exist early, while those with lower
-            // values will persist and perform this logging, so the % meter typically goes
-            // up to 100%.
-            let den = possible_orders_except_one.len();
-            let new_bucket = num * 100 / (PERCENT * den);
-            let mut bucket = old_bucket.lock();
-            if new_bucket > *bucket {
-                *bucket = new_bucket;
-                debug!("DFS: {}% complete", num * 100 / den);
-            }
-        }
-
-        let Some(next_remaining_piece_count) = exact_piece_count
-            .get()
-            .checked_sub(u32::from(possible_order.min_piece_count.get()))
-        else {
-            continue;
-        };
-
-        if mutable.exact_register_count().get() == 1 {
-            if candidate_count == 0 {
-                mutable
-                    .batch_packed_queue
-                    .extend(mutable.registers.split_last().1.iter().copied());
-            }
-            candidate_count += 1;
-            mutable.batch_packed_queue.push(i_u32);
-            continue;
-        }
-
-        if let Some(next_remaining_piece_count) = NonZeroU32::new(next_remaining_piece_count)
-            && let Ok(next_possible_orders) =
-                NonemptySlice::try_from(&possible_orders_except_one[..=i])
-        {
-            *mutable.registers.first_mut() = i_u32;
-            if let Some(max_order_ratio) = maybe_max_order_ratio {
-                mutable.register_cutoff = possible_orders_len_cast(
-                    next_possible_orders.partition_point(|possible_order| {
-                        possible_order.order.ln() + max_order_ratio.ln()
-                            < next_possible_orders.last().order.ln()
-                    }),
-                );
-            }
-            unsafe {
-                search_dfs_helper(
-                    collector,
-                    &mut mutable,
-                    pareto_efficient_pruning,
-                    next_possible_orders,
-                    NonZeroU16::new(1).unwrap(),
-                    next_remaining_piece_count,
-                );
-            }
-        }
-    }
-
-    if mutable.exact_register_count().get() == 1 && candidate_count != 0 {
-        mutable.batch_packed_queue[mutable.curr_batch_len + 1] = candidate_count;
-    }
-    mutable.maybe_send_queue(true);
-
-    debug!("DFS: {core_id:?} finished");
-
-    TreeThreadInfo {
-        real_time: real_time.elapsed(),
-        cpu_time: cpu_time.elapsed(),
-        candidate_count: mutable.candidate_count,
-        empty_sends: mutable.empty_sends,
-        full_sends: mutable.full_sends,
-        sends: mutable.sends,
-        sender_lens: mutable.sender_lens,
-    }
-}
-
 /// # Safety
 ///
 /// `register_index` must be less than `mutable.exact_register_count()`.
@@ -793,237 +509,506 @@ unsafe fn search_dfs_helper<const N: usize>(
     }
 }
 
-pub(crate) fn search_dfs<const N: usize>(
-    puzzle_def: &PuzzleDef<N>,
-    config: &CycleCombinationFinderConfig,
-    possible_orders_except_one: &[PossibleOrder<N>],
-    exact_register_count: NonZeroU16,
-    maybe_max_order_ratio: Option<f64>,
-) -> Vec<Arc<[u32]>> {
-    // If we return a None here then /shrug
-    #[allow(clippy::missing_panics_doc)]
-    let mut core_ids = core_affinity::get_core_ids().unwrap();
-    if let NumCores::Num(num_cores) = config.num_cores {
-        core_ids.truncate(num_cores.get());
-    }
-    let num_cores = core_ids.len();
+impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
+    fn solutions_thread(
+        &self,
+        core_id: CoreId,
+        candidates_receiver: mpmc::Receiver<PackedCycleCombinationCandidateQueue>,
+        mut solutions_receiver: tokio::sync::broadcast::Receiver<(CoreId, Arc<[u32]>)>,
+        solutions_sender: tokio::sync::broadcast::Sender<(CoreId, Arc<[u32]>)>,
+        pareto_efficient_prunings: &[AtomicPtr<u32>],
+        possible_orders_except_one: &[PossibleOrder<N>],
+        collector: &Collector,
+    ) -> SolutionsThreadInfo {
+        if core_affinity::set_for_current(core_id) {
+            debug!("Solutions: Pinned {core_id:?}");
+        }
+        let mut cycle_combinations = CCParetoFront::default();
+        let mut solutions_calculator = self.solutions_calculator(possible_orders_except_one);
 
-    // We do not use `0` as to allow a buffer for every core to prevent starvation
-    let candidates_sender_capacity = num_cores * 2;
-    let (candidates_sender, candidates_receiver) =
-        mpmc::sync_channel::<PackedCycleCombinationCandidateQueue>(candidates_sender_capacity);
-    // I will only send at most `batch_size` solutions before receiving the queue,
-    // so I can make the capacity equal to this
-    let (solutions_sender, _) =
-        tokio::sync::broadcast::channel(num_cores * config.mss_batch_size.get());
+        let mut processed_candidate_count = 0;
+        let mut post_candidate_count = 0;
+        let raw_pruning_len =
+            NonZeroUsize::new(usize::from(self.register_count.get().saturating_sub(2) + 1))
+                .unwrap();
+        let real_time = Instant::now();
+        let cpu_time = ThreadTime::now();
+        loop {
+            let maybe_batch_packed_queue = match candidates_receiver.try_recv() {
+                Ok(batch_packed_queue) => Some(batch_packed_queue),
+                Err(TryRecvError::Disconnected) => break,
+                Err(TryRecvError::Empty) => None,
+            };
 
-    // We can unwrap because `exact_register_count` is NonZero.
-    #[allow(clippy::missing_panics_doc)]
-    let mutable = CycleCombinationsTreeMutable {
-        fails: 0,
-        batch_packed_queue: vec![],
-        sends: 0,
-        empty_sends: 0,
-        full_sends: 0,
-        sender_lens: 0,
-        curr_batch_len: 0,
-        registers: NonemptyVec::try_from(vec![0; usize::from(exact_register_count.get())]).unwrap(),
-        register_cutoff: 0,
-        candidates_sender,
-        candidate_count: 0,
+            loop {
+                match solutions_receiver.try_recv() {
+                    Ok((c, s)) => {
+                        if c != core_id {
+                            cycle_combinations.push(s);
+                        }
+                    }
+                    Err(TokioTryRecvError::Closed) => panic!(),
+                    Err(TokioTryRecvError::Empty | TokioTryRecvError::Lagged(_)) => break,
+                }
+            }
 
-        candidates_sender_capacity,
-        batch_size: config.mss_batch_size,
-    };
+            let PackedCycleCombinationCandidateQueue(batch_packed_queue) =
+                match maybe_batch_packed_queue.map_or_else(|| candidates_receiver.recv(), Ok) {
+                    Ok(batch_packed_queue) => batch_packed_queue,
+                    Err(RecvError) => break,
+                };
 
-    let mut candidate_count = 0;
-    let mut dfs_real_time = Duration::default();
-    let mut dfs_cpu_time = Duration::default();
+            let (&thread_index, candidate_counts_and_packed_candidates) =
+                batch_packed_queue.split_first().unwrap();
+            let (candidate_counts, mut packed_candidates) =
+                candidate_counts_and_packed_candidates.split_at(self.mss_batch_size.get());
+            let thread_index = thread_index as usize;
+            for &candidate_count in candidate_counts {
+                if candidate_count == 0 {
+                    break;
+                }
+                let candidate_count = candidate_count as usize;
+                let (prefix_registers, last_registers_and_next_packed_candidates) =
+                    packed_candidates.split_at(usize::from(self.register_count.get() - 1));
+                let (last_registers, next_packed_candidates) =
+                    last_registers_and_next_packed_candidates.split_at(candidate_count);
+                packed_candidates = next_packed_candidates;
 
-    let mut solutions_real_time = Duration::default();
-    let mut solutions_cpu_time = Duration::default();
-    let mut processed_candidate_count = 0;
-    let mut post_candidate_count = 0;
-    let mut sends = 0;
-    let mut empty_sends = 0;
-    let mut full_sends = 0;
-    let mut sender_lens = 0;
-    let mut smallest_fronts = BinaryHeap::new();
+                for &last_register in last_registers {
+                    processed_candidate_count += 1;
+                    let disjoint_registers = DisjointRegisters {
+                        prefix_registers,
+                        last_register,
+                    };
+                    if !cycle_combinations.push_and_dominating_check(
+                        disjoint_registers,
+                        |dominating_registers| {
+                            post_candidate_count += 1;
+                            if !solutions_calculator.existence(dominating_registers) {
+                                return None;
+                            }
+                            let possible_registers =
+                                dominating_registers.iter().collect::<Arc<[_]>>();
+                            assert!(
+                                solutions_sender
+                                    .send((core_id, Arc::clone(&possible_registers)))
+                                    .is_ok()
+                            );
+                            Some(possible_registers)
+                        },
+                    ) {
+                        continue;
+                    }
+                    // Note that we are allowed to set
+                    // `max_last_register_order_reverse_index` to potentially dominated
+                    // solutions. If something is the maximum in our atomic variable,
+                    // then it must either be in the front or the atomic variable is an
+                    // underestimate, which is permitted since our bound is admissible
 
-    let pareto_efficient_prunings = (0..num_cores)
-        .map(|_| AtomicPtr::default())
-        .collect::<Box<[_]>>();
-    // We are allowed to unwrap because `orbit_defs` is non-empty, and `piece_count`
-    // is a NonZero. Therefore the sum must be non-zero.
-    let exact_piece_count = NonZeroU32::new(
-        puzzle_def
-            .orbit_defs()
-            .iter()
-            .map(|&orbit_def| u32::from(orbit_def.piece_count.get()))
-            .sum::<u32>(),
-    )
-    .unwrap();
-    let real_time = Instant::now();
-    let collector = Collector::new();
-    let old_bucket = Mutex::new(0);
-    let time_limit_reached = AtomicBool::new(false);
-    std::thread::scope(|s| {
-        let handles = core_ids
-            .into_iter()
-            .enumerate()
-            .zip(pareto_efficient_prunings.iter())
-            .map(|((thread_index, core_id), pareto_efficient_pruning)| {
-                let mut mutable = mutable.clone();
-                mutable
-                    .batch_packed_queue
-                    .push(u32::try_from(thread_index).expect("You have too many threads."));
-                mutable
-                    .batch_packed_queue
-                    .extend(std::iter::repeat_n(0, config.mss_batch_size.get()));
-                let collector = &collector;
-                let old_bucket = &old_bucket;
-                let time_limit_reached = &time_limit_reached;
-                let tree_thread_handle = s.spawn(move || {
-                    dfs_thread(
-                        core_id,
-                        thread_index,
-                        num_cores,
-                        exact_piece_count,
-                        mutable,
-                        pareto_efficient_pruning,
-                        possible_orders_except_one,
-                        collector,
-                        old_bucket,
-                        maybe_max_order_ratio,
-                        config.maybe_time_limit,
-                        time_limit_reached,
-                    )
-                });
-                let candidates_receiver = candidates_receiver.clone();
-                let solutions_receiver = solutions_sender.subscribe();
-                let solutions_sender = solutions_sender.clone();
-                let pareto_efficient_prunings = &pareto_efficient_prunings;
-                let solutions_thread_handle = s.spawn(move || {
-                    solutions_thread(
-                        core_id,
-                        candidates_receiver,
-                        solutions_receiver,
-                        solutions_sender,
-                        pareto_efficient_prunings,
-                        puzzle_def,
-                        possible_orders_except_one,
-                        exact_register_count,
-                        collector,
-                        config,
-                    )
-                });
-                (tree_thread_handle, solutions_thread_handle)
-            })
-            .collect::<Vec<_>>();
-        drop(mutable);
+                    let guard = collector.enter();
+
+                    let pareto_efficient_pruning = &pareto_efficient_prunings[thread_index];
+                    let mut maybe_raw_pruning =
+                        guard.protect(pareto_efficient_pruning, atomic::Ordering::Acquire);
+                    while let Some(next_raw_pruning) = unsafe {
+                        try_next_pareto_efficient_pruning(
+                            maybe_raw_pruning,
+                            disjoint_registers,
+                            raw_pruning_len,
+                        )
+                    } {
+                        match guard.compare_exchange(
+                            pareto_efficient_pruning,
+                            maybe_raw_pruning,
+                            next_raw_pruning.as_ptr(),
+                            atomic::Ordering::Release,
+                            atomic::Ordering::Acquire,
+                        ) {
+                            Ok(maybe_curr_raw_pruning) => {
+                                if let Some(curr_raw_pruning) = NonNull::new(maybe_curr_raw_pruning)
+                                {
+                                    unsafe {
+                                        collector.retire(curr_raw_pruning.as_ptr(), reclaim::boxed);
+                                    }
+                                }
+                            }
+                            Err(curr_raw_pruning) => {
+                                unsafe {
+                                    reclaim::boxed(next_raw_pruning.as_ptr(), collector);
+                                }
+                                maybe_raw_pruning = curr_raw_pruning;
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+        }
         drop(solutions_sender);
-
-        for (tree_thread_info, solutions_thread_info) in
-            handles
-                .into_iter()
-                .map(|(tree_thread_handle, solutions_thread_handle)| {
-                    (
-                        tree_thread_handle.join().unwrap(),
-                        solutions_thread_handle.join().unwrap(),
-                    )
-                })
-        {
-            candidate_count += tree_thread_info.candidate_count;
-            dfs_real_time += tree_thread_info.real_time;
-            dfs_cpu_time += tree_thread_info.cpu_time;
-            sends += tree_thread_info.sends;
-            empty_sends += tree_thread_info.empty_sends;
-            full_sends += tree_thread_info.full_sends;
-            sender_lens += tree_thread_info.sender_lens;
-
-            solutions_cpu_time += solutions_thread_info.cpu_time;
-            solutions_real_time += solutions_thread_info.real_time;
-            processed_candidate_count += solutions_thread_info.processed_candidate_count;
-            post_candidate_count += solutions_thread_info.post_candidate_count;
-            smallest_fronts.push(solutions_thread_info.cycle_combinations);
-        }
-    });
-
-    let mut combined_cycle_combinations = CCParetoFront::default();
-    trace!(
-        "{}",
-        smallest_fronts
-            .iter()
-            .filter_map(|x| {
-                let s = dbg_registers_iter(
-                    x.possible_registers
-                        .iter()
-                        .map(|combination| combination.iter().copied()),
-                    possible_orders_except_one,
-                );
-                if s.is_empty() { None } else { Some(s) }
-            })
-            .collect::<Vec<_>>()
-            .join("\n\n")
-    );
-    while let Some(mut smallest_front) = smallest_fronts.pop() {
-        if let Some(smaller_front) = smallest_fronts.pop() {
-            smallest_front.merge(smaller_front);
-            smallest_fronts.push(smallest_front);
-        } else {
-            combined_cycle_combinations = smallest_front;
+        drop(candidates_receiver);
+        SolutionsThreadInfo {
+            cpu_time: cpu_time.elapsed(),
+            real_time: real_time.elapsed(),
+            processed_candidate_count,
+            post_candidate_count,
+            cycle_combinations,
         }
     }
 
-    let real_time = real_time.elapsed();
+    fn dfs_thread(
+        &self,
+        core_id: CoreId,
+        thread_index: usize,
+        num_cores: usize,
+        exact_piece_count: NonZeroU32,
+        mut mutable: CycleCombinationsTreeMutable,
+        pareto_efficient_pruning: &AtomicPtr<u32>,
+        possible_orders_except_one: &[PossibleOrder<N>],
+        collector: &Collector,
+        old_bucket: &Mutex<usize>,
+        time_limit_reached: &AtomicBool,
+    ) -> TreeThreadInfo {
+        if core_affinity::set_for_current(core_id) {
+            debug!("DFS: Pinned {core_id:?}");
+        }
+        let real_time = Instant::now();
+        let cpu_time = ThreadTime::now();
 
-    #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-    let pruned_orders_percentage = (pareto_efficient_prunings
-        .into_iter()
-        .map(|max_last_register| {
-            let max_last_register = max_last_register.into_inner();
-            u64::from(if max_last_register.is_null() {
-                0
-            } else {
+        let mut candidate_count = 0;
+        for (i, possible_order) in possible_orders_except_one
+            .iter()
+            .enumerate()
+            .rev()
+            .skip(thread_index)
+            .step_by(num_cores)
+        {
+            if thread_index == 0
+                && let Some(time_limit) = self.maybe_time_limit
+                && real_time.elapsed() >= time_limit
+            {
+                time_limit_reached.store(true, atomic::Ordering::Relaxed);
+            }
+            if time_limit_reached.load(atomic::Ordering::Relaxed) {
+                break;
+            }
+            let i_u32 = possible_orders_len_cast(i);
+
+            let guard = collector.enter();
+            // Synchronize with the data in the try_update CAS loop
+            let maybe_raw_pruning =
+                guard.protect(pareto_efficient_pruning, atomic::Ordering::Acquire);
+            if let Some(raw_pruning) = NonNull::new(maybe_raw_pruning) {
                 // SAFETY: `solutions_thread` guarantees `raw_pruning` points to at least one
                 // element
-                unsafe { *max_last_register }
+                let max_last_register = unsafe { raw_pruning.read() };
+                if i_u32 <= max_last_register {
+                    break;
+                }
+            }
+            drop(guard);
+
+            // We validated `possible_orders` to be of len `u32` or less
+            if log_enabled!(Level::Debug) {
+                const PERCENT: usize = 1;
+
+                let num = possible_orders_except_one.len() - i;
+                // We don't subtract `max_last_register` here. Cores with large
+                // `max_last_register` values are going to exist early, while those with lower
+                // values will persist and perform this logging, so the % meter typically goes
+                // up to 100%.
+                let den = possible_orders_except_one.len();
+                let new_bucket = num * 100 / (PERCENT * den);
+                let mut bucket = old_bucket.lock();
+                if new_bucket > *bucket {
+                    *bucket = new_bucket;
+                    debug!("DFS: {}% complete", num * 100 / den);
+                }
+            }
+
+            let Some(next_remaining_piece_count) = exact_piece_count
+                .get()
+                .checked_sub(u32::from(possible_order.min_piece_count.get()))
+            else {
+                continue;
+            };
+
+            if mutable.exact_register_count().get() == 1 {
+                if candidate_count == 0 {
+                    mutable
+                        .batch_packed_queue
+                        .extend(mutable.registers.split_last().1.iter().copied());
+                }
+                candidate_count += 1;
+                mutable.batch_packed_queue.push(i_u32);
+                continue;
+            }
+
+            if let Some(next_remaining_piece_count) = NonZeroU32::new(next_remaining_piece_count)
+                && let Ok(next_possible_orders) =
+                    NonemptySlice::try_from(&possible_orders_except_one[..=i])
+            {
+                *mutable.registers.first_mut() = i_u32;
+                if let Some(max_order_ratio) = self.optimality.maybe_max_order_ratio {
+                    mutable.register_cutoff = possible_orders_len_cast(
+                        next_possible_orders.partition_point(|possible_order| {
+                            possible_order.order.ln() + max_order_ratio.ln()
+                                < next_possible_orders.last().order.ln()
+                        }),
+                    );
+                }
+                unsafe {
+                    search_dfs_helper(
+                        collector,
+                        &mut mutable,
+                        pareto_efficient_pruning,
+                        next_possible_orders,
+                        NonZeroU16::new(1).unwrap(),
+                        next_remaining_piece_count,
+                    );
+                }
+            }
+        }
+
+        if mutable.exact_register_count().get() == 1 && candidate_count != 0 {
+            mutable.batch_packed_queue[mutable.curr_batch_len + 1] = candidate_count;
+        }
+        mutable.maybe_send_queue(true);
+
+        debug!("DFS: {core_id:?} finished");
+
+        TreeThreadInfo {
+            real_time: real_time.elapsed(),
+            cpu_time: cpu_time.elapsed(),
+            candidate_count: mutable.candidate_count,
+            empty_sends: mutable.empty_sends,
+            full_sends: mutable.full_sends,
+            sends: mutable.sends,
+            sender_lens: mutable.sender_lens,
+        }
+    }
+
+    pub(crate) fn search_dfs(&self, possible_orders_except_one: &[PossibleOrder<N>]) -> Vec<Arc<[u32]>> {
+        // If we return a None here then /shrug
+        #[allow(clippy::missing_panics_doc)]
+        let mut core_ids = core_affinity::get_core_ids().unwrap();
+        if let ValidatedNumCores::Num(num_cores) = self.num_cores {
+            core_ids.truncate(num_cores.get());
+        }
+        let num_cores = core_ids.len();
+
+        // We do not use `0` as to allow a buffer for every core to prevent starvation
+        let candidates_sender_capacity = num_cores * 2;
+        let (candidates_sender, candidates_receiver) =
+            mpmc::sync_channel::<PackedCycleCombinationCandidateQueue>(candidates_sender_capacity);
+        // I will only send at most `batch_size` solutions before receiving the queue,
+        // so I can make the capacity equal to this
+        let (solutions_sender, _) =
+            tokio::sync::broadcast::channel(num_cores * self.mss_batch_size.get());
+
+        // We can unwrap because `exact_register_count` is NonZero.
+        #[allow(clippy::missing_panics_doc)]
+        let mutable = CycleCombinationsTreeMutable {
+            fails: 0,
+            batch_packed_queue: vec![],
+            sends: 0,
+            empty_sends: 0,
+            full_sends: 0,
+            sender_lens: 0,
+            curr_batch_len: 0,
+            registers: NonemptyVec::try_from(vec![0; usize::from(self.register_count.get())])
+                .unwrap(),
+            register_cutoff: 0,
+            candidates_sender,
+            candidate_count: 0,
+
+            candidates_sender_capacity,
+            batch_size: self.mss_batch_size,
+        };
+
+        let mut candidate_count = 0;
+        let mut dfs_real_time = Duration::default();
+        let mut dfs_cpu_time = Duration::default();
+
+        let mut solutions_real_time = Duration::default();
+        let mut solutions_cpu_time = Duration::default();
+        let mut processed_candidate_count = 0;
+        let mut post_candidate_count = 0;
+        let mut sends = 0;
+        let mut empty_sends = 0;
+        let mut full_sends = 0;
+        let mut sender_lens = 0;
+        let mut smallest_fronts = BinaryHeap::new();
+
+        let pareto_efficient_prunings = (0..num_cores)
+            .map(|_| AtomicPtr::default())
+            .collect::<Box<[_]>>();
+        // We are allowed to unwrap because `orbit_defs` is non-empty, and `piece_count`
+        // is a NonZero. Therefore the sum must be non-zero.
+        let exact_piece_count = NonZeroU32::new(
+            self.puzzle_def
+                .orbit_defs()
+                .iter()
+                .map(|&orbit_def| u32::from(orbit_def.piece_count.get()))
+                .sum::<u32>(),
+        )
+        .unwrap();
+        let real_time = Instant::now();
+        let collector = Collector::new();
+        let old_bucket = Mutex::new(0);
+        let time_limit_reached = AtomicBool::new(false);
+        std::thread::scope(|s| {
+            let handles = core_ids
+                .into_iter()
+                .enumerate()
+                .zip(pareto_efficient_prunings.iter())
+                .map(|((thread_index, core_id), pareto_efficient_pruning)| {
+                    let mut mutable = mutable.clone();
+                    mutable
+                        .batch_packed_queue
+                        .push(u32::try_from(thread_index).expect("You have too many threads."));
+                    mutable
+                        .batch_packed_queue
+                        .extend(std::iter::repeat_n(0, self.mss_batch_size.get()));
+                    let collector = &collector;
+                    let old_bucket = &old_bucket;
+                    let time_limit_reached = &time_limit_reached;
+                    let tree_thread_handle = s.spawn(move || {
+                        self.dfs_thread(
+                            core_id,
+                            thread_index,
+                            num_cores,
+                            exact_piece_count,
+                            mutable,
+                            pareto_efficient_pruning,
+                            possible_orders_except_one,
+                            collector,
+                            old_bucket,
+                            time_limit_reached,
+                        )
+                    });
+                    let candidates_receiver = candidates_receiver.clone();
+                    let solutions_receiver = solutions_sender.subscribe();
+                    let solutions_sender = solutions_sender.clone();
+                    let pareto_efficient_prunings = &pareto_efficient_prunings;
+                    let solutions_thread_handle = s.spawn(move || {
+                        self.solutions_thread(
+                            core_id,
+                            candidates_receiver,
+                            solutions_receiver,
+                            solutions_sender,
+                            pareto_efficient_prunings,
+                            possible_orders_except_one,
+                            collector,
+                        )
+                    });
+                    (tree_thread_handle, solutions_thread_handle)
+                })
+                .collect::<Vec<_>>();
+            drop(mutable);
+            drop(solutions_sender);
+
+            for (tree_thread_info, solutions_thread_info) in
+                handles
+                    .into_iter()
+                    .map(|(tree_thread_handle, solutions_thread_handle)| {
+                        (
+                            tree_thread_handle.join().unwrap(),
+                            solutions_thread_handle.join().unwrap(),
+                        )
+                    })
+            {
+                candidate_count += tree_thread_info.candidate_count;
+                dfs_real_time += tree_thread_info.real_time;
+                dfs_cpu_time += tree_thread_info.cpu_time;
+                sends += tree_thread_info.sends;
+                empty_sends += tree_thread_info.empty_sends;
+                full_sends += tree_thread_info.full_sends;
+                sender_lens += tree_thread_info.sender_lens;
+
+                solutions_cpu_time += solutions_thread_info.cpu_time;
+                solutions_real_time += solutions_thread_info.real_time;
+                processed_candidate_count += solutions_thread_info.processed_candidate_count;
+                post_candidate_count += solutions_thread_info.post_candidate_count;
+                smallest_fronts.push(solutions_thread_info.cycle_combinations);
+            }
+        });
+
+        let mut combined_cycle_combinations = CCParetoFront::default();
+        trace!(
+            "{}",
+            smallest_fronts
+                .iter()
+                .filter_map(|x| {
+                    let s = dbg_registers_iter(
+                        x.possible_registers
+                            .iter()
+                            .map(|combination| combination.iter().copied()),
+                        possible_orders_except_one,
+                    );
+                    if s.is_empty() { None } else { Some(s) }
+                })
+                .collect::<Vec<_>>()
+                .join("\n\n")
+        );
+        while let Some(mut smallest_front) = smallest_fronts.pop() {
+            if let Some(smaller_front) = smallest_fronts.pop() {
+                smallest_front.merge(smaller_front);
+                smallest_fronts.push(smallest_front);
+            } else {
+                combined_cycle_combinations = smallest_front;
+            }
+        }
+
+        let real_time = real_time.elapsed();
+
+        #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+        let pruned_orders_percentage = (pareto_efficient_prunings
+            .into_iter()
+            .map(|max_last_register| {
+                let max_last_register = max_last_register.into_inner();
+                u64::from(if max_last_register.is_null() {
+                    0
+                } else {
+                    // SAFETY: `solutions_thread` guarantees `raw_pruning` points to at least one
+                    // element
+                    unsafe { *max_last_register }
+                })
             })
-        })
-        .sum::<u64>() as f64)
-        / ((possible_orders_except_one.len() * num_cores) as f64);
+            .sum::<u64>() as f64)
+            / ((possible_orders_except_one.len() * num_cores) as f64);
 
-    #[allow(clippy::cast_precision_loss)]
-    let full_sends_percentage = full_sends as f64 / sends as f64;
+        #[allow(clippy::cast_precision_loss)]
+        let full_sends_percentage = full_sends as f64 / sends as f64;
 
-    #[allow(clippy::cast_precision_loss)]
-    let empty_sends_percentage = empty_sends as f64 / sends as f64;
+        #[allow(clippy::cast_precision_loss)]
+        let empty_sends_percentage = empty_sends as f64 / sends as f64;
 
-    #[allow(clippy::cast_precision_loss)]
-    let sender_len_percentage =
-        sender_lens as f64 / (candidates_sender_capacity as u64 * sends) as f64;
+        #[allow(clippy::cast_precision_loss)]
+        let sender_len_percentage =
+            sender_lens as f64 / (candidates_sender_capacity as u64 * sends) as f64;
 
-    let dfs_io_time = dfs_real_time.saturating_sub(dfs_cpu_time);
-    let solutions_io_time = solutions_real_time.saturating_sub(solutions_cpu_time);
+        let dfs_io_time = dfs_real_time.saturating_sub(dfs_cpu_time);
+        let solutions_io_time = solutions_real_time.saturating_sub(solutions_cpu_time);
 
-    let tree_profile_info = TreeProfileInfo {
-        candidate_count,
-        processed_candidate_count,
-        post_candidate_count,
-        pruned_orders_percentage,
-        sender_len_percentage,
-        empty_sends_percentage,
-        full_sends_percentage,
-        real_time,
-        dfs_cpu_time,
-        dfs_io_time,
-        solutions_cpu_time,
-        solutions_io_time,
-        num_cores,
-    };
+        let tree_profile_info = TreeProfileInfo {
+            candidate_count,
+            processed_candidate_count,
+            post_candidate_count,
+            pruned_orders_percentage,
+            sender_len_percentage,
+            empty_sends_percentage,
+            full_sends_percentage,
+            real_time,
+            dfs_cpu_time,
+            dfs_io_time,
+            solutions_cpu_time,
+            solutions_io_time,
+            num_cores,
+        };
 
-    debug!("Search tree complete");
-    debug!("{tree_profile_info:#}");
+        debug!("Search tree complete");
+        debug!("{tree_profile_info:#}");
 
-    combined_cycle_combinations.into()
+        combined_cycle_combinations.into()
+    }
 }

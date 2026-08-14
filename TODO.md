@@ -9,6 +9,7 @@
 
 ## CCF
 
+- from_ksolve_naive should record the orbit name
 - a list of numbers such that every number in the list is in the solutions?
 - parity
 - sort orbit defs by piece count and etc

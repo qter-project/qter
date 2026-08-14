@@ -10,7 +10,6 @@
     nonpoison_mutex,
     sync_nonpoison,
     box_vec_non_null,
-    once_cell_try,
     mpmc_channel,
     slice_swap_unchecked,
     portable_simd,

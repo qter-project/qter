@@ -1,3 +1,5 @@
+# pyright: reportGeneralTypeIssues=false
+
 """
 Finds pairs of commutative cycles on a Rubik's cube that have high products of
 orders.
@@ -9,13 +11,10 @@ There are also a few more assumptions, and as such there may be some missed comb
 
 # TODO allow for orientation to be composite
 import collections
-import copy
 import math
 import operator
 import sys
 import timeit
-
-from sympy import primerange
 
 import puzzle_orbit_definitions
 from common_types import OrientationStatus  # , OrientationSumConstraint

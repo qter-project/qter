@@ -1,5 +1,4 @@
 use std::{
-    cell::OnceCell,
     cmp::Ordering,
     fmt::Write,
     num::{NonZeroU16, NonZeroUsize},
@@ -14,41 +13,68 @@ use thiserror::Error;
 
 use crate::{
     cycle_combination_solutions::{
-        CycleCombinationSolution, CycleCombinationSolutions, CycleCombinationSolutionsCalculator,
-        expand_possible_register,
+        CycleCombinationSolution, CycleCombinationSolutions, expand_possible_register,
     },
-    cycle_combinations_tree::{dbg_registers, search_dfs},
+    cycle_combinations_tree::dbg_registers,
     min_piece_count::MinPieceCount,
     orderexps::OrderExps,
     possible_orders::OrdersDashSet,
     puzzle::{PuzzleDef, orbit_index_cast, possible_order_index_cast},
 };
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Optimality {
+    pub maybe_min_order_ratio: Option<f64>,
+    pub maybe_max_order_ratio: Option<f64>,
+}
+
+impl Optimality {
+    pub const EQUIVALENT: Self = Self {
+        maybe_min_order_ratio: None,
+        maybe_max_order_ratio: Some(1.0),
+    };
+    pub const OPTIMAL: Self = Self {
+        maybe_min_order_ratio: None,
+        maybe_max_order_ratio: None,
+    };
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ClampOrderRatio {
+    pub max: f64,
+    pub min: f64,
+}
+
 #[derive(Clone, Copy, Default, Debug)]
-pub enum Optimality {
-    Equivalent,
+pub(crate) enum ValidatedNumCores {
     #[default]
-    Optimal,
-    // TODO: min order ratio
-    MaxOrderRatio(f64),
+    AllCores,
+    Num(NonZeroUsize),
 }
 
 #[derive(Clone, Copy, Default, Debug)]
 pub enum NumCores {
     #[default]
     AllCores,
-    Num(NonZeroUsize),
+    Num(usize),
+}
+
+#[derive(Clone, Copy, Default, Debug, PartialEq)]
+pub(crate) enum ValidatedSolutionExpansion {
+    #[default]
+    All,
+    Limit(NonZeroUsize),
 }
 
 #[derive(Clone, Copy, Default, Debug, PartialEq)]
 pub enum SolutionExpansion {
     #[default]
     All,
-    Limit(NonZeroUsize),
+    Limit(usize),
 }
 
 impl SolutionExpansion {
-    pub const FIRST: Self = SolutionExpansion::Limit(NonZeroUsize::new(1).unwrap());
+    pub const FIRST: Self = Self::Limit(1);
 }
 
 #[derive(Debug, Clone)]
@@ -77,60 +103,68 @@ pub enum CycleCombinationFinderError {
     PuzzleTooManyOrders,
 }
 
+#[derive(Error, Debug)]
+pub enum CycleCombinationFinderValidationError {
+    #[error("A")]
+    InvalidRegisterCount,
+    #[error("B")]
+    InvalidNumCores,
+    #[error("C")]
+    InvalidMssBatchSize,
+    #[error("D")]
+    InvalidSolutionExpansion,
+    #[error(
+        "Optimality config must have `maybe_min_order_ratio` and `maybe_max_order_ratio` finite \
+         and >= 1.0 if set."
+    )]
+    InvalidOptimality,
+}
+
 #[derive(Clone)]
 pub struct NeedsRegisterCount;
 
 #[derive(Clone)]
-pub struct HasRegisterCount(NonZeroU16);
+pub struct HasRegisterCount(Option<NonZeroU16>);
 
 #[derive(Clone)]
 pub struct NeedsPuzzleDef;
 
 #[derive(Clone)]
-pub struct HasPuzzleDef<'a, const N: usize> {
-    puzzle_def: &'a PuzzleDef<N>,
-    possible_orders_except_one: OnceCell<Arc<[PossibleOrder<N>]>>,
-}
+pub struct HasPuzzleDef<'a, const N: usize>(&'a PuzzleDef<N>);
 
 #[derive(Clone)]
 pub struct CycleCombinationFinder<R, P> {
-    config: CycleCombinationFinderConfig,
     register_count: R,
     puzzle_def: P,
+    optimality: Option<Optimality>,
+    num_cores: Option<ValidatedNumCores>,
+    sorted: bool,
+    maybe_expected_solution_count: Option<usize>,
+    maybe_max_fitting_tries: Option<u32>,
+    solution_expansion: Option<ValidatedSolutionExpansion>,
+    mss_batch_size: Option<NonZeroUsize>,
+    maybe_time_limit: Option<Duration>,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct CycleCombinationFinderConfig {
-    pub optimality: Optimality,
-    pub num_cores: NumCores,
-    pub sorted: bool,
-    pub maybe_expected_solution_count: Option<usize>,
-    pub maybe_max_fitting_tries: Option<u32>,
-    pub solution_expansion: SolutionExpansion,
-    pub mss_batch_size: NonZeroUsize,
-    pub maybe_time_limit: Option<Duration>,
-}
-
-impl Default for CycleCombinationFinderConfig {
-    fn default() -> Self {
-        Self {
-            optimality: Optimality::default(),
-            num_cores: NumCores::default(),
-            sorted: true,
-            maybe_expected_solution_count: None,
-            maybe_max_fitting_tries: None,
-            solution_expansion: SolutionExpansion::default(),
-            mss_batch_size: NonZeroUsize::new(10).unwrap(),
-            maybe_time_limit: None,
-        }
-    }
+#[derive(Clone)]
+pub struct ValidatedCycleCombinationFinder<'a, const N: usize> {
+    pub(crate) register_count: NonZeroU16,
+    pub(crate) puzzle_def: &'a PuzzleDef<N>,
+    pub(crate) optimality: Optimality,
+    pub(crate) num_cores: ValidatedNumCores,
+    pub(crate) sorted: bool,
+    pub(crate) maybe_expected_solution_count: Option<usize>,
+    pub(crate) maybe_max_fitting_tries: Option<u32>,
+    pub(crate) solution_expansion: ValidatedSolutionExpansion,
+    pub(crate) mss_batch_size: NonZeroUsize,
+    pub(crate) maybe_time_limit: Option<Duration>,
 }
 
 impl CycleCombination {
     #[must_use]
-    pub fn orders_fmt<'a, const N: usize>(
-        &'a self,
-        possible_orders_except_one: &'a [PossibleOrder<N>],
+    pub fn orders_fmt<const N: usize>(
+        &self,
+        possible_orders_except_one: &[PossibleOrder<N>],
     ) -> String {
         self.registers
             .iter()
@@ -145,10 +179,10 @@ impl CycleCombination {
     }
 
     #[must_use]
-    pub fn solutions_fmt<'a, const N: usize>(
-        &'a self,
-        possible_orders_except_one: &'a [PossibleOrder<N>],
-        puzzle_def: &'a PuzzleDef<N>,
+    pub fn solutions_fmt<const N: usize>(
+        &self,
+        possible_orders_except_one: &[PossibleOrder<N>],
+        puzzle_def: &PuzzleDef<N>,
     ) -> String {
         let mut ret = String::new();
         for CycleCombinationSolution {
@@ -256,9 +290,17 @@ impl CycleCombinationFinder<NeedsRegisterCount, NeedsPuzzleDef> {
     #[must_use]
     pub fn builder() -> Self {
         CycleCombinationFinder {
-            config: CycleCombinationFinderConfig::default(),
             register_count: NeedsRegisterCount,
             puzzle_def: NeedsPuzzleDef,
+            optimality: Some(Optimality::OPTIMAL),
+            num_cores: Some(ValidatedNumCores::default()),
+            sorted: true,
+            maybe_expected_solution_count: None,
+            maybe_max_fitting_tries: None,
+            solution_expansion: Some(ValidatedSolutionExpansion::default()),
+            #[allow(clippy::missing_panics_doc)]
+            mss_batch_size: Some(NonZeroUsize::new(10).unwrap()),
+            maybe_time_limit: None,
         }
     }
 }
@@ -266,25 +308,40 @@ impl CycleCombinationFinder<NeedsRegisterCount, NeedsPuzzleDef> {
 impl<R, P> CycleCombinationFinder<R, P> {
     #[must_use]
     pub fn with_sorted(mut self, sorted: bool) -> Self {
-        self.config.sorted = sorted;
+        self.sorted = sorted;
         self
     }
 
     #[must_use]
     pub fn with_optimality(mut self, optimality: Optimality) -> Self {
-        self.config.optimality = if let Optimality::MaxOrderRatio(max_order_ratio) = optimality
-            && max_order_ratio <= 1.0
-        {
-            Optimality::Equivalent
-        } else {
-            optimality
-        };
+        if let Some(max_order_ratio) = optimality.maybe_max_order_ratio {
+            match max_order_ratio.partial_cmp(&1.0) {
+                Some(Ordering::Less) | None => {
+                    self.optimality = None;
+                    return self;
+                }
+                _ => (),
+            }
+        }
+        if let Some(min_order_ratio) = optimality.maybe_min_order_ratio {
+            match min_order_ratio.partial_cmp(&1.0) {
+                Some(Ordering::Less) | None => {
+                    self.optimality = None;
+                    return self;
+                }
+                _ => (),
+            }
+        }
+        self.optimality = Some(optimality);
         self
     }
 
     #[must_use]
     pub fn with_num_cores(mut self, num_cores: NumCores) -> Self {
-        self.config.num_cores = num_cores;
+        self.num_cores = match num_cores {
+            NumCores::AllCores => Some(ValidatedNumCores::AllCores),
+            NumCores::Num(num) => NonZeroUsize::new(num).map(ValidatedNumCores::Num),
+        };
         self
     }
 
@@ -293,43 +350,55 @@ impl<R, P> CycleCombinationFinder<R, P> {
         mut self,
         maybe_expected_solution_count: Option<usize>,
     ) -> Self {
-        self.config.maybe_expected_solution_count = maybe_expected_solution_count;
+        self.maybe_expected_solution_count = maybe_expected_solution_count;
         self
     }
 
     #[must_use]
     pub fn with_max_fitting_tries(mut self, maybe_max_fitting_tries: Option<u32>) -> Self {
-        self.config.maybe_max_fitting_tries = maybe_max_fitting_tries;
+        self.maybe_max_fitting_tries = maybe_max_fitting_tries;
         self
     }
 
     #[must_use]
     pub fn with_solution_expansion(mut self, solution_expansion: SolutionExpansion) -> Self {
-        self.config.solution_expansion = solution_expansion;
+        self.solution_expansion = match solution_expansion {
+            SolutionExpansion::All => Some(ValidatedSolutionExpansion::All),
+            SolutionExpansion::Limit(limit) => {
+                NonZeroUsize::new(limit).map(ValidatedSolutionExpansion::Limit)
+            }
+        };
         self
     }
 
     #[must_use]
-    pub fn with_mss_batch_size(mut self, mss_batch_size: NonZeroUsize) -> Self {
-        self.config.mss_batch_size = mss_batch_size;
+    pub fn with_mss_batch_size(mut self, mss_batch_size: usize) -> Self {
+        self.mss_batch_size = NonZeroUsize::new(mss_batch_size);
         self
     }
 
     #[must_use]
     pub fn with_time_limit(mut self, maybe_time_limit: Option<Duration>) -> Self {
-        self.config.maybe_time_limit = maybe_time_limit;
+        self.maybe_time_limit = maybe_time_limit;
         self
     }
 
     #[must_use]
     pub fn with_register_count(
         self,
-        register_count: NonZeroU16,
+        register_count: u16,
     ) -> CycleCombinationFinder<HasRegisterCount, P> {
         CycleCombinationFinder {
-            config: self.config,
-            register_count: HasRegisterCount(register_count),
+            register_count: HasRegisterCount(NonZeroU16::new(register_count)),
             puzzle_def: self.puzzle_def,
+            optimality: self.optimality,
+            num_cores: self.num_cores,
+            sorted: self.sorted,
+            maybe_expected_solution_count: self.maybe_expected_solution_count,
+            maybe_max_fitting_tries: self.maybe_max_fitting_tries,
+            solution_expansion: self.solution_expansion,
+            mss_batch_size: self.mss_batch_size,
+            maybe_time_limit: self.maybe_time_limit,
         }
     }
 
@@ -339,12 +408,16 @@ impl<R, P> CycleCombinationFinder<R, P> {
         puzzle_def: &PuzzleDef<N>,
     ) -> CycleCombinationFinder<R, HasPuzzleDef<'_, N>> {
         CycleCombinationFinder {
-            config: self.config,
             register_count: self.register_count,
-            puzzle_def: HasPuzzleDef {
-                puzzle_def,
-                possible_orders_except_one: OnceCell::default(),
-            },
+            puzzle_def: HasPuzzleDef(puzzle_def),
+            optimality: self.optimality,
+            num_cores: self.num_cores,
+            sorted: self.sorted,
+            maybe_expected_solution_count: self.maybe_expected_solution_count,
+            maybe_max_fitting_tries: self.maybe_max_fitting_tries,
+            solution_expansion: self.solution_expansion,
+            mss_batch_size: self.mss_batch_size,
+            maybe_time_limit: self.maybe_time_limit,
         }
     }
 }
@@ -383,13 +456,47 @@ pub(crate) fn mk_possible_orders_except_one<const N: usize>(
     possible_orders_except_one
 }
 
-impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'_, N>> {
+impl<'a, const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'a, N>> {
+    /// Validate the builder.
+    ///
+    /// # Errors
+    ///
+    /// Errors following the variants of `CycleCombinationFinderValidationError`.
+    pub fn validate(
+        self,
+    ) -> Result<ValidatedCycleCombinationFinder<'a, N>, CycleCombinationFinderValidationError> {
+        Ok(ValidatedCycleCombinationFinder {
+            register_count: self
+                .register_count
+                .0
+                .ok_or(CycleCombinationFinderValidationError::InvalidRegisterCount)?,
+            puzzle_def: self.puzzle_def.0,
+            optimality: self
+                .optimality
+                .ok_or(CycleCombinationFinderValidationError::InvalidOptimality)?,
+            num_cores: self
+                .num_cores
+                .ok_or(CycleCombinationFinderValidationError::InvalidNumCores)?,
+            sorted: self.sorted,
+            maybe_expected_solution_count: self.maybe_expected_solution_count,
+            maybe_max_fitting_tries: self.maybe_max_fitting_tries,
+            solution_expansion: self
+                .solution_expansion
+                .ok_or(CycleCombinationFinderValidationError::InvalidSolutionExpansion)?,
+            mss_batch_size: self
+                .mss_batch_size
+                .ok_or(CycleCombinationFinderValidationError::InvalidMssBatchSize)?,
+            maybe_time_limit: self.maybe_time_limit,
+        })
+    }
+}
+
+impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
     /// Search for CCF solutions in parallel.
     ///
     /// # Errors
     ///
-    /// Errors if the puzzle specified during initialization has too many orders
-    /// of elements. In other words, if your puzzle is unreasonably large.
+    /// Errors follow the variants for [`CycleCombinationFinderError`].
     ///
     /// # Panics
     ///
@@ -397,48 +504,32 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'_, N
     /// [`Self::with_expected_length_assertion`] and the solutions length
     /// mismatches.
     pub fn find(self) -> Result<CycleCombinations<N>, CycleCombinationFinderError> {
-        let HasRegisterCount(exact_register_count) = self.register_count;
-        let HasPuzzleDef {
-            puzzle_def,
-            possible_orders_except_one,
-        } = self.puzzle_def;
-        let maybe_pool = if let NumCores::Num(num_cores) = self.config.num_cores {
-            Some(
+        let maybe_pool = match self.num_cores {
+            ValidatedNumCores::AllCores => None,
+            ValidatedNumCores::Num(num_cores) => Some(
                 rayon::ThreadPoolBuilder::new()
                     .num_threads(num_cores.get())
                     .build()
                     .unwrap(),
-            )
-        } else {
-            None
+            ),
         };
 
-        let possible_orders_except_one = possible_orders_except_one.get_or_try_init(|| {
-            let possible_orders = puzzle_def
-                .possible_orders(maybe_pool.as_ref())
-                .ok_or(CycleCombinationFinderError::PuzzleTooManyOrders)?;
-            let possible_orders_except_one =
-                mk_possible_orders_except_one(puzzle_def, possible_orders);
-            Ok(Arc::from(possible_orders_except_one.into_boxed_slice()))
-        })?;
-        let mut all_possible_registers = match self.config.optimality {
-            Optimality::Equivalent => unimplemented!(),
-            Optimality::Optimal => search_dfs(
-                puzzle_def,
-                &self.config,
-                possible_orders_except_one,
-                exact_register_count,
-                None,
-            ),
-            Optimality::MaxOrderRatio(max_order_ratio) => search_dfs(
-                puzzle_def,
-                &self.config,
-                possible_orders_except_one,
-                exact_register_count,
-                Some(max_order_ratio),
-            ),
+        // let possible_orders_except_one: &Arc<[PossibleOrder<N>]> =
+        //     self.possible_orders_except_one.get_or_try_init(|| {
+        let possible_orders = self
+            .puzzle_def
+            .possible_orders(maybe_pool.as_ref())
+            .ok_or(CycleCombinationFinderError::PuzzleTooManyOrders)?;
+        let possible_orders_except_one =
+            mk_possible_orders_except_one(self.puzzle_def, possible_orders);
+        let possible_orders_except_one = Arc::from(possible_orders_except_one.into_boxed_slice());
+
+        let mut all_possible_registers = if self.optimality == Optimality::EQUIVALENT {
+            unimplemented!()
+        } else {
+            self.search_dfs(&possible_orders_except_one)
         };
-        if self.config.sorted {
+        if self.sorted {
             all_possible_registers.sort_unstable();
         }
         let expansion_percent_done = AtomicUsize::new(0);
@@ -449,15 +540,7 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'_, N
             all_possible_registers
                 .into_par_iter()
                 .map_init(
-                    || {
-                        CycleCombinationSolutionsCalculator::new(
-                            puzzle_def,
-                            possible_orders_except_one,
-                            exact_register_count,
-                            self.config.solution_expansion,
-                            self.config.maybe_max_fitting_tries,
-                        )
-                    },
+                    || self.solutions_calculator(&possible_orders_except_one),
                     |solutions_calculator, possible_registers| {
                         expand_possible_register(
                             solutions_calculator,
@@ -485,7 +568,7 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'_, N
                 .map(|cycle_combination| cycle_combination.solutions.0.len())
                 .sum::<usize>()
         );
-        if let Some(expected_solution_count) = self.config.maybe_expected_solution_count {
+        if let Some(expected_solution_count) = self.maybe_expected_solution_count {
             assert_eq!(
                 cycle_combinations.len(),
                 expected_solution_count,
@@ -493,7 +576,10 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'_, N
                 cycle_combinations.len(),
                 cycle_combinations
                     .into_iter()
-                    .map(|i| dbg_registers(i.registers.iter().copied(), possible_orders_except_one))
+                    .map(|i| dbg_registers(
+                        i.registers.iter().copied(),
+                        &possible_orders_except_one
+                    ))
                     .collect::<Vec<_>>()
                     .join("\n")
             );
@@ -501,20 +587,16 @@ impl<const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'_, N
         }
         Ok(CycleCombinations {
             cycle_combinations,
-            possible_orders_except_one: Arc::clone(possible_orders_except_one),
+            possible_orders_except_one,
         })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::num::{NonZeroU16, NonZeroUsize};
-
     use crate::{
         finder::{
-            CycleCombinationFinder, CycleCombinations,
-            NumCores::{self},
-            Optimality, SolutionExpansion,
+            CycleCombinationFinder, CycleCombinations, NumCores, Optimality, SolutionExpansion,
         },
         puzzle::{
             cubeN::{CUBE3, CUBE4},
@@ -541,8 +623,10 @@ mod tests {
         let minx3 = MINX3.clone();
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx3)
-            .with_mss_batch_size(NonZeroUsize::new(10).unwrap())
-            .with_register_count(NonZeroU16::new(2).unwrap())
+            .with_mss_batch_size(10)
+            .with_register_count(2)
+            .validate()
+            .unwrap()
             .find()
             .unwrap();
 
@@ -559,9 +643,14 @@ mod tests {
         let minx3 = MINX3.clone();
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx3)
-            .with_optimality(Optimality::MaxOrderRatio(1.01))
-            .with_num_cores(NumCores::Num(NonZeroUsize::new(1).unwrap()))
-            .with_register_count(NonZeroU16::new(3).unwrap())
+            .with_optimality(Optimality {
+                maybe_max_order_ratio: Some(1.01),
+                maybe_min_order_ratio: None,
+            })
+            .with_num_cores(NumCores::Num(1))
+            .with_register_count(3)
+            .validate()
+            .unwrap()
             .find()
             .unwrap();
 
@@ -578,7 +667,9 @@ mod tests {
         let minx3 = MINX3.clone();
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx3)
-            .with_register_count(NonZeroU16::new(4).unwrap())
+            .with_register_count(4)
+            .validate()
+            .unwrap()
             .find()
             .unwrap();
 
@@ -592,8 +683,13 @@ mod tests {
         let minx3 = MINX3.clone();
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx3)
-            .with_register_count(NonZeroU16::new(5).unwrap())
-            .with_optimality(Optimality::MaxOrderRatio(10.0))
+            .with_register_count(5)
+            .with_optimality(Optimality {
+                maybe_min_order_ratio: Some(10.0),
+                maybe_max_order_ratio: None,
+            })
+            .validate()
+            .unwrap()
             .find()
             .unwrap();
 
@@ -610,8 +706,13 @@ mod tests {
         let minx3 = MINX3.clone();
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx3)
-            .with_register_count(NonZeroU16::new(6).unwrap())
-            .with_optimality(Optimality::MaxOrderRatio(10.0))
+            .with_register_count(6)
+            .with_optimality(Optimality {
+                maybe_max_order_ratio: Some(10.0),
+                maybe_min_order_ratio: None,
+            })
+            .validate()
+            .unwrap()
             .find()
             .unwrap();
 
@@ -628,8 +729,10 @@ mod tests {
         let minx4 = MINX4.clone();
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx4)
-            .with_register_count(NonZeroU16::new(2).unwrap())
-            .with_mss_batch_size(NonZeroUsize::new(1).unwrap())
+            .with_register_count(2)
+            .with_mss_batch_size(1)
+            .validate()
+            .unwrap()
             .find()
             .unwrap();
 
@@ -643,11 +746,13 @@ mod tests {
         let minx4 = MINX4.clone();
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx4)
-            .with_register_count(NonZeroU16::new(3).unwrap())
-            .with_mss_batch_size(NonZeroUsize::new(10000).unwrap())
+            .with_register_count(3)
+            .with_mss_batch_size(10000)
             .with_expected_solutions_count_assertion(Some(296))
             // .with_time_limit(None)
             // .with_optimality(Optimality::MaxOrderRatio(5.0))
+            .validate()
+            .unwrap()
             .find()
             .unwrap();
 
@@ -661,8 +766,13 @@ mod tests {
         let minx4 = MINX4.clone();
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx4)
-            .with_register_count(NonZeroU16::new(4).unwrap())
-            .with_optimality(Optimality::MaxOrderRatio(10.0))
+            .with_register_count(4)
+            .with_optimality(Optimality {
+                maybe_max_order_ratio: Some(10.0),
+                maybe_min_order_ratio: None,
+            })
+            .validate()
+            .unwrap()
             .find()
             .unwrap();
 
@@ -679,8 +789,13 @@ mod tests {
         let minx4 = MINX4.clone();
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx4)
-            .with_register_count(NonZeroU16::new(5).unwrap())
-            .with_optimality(Optimality::MaxOrderRatio(10.0))
+            .with_register_count(5)
+            .with_optimality(Optimality {
+                maybe_max_order_ratio: Some(10.0),
+                maybe_min_order_ratio: None,
+            })
+            .validate()
+            .unwrap()
             .find()
             .unwrap();
 
@@ -697,9 +812,11 @@ mod tests {
         let minx5 = MINX5.clone();
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx5)
-            .with_register_count(NonZeroU16::new(2).unwrap())
-            .with_mss_batch_size(NonZeroUsize::new(10000).unwrap())
+            .with_register_count(2)
+            .with_mss_batch_size(10000)
             .with_expected_solutions_count_assertion(Some(33))
+            .validate()
+            .unwrap()
             .find()
             .unwrap();
 
@@ -713,11 +830,13 @@ mod tests {
         let minx5 = MINX5.clone();
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx5)
-            .with_register_count(NonZeroU16::new(3).unwrap())
+            .with_register_count(3)
             // .with_max_fitting_tries(Some(500))
             // .with_optimality(Optimality::MaxOrderRatio(1.0))
-            .with_solution_expansion(SolutionExpansion::Limit(NonZeroUsize::new(10).unwrap()))
-            .with_mss_batch_size(NonZeroUsize::new(100).unwrap())
+            .with_solution_expansion(SolutionExpansion::Limit(10))
+            .with_mss_batch_size(100)
+            .validate()
+            .unwrap()
             .find()
             .unwrap();
 
@@ -731,7 +850,9 @@ mod tests {
         let cube3 = CUBE3.clone();
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&cube3)
-            .with_register_count(NonZeroU16::new(4).unwrap())
+            .with_register_count(4)
+            .validate()
+            .unwrap()
             .find()
             .unwrap();
 
@@ -748,7 +869,9 @@ mod tests {
         let cube3 = CUBE3.clone();
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&cube3)
-            .with_register_count(NonZeroU16::new(3).unwrap())
+            .with_register_count(3)
+            .validate()
+            .unwrap()
             .find()
             .unwrap();
 
@@ -765,7 +888,9 @@ mod tests {
         let cube4 = CUBE4.clone();
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&cube4)
-            .with_register_count(NonZeroU16::new(2).unwrap())
+            .with_register_count(2)
+            .validate()
+            .unwrap()
             .find()
             .unwrap();
 

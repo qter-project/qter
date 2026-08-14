@@ -1,7 +1,5 @@
 #![warn(clippy::pedantic)]
 
-use std::num::NonZeroU16;
-
 use cycle_combination_finder::{
     finder::{CycleCombinationFinder, Optimality},
     puzzle::minxN::MINX3,
@@ -16,7 +14,9 @@ fn optimal_2() {
     let minx3 = MINX3.clone();
     let cycle_combinations = CycleCombinationFinder::builder()
         .with_puzzle_def(&minx3)
-        .with_register_count(NonZeroU16::new(2).unwrap())
+        .with_register_count(2)
+        .validate()
+        .unwrap()
         .find()
         .unwrap();
     assert_eq!(
@@ -45,7 +45,9 @@ fn optimal_3() {
     let minx3 = MINX3.clone();
     let cycle_combinations = CycleCombinationFinder::builder()
         .with_puzzle_def(&minx3)
-        .with_register_count(NonZeroU16::new(3).unwrap())
+        .with_register_count(3)
+        .validate()
+        .unwrap()
         .find()
         .unwrap();
     assert_eq!(
@@ -75,8 +77,10 @@ fn equivalent_2() {
     let minx3 = MINX3.clone();
     let cycle_combinations = CycleCombinationFinder::builder()
         .with_puzzle_def(&minx3)
-        .with_register_count(NonZeroU16::new(2).unwrap())
-        .with_optimality(Optimality::Equivalent)
+        .with_register_count(2)
+        .with_optimality(Optimality::EQUIVALENT)
+        .validate()
+        .unwrap()
         .find()
         .unwrap();
     assert_eq!(cycles(cycle_combinations), vec![vec![5040, 5040]]);
@@ -87,8 +91,10 @@ fn equivalent_3() {
     let minx3 = MINX3.clone();
     let cycle_combinations = CycleCombinationFinder::builder()
         .with_puzzle_def(&minx3)
-        .with_register_count(NonZeroU16::new(3).unwrap())
-        .with_optimality(Optimality::Equivalent)
+        .with_register_count(3)
+        .with_optimality(Optimality::EQUIVALENT)
+        .validate()
+        .unwrap()
         .find()
         .unwrap();
     assert_eq!(cycles(cycle_combinations), vec![vec![630, 630, 630]]);

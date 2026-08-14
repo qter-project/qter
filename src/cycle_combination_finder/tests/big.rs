@@ -1,7 +1,5 @@
 #![warn(clippy::pedantic)]
 
-use std::num::NonZeroU16;
-
 use cycle_combination_finder::{finder::CycleCombinationFinder, puzzle::misc::BIG1};
 
 use crate::common::cycles;
@@ -13,7 +11,9 @@ fn optimal_2() {
     let big = BIG1.clone();
     let cycle_combinations = CycleCombinationFinder::builder()
         .with_puzzle_def(&big)
-        .with_register_count(NonZeroU16::new(2).unwrap())
+        .with_register_count(2)
+        .validate()
+        .unwrap()
         .find()
         .unwrap();
     assert_eq!(

@@ -1,7 +1,5 @@
 #![warn(clippy::pedantic)]
 
-use std::num::NonZeroU16;
-
 use cycle_combination_finder::{
     finder::{CycleCombinationFinder, Optimality},
     puzzle::cubeN::CUBE3,
@@ -16,7 +14,9 @@ fn optimal_2() {
     let cube3 = CUBE3.clone();
     let cycle_combinations = CycleCombinationFinder::builder()
         .with_puzzle_def(&cube3)
-        .with_register_count(NonZeroU16::new(2).unwrap())
+        .with_register_count(2)
+        .validate()
+        .unwrap()
         .find()
         .unwrap();
     assert_eq!(
@@ -39,7 +39,9 @@ fn optimal_3() {
     let cube3 = CUBE3.clone();
     let cycle_combinations = CycleCombinationFinder::builder()
         .with_puzzle_def(&cube3)
-        .with_register_count(NonZeroU16::new(3).unwrap())
+        .with_register_count(3)
+        .validate()
+        .unwrap()
         .find()
         .unwrap();
     assert_eq!(
@@ -63,7 +65,9 @@ fn optimal_4() {
     let cube3 = CUBE3.clone();
     let cycle_combinations = CycleCombinationFinder::builder()
         .with_puzzle_def(&cube3)
-        .with_register_count(NonZeroU16::new(4).unwrap())
+        .with_register_count(4)
+        .validate()
+        .unwrap()
         .find()
         .unwrap();
     assert_eq!(
@@ -83,7 +87,9 @@ fn optimal_5() {
     let cube3 = CUBE3.clone();
     let cycle_combinations = CycleCombinationFinder::builder()
         .with_puzzle_def(&cube3)
-        .with_register_count(NonZeroU16::new(5).unwrap())
+        .with_register_count(5)
+        .validate()
+        .unwrap()
         .find()
         .unwrap();
     assert_eq!(
@@ -103,8 +109,10 @@ fn equivalent_2() {
     let cube3 = CUBE3.clone();
     let cycle_combinations = CycleCombinationFinder::builder()
         .with_puzzle_def(&cube3)
-        .with_register_count(NonZeroU16::new(2).unwrap())
-        .with_optimality(Optimality::Equivalent)
+        .with_register_count(2)
+        .with_optimality(Optimality::EQUIVALENT)
+        .validate()
+        .unwrap()
         .find()
         .unwrap();
     assert_eq!(cycles(cycle_combinations), vec![vec![90, 90]]);
@@ -115,8 +123,10 @@ fn equivalent_3() {
     let cube3 = CUBE3.clone();
     let cycle_combinations = CycleCombinationFinder::builder()
         .with_puzzle_def(&cube3)
-        .with_register_count(NonZeroU16::new(3).unwrap())
-        .with_optimality(Optimality::Equivalent)
+        .with_register_count(3)
+        .with_optimality(Optimality::EQUIVALENT)
+        .validate()
+        .unwrap()
         .find()
         .unwrap();
     assert_eq!(cycles(cycle_combinations), vec![vec![30, 30, 30]]);
