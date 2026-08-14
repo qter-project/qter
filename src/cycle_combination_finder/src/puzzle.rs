@@ -198,7 +198,7 @@ impl<const N: usize> PuzzleDef<N> {
                     }
                 };
                 PartialOrbitDef {
-                    name: None,
+                    name: Some(ksolve.name().to_string()),
                     piece_count,
                     orientation,
                 }
