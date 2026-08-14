@@ -22,21 +22,17 @@ use crate::{
     puzzle::{PuzzleDef, orbit_index_cast, possible_order_index_cast},
 };
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Optimality {
-    pub maybe_min_order_ratio: Option<f64>,
-    pub maybe_max_order_ratio: Option<f64>,
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum Optimality {
+    #[default]
+    Optimal,
+    MaxOrderRatio(f64),
+    MinOrderRatio(f64),
+    ClampOrderRatio(ClampOrderRatio),
 }
 
 impl Optimality {
-    pub const EQUIVALENT: Self = Self {
-        maybe_min_order_ratio: None,
-        maybe_max_order_ratio: Some(1.0),
-    };
-    pub const OPTIMAL: Self = Self {
-        maybe_min_order_ratio: None,
-        maybe_max_order_ratio: None,
-    };
+    pub const EQUIVALENT: Self = Self::MaxOrderRatio(1.0);
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -292,7 +288,7 @@ impl CycleCombinationFinder<NeedsRegisterCount, NeedsPuzzleDef> {
         CycleCombinationFinder {
             register_count: NeedsRegisterCount,
             puzzle_def: NeedsPuzzleDef,
-            optimality: Some(Optimality::OPTIMAL),
+            optimality: Some(Optimality::Optimal),
             num_cores: Some(ValidatedNumCores::default()),
             sorted: true,
             maybe_expected_solution_count: None,
@@ -314,16 +310,14 @@ impl<R, P> CycleCombinationFinder<R, P> {
 
     #[must_use]
     pub fn with_optimality(mut self, optimality: Optimality) -> Self {
-        if let Some(max_order_ratio) = optimality.maybe_max_order_ratio {
-            match max_order_ratio.partial_cmp(&1.0) {
-                Some(Ordering::Less) | None => {
-                    self.optimality = None;
-                    return self;
-                }
-                _ => (),
-            }
-        }
-        if let Some(min_order_ratio) = optimality.maybe_min_order_ratio {
+        let (maybe_min_order_ratio, maybe_max_order_ratio) = match optimality {
+            Optimality::Optimal => (None, None),
+            Optimality::MaxOrderRatio(max) => (None, Some(max)),
+            Optimality::MinOrderRatio(min) => (Some(min), None),
+            Optimality::ClampOrderRatio(ClampOrderRatio { max, min }) => (Some(min), Some(max)),
+        };
+
+        if let Some(min_order_ratio) = maybe_min_order_ratio {
             match min_order_ratio.partial_cmp(&1.0) {
                 Some(Ordering::Less) | None => {
                     self.optimality = None;
@@ -332,6 +326,16 @@ impl<R, P> CycleCombinationFinder<R, P> {
                 _ => (),
             }
         }
+        if let Some(max_order_ratio) = maybe_max_order_ratio {
+            match max_order_ratio.partial_cmp(&1.0) {
+                Some(Ordering::Less) | None => {
+                    self.optimality = None;
+                    return self;
+                }
+                _ => (),
+            }
+        }
+
         self.optimality = Some(optimality);
         self
     }
@@ -643,10 +647,7 @@ mod tests {
         let minx3 = MINX3.clone();
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx3)
-            .with_optimality(Optimality {
-                maybe_max_order_ratio: Some(1.01),
-                maybe_min_order_ratio: None,
-            })
+            .with_optimality(Optimality::MaxOrderRatio(1.01))
             .with_num_cores(NumCores::Num(1))
             .with_register_count(3)
             .validate()
@@ -684,10 +685,7 @@ mod tests {
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx3)
             .with_register_count(5)
-            .with_optimality(Optimality {
-                maybe_min_order_ratio: Some(10.0),
-                maybe_max_order_ratio: None,
-            })
+            .with_optimality(Optimality::MaxOrderRatio(10.0))
             .validate()
             .unwrap()
             .find()
@@ -707,10 +705,7 @@ mod tests {
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx3)
             .with_register_count(6)
-            .with_optimality(Optimality {
-                maybe_max_order_ratio: Some(10.0),
-                maybe_min_order_ratio: None,
-            })
+            .with_optimality(Optimality::MaxOrderRatio(10.0))
             .validate()
             .unwrap()
             .find()
@@ -767,10 +762,7 @@ mod tests {
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx4)
             .with_register_count(4)
-            .with_optimality(Optimality {
-                maybe_max_order_ratio: Some(10.0),
-                maybe_min_order_ratio: None,
-            })
+            .with_optimality(Optimality::MaxOrderRatio(10.0))
             .validate()
             .unwrap()
             .find()
@@ -790,10 +782,7 @@ mod tests {
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx4)
             .with_register_count(5)
-            .with_optimality(Optimality {
-                maybe_max_order_ratio: Some(10.0),
-                maybe_min_order_ratio: None,
-            })
+            .with_optimality(Optimality::MaxOrderRatio(10.0))
             .validate()
             .unwrap()
             .find()

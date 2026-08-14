@@ -22,7 +22,10 @@ use seize::{Collector, Guard, reclaim};
 use tokio::sync::broadcast::error::TryRecvError as TokioTryRecvError;
 
 use crate::{
-    finder::{PossibleOrder, ValidatedCycleCombinationFinder, ValidatedNumCores},
+    finder::{
+        ClampOrderRatio, Optimality, PossibleOrder, ValidatedCycleCombinationFinder,
+        ValidatedNumCores,
+    },
     nonemptyvec::{NonemptySlice, NonemptyVec},
     pareto_front::CCParetoFront,
     puzzle::possible_orders_len_cast,
@@ -673,6 +676,12 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
         }
         let real_time = Instant::now();
         let cpu_time = ThreadTime::now();
+        let (maybe_min_order_ratio, maybe_max_order_ratio) = match self.optimality {
+            Optimality::Optimal => (None, None),
+            Optimality::MaxOrderRatio(max) => (None, Some(max)),
+            Optimality::MinOrderRatio(min) => (Some(min), None),
+            Optimality::ClampOrderRatio(ClampOrderRatio { max, min }) => (Some(min), Some(max)),
+        };
 
         let mut candidate_count = 0;
         for (i, possible_order) in possible_orders_except_one
@@ -748,7 +757,7 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
                     NonemptySlice::try_from(&possible_orders_except_one[..=i])
             {
                 *mutable.registers.first_mut() = i_u32;
-                if let Some(max_order_ratio) = self.optimality.maybe_max_order_ratio {
+                if let Some(max_order_ratio) = maybe_max_order_ratio {
                     mutable.register_cutoff = possible_orders_len_cast(
                         next_possible_orders.partition_point(|possible_order| {
                             possible_order.order.ln() + max_order_ratio.ln()
@@ -787,7 +796,10 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
         }
     }
 
-    pub(crate) fn search_dfs(&self, possible_orders_except_one: &[PossibleOrder<N>]) -> Vec<Arc<[u32]>> {
+    pub(crate) fn search_dfs(
+        &self,
+        possible_orders_except_one: &[PossibleOrder<N>],
+    ) -> Vec<Arc<[u32]>> {
         // If we return a None here then /shrug
         #[allow(clippy::missing_panics_doc)]
         let mut core_ids = core_affinity::get_core_ids().unwrap();
