@@ -6,6 +6,7 @@
     clippy::similar_names
 )]
 #![feature(
+    atomic_ptr_null,
     ptr_as_uninit,
     nonpoison_mutex,
     sync_nonpoison,

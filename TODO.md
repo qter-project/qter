@@ -12,7 +12,7 @@
 - use pruning information when each mpmc solution is pushed: multithread pareto efficient pruning and ignore the first register descending
 - maybe_min_order_ratio
 - a list of numbers such that every number in the list is in the solutions?
-- parity
+- parity; look in stash!
 - fit equal fitting cycles first into orbis
 - generate less possible orders with optimality not equivalent, see asher's code
 - note that batching "ramps up" the mkp threads when the batch size is large; there are few solutions/batch in the beginning which helps make sure the 

@@ -45,6 +45,7 @@ struct CycleCombinationsTreeShard<'a> {
     candidates_sender_capacity: usize,
     batch_size: NonZeroUsize,
     collector: &'a Collector,
+    pareto_efficient_pruning: &'a AtomicPtr<u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -158,7 +159,6 @@ impl CycleCombinationsTreeShard<'_> {
     /// `register_index` must be less than `self.exact_register_count()`.
     unsafe fn search_dfs_recur<const N: usize>(
         &mut self,
-        pareto_efficient_pruning: &AtomicPtr<u32>,
         possible_orders_except_one: NonemptySlice<'_, PossibleOrder<N>>,
         register_index: NonZeroU16,
         remaining_piece_count: NonZeroU32,
@@ -179,7 +179,7 @@ impl CycleCombinationsTreeShard<'_> {
 
             let guard = self.collector.enter();
             let maybe_raw_pruning =
-                guard.protect(pareto_efficient_pruning, atomic::Ordering::Acquire);
+                guard.protect(self.pareto_efficient_pruning, atomic::Ordering::Acquire);
             if let Some(raw_pruning) = NonNull::new(maybe_raw_pruning) {
                 // SAFETY: `raw_pruning` is guaranteed to point to
                 // `self.exact_register_count().get().saturating_sub(2) + 1` u32s. The caller
@@ -241,7 +241,6 @@ impl CycleCombinationsTreeShard<'_> {
                     // branch, and caller guarantees we are less
                     unsafe {
                         self.search_dfs_recur(
-                            pareto_efficient_pruning,
                             curr_possible_orders_except_one,
                             next_register_index,
                             next_remaining_piece_count,
@@ -667,7 +666,6 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
         num_cores: usize,
         exact_piece_count: NonZeroU32,
         mut shard: CycleCombinationsTreeShard,
-        pareto_efficient_pruning: &AtomicPtr<u32>,
         possible_orders_except_one: &[PossibleOrder<N>],
         collector: &Collector,
         old_bucket: &Mutex<usize>,
@@ -709,7 +707,7 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
             let guard = collector.enter();
             // Synchronize with the data in the try_update CAS loop
             let maybe_raw_pruning =
-                guard.protect(pareto_efficient_pruning, atomic::Ordering::Acquire);
+                guard.protect(self.pareto_efficient_pruning, atomic::Ordering::Acquire);
             if let Some(raw_pruning) = NonNull::new(maybe_raw_pruning) {
                 // SAFETY: `solutions_thread` guarantees `raw_pruning` points to at least one
                 // element
@@ -771,7 +769,6 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
                 }
                 unsafe {
                     shard.search_dfs_recur(
-                        pareto_efficient_pruning,
                         next_possible_orders_except_one,
                         NonZeroU16::new(1).unwrap(),
                         next_remaining_piece_count,
@@ -819,8 +816,11 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
         let (solutions_sender, _) =
             tokio::sync::broadcast::channel(num_cores * self.mss_batch_size.get());
 
+        let pareto_efficient_prunings = (0..num_cores)
+            .map(|_| AtomicPtr::default())
+            .collect::<Box<[_]>>();
         let collector = Collector::new();
-        
+
         // We can unwrap because `exact_register_count` is NonZero.
         #[allow(clippy::missing_panics_doc)]
         let base_shard = CycleCombinationsTreeShard {
@@ -840,6 +840,7 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
             candidates_sender_capacity,
             batch_size: self.mss_batch_size,
             collector: &collector,
+            pareto_efficient_pruning: &AtomicPtr::null(),
         };
 
         let mut candidate_count = 0;
@@ -856,9 +857,6 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
         let mut sender_lens = 0;
         let mut smallest_fronts = BinaryHeap::new();
 
-        let pareto_efficient_prunings = (0..num_cores)
-            .map(|_| AtomicPtr::default())
-            .collect::<Box<[_]>>();
         // We are allowed to unwrap because `orbit_defs` is non-empty, and `piece_count`
         // is a NonZero. Therefore the sum must be non-zero.
         let exact_piece_count = NonZeroU32::new(
@@ -885,6 +883,8 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
                     shard
                         .batch_packed_queue
                         .extend(std::iter::repeat_n(0, self.mss_batch_size.get()));
+                    shard.pareto_efficient_pruning = pareto_efficient_pruning;
+
                     let collector = &collector;
                     let old_bucket = &old_bucket;
                     let time_limit_reached = &time_limit_reached;
@@ -895,7 +895,6 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
                             num_cores,
                             exact_piece_count,
                             shard,
-                            pareto_efficient_pruning,
                             possible_orders_except_one,
                             collector,
                             old_bucket,
