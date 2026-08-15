@@ -64,6 +64,10 @@ pub enum NumCores {
     Num(usize),
 }
 
+impl NumCores {
+    pub const ONE: Self = NumCores::Num(1);
+}
+
 #[derive(Clone, Copy, Default, Debug, PartialEq)]
 pub(crate) enum ValidatedSolutionExpansion {
     #[default]

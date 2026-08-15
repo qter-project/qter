@@ -250,9 +250,7 @@ impl<'a, const N: usize> ValidatedCycleCombinationFinder<'a, N> {
             })
             .collect::<Box<[_]>>();
         let initial_register_orbit_constraints = register_orbit_constraints.clone();
-        let orbit_remaining_pieces = self
-            .puzzle_def
-            .orbit_defs()
+        let orbit_remaining_pieces = orbit_defs
             .iter()
             .map(|orbit_def| OrbitRemainingPieces {
                 unused: orbit_def.piece_count.get(),
@@ -287,6 +285,7 @@ impl<'a, const N: usize> ValidatedCycleCombinationFinder<'a, N> {
 }
 
 impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
+    // TODO: inline this more for previous calls
     fn recursive_backtrack(&mut self, registers: DisjointRegisters) -> bool {
         if let Some(&mut (initial_fitting_tries, ref mut remaining_fitting_tries)) =
             self.maybe_fitting_tries.as_mut()

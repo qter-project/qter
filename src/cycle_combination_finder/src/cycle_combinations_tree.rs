@@ -29,7 +29,7 @@ use crate::{
 };
 
 #[derive(Clone)]
-struct CycleCombinationsTreeShard {
+struct CycleCombinationsTreeShard<'a> {
     fails: u64,
     batch_packed_queue: Vec<u32>,
     sends: u64,
@@ -38,12 +38,13 @@ struct CycleCombinationsTreeShard {
     sender_lens: usize,
     curr_batch_len: usize,
     registers: NonemptyVec<u32>,
-    register_cutoff: u32,
+    lower_index_cutoff: u32,
     candidates_sender: mpmc::Sender<PackedCycleCombinationCandidateQueue>,
     candidate_count: u64,
 
     candidates_sender_capacity: usize,
     batch_size: NonZeroUsize,
+    collector: &'a Collector,
 }
 
 #[derive(Debug, Clone)]
@@ -90,7 +91,7 @@ struct TreeProfileInfo {
     num_cores: usize,
 }
 
-impl CycleCombinationsTreeShard {
+impl CycleCombinationsTreeShard<'_> {
     fn exact_register_count(&self) -> NonZeroU16 {
         // Cast truncation is fine because `self.registers` is the length of the number
         // of registers, which is a `NonZeroU16`
@@ -154,10 +155,9 @@ impl CycleCombinationsTreeShard {
 
     /// # Safety
     ///
-    /// `register_index` must be less than `mutable.exact_register_count()`.
+    /// `register_index` must be less than `self.exact_register_count()`.
     unsafe fn search_dfs_recur<const N: usize>(
         &mut self,
-        collector: &Collector,
         pareto_efficient_pruning: &AtomicPtr<u32>,
         possible_orders_except_one: NonemptySlice<'_, PossibleOrder<N>>,
         register_index: NonZeroU16,
@@ -172,11 +172,12 @@ impl CycleCombinationsTreeShard {
             let (possible_order, next_possible_orders_except_one) =
                 curr_possible_orders_except_one.split_last();
             let i = possible_orders_len_cast(next_possible_orders_except_one.len());
-            if i < self.register_cutoff {
+            // TODO: inline this in previous call
+            if i < self.lower_index_cutoff {
                 break;
             }
 
-            let guard = collector.enter();
+            let guard = self.collector.enter();
             let maybe_raw_pruning =
                 guard.protect(pareto_efficient_pruning, atomic::Ordering::Acquire);
             if let Some(raw_pruning) = NonNull::new(maybe_raw_pruning) {
@@ -197,6 +198,7 @@ impl CycleCombinationsTreeShard {
                     )
                 };
                 let (&max_last_register_order, pareto_efficent_prunes) = raw_pruning.split_first();
+                // TODO: empty?
                 if i <= max_last_register_order
                     && self
                         .registers
@@ -239,7 +241,6 @@ impl CycleCombinationsTreeShard {
                     // branch, and caller guarantees we are less
                     unsafe {
                         self.search_dfs_recur(
-                            collector,
                             pareto_efficient_pruning,
                             curr_possible_orders_except_one,
                             next_register_index,
@@ -697,6 +698,12 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
             if time_limit_reached.load(atomic::Ordering::Relaxed) {
                 break;
             }
+            // TODO
+            // 9 8 7 6
+            // 6
+            // 16 8 4 2
+            // 4
+            // i * r^(c - 1)
             let i_u32 = possible_orders_len_cast(i);
 
             let guard = collector.enter();
@@ -755,7 +762,7 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
             {
                 *shard.registers.first_mut() = i_u32;
                 if let Some(max_order_ratio) = maybe_max_order_ratio {
-                    shard.register_cutoff = possible_orders_len_cast(
+                    shard.lower_index_cutoff = possible_orders_len_cast(
                         next_possible_orders_except_one.partition_point(|possible_order| {
                             possible_order.order.ln() + max_order_ratio.ln()
                                 < next_possible_orders_except_one.last().order.ln()
@@ -764,7 +771,6 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
                 }
                 unsafe {
                     shard.search_dfs_recur(
-                        collector,
                         pareto_efficient_pruning,
                         next_possible_orders_except_one,
                         NonZeroU16::new(1).unwrap(),
@@ -813,6 +819,8 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
         let (solutions_sender, _) =
             tokio::sync::broadcast::channel(num_cores * self.mss_batch_size.get());
 
+        let collector = Collector::new();
+        
         // We can unwrap because `exact_register_count` is NonZero.
         #[allow(clippy::missing_panics_doc)]
         let base_shard = CycleCombinationsTreeShard {
@@ -825,12 +833,13 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
             curr_batch_len: 0,
             registers: NonemptyVec::try_from(vec![0; usize::from(self.register_count.get())])
                 .unwrap(),
-            register_cutoff: 0,
+            lower_index_cutoff: 0,
             candidates_sender,
             candidate_count: 0,
 
             candidates_sender_capacity,
             batch_size: self.mss_batch_size,
+            collector: &collector,
         };
 
         let mut candidate_count = 0;
@@ -861,7 +870,6 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
         )
         .unwrap();
         let real_time = Instant::now();
-        let collector = Collector::new();
         let old_bucket = Mutex::new(0);
         let time_limit_reached = AtomicBool::new(false);
         std::thread::scope(|s| {
