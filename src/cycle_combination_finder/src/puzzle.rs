@@ -224,7 +224,7 @@ impl<const N: usize> PuzzleDef<N> {
             });
         }
 
-        let (orbit_defs, orbit_names): (Vec<OrbitDef>, Vec<Option<String>>) = partial_orbit_defs
+        let mut orbit_defs_and_names = partial_orbit_defs
             .into_iter()
             .map(
                 |PartialOrbitDef {
@@ -258,9 +258,16 @@ impl<const N: usize> PuzzleDef<N> {
                     Ok((ret, name))
                 },
             )
-            .collect::<Result<Vec<_>, PuzzleDefCreationError>>()?
-            .into_iter()
-            .unzip();
+            .collect::<Result<Vec<_>, PuzzleDefCreationError>>()?;
+ 
+        orbit_defs_and_names.sort_unstable_by(|(a, _), (b, _)| {
+            a.piece_count
+                .cmp(&b.piece_count)
+                .then(a.orientation_count().cmp(&b.orientation_count()))
+        });
+        
+        let (orbit_defs, orbit_names): (Vec<OrbitDef>, Vec<Option<String>>) =
+            orbit_defs_and_names.into_iter().unzip();
         let mut orbit_defs =
             NonemptyVec::try_from(orbit_defs).map_err(|()| PuzzleDefCreationError::NoOrbits)?;
         let orbit_names =
