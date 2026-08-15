@@ -131,14 +131,22 @@ pub struct NeedsRegisterCount;
 #[derive(Clone)]
 pub struct HasRegisterCount(Option<NonZeroU16>);
 
+pub trait RegisterCountState {}
+impl RegisterCountState for NeedsRegisterCount {}
+impl RegisterCountState for HasRegisterCount {}
+
 #[derive(Clone)]
 pub struct NeedsPuzzleDef;
 
 #[derive(Clone)]
 pub struct HasPuzzleDef<'a, const N: usize>(&'a PuzzleDef<N>);
 
+pub trait PuzzleDefState {}
+impl PuzzleDefState for NeedsPuzzleDef {}
+impl<const N: usize> PuzzleDefState for HasPuzzleDef<'_, N> {}
+
 #[derive(Clone)]
-pub struct CycleCombinationFinder<R, P> {
+pub struct CycleCombinationFinder<R: RegisterCountState, P: PuzzleDefState> {
     register_count: R,
     puzzle_def: P,
     optimality: Option<Optimality>,
@@ -310,7 +318,7 @@ impl CycleCombinationFinder<NeedsRegisterCount, NeedsPuzzleDef> {
     }
 }
 
-impl<R, P> CycleCombinationFinder<R, P> {
+impl<R: RegisterCountState, P: PuzzleDefState> CycleCombinationFinder<R, P> {
     #[must_use]
     pub fn with_sorted(mut self, sorted: bool) -> Self {
         self.sorted = sorted;
