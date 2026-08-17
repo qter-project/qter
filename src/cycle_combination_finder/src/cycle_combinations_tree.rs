@@ -707,7 +707,7 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
             let guard = collector.enter();
             // Synchronize with the data in the try_update CAS loop
             let maybe_raw_pruning =
-                guard.protect(self.pareto_efficient_pruning, atomic::Ordering::Acquire);
+                guard.protect(shard.pareto_efficient_pruning, atomic::Ordering::Acquire);
             if let Some(raw_pruning) = NonNull::new(maybe_raw_pruning) {
                 // SAFETY: `solutions_thread` guarantees `raw_pruning` points to at least one
                 // element
