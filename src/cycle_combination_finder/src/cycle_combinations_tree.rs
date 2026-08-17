@@ -92,189 +92,6 @@ struct TreeProfileInfo {
     num_cores: usize,
 }
 
-impl CycleCombinationsTreeShard<'_> {
-    fn exact_register_count(&self) -> NonZeroU16 {
-        // Cast truncation is fine because `self.registers` is the length of the number
-        // of registers, which is a `NonZeroU16`
-        #[allow(clippy::cast_possible_truncation)]
-        // SAFETY: `self.registers.len()` is not zero
-        unsafe {
-            NonZeroU16::new_unchecked(self.registers.len().get() as u16)
-        }
-    }
-
-    fn maybe_send_queue(&mut self, force: bool) {
-        self.curr_batch_len += 1;
-        if self.curr_batch_len < self.batch_size.get() && !force {
-            return;
-        }
-        if log_enabled!(Level::Debug) {
-            let candidate_count = self
-                .batch_packed_queue
-                .iter()
-                .skip(1)
-                .take(self.batch_size.get())
-                .map(|&candidate_count| u64::from(candidate_count))
-                .sum::<u64>();
-            self.candidate_count += candidate_count;
-            let payload =
-                PackedCycleCombinationCandidateQueue(Box::clone_from_ref(&self.batch_packed_queue));
-
-            let len = self.candidates_sender.len();
-            trace!(
-                "{:?}: candidates={candidate_count}; mpmc={len}; fails={}",
-                std::thread::current().id(),
-                self.fails,
-            );
-            if len == self.candidates_sender_capacity {
-                self.full_sends += 1;
-            }
-            if len == 0 {
-                self.empty_sends += 1;
-            }
-            self.sender_lens += len;
-            self.sends += 1;
-            self.fails = 0;
-            // We can unwrap because the senders is only dropped after all threads are
-            // joined.
-            self.candidates_sender.send(payload).unwrap();
-        } else {
-            // We can unwrap because the senders is only dropped after all threads are
-            // joined.
-            self.candidates_sender
-                .send(PackedCycleCombinationCandidateQueue(Box::clone_from_ref(
-                    &self.batch_packed_queue,
-                )))
-                .unwrap();
-        }
-        self.curr_batch_len = 0;
-        self.batch_packed_queue.truncate(self.batch_size.get() + 1);
-        for b in self.batch_packed_queue.iter_mut().skip(1) {
-            *b = 0;
-        }
-    }
-
-    /// # Safety
-    ///
-    /// `register_index` must be less than `self.exact_register_count()`.
-    unsafe fn search_dfs_recur<const N: usize>(
-        &mut self,
-        possible_orders_except_one: NonemptySlice<'_, PossibleOrder<N>>,
-        register_index: NonZeroU16,
-        remaining_piece_count: NonZeroU32,
-    ) {
-        let mut curr_possible_orders_except_one = possible_orders_except_one;
-        // It should never overflow, and I don't want a panic path, so use saturating
-        // logic
-        let next_register_index = register_index.saturating_add(1);
-        let mut candidate_count = 0;
-        loop {
-            let (possible_order, next_possible_orders_except_one) =
-                curr_possible_orders_except_one.split_last();
-            let i = possible_orders_len_cast(next_possible_orders_except_one.len());
-            // TODO: inline this in previous call
-            if i < self.lower_index_cutoff {
-                break;
-            }
-
-            let guard = self.collector.enter();
-            let maybe_raw_pruning =
-                guard.protect(self.pareto_efficient_pruning, atomic::Ordering::Acquire);
-            if let Some(raw_pruning) = NonNull::new(maybe_raw_pruning) {
-                // SAFETY: `raw_pruning` is guaranteed to point to
-                // `self.exact_register_count().get().saturating_sub(2) + 1` u32s. The caller
-                // guarantees `register_index` is less than `self.exact_register_count()`;
-                // therefore we are in bounds
-                let raw_pruning = unsafe {
-                    NonemptySlice::from_raw_parts(
-                        NonNull::slice_from_raw_parts(
-                            raw_pruning,
-                            usize::from(register_index.get()),
-                        )
-                        .as_uninit_slice()
-                        .assume_init_ref()
-                        .as_ptr(),
-                        NonZeroUsize::from(register_index),
-                    )
-                };
-                let (&max_last_register_order, pareto_efficent_prunes) = raw_pruning.split_first();
-                // TODO: empty?
-                if i <= max_last_register_order
-                    && self
-                        .registers
-                        .iter()
-                        .skip(1)
-                        .zip(pareto_efficent_prunes)
-                        .all(|(&register, &pareto_efficient_prune)| {
-                            register <= pareto_efficient_prune
-                        })
-                {
-                    break;
-                }
-            }
-            drop(guard);
-
-            if let Some(next_remaining_piece_count) = remaining_piece_count
-                .get()
-                .checked_sub(u32::from(possible_order.min_piece_count.get()))
-            {
-                if next_register_index == self.exact_register_count() {
-                    if candidate_count == 0 {
-                        self.batch_packed_queue
-                            .extend(self.registers.split_last().1.iter().copied());
-                    }
-                    candidate_count += 1;
-                    self.batch_packed_queue.push(i);
-                } else if let Some(next_remaining_piece_count) =
-                    NonZeroU32::new(next_remaining_piece_count)
-                {
-                    // SAFETY: caller guarantees `register_index < self.exact_register_count()`,
-                    // therefore we are in bounds
-                    let old = std::mem::replace(
-                        unsafe {
-                            self.registers
-                                .get_unchecked_mut(usize::from(register_index.get()))
-                        },
-                        i,
-                    );
-                    // SAFETY: `next_register_index != self.exact_register_count()` in this
-                    // branch, and caller guarantees we are less
-                    unsafe {
-                        self.search_dfs_recur(
-                            curr_possible_orders_except_one,
-                            next_register_index,
-                            next_remaining_piece_count,
-                        );
-                    }
-                    // SAFETY: caller guarantees `register_index < self.exact_register_count()`,
-                    // therefore we are in bounds
-                    unsafe {
-                        *self
-                            .registers
-                            .get_unchecked_mut(usize::from(register_index.get())) = old;
-                    }
-                }
-            }
-            match NonemptySlice::try_from(next_possible_orders_except_one) {
-                Ok(next_possible_orders) => {
-                    curr_possible_orders_except_one = next_possible_orders;
-                }
-                Err(()) => {
-                    break;
-                }
-            }
-        }
-        if next_register_index == self.exact_register_count() {
-            if candidate_count != 0 {
-                self.batch_packed_queue[self.curr_batch_len + 1] = candidate_count;
-                self.maybe_send_queue(false);
-            } else if log_enabled!(Level::Debug) {
-                self.fails += 1;
-            }
-        }
-    }
-}
-
 impl Display for TreeProfileInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         #[allow(clippy::cast_precision_loss)]
@@ -465,7 +282,6 @@ unsafe fn try_next_pareto_efficient_pruning(
                 .prefix_registers
                 .iter()
                 .enumerate()
-                .skip(1)
                 .zip(pareto_efficent_prunes)
             {
                 match &mut maybe_next_pareto_efficient_pruning {
@@ -484,8 +300,7 @@ unsafe fn try_next_pareto_efficient_pruning(
                                         .prefix_registers
                                         .iter()
                                         .copied()
-                                        .skip(1)
-                                        .take(i),
+                                        .take(i + 1),
                                 ),
                             );
                             maybe_next_pareto_efficient_pruning =
@@ -506,11 +321,189 @@ unsafe fn try_next_pareto_efficient_pruning(
     Some(
         Box::into_non_null(
             std::iter::once(disjoint_registers.last_register)
-                .chain(disjoint_registers.prefix_registers.iter().copied().skip(1))
+                .chain(disjoint_registers.prefix_registers.iter().copied())
                 .collect::<Box<_>>(),
         )
         .cast(),
     )
+}
+
+impl CycleCombinationsTreeShard<'_> {
+    fn exact_register_count(&self) -> NonZeroU16 {
+        // Cast truncation is fine because `self.registers` is the length of the number
+        // of registers, which is a `NonZeroU16`
+        #[allow(clippy::cast_possible_truncation)]
+        // SAFETY: `self.registers.len()` is not zero
+        unsafe {
+            NonZeroU16::new_unchecked(self.registers.len().get() as u16)
+        }
+    }
+
+    fn maybe_send_queue(&mut self, force: bool) {
+        self.curr_batch_len += 1;
+        if self.curr_batch_len < self.batch_size.get() && !force {
+            return;
+        }
+        if log_enabled!(Level::Debug) {
+            let candidate_count = self
+                .batch_packed_queue
+                .iter()
+                .skip(1)
+                .take(self.batch_size.get())
+                .map(|&candidate_count| u64::from(candidate_count))
+                .sum::<u64>();
+            self.candidate_count += candidate_count;
+            let payload =
+                PackedCycleCombinationCandidateQueue(Box::clone_from_ref(&self.batch_packed_queue));
+
+            let len = self.candidates_sender.len();
+            trace!(
+                "{:?}: candidates={candidate_count}; mpmc={len}; fails={}",
+                std::thread::current().id(),
+                self.fails,
+            );
+            if len == self.candidates_sender_capacity {
+                self.full_sends += 1;
+            }
+            if len == 0 {
+                self.empty_sends += 1;
+            }
+            self.sender_lens += len;
+            self.sends += 1;
+            self.fails = 0;
+            // We can unwrap because the senders is only dropped after all threads are
+            // joined.
+            self.candidates_sender.send(payload).unwrap();
+        } else {
+            // We can unwrap because the senders is only dropped after all threads are
+            // joined.
+            self.candidates_sender
+                .send(PackedCycleCombinationCandidateQueue(Box::clone_from_ref(
+                    &self.batch_packed_queue,
+                )))
+                .unwrap();
+        }
+        self.curr_batch_len = 0;
+        self.batch_packed_queue.truncate(self.batch_size.get() + 1);
+        for b in self.batch_packed_queue.iter_mut().skip(1) {
+            *b = 0;
+        }
+    }
+
+    /// # Safety
+    ///
+    /// `register_index` must be less than `self.exact_register_count()`.
+    unsafe fn search_dfs_recur<const N: usize>(
+        &mut self,
+        possible_orders_except_one: NonemptySlice<'_, PossibleOrder<N>>,
+        register_index: NonZeroU16,
+        remaining_piece_count: NonZeroU32,
+    ) {
+        let mut curr_possible_orders_except_one = possible_orders_except_one;
+        // It should never overflow, and I don't want a panic path, so use saturating
+        // logic
+        let next_register_index = register_index.saturating_add(1);
+        let mut candidate_count = 0;
+        loop {
+            let (possible_order, next_possible_orders_except_one) =
+                curr_possible_orders_except_one.split_last();
+            let i = possible_orders_len_cast(next_possible_orders_except_one.len());
+            // TODO: inline this in previous call
+            if i < self.lower_index_cutoff {
+                break;
+            }
+
+            let guard = self.collector.enter();
+            let maybe_raw_pruning =
+                guard.protect(self.pareto_efficient_pruning, atomic::Ordering::Acquire);
+            if let Some(raw_pruning) = NonNull::new(maybe_raw_pruning) {
+                // SAFETY: `raw_pruning` is guaranteed to point to
+                // `self.exact_register_count().get().saturating_sub(1) + 1` u32s. The caller
+                // guarantees `register_index` is less than `self.exact_register_count()`;
+                // therefore we are in bounds
+                let raw_pruning = unsafe {
+                    NonemptySlice::from_raw_parts(
+                        NonNull::slice_from_raw_parts(
+                            raw_pruning,
+                            usize::from(next_register_index.get()),
+                        )
+                        .as_uninit_slice()
+                        .assume_init_ref()
+                        .as_ptr(),
+                        NonZeroUsize::from(next_register_index),
+                    )
+                };
+                let (&max_last_register_order, pareto_efficent_prunes) = raw_pruning.split_first();
+                // TODO: empty?
+                if i <= max_last_register_order
+                    && self.registers.iter().zip(pareto_efficent_prunes).all(
+                        |(&register, &pareto_efficient_prune)| register <= pareto_efficient_prune,
+                    )
+                {
+                    break;
+                }
+            }
+            drop(guard);
+
+            if let Some(next_remaining_piece_count) = remaining_piece_count
+                .get()
+                .checked_sub(u32::from(possible_order.min_piece_count.get()))
+            {
+                if next_register_index == self.exact_register_count() {
+                    if candidate_count == 0 {
+                        self.batch_packed_queue
+                            .extend(self.registers.split_last().1.iter().copied());
+                    }
+                    candidate_count += 1;
+                    self.batch_packed_queue.push(i);
+                } else if let Some(next_remaining_piece_count) =
+                    NonZeroU32::new(next_remaining_piece_count)
+                {
+                    // SAFETY: caller guarantees `register_index < self.exact_register_count()`,
+                    // therefore we are in bounds
+                    let old = std::mem::replace(
+                        unsafe {
+                            self.registers
+                                .get_unchecked_mut(usize::from(register_index.get()))
+                        },
+                        i,
+                    );
+                    // SAFETY: `next_register_index != self.exact_register_count()` in this
+                    // branch, and caller guarantees we are less
+                    unsafe {
+                        self.search_dfs_recur(
+                            curr_possible_orders_except_one,
+                            next_register_index,
+                            next_remaining_piece_count,
+                        );
+                    }
+                    // SAFETY: caller guarantees `register_index < self.exact_register_count()`,
+                    // therefore we are in bounds
+                    unsafe {
+                        *self
+                            .registers
+                            .get_unchecked_mut(usize::from(register_index.get())) = old;
+                    }
+                }
+            }
+            match NonemptySlice::try_from(next_possible_orders_except_one) {
+                Ok(next_possible_orders) => {
+                    curr_possible_orders_except_one = next_possible_orders;
+                }
+                Err(()) => {
+                    break;
+                }
+            }
+        }
+        if next_register_index == self.exact_register_count() {
+            if candidate_count != 0 {
+                self.batch_packed_queue[self.curr_batch_len + 1] = candidate_count;
+                self.maybe_send_queue(false);
+            } else if log_enabled!(Level::Debug) {
+                self.fails += 1;
+            }
+        }
+    }
 }
 
 impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
@@ -533,7 +526,7 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
         let mut processed_candidate_count = 0;
         let mut post_candidate_count = 0;
         let raw_pruning_len =
-            NonZeroUsize::new(usize::from(self.register_count.get().saturating_sub(2) + 1))
+            NonZeroUsize::new(usize::from(self.register_count.get().saturating_sub(1) + 1))
                 .unwrap();
         let real_time = Instant::now();
         let cpu_time = ThreadTime::now();

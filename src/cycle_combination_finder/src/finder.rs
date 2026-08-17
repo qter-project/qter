@@ -15,7 +15,6 @@ use crate::{
     cycle_combination_solutions::{
         CycleCombinationSolution, CycleCombinationSolutions, expand_possible_register,
     },
-    cycle_combinations_tree::dbg_registers,
     min_piece_count::MinPieceCount,
     orderexps::OrderExps,
     possible_orders::OrdersDashSet,
@@ -596,10 +595,8 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
                 cycle_combinations.len(),
                 cycle_combinations
                     .into_iter()
-                    .map(|i| dbg_registers(
-                        i.registers.iter().copied(),
-                        &possible_orders_except_one
-                    ))
+                    .map(|cycle_combination| cycle_combination
+                        .orders_fmt(&possible_orders_except_one))
                     .collect::<Vec<_>>()
                     .join("\n")
             );
@@ -856,6 +853,25 @@ mod tests {
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&cube3)
             .with_register_count(4)
+            .with_expected_solutions_count_assertion(Some(43))
+            .with_num_cores(NumCores::Num(1))
+            .validate()
+            .unwrap()
+            .find()
+            .unwrap();
+
+        for x in ret.cycle_combinations {
+            println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
+        }
+    }
+
+    #[test_log::test]
+    fn cube3_optimal_3() {
+        let cube3 = CUBE3.clone();
+        let ret = CycleCombinationFinder::builder()
+            .with_puzzle_def(&cube3)
+            .with_register_count(3)
+            .with_expected_solutions_count_assertion(Some(19))
             .validate()
             .unwrap()
             .find()
@@ -870,22 +886,23 @@ mod tests {
     }
 
     #[test_log::test]
-    fn cube3_optimal_3() {
+    fn cube3_optimal_2() {
         let cube3 = CUBE3.clone();
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&cube3)
-            .with_register_count(3)
+            .with_register_count(2)
+            .with_expected_solutions_count_assertion(Some(7))
             .validate()
             .unwrap()
             .find()
             .unwrap();
 
-        for x in ret.cycle_combinations {
-            println!(
-                "{}",
-                x.solutions_fmt(&ret.possible_orders_except_one, &cube3)
-            );
-        }
+        // for x in ret.cycle_combinations {
+        //     println!(
+        //         "{}",
+        //         x.solutions_fmt(&ret.possible_orders_except_one, &cube3)
+        //     );
+        // }
     }
 
     #[test_log::test]
