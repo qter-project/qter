@@ -671,6 +671,7 @@ dependencies = [
  "humanize-duration",
  "log",
  "num-integer",
+ "num_cpus",
  "puzzle_theory",
  "rayon",
  "seize",

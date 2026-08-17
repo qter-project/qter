@@ -115,7 +115,10 @@ pub enum CycleCombinationFinderError {
 pub enum CycleCombinationFinderValidationError {
     #[error("Register count must be non-zero.")]
     InvalidRegisterCount,
-    #[error("Number of cores must be non-zero.")]
+    #[error(
+        "Number of cores must be non-zero and less than or equal to the number of cores on this \
+         machine."
+    )]
     InvalidNumCores,
     #[error("MSS batch size must be non-zero.")]
     InvalidMssBatchSize,
@@ -359,7 +362,9 @@ impl<R: RegisterCountState, P: PuzzleDefState> CycleCombinationFinder<R, P> {
     pub fn with_num_cores(mut self, num_cores: NumCores) -> Self {
         self.num_cores = match num_cores {
             NumCores::AllCores => Some(ValidatedNumCores::AllCores),
-            NumCores::Num(num) => NonZeroUsize::new(num).map(ValidatedNumCores::Num),
+            NumCores::Num(num) => NonZeroUsize::new(num)
+                .filter(|num| num.get() <= num_cpus::get())
+                .map(ValidatedNumCores::Num),
         };
         self
     }
