@@ -755,7 +755,7 @@ mod tests {
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx4)
             .with_register_count(3)
-            .with_mss_batch_size(10000)
+            .with_mss_batch_size(100)
             .with_expected_solutions_count_assertion(Some(296))
             // .with_time_limit(None)
             // .with_optimality(Optimality::MaxOrderRatio(5.0))
@@ -897,12 +897,9 @@ mod tests {
             .find()
             .unwrap();
 
-        // for x in ret.cycle_combinations {
-        //     println!(
-        //         "{}",
-        //         x.solutions_fmt(&ret.possible_orders_except_one, &cube3)
-        //     );
-        // }
+        for x in ret.cycle_combinations {
+            println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
+        }
     }
 
     #[test_log::test]

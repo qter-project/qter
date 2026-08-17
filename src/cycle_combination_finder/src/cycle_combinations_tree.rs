@@ -45,7 +45,7 @@ struct CycleCombinationsTreeShard<'a> {
     candidates_sender_capacity: usize,
     batch_size: NonZeroUsize,
     collector: &'a Collector,
-    pareto_efficient_pruning: &'a AtomicPtr<u32>,
+    pareto_efficient_prunings: &'a AtomicPtr<u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -254,37 +254,37 @@ impl<'a> From<NonemptySlice<'a, u32>> for DisjointRegisters<'a> {
 ///
 /// `pareto_efficient_pruning` must come from the `try_update` method on one of
 /// `pareto_efficient_prunings`
-unsafe fn try_next_pareto_efficient_pruning(
-    maybe_raw_pruning: *mut u32,
+unsafe fn try_next_pareto_efficient_prunings(
+    maybe_raw_prunings: *mut u32,
     disjoint_registers: DisjointRegisters,
     raw_pruning_len: NonZeroUsize,
 ) -> Option<NonNull<u32>> {
-    if let Some(raw_pruning) = NonNull::new(maybe_raw_pruning) {
+    if let Some(raw_prunings) = NonNull::new(maybe_raw_prunings) {
         // SAFETY: the called guarantees `pareto_efficient_pruning` is valid. Also later
         // in this block we always initialize `pareto_efficient_pruning` to be of
         // `raw_pruning_len` length.
-        let raw_pruning = unsafe {
+        let raw_prunings = unsafe {
             NonemptySlice::from_raw_parts(
-                NonNull::slice_from_raw_parts(raw_pruning, raw_pruning_len.get())
+                NonNull::slice_from_raw_parts(raw_prunings, raw_pruning_len.get())
                     .as_uninit_slice()
                     .assume_init_ref()
                     .as_ptr(),
                 raw_pruning_len,
             )
         };
-        let (&max_last_register, pareto_efficent_prunes) = raw_pruning.split_first();
+        let (&max_last_register, pareto_efficent_prunes) = raw_prunings.split_first();
         if disjoint_registers.last_register < max_last_register {
             return None;
         }
         if disjoint_registers.last_register == max_last_register {
-            let mut maybe_next_pareto_efficient_pruning: Option<Vec<u32>> = None;
+            let mut maybe_next_pareto_efficient_prunings: Option<Vec<u32>> = None;
             for ((i, &prefix_register), &pareto_efficient_prune) in disjoint_registers
                 .prefix_registers
                 .iter()
                 .enumerate()
                 .zip(pareto_efficent_prunes)
             {
-                match &mut maybe_next_pareto_efficient_pruning {
+                match &mut maybe_next_pareto_efficient_prunings {
                     Some(next_pareto_efficient_pruning) => {
                         next_pareto_efficient_pruning.push(prefix_register);
                     }
@@ -292,9 +292,9 @@ unsafe fn try_next_pareto_efficient_pruning(
                         Ordering::Less => return None,
                         Ordering::Equal => (),
                         Ordering::Greater => {
-                            let mut next_pareto_efficient_pruning =
+                            let mut next_pareto_efficient_prunings =
                                 Vec::with_capacity(raw_pruning_len.get());
-                            next_pareto_efficient_pruning.extend(
+                            next_pareto_efficient_prunings.extend(
                                 std::iter::once(disjoint_registers.last_register).chain(
                                     disjoint_registers
                                         .prefix_registers
@@ -303,8 +303,8 @@ unsafe fn try_next_pareto_efficient_pruning(
                                         .take(i + 1),
                                 ),
                             );
-                            maybe_next_pareto_efficient_pruning =
-                                Some(next_pareto_efficient_pruning);
+                            maybe_next_pareto_efficient_prunings =
+                                Some(next_pareto_efficient_prunings);
                         }
                     },
                 }
@@ -312,9 +312,9 @@ unsafe fn try_next_pareto_efficient_pruning(
 
             // new can still be None here:
             // A C D can be a solution, followed by B C D
-            return maybe_next_pareto_efficient_pruning.map(|next_pareto_efficient_pruning| {
-                debug_assert_eq!(next_pareto_efficient_pruning.len(), raw_pruning_len.get());
-                Box::into_non_null(next_pareto_efficient_pruning.into_boxed_slice()).cast()
+            return maybe_next_pareto_efficient_prunings.map(|next_pareto_efficient_prunings| {
+                debug_assert_eq!(next_pareto_efficient_prunings.len(), raw_pruning_len.get());
+                Box::into_non_null(next_pareto_efficient_prunings.into_boxed_slice()).cast()
             });
         }
     }
@@ -414,14 +414,14 @@ impl CycleCombinationsTreeShard<'_> {
             }
 
             let guard = self.collector.enter();
-            let maybe_raw_pruning =
-                guard.protect(self.pareto_efficient_pruning, atomic::Ordering::Acquire);
-            if let Some(raw_pruning) = NonNull::new(maybe_raw_pruning) {
+            let maybe_raw_prunings =
+                guard.protect(self.pareto_efficient_prunings, atomic::Ordering::Acquire);
+            if let Some(raw_pruning) = NonNull::new(maybe_raw_prunings) {
                 // SAFETY: `raw_pruning` is guaranteed to point to
                 // `self.exact_register_count().get().saturating_sub(1) + 1` u32s. The caller
                 // guarantees `register_index` is less than `self.exact_register_count()`;
                 // therefore we are in bounds
-                let raw_pruning = unsafe {
+                let raw_prunings = unsafe {
                     NonemptySlice::from_raw_parts(
                         NonNull::slice_from_raw_parts(
                             raw_pruning,
@@ -433,7 +433,7 @@ impl CycleCombinationsTreeShard<'_> {
                         NonZeroUsize::from(next_register_index),
                     )
                 };
-                let (&max_last_register_order, pareto_efficent_prunes) = raw_pruning.split_first();
+                let (&max_last_register_order, pareto_efficent_prunes) = raw_prunings.split_first();
                 // TODO: empty?
                 if i <= max_last_register_order
                     && self.registers.iter().zip(pareto_efficent_prunes).all(
@@ -513,7 +513,7 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
         candidates_receiver: mpmc::Receiver<PackedCycleCombinationCandidateQueue>,
         mut solutions_receiver: tokio::sync::broadcast::Receiver<(CoreId, Arc<[u32]>)>,
         solutions_sender: tokio::sync::broadcast::Sender<(CoreId, Arc<[u32]>)>,
-        pareto_efficient_prunings: &[AtomicPtr<u32>],
+        pareto_efficient_prunings: &AtomicPtr<u32>,
         possible_orders_except_one: &[PossibleOrder<N>],
         collector: &Collector,
     ) -> SolutionsThreadInfo {
@@ -604,36 +604,37 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
 
                     let guard = collector.enter();
 
-                    let pareto_efficient_pruning = &pareto_efficient_prunings[thread_index];
-                    let mut maybe_raw_pruning =
-                        guard.protect(pareto_efficient_pruning, atomic::Ordering::Acquire);
-                    while let Some(next_raw_pruning) = unsafe {
-                        try_next_pareto_efficient_pruning(
-                            maybe_raw_pruning,
+                    let mut maybe_raw_prunings =
+                        guard.protect(pareto_efficient_prunings, atomic::Ordering::Acquire);
+                    while let Some(next_raw_prunings) = unsafe {
+                        try_next_pareto_efficient_prunings(
+                            maybe_raw_prunings,
                             disjoint_registers,
                             raw_pruning_len,
                         )
                     } {
                         match guard.compare_exchange(
-                            pareto_efficient_pruning,
-                            maybe_raw_pruning,
-                            next_raw_pruning.as_ptr(),
+                            pareto_efficient_prunings,
+                            maybe_raw_prunings,
+                            next_raw_prunings.as_ptr(),
                             atomic::Ordering::Release,
                             atomic::Ordering::Acquire,
                         ) {
-                            Ok(maybe_curr_raw_pruning) => {
-                                if let Some(curr_raw_pruning) = NonNull::new(maybe_curr_raw_pruning)
+                            Ok(maybe_curr_raw_prunings) => {
+                                if let Some(curr_raw_prunings) =
+                                    NonNull::new(maybe_curr_raw_prunings)
                                 {
                                     unsafe {
-                                        collector.retire(curr_raw_pruning.as_ptr(), reclaim::boxed);
+                                        collector
+                                            .retire(curr_raw_prunings.as_ptr(), reclaim::boxed);
                                     }
                                 }
                             }
-                            Err(curr_raw_pruning) => {
+                            Err(curr_raw_prunings) => {
                                 unsafe {
-                                    reclaim::boxed(next_raw_pruning.as_ptr(), collector);
+                                    reclaim::boxed(next_raw_prunings.as_ptr(), collector);
                                 }
-                                maybe_raw_pruning = curr_raw_pruning;
+                                maybe_raw_prunings = curr_raw_prunings;
                             }
                         }
                     }
@@ -699,12 +700,12 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
 
             let guard = collector.enter();
             // Synchronize with the data in the try_update CAS loop
-            let maybe_raw_pruning =
-                guard.protect(shard.pareto_efficient_pruning, atomic::Ordering::Acquire);
-            if let Some(raw_pruning) = NonNull::new(maybe_raw_pruning) {
+            let maybe_raw_prunings =
+                guard.protect(shard.pareto_efficient_prunings, atomic::Ordering::Acquire);
+            if let Some(raw_prunings) = NonNull::new(maybe_raw_prunings) {
                 // SAFETY: `solutions_thread` guarantees `raw_pruning` points to at least one
                 // element
-                let max_last_register = unsafe { raw_pruning.read() };
+                let max_last_register = unsafe { raw_prunings.read() };
                 if i_u32 <= max_last_register {
                     break;
                 }
@@ -809,9 +810,7 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
         let (solutions_sender, _) =
             tokio::sync::broadcast::channel(num_cores * self.mss_batch_size.get());
 
-        let pareto_efficient_prunings = (0..num_cores)
-            .map(|_| AtomicPtr::default())
-            .collect::<Box<[_]>>();
+        let pareto_efficient_prunings = AtomicPtr::default();
         let collector = Collector::new();
 
         // We can unwrap because `exact_register_count` is NonZero.
@@ -833,7 +832,7 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
             candidates_sender_capacity,
             batch_size: self.mss_batch_size,
             collector: &collector,
-            pareto_efficient_pruning: &AtomicPtr::null(),
+            pareto_efficient_prunings: &AtomicPtr::null(),
         };
 
         let mut candidate_count = 0;
@@ -867,8 +866,7 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
             let handles = core_ids
                 .into_iter()
                 .enumerate()
-                .zip(pareto_efficient_prunings.iter())
-                .map(|((thread_index, core_id), pareto_efficient_pruning)| {
+                .map(|(thread_index, core_id)| {
                     let mut shard = base_shard.clone();
                     shard
                         .batch_packed_queue
@@ -876,7 +874,7 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
                     shard
                         .batch_packed_queue
                         .extend(std::iter::repeat_n(0, self.mss_batch_size.get()));
-                    shard.pareto_efficient_pruning = pareto_efficient_pruning;
+                    shard.pareto_efficient_prunings = &pareto_efficient_prunings;
 
                     let collector = &collector;
                     let old_bucket = &old_bucket;
@@ -969,21 +967,18 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
 
         let real_time = real_time.elapsed();
 
-        #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-        let pruned_orders_percentage = (pareto_efficient_prunings
-            .into_iter()
-            .map(|max_last_register| {
-                let max_last_register = max_last_register.into_inner();
-                u64::from(if max_last_register.is_null() {
-                    0
-                } else {
-                    // SAFETY: `solutions_thread` guarantees `raw_pruning` points to at least one
-                    // element
-                    unsafe { *max_last_register }
-                })
-            })
-            .sum::<u64>() as f64)
-            / ((possible_orders_except_one.len() * num_cores) as f64);
+        let maybe_raw_prunings = pareto_efficient_prunings.into_inner();
+        let max_last_register = if let Some(raw_prunings) = NonNull::new(maybe_raw_prunings) {
+            // SAFETY: `solutions_thread` guarantees `raw_pruning` points to at least one
+            // element
+            unsafe { raw_prunings.read() }
+        } else {
+            0
+        };
+
+        #[allow(clippy::cast_precision_loss)]
+        let pruned_orders_percentage =
+            f64::from(max_last_register) / ((possible_orders_except_one.len() * num_cores) as f64);
 
         #[allow(clippy::cast_precision_loss)]
         let full_sends_percentage = full_sends as f64 / sends as f64;
