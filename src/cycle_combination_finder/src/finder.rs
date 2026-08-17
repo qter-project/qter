@@ -7,7 +7,7 @@ use std::{
 };
 
 use humanize_duration::{Truncate, prelude::DurationExt};
-use log::{debug, trace};
+use log::{debug, info, trace};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use thiserror::Error;
 
@@ -578,7 +578,7 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
             Some(pool) => pool.install(expand),
             None => expand(),
         };
-        debug!("Expansion took: {}", now.elapsed().human(Truncate::Micro));
+        info!("Expansion took: {}", now.elapsed().human(Truncate::Micro));
         debug!(
             "Found {} solutions, with {} expansions average",
             cycle_combinations.len(),

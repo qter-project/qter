@@ -17,7 +17,7 @@ use std::{
 use core_affinity::CoreId;
 use cpu_time::ThreadTime;
 use humanize_duration::{Truncate, prelude::DurationExt};
-use log::{Level, debug, log_enabled, trace};
+use log::{Level, debug, info, log_enabled, trace};
 use seize::{Collector, Guard, reclaim};
 use tokio::sync::broadcast::error::TryRecvError as TokioTryRecvError;
 
@@ -39,9 +39,9 @@ struct CycleCombinationsTreeShard<'a> {
     curr_batch_len: usize,
     registers: NonemptyVec<u32>,
     lower_index_cutoff: u32,
-    candidates_sender: mpmc::Sender<PackedCycleCombinationCandidateQueue>,
-    candidate_count: u64,
+    candidates_count: u64,
 
+    candidates_sender: mpmc::Sender<PackedCycleCombinationCandidateQueue>,
     candidates_sender_capacity: usize,
     batch_size: NonZeroUsize,
     collector: &'a Collector,
@@ -348,11 +348,10 @@ impl CycleCombinationsTreeShard<'_> {
             let candidate_count = self
                 .batch_packed_queue
                 .iter()
-                .skip(1)
                 .take(self.batch_size.get())
                 .map(|&candidate_count| u64::from(candidate_count))
                 .sum::<u64>();
-            self.candidate_count += candidate_count;
+            self.candidates_count += candidate_count;
             let payload =
                 PackedCycleCombinationCandidateQueue(Box::clone_from_ref(&self.batch_packed_queue));
 
@@ -384,9 +383,9 @@ impl CycleCombinationsTreeShard<'_> {
                 .unwrap();
         }
         self.curr_batch_len = 0;
-        self.batch_packed_queue.truncate(self.batch_size.get() + 1);
-        for b in self.batch_packed_queue.iter_mut().skip(1) {
-            *b = 0;
+        self.batch_packed_queue.truncate(self.batch_size.get());
+        for candidate_count in &mut self.batch_packed_queue {
+            *candidate_count = 0;
         }
     }
 
@@ -497,7 +496,7 @@ impl CycleCombinationsTreeShard<'_> {
         }
         if next_register_index == self.exact_register_count() {
             if candidate_count != 0 {
-                self.batch_packed_queue[self.curr_batch_len + 1] = candidate_count;
+                self.batch_packed_queue[self.curr_batch_len] = candidate_count;
                 self.maybe_send_queue(false);
             } else if log_enabled!(Level::Debug) {
                 self.fails += 1;
@@ -555,11 +554,8 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
                     Err(RecvError) => break,
                 };
 
-            let (&thread_index, candidate_counts_and_packed_candidates) =
-                batch_packed_queue.split_first().unwrap();
             let (candidate_counts, mut packed_candidates) =
-                candidate_counts_and_packed_candidates.split_at(self.mss_batch_size.get());
-            let thread_index = thread_index as usize;
+                batch_packed_queue.split_at(self.mss_batch_size.get());
             for &candidate_count in candidate_counts {
                 if candidate_count == 0 {
                     break;
@@ -772,7 +768,7 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
         }
 
         if shard.exact_register_count().get() == 1 && candidate_count != 0 {
-            shard.batch_packed_queue[shard.curr_batch_len + 1] = candidate_count;
+            shard.batch_packed_queue[shard.curr_batch_len] = candidate_count;
         }
         shard.maybe_send_queue(true);
 
@@ -781,7 +777,7 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
         TreeThreadInfo {
             real_time: real_time.elapsed(),
             cpu_time: cpu_time.elapsed(),
-            candidate_count: shard.candidate_count,
+            candidate_count: shard.candidates_count,
             empty_sends: shard.empty_sends,
             full_sends: shard.full_sends,
             sends: shard.sends,
@@ -826,9 +822,9 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
             registers: NonemptyVec::try_from(vec![0; usize::from(self.register_count.get())])
                 .unwrap(),
             lower_index_cutoff: 0,
-            candidates_sender,
-            candidate_count: 0,
+            candidates_count: 0,
 
+            candidates_sender,
             candidates_sender_capacity,
             batch_size: self.mss_batch_size,
             collector: &collector,
@@ -868,9 +864,6 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
                 .enumerate()
                 .map(|(thread_index, core_id)| {
                     let mut shard = base_shard.clone();
-                    shard
-                        .batch_packed_queue
-                        .push(u32::try_from(thread_index).expect("You have too many threads."));
                     shard
                         .batch_packed_queue
                         .extend(std::iter::repeat_n(0, self.mss_batch_size.get()));
@@ -1009,8 +1002,8 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
             num_cores,
         };
 
-        debug!("Search tree complete");
-        debug!("{tree_profile_info:#}");
+        debug!("Search tree complete: {tree_profile_info:#}");
+        info!("Search tree took {}", real_time.human(Truncate::Micro));
 
         combined_cycle_combinations.into()
     }
