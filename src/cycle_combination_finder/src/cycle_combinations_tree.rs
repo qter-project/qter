@@ -668,6 +668,7 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
                 && let Some(time_limit) = self.maybe_time_limit
                 && real_time.elapsed() >= time_limit
             {
+                eprintln!("Time limit reached!");
                 time_limit_reached.store(true, atomic::Ordering::Relaxed);
             }
             if time_limit_reached.load(atomic::Ordering::Relaxed) {

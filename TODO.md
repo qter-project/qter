@@ -10,7 +10,6 @@
 ## CCF
 
 - can [0, 0, 0, 0] ever be valid as a pareto_efficient_prune
-- too many cores validation
 - maybe_min_order_ratio
 - a list of numbers such that every number in the list is in the solutions?
 - parity; look in stash!
