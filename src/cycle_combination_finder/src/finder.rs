@@ -85,6 +85,13 @@ impl SolutionExpansion {
     pub const FIRST: Self = Self::Limit(1);
 }
 
+#[derive(Clone)]
+enum MssBatchSize {
+    Invalid,
+    Default,
+    Value(NonZeroUsize),
+}
+
 #[derive(Debug, Clone)]
 pub struct PossibleOrder<const N: usize> {
     pub(crate) order: OrderExps<N>,
@@ -161,7 +168,7 @@ pub struct CycleCombinationFinder<R: RegisterCountState, P: PuzzleDefState> {
     maybe_expected_solution_count: Option<usize>,
     maybe_max_fitting_tries: Option<u32>,
     solution_expansion: Option<ValidatedSolutionExpansion>,
-    mss_batch_size: Option<NonZeroUsize>,
+    mss_batch_size: MssBatchSize,
     maybe_time_limit: Option<Duration>,
 }
 
@@ -318,7 +325,7 @@ impl CycleCombinationFinder<NeedsRegisterCount, NeedsPuzzleDef> {
             maybe_max_fitting_tries: None,
             solution_expansion: Some(ValidatedSolutionExpansion::default()),
             #[allow(clippy::missing_panics_doc)]
-            mss_batch_size: Some(NonZeroUsize::new(10).unwrap()),
+            mss_batch_size: MssBatchSize::Default,
             maybe_time_limit: None,
         }
     }
@@ -396,8 +403,13 @@ impl<R: RegisterCountState, P: PuzzleDefState> CycleCombinationFinder<R, P> {
     }
 
     #[must_use]
-    pub fn with_mss_batch_size(mut self, mss_batch_size: usize) -> Self {
-        self.mss_batch_size = NonZeroUsize::new(mss_batch_size);
+    pub fn with_mss_batch_size(mut self, maybe_mss_batch_size: Option<usize>) -> Self {
+        self.mss_batch_size = if let Some(mss_batch_size) = maybe_mss_batch_size {
+            NonZeroUsize::new(mss_batch_size)
+                .map_or_else(|| MssBatchSize::Invalid, MssBatchSize::Value)
+        } else {
+            MssBatchSize::Default
+        };
         self
     }
 
@@ -507,9 +519,14 @@ impl<'a, const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'
             solution_expansion: self
                 .solution_expansion
                 .ok_or(CycleCombinationFinderValidationError::InvalidSolutionExpansion)?,
-            mss_batch_size: self
-                .mss_batch_size
-                .ok_or(CycleCombinationFinderValidationError::InvalidMssBatchSize)?,
+            mss_batch_size: match self.mss_batch_size {
+                MssBatchSize::Invalid => {
+                    return Err(CycleCombinationFinderValidationError::InvalidMssBatchSize);
+                }
+                #[allow(clippy::missing_panics_doc)]
+                MssBatchSize::Default => NonZeroUsize::new(1000).unwrap(),
+                MssBatchSize::Value(value) => value,
+            },
             maybe_time_limit: self.maybe_time_limit,
         })
     }
@@ -645,7 +662,7 @@ mod tests {
         let minx3 = MINX3.clone();
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx3)
-            .with_mss_batch_size(10)
+            .with_mss_batch_size(Some(10))
             .with_register_count(2)
             .validate()
             .unwrap()
@@ -743,7 +760,7 @@ mod tests {
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx4)
             .with_register_count(2)
-            .with_mss_batch_size(1)
+            .with_mss_batch_size(Some(1))
             .validate()
             .unwrap()
             .find()
@@ -760,7 +777,7 @@ mod tests {
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx4)
             .with_register_count(3)
-            .with_mss_batch_size(100)
+            .with_mss_batch_size(Some(100))
             .with_expected_solutions_count_assertion(Some(296))
             // .with_time_limit(None)
             // .with_optimality(Optimality::MaxOrderRatio(5.0))
@@ -820,7 +837,7 @@ mod tests {
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx5)
             .with_register_count(2)
-            .with_mss_batch_size(10000)
+            .with_mss_batch_size(Some(10000))
             .with_expected_solutions_count_assertion(Some(33))
             .validate()
             .unwrap()
@@ -841,7 +858,7 @@ mod tests {
             // .with_max_fitting_tries(Some(500))
             // .with_optimality(Optimality::MaxOrderRatio(1.0))
             .with_solution_expansion(SolutionExpansion::Limit(10))
-            .with_mss_batch_size(100)
+            .with_mss_batch_size(Some(100))
             .validate()
             .unwrap()
             .find()

@@ -9,47 +9,8 @@
 
 ## CCF
 
-- this is wrong:
-
-2042040:
-
-c: (17+)
-e: (5, 11, 13)
-+: (7, 8)
-w: ()
-x: ()
-
-471240:
-
-c: ()
-e: ()
-+: (5, 7, 11, 17)
-w: (8, 9)
-x: ()
-
-408408:
-
-c: (1+)
-e: ()
-+: ()
-w: (13, 17)
-x: (7, 8, 11)
-
-240240:
-
-c: (1+)
-e: ()
-+: (5)
-w: (13)
-x: (7, 11, 16)
-
-c: 1 ignored, 0 unused
-e: 0 ignored, 1 unused
-+: 0 ignored, 0 unused
-w: 0 ignored, 0 unused
-x: 0 ignored, 0 unused
-
-
+- i kinda wanna investigate this more tmr
+- the MSS was wrong earlier, it said unused instead of ignored on a corners solution
 - can [0, 0, 0, 0] ever be valid as a pareto_efficient_prune
 - maybe_min_order_ratio
 - a list of numbers such that every number in the list is in the solutions?

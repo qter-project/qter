@@ -52,7 +52,7 @@ fn main() {
             .with_puzzle_def(&minx5)
             .with_register_count(4)
             .with_max_fitting_tries(Some(2500))
-            .with_mss_batch_size(10000)
+            .with_mss_batch_size(Some(10000))
             .with_time_limit(Some(Duration::from_mins(10)))
             .with_solution_expansion(SolutionExpansion::Limit(100))
             .with_optimality(Optimality::MaxOrderRatio(10.0))

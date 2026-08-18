@@ -683,8 +683,9 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
             let i_u32 = possible_orders_len_cast(i);
 
             // Synchronize with the data in the try_update CAS loop
-            let maybe_raw_prunings =
-                shard.pareto_efficient_prunings.load(atomic::Ordering::Acquire);
+            let maybe_raw_prunings = shard
+                .pareto_efficient_prunings
+                .load(atomic::Ordering::Acquire);
             if let Some(raw_prunings) = NonNull::new(maybe_raw_prunings) {
                 // SAFETY: `solutions_thread` guarantees `raw_pruning` points to at least one
                 // element
