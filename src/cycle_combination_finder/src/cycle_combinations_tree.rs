@@ -431,7 +431,6 @@ impl CycleCombinationsTreeShard<'_> {
                     )
                 };
                 let (&max_last_register_order, pareto_efficent_prunes) = raw_prunings.split_first();
-                // TODO: empty?
                 if i <= max_last_register_order
                     && self.registers.iter().zip(pareto_efficent_prunes).all(
                         |(&register, &pareto_efficient_prune)| register <= pareto_efficient_prune,

@@ -40,7 +40,7 @@ fn main() {
         for b in [1, 10, 100, 1000, 10000, 100000, 1000000, 10000000] {
             println!("{:?}", b);
             base.clone()
-                .with_mss_batch_size(b)
+                .with_mss_batch_size(Some(b))
                 .validate()
                 .unwrap()
                 .find()

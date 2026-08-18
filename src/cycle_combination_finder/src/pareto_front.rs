@@ -116,6 +116,7 @@ impl CCParetoFront {
         registers: DisjointRegisters,
         mut dominating_check: impl FnMut(DisjointRegisters) -> Option<Arc<[u32]>>,
     ) -> bool {
+        let mut domatinating_check_failed = false;
         for (i, member) in self.possible_registers.iter().enumerate() {
             if dominate(member.iter().copied(), registers.iter()) {
                 // `new_element` is dominated by `element`, it is thus not part of the Pareto
@@ -130,20 +131,23 @@ impl CCParetoFront {
                     }
                 }
                 return false;
-            } else if dominate(registers.iter(), member.iter().copied())
-                && let Some(cycle_combination) = (dominating_check)(registers)
+            } else if !domatinating_check_failed
+                && dominate(registers.iter(), member.iter().copied())
             {
-                // `new_element` dominates `element`, it is thus part of the Pareto front
-                self.possible_registers.swap_remove(i);
-                // looks at the rest of the Pareto front to remove any further element that
-                // are dominated
-                self.remove_dominated_starting_at(&cycle_combination, i);
-                self.possible_registers.push(cycle_combination);
-                return true;
+                if let Some(cycle_combination) = (dominating_check)(registers) {
+                    // `new_element` dominates `element`, it is thus part of the Pareto front
+                    self.possible_registers.swap_remove(i);
+                    // looks at the rest of the Pareto front to remove any further element that
+                    // are dominated
+                    self.remove_dominated_starting_at(&cycle_combination, i);
+                    self.possible_registers.push(cycle_combination);
+                    return true;
+                }
+                domatinating_check_failed = true;
             }
         }
 
-        if let Some(candidate) = (dominating_check)(registers) {
+        if !domatinating_check_failed && let Some(candidate) = (dominating_check)(registers) {
             // `new_element` has not been dominated; it is thus part of the Pareto front
             self.possible_registers.push(candidate);
             true

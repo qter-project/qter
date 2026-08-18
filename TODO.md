@@ -9,9 +9,10 @@
 
 ## CCF
 
-- i kinda wanna investigate this more tmr
+- use the min piece count order to prune when there is no pruning available
+- dominate should return an ordering based on what daniel said
+- Vec::retain for the front
 - the MSS was wrong earlier, it said unused instead of ignored on a corners solution
-- can [0, 0, 0, 0] ever be valid as a pareto_efficient_prune
 - maybe_min_order_ratio
 - a list of numbers such that every number in the list is in the solutions?
 - parity; look in stash!
