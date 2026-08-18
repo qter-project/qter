@@ -18,7 +18,6 @@ use core_affinity::CoreId;
 use cpu_time::ThreadTime;
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::{Level, debug, info, log_enabled, trace};
-use seize::{Collector, Guard, reclaim};
 use tokio::sync::broadcast::error::TryRecvError as TokioTryRecvError;
 
 use crate::{
@@ -44,7 +43,6 @@ struct CycleCombinationsTreeShard<'a> {
     candidates_sender: mpmc::Sender<PackedCycleCombinationCandidateQueue>,
     candidates_sender_capacity: usize,
     batch_size: NonZeroUsize,
-    collector: &'a Collector,
     pareto_efficient_prunings: &'a AtomicPtr<u32>,
 }
 
@@ -412,9 +410,9 @@ impl CycleCombinationsTreeShard<'_> {
                 break;
             }
 
-            let guard = self.collector.enter();
-            let maybe_raw_prunings =
-                guard.protect(self.pareto_efficient_prunings, atomic::Ordering::Acquire);
+            let maybe_raw_prunings = self
+                .pareto_efficient_prunings
+                .load(atomic::Ordering::Acquire);
             if let Some(raw_pruning) = NonNull::new(maybe_raw_prunings) {
                 // SAFETY: `raw_pruning` is guaranteed to point to
                 // `self.exact_register_count().get().saturating_sub(1) + 1` u32s. The caller
@@ -442,7 +440,6 @@ impl CycleCombinationsTreeShard<'_> {
                     break;
                 }
             }
-            drop(guard);
 
             if let Some(next_remaining_piece_count) = remaining_piece_count
                 .get()
@@ -514,7 +511,6 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
         solutions_sender: tokio::sync::broadcast::Sender<(CoreId, Arc<[u32]>)>,
         pareto_efficient_prunings: &AtomicPtr<u32>,
         possible_orders_except_one: &[PossibleOrder<N>],
-        collector: &Collector,
     ) -> SolutionsThreadInfo {
         if core_affinity::set_for_current(core_id) {
             debug!("Solutions: Pinned {core_id:?}");
@@ -598,10 +594,8 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
                     // then it must either be in the front or the atomic variable is an
                     // underestimate, which is permitted since our bound is admissible
 
-                    let guard = collector.enter();
-
                     let mut maybe_raw_prunings =
-                        guard.protect(pareto_efficient_prunings, atomic::Ordering::Acquire);
+                        pareto_efficient_prunings.load(atomic::Ordering::Acquire);
                     while let Some(next_raw_prunings) = unsafe {
                         try_next_pareto_efficient_prunings(
                             maybe_raw_prunings,
@@ -609,8 +603,7 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
                             raw_pruning_len,
                         )
                     } {
-                        match guard.compare_exchange(
-                            pareto_efficient_prunings,
+                        match pareto_efficient_prunings.compare_exchange(
                             maybe_raw_prunings,
                             next_raw_prunings.as_ptr(),
                             atomic::Ordering::Release,
@@ -620,16 +613,11 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
                                 if let Some(curr_raw_prunings) =
                                     NonNull::new(maybe_curr_raw_prunings)
                                 {
-                                    unsafe {
-                                        collector
-                                            .retire(curr_raw_prunings.as_ptr(), reclaim::boxed);
-                                    }
+                                    unsafe { drop(Box::from_raw(curr_raw_prunings.as_ptr())) }
                                 }
                             }
                             Err(curr_raw_prunings) => {
-                                unsafe {
-                                    reclaim::boxed(next_raw_prunings.as_ptr(), collector);
-                                }
+                                unsafe { drop(Box::from_raw(next_raw_prunings.as_ptr())) }
                                 maybe_raw_prunings = curr_raw_prunings;
                             }
                         }
@@ -657,7 +645,6 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
         exact_piece_count: NonZeroU32,
         mut shard: CycleCombinationsTreeShard,
         possible_orders_except_one: &[PossibleOrder<N>],
-        collector: &Collector,
         old_bucket: &Mutex<usize>,
         time_limit_reached: &AtomicBool,
     ) -> TreeThreadInfo {
@@ -694,10 +681,9 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
             // i * r^(c - 1)
             let i_u32 = possible_orders_len_cast(i);
 
-            let guard = collector.enter();
             // Synchronize with the data in the try_update CAS loop
             let maybe_raw_prunings =
-                guard.protect(shard.pareto_efficient_prunings, atomic::Ordering::Acquire);
+                shard.pareto_efficient_prunings.load(atomic::Ordering::Acquire);
             if let Some(raw_prunings) = NonNull::new(maybe_raw_prunings) {
                 // SAFETY: `solutions_thread` guarantees `raw_pruning` points to at least one
                 // element
@@ -706,7 +692,6 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
                     break;
                 }
             }
-            drop(guard);
 
             // We validated `possible_orders` to be of len `u32` or less
             if log_enabled!(Level::Debug) {
@@ -807,7 +792,6 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
             tokio::sync::broadcast::channel(num_cores * self.mss_batch_size.get());
 
         let pareto_efficient_prunings = AtomicPtr::default();
-        let collector = Collector::new();
 
         // We can unwrap because `exact_register_count` is NonZero.
         #[allow(clippy::missing_panics_doc)]
@@ -827,7 +811,6 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
             candidates_sender,
             candidates_sender_capacity,
             batch_size: self.mss_batch_size,
-            collector: &collector,
             pareto_efficient_prunings: &AtomicPtr::null(),
         };
 
@@ -869,7 +852,6 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
                         .extend(std::iter::repeat_n(0, self.mss_batch_size.get()));
                     shard.pareto_efficient_prunings = &pareto_efficient_prunings;
 
-                    let collector = &collector;
                     let old_bucket = &old_bucket;
                     let time_limit_reached = &time_limit_reached;
                     let tree_thread_handle = s.spawn(move || {
@@ -880,7 +862,6 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
                             exact_piece_count,
                             shard,
                             possible_orders_except_one,
-                            collector,
                             old_bucket,
                             time_limit_reached,
                         )
@@ -897,7 +878,6 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
                             solutions_sender,
                             pareto_efficient_prunings,
                             possible_orders_except_one,
-                            collector,
                         )
                     });
                     (tree_thread_handle, solutions_thread_handle)
