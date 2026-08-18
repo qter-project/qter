@@ -95,7 +95,7 @@ impl Display for TreeProfileInfo {
         #[allow(clippy::cast_precision_loss)]
         let num_cores = self.num_cores as f64;
         let cpu_time = self.real_time.mul_f64(num_cores);
-        f.debug_struct("ProfileInfo")
+        f.debug_struct("TreeProfileInfo")
             .field(&format!("{:>25}", "candidate_count"), &self.candidate_count)
             .field(
                 &format!("{:>25}", "processed_candidate_count"),
@@ -103,7 +103,7 @@ impl Display for TreeProfileInfo {
             )
             .field(
                 &format!("{:>25}", "post_candidate_count"),
-                &format!(
+                &format_args!(
                     "{} ({} / thread)",
                     self.post_candidate_count,
                     self.post_candidate_count / u64::try_from(self.num_cores).unwrap(),
@@ -111,27 +111,27 @@ impl Display for TreeProfileInfo {
             )
             .field(
                 &format!("{:>25}", "pruned_orders_percentage"),
-                &format!("{:05.2}%", self.pruned_orders_percentage * 100.0),
+                &format_args!("{:05.2}%", self.pruned_orders_percentage * 100.0),
             )
             .field(
                 &format!("{:>25}", "sender_len_percentage"),
-                &format!("{:05.2}%", self.sender_len_percentage * 100.0),
+                &format_args!("{:05.2}%", self.sender_len_percentage * 100.0),
             )
             .field(
                 &format!("{:>25}", "empty_sends_percentage"),
-                &format!("{:05.2}%", self.empty_sends_percentage * 100.0),
+                &format_args!("{:05.2}%", self.empty_sends_percentage * 100.0),
             )
             .field(
                 &format!("{:>25}", "full_sends_percentage"),
-                &format!("{:05.2}%", self.full_sends_percentage * 100.0),
+                &format_args!("{:05.2}%", self.full_sends_percentage * 100.0),
             )
             .field(
                 &format!("{:>25}", "real_time"),
-                &format!("{}", self.real_time.human(Truncate::Millis)),
+                &format_args!("{}", self.real_time.human(Truncate::Millis)),
             )
             .field(
                 &format!("{:>25}", "single_cpu_time"),
-                &format!(
+                &format_args!(
                     "{}",
                     (self.dfs_cpu_time + self.solutions_cpu_time)
                         .div_f64(num_cores)
@@ -140,7 +140,7 @@ impl Display for TreeProfileInfo {
             )
             .field(
                 &format!("{:>25}", "dfs_cpu_time"),
-                &format!(
+                &format_args!(
                     "{:05.2}% ({})",
                     self.dfs_cpu_time.div_duration_f64(cpu_time) * 100.0,
                     self.dfs_cpu_time.div_f64(num_cores).human(Truncate::Millis)
@@ -148,7 +148,7 @@ impl Display for TreeProfileInfo {
             )
             .field(
                 &format!("{:>25}", "dfs_io_time"),
-                &format!(
+                &format_args!(
                     "{:05.2}% ({})",
                     self.dfs_io_time.div_duration_f64(cpu_time) * 100.0,
                     self.dfs_io_time.div_f64(num_cores).human(Truncate::Millis)
@@ -156,7 +156,7 @@ impl Display for TreeProfileInfo {
             )
             .field(
                 &format!("{:>25}", "solutions_cpu_time"),
-                &format!(
+                &format_args!(
                     "{:05.2}% ({})",
                     self.solutions_cpu_time.div_duration_f64(cpu_time) * 100.0,
                     self.solutions_cpu_time
@@ -166,7 +166,7 @@ impl Display for TreeProfileInfo {
             )
             .field(
                 &format!("{:>25}", "solutions_io_time"),
-                &format!(
+                &format_args!(
                     "{:05.2}% ({})",
                     self.solutions_io_time.div_duration_f64(cpu_time) * 100.0,
                     self.solutions_io_time
