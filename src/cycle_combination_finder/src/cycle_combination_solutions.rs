@@ -965,7 +965,17 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
             self.recursive_backtrack(registers);
             SolutionsCalculation::MaybeExpansion(self.maybe_solutions.take())
         } else {
-            SolutionsCalculation::Existence(self.recursive_backtrack(registers))
+            let existence = self.recursive_backtrack(registers);
+            if existence
+                && let Some(&(initial_fitting_tries, remaining_fitting_tries)) =
+                    self.maybe_fitting_tries.as_ref()
+            {
+                debug!(
+                    "Solution in {} tries",
+                    initial_fitting_tries - remaining_fitting_tries
+                );
+            }
+            SolutionsCalculation::Existence(existence)
         }
     }
 
