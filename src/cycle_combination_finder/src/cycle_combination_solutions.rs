@@ -287,13 +287,10 @@ impl<'a, const N: usize> ValidatedCycleCombinationFinder<'a, N> {
 impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
     // TODO: inline this more for previous calls
     fn recursive_backtrack(&mut self, registers: DisjointRegisters) -> bool {
-        if let Some(&mut (initial_fitting_tries, ref mut remaining_fitting_tries)) =
-            self.maybe_fitting_tries.as_mut()
-        {
+        if let Some((_, remaining_fitting_tries)) = self.maybe_fitting_tries.as_mut() {
             if let Some(next_remaining_fitting_tries) = remaining_fitting_tries.checked_sub(1) {
                 *remaining_fitting_tries = next_remaining_fitting_tries;
             } else {
-                *remaining_fitting_tries = initial_fitting_tries;
                 return false;
             }
         }
@@ -959,6 +956,11 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
         // println!("{:?}", self.orbit_remaining_piece_counts);
         // TODO: if an orbit has at least the first highest cycle + second highest cycle
         // number of pieces, we will never not satisfy an orientation constraint
+        if let Some(&mut (initial_fitting_tries, ref mut remaining_fitting_tries)) =
+            self.maybe_fitting_tries.as_mut()
+        {
+            *remaining_fitting_tries = initial_fitting_tries;
+        }
         if self.expansion {
             self.recursive_backtrack(registers);
             SolutionsCalculation::MaybeExpansion(self.maybe_solutions.take())
