@@ -98,8 +98,8 @@ pub struct CycleCombination {
 }
 
 pub struct CycleCombinations<const N: usize> {
-    cycle_combinations: Box<[CycleCombination]>,
-    possible_orders_except_one: Arc<[PossibleOrder<N>]>,
+    pub cycle_combinations: Box<[CycleCombination]>,
+    pub possible_orders_except_one: Arc<[PossibleOrder<N>]>,
 }
 
 #[derive(Error, Debug)]

@@ -1,10 +1,14 @@
 #![allow(unused)]
 
-use std::num::{NonZeroU16, NonZeroUsize};
+use std::{
+    fs::File,
+    io::{BufWriter, Write},
+    num::{NonZeroU16, NonZeroUsize},
+    time::Duration,
+};
 
 use cycle_combination_finder::{
-    finder::CycleCombinationFinder,
-    puzzle::{
+    finder::{CycleCombinationFinder, Optimality, SolutionExpansion}, puzzle::{
         PuzzleDef,
         cubeN::{self, cube},
         minxN,
@@ -44,18 +48,24 @@ fn main() {
         }
     } else if p == "minx5" {
         let minx5 = minxN::MINX5.clone();
-        let base = CycleCombinationFinder::builder()
+        let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx5)
-            .with_register_count(2);
-        for b in [1, 10, 100, 1000, 10000, 100000, 1000000, 10000000] {
-            println!("{:?}", b);
-            base.clone()
-                .with_mss_batch_size(b)
-                .validate()
-                .unwrap()
-                .find()
-                .unwrap();
+            .with_register_count(4)
+            .with_max_fitting_tries(Some(2500))
+            .with_mss_batch_size(10000)
+            .with_time_limit(Some(Duration::from_mins(10)))
+            .with_solution_expansion(SolutionExpansion::Limit(100))
+            .with_optimality(Optimality::MaxOrderRatio(10.0))
+            .validate()
+            .unwrap()
+            .find()
+            .unwrap();
+        let mut f = BufWriter::new(File::create("results.txt").unwrap());
+        for x in ret.cycle_combinations {
+            writeln!(f, "{}", x.solutions_fmt(&ret.possible_orders_except_one, &minx5));
+            println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
         }
+        f.flush().unwrap();
     } else if p == "cube3" {
         let cube3 = cubeN::CUBE3.clone();
         ccf.with_puzzle_def(&cube3)
