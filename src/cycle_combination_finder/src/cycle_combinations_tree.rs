@@ -8,7 +8,6 @@ use std::{
         Arc,
         atomic::{self, AtomicBool, AtomicPtr},
         mpmc,
-        mpsc::{RecvError, TryRecvError},
         nonpoison::Mutex,
     },
     time::{Duration, Instant},
@@ -538,7 +537,7 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
                     Err(TokioTryRecvError::Empty | TokioTryRecvError::Lagged(_)) => break,
                 }
             }
-            
+
             let (candidate_counts, mut packed_candidates) =
                 batch_packed_queue.split_at(self.mss_batch_size.get());
             for &candidate_count in candidate_counts {
@@ -911,9 +910,7 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
                 .iter()
                 .filter_map(|x| {
                     let s = dbg_registers_iter(
-                        x.possible_registers
-                            .iter()
-                            .map(|combination| combination.iter().copied()),
+                        x.0.iter().map(|combination| combination.iter().copied()),
                         possible_orders_except_one,
                     );
                     if s.is_empty() { None } else { Some(s) }

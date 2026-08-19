@@ -8,7 +8,8 @@ use std::{
 };
 
 use cycle_combination_finder::{
-    finder::{CycleCombinationFinder, Optimality, SolutionExpansion}, puzzle::{
+    finder::{CycleCombinationFinder, Optimality, SolutionExpansion},
+    puzzle::{
         PuzzleDef,
         cubeN::{self, cube},
         minxN,
@@ -32,37 +33,55 @@ fn main() {
             .unwrap()
             .find()
             .unwrap();
-    } else if p == "minx4" {
+    } else if p == "minx4 3" {
         let minx4 = minxN::MINX4.clone();
-        let base = CycleCombinationFinder::builder()
+        let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx4)
-            .with_register_count(3);
-        for b in [1, 10, 100, 1000, 10000, 100000, 1000000, 10000000] {
-            println!("{:?}", b);
-            base.clone()
-                .with_mss_batch_size(Some(b))
-                .validate()
-                .unwrap()
-                .find()
-                .unwrap();
+            .with_register_count(3)
+            .with_mss_batch_size(Some(1000))
+            .with_expected_solutions_count_assertion(Some(296))
+            .validate()
+            .unwrap()
+            .find()
+            .unwrap();
+        for x in ret.cycle_combinations {
+            println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
+        }
+    } else if p == "minx4 4" {
+        let minx4 = minxN::MINX4.clone();
+        let ret = CycleCombinationFinder::builder()
+            .with_puzzle_def(&minx4)
+            .with_register_count(4)
+            .with_optimality(Optimality::MaxOrderRatio(10.0))
+            .with_mss_batch_size(Some(1))
+            .validate()
+            .unwrap()
+            .find()
+            .unwrap();
+        for x in ret.cycle_combinations {
+            println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
         }
     } else if p == "minx5" {
         let minx5 = minxN::MINX5.clone();
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx5)
-            .with_register_count(4)
+            .with_register_count(3)
             .with_max_fitting_tries(Some(2500))
             .with_mss_batch_size(Some(10000))
             .with_time_limit(Some(Duration::from_mins(10)))
             .with_solution_expansion(SolutionExpansion::Limit(100))
-            .with_optimality(Optimality::MaxOrderRatio(10.0))
+            .with_optimality(Optimality::MaxOrderRatio(1.3))
             .validate()
             .unwrap()
             .find()
             .unwrap();
         let mut f = BufWriter::new(File::create("results.txt").unwrap());
         for x in ret.cycle_combinations {
-            writeln!(f, "{}", x.solutions_fmt(&ret.possible_orders_except_one, &minx5));
+            writeln!(
+                f,
+                "{}",
+                x.solutions_fmt(&ret.possible_orders_except_one, &minx5)
+            );
             println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
         }
         f.flush().unwrap();
