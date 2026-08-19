@@ -1052,7 +1052,9 @@ mod tests {
         orderexps::OrderExps,
         puzzle::{
             EvenParityConstraints, OrientationStatus, OrientationSumConstraint, PartialOrbitDef,
-            PuzzleDef, minxN::MINX3, possible_orders_len_cast,
+            PuzzleDef,
+            minxN::{MINX3, MINX5},
+            possible_orders_len_cast,
         },
     };
 
@@ -1281,5 +1283,49 @@ mod tests {
         ";
 
         do_test(solutions_calculator, register_orders, expected);
+    }
+
+    #[test_log::test]
+    fn noncanonical_edge_case() {
+        let minx5 = MINX5.clone();
+        let possible_orders_except_one =
+            mk_possible_orders_except_one(&minx5, minx5.possible_orders(None).unwrap());
+        let ccf = CycleCombinationFinder::builder()
+            .with_register_count(3)
+            .clone()
+            .with_puzzle_def(&minx5)
+            .validate()
+            .unwrap();
+        let mut solutions_calculator = ccf.solutions_calculator(&possible_orders_except_one);
+        let register_orders = vec![38_798_760, 19_399_380, 6_126_120];
+
+        let mut registers = register_orders
+            .into_iter()
+            .map(|register_order| {
+                possible_orders_len_cast(
+                    solutions_calculator
+                        .immutable
+                        .possible_orders_except_one
+                        .iter()
+                        .position(|possible_order| {
+                            u64::try_from(possible_order.order.as_bigint()).unwrap()
+                                == register_order
+                        })
+                        .unwrap(),
+                )
+            })
+            .collect::<Box<[_]>>();
+        registers.sort_by_key(|&r| std::cmp::Reverse(r));
+        let registers = Arc::from(registers);
+        let now = Instant::now();
+        let solutions = solutions_calculator.expansion(DisjointRegisters::from(
+            NonemptySlice::try_from(&*registers).unwrap(),
+        ));
+        println!(
+            "Found {} solutions in {}",
+            solutions.unwrap().0.len(),
+            now.elapsed().human(Truncate::Micro)
+        );
+        panic!();
     }
 }
