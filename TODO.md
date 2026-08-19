@@ -10,7 +10,6 @@
 ## CCF
 
 - solution in blank should apply everywhere
-- use the min piece count order to prune when there is no pruning available
 - dominate should return an ordering based on what daniel said
 - the MSS was wrong earlier, it said unused instead of ignored on a corners solution
 - maybe_min_order_ratio

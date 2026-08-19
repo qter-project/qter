@@ -316,7 +316,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                 (
                     &mut RegisterOrbitConstraint {
                         ref mut known_share_state,
-                        orientation_satisfied_by: running_share_state_satisfies,
+                        orientation_satisfied_by,
                     },
                     orbit_remaining_piece,
                 ),
@@ -327,7 +327,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
             {
                 // Promote only if we have no other share rn
                 // TODO: parity
-                if running_share_state_satisfies == OrientationSatisfiedBy::LeftoverPiece
+                if orientation_satisfied_by == OrientationSatisfiedBy::LeftoverPiece
                     && *known_share_state == ShareState::None
                 {
                     assert_ne!(orbit_remaining_piece.unused, 0);
@@ -394,7 +394,6 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                 return found;
             }
 
-            trace!("Solution");
             if self.expansion {
                 // TODO: allocator
                 let mut register_orbit_cycles =
@@ -438,23 +437,27 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                                 piece_count: cycle_piece_count,
                                 must_orient: orient_state.must_orient(),
                             });
-                            // only the last register has the most recent share state propagation
-                            if register_index == self.ccf.register_count.get() - 1 {
-                                self.orbit_remaining_pieces[orbit_index2].ignored = self
-                                    .register_orbit_constraints[register_orbit_index]
-                                    .known_share_state
-                                    .required_ignored_pieces();
-                            }
                         }
                         all_exponents ^= all_exponents.isolate_lowest_one();
                     }
-                    for register_orbit_cycle in register_orbit_cycles
+                    for (orbit_index2, register_orbit_cycle) in register_orbit_cycles
                         .iter_mut()
                         .skip(register_index2 * self.ccf.puzzle_def.orbit_defs().len().get())
                         .take(self.ccf.puzzle_def.orbit_defs().len().get())
+                        .enumerate()
                     {
                         register_orbit_cycle
                             .sort_unstable_by_key(|&Cycle { piece_count, .. }| piece_count);
+                        // only the last register has the most recent share state propagation
+                        if register_index == self.ccf.register_count.get() - 1 {
+                            let register_orbit_index = register_index2
+                                * self.ccf.puzzle_def.orbit_defs().len().get()
+                                + orbit_index2;
+                            self.orbit_remaining_pieces[orbit_index2].ignored = self
+                                .register_orbit_constraints[register_orbit_index]
+                                .known_share_state
+                                .required_ignored_pieces();
+                        }
                     }
                 }
 
