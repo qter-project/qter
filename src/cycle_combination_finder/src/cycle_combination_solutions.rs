@@ -285,10 +285,10 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
     // TODO: inline this more for previous calls
     fn recursive_backtrack(&mut self, registers: DisjointRegisters) -> bool {
         if let Some(max_fitting_tries) = self.ccf.maybe_max_fitting_tries {
-            self.fitting_tries += 1;
             if self.fitting_tries == max_fitting_tries {
                 return false;
             }
+            self.fitting_tries += 1;
         } else if log_enabled!(Level::Debug) {
             self.fitting_tries += 1;
         }
