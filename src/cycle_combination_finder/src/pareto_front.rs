@@ -30,6 +30,7 @@ impl PartialEq for CCParetoFront {
 fn dominate<const ASSUME_UNIQUE: bool>(
     a: impl IntoIterator<Item = u32>,
     b: impl IntoIterator<Item = u32>,
+    return_less_early: bool,
 ) -> Ordering {
     /*
     old >, new >: continue
@@ -54,7 +55,13 @@ fn dominate<const ASSUME_UNIQUE: bool>(
             | (Ordering::Greater, Ordering::Greater | Ordering::Equal)
             | (Ordering::Equal, Ordering::Equal) => (),
 
-            (Ordering::Equal, Ordering::Greater | Ordering::Less) => {
+            (Ordering::Equal, Ordering::Greater) => {
+                old = new;
+            }
+            (Ordering::Equal, Ordering::Less) => {
+                if return_less_early {
+                    return Ordering::Less;
+                }
                 old = new;
             }
         }
@@ -80,7 +87,8 @@ impl CCParetoFront {
         let mut write_idx = start;
         for read_idx in start..self.0.len() {
             let member = &self.0[read_idx];
-            if dominate::<ASSUME_UNIQUE>(registers.iter().copied(), member.iter().copied()).is_le()
+            if dominate::<ASSUME_UNIQUE>(registers.iter().copied(), member.iter().copied(), true)
+                .is_le()
             {
                 self.0[write_idx] = Arc::clone(&self.0[read_idx]);
                 write_idx += 1;
@@ -91,7 +99,7 @@ impl CCParetoFront {
 
     pub fn push(&mut self, existing: Arc<[u32]>) -> bool {
         for (i, member) in self.0.iter().enumerate() {
-            match dominate::<true>(member.iter().copied(), existing.iter().copied()) {
+            match dominate::<true>(member.iter().copied(), existing.iter().copied(), false) {
                 Ordering::Less => {
                     // `new_element` dominates `element`, it is thus part of the Pareto front
                     self.0.remove(i);
@@ -129,7 +137,11 @@ impl CCParetoFront {
     ) -> bool {
         let mut domatinating_check_failed = false;
         for (i, member) in self.0.iter().enumerate() {
-            match dominate::<true>(member.iter().copied(), registers.iter()) {
+            match dominate::<true>(
+                member.iter().copied(),
+                registers.iter(),
+                domatinating_check_failed,
+            ) {
                 Ordering::Less => {
                     if !domatinating_check_failed {
                         if let Some(cycle_combination) = (dominating_check)(registers) {
@@ -173,7 +185,7 @@ impl CCParetoFront {
 
     fn remove_dominated(&mut self, registers: &[u32]) -> bool {
         for (i, member) in self.0.iter().enumerate() {
-            match dominate::<false>(member.iter().copied(), registers.iter().copied()) {
+            match dominate::<false>(member.iter().copied(), registers.iter().copied(), false) {
                 Ordering::Less => {
                     self.0.remove(i);
                     self.remove_dominated_starting_at::<false>(registers, i);

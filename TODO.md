@@ -10,7 +10,6 @@
 ## CCF
 
 - important
-  - dominate should return an ordering based on what daniel said
   - maybe_min_order_ratio
   - fit orienting cycles first
   - fit equal fitting cycles first into orbis
