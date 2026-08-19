@@ -27,38 +27,61 @@ impl PartialEq for CCParetoFront {
     }
 }
 
-fn dominate(
-    dominating: impl IntoIterator<Item = u32>,
-    to_dominate: impl IntoIterator<Item = u32>,
-) -> bool {
-    if cfg!(debug_assertions) {
-        let mut dominating_iter = dominating.into_iter();
-        let mut to_dominate_iter = to_dominate.into_iter();
-        loop {
-            match (dominating_iter.next(), to_dominate_iter.next()) {
-                (Some(d), Some(t)) => {
-                    if d < t {
-                        return false;
-                    }
-                }
-                (None, None) => break,
-                _ => panic!("mismatched lengths"),
+fn dominate<const ASSUME_UNIQUE: bool>(
+    a: impl IntoIterator<Item = u32>,
+    b: impl IntoIterator<Item = u32>,
+) -> Ordering {
+    /*
+    old >, new >: continue
+    old >, new =: continue
+    old >, new <: return eq
+    old =, new >: continue gt
+    old =, new =: continue
+    old =, new <: continue lt
+    old <, new >: return eq
+    old <, new =: continue
+    old <, new <: continue
+    */
+    let mut old = Ordering::Equal;
+    for (x, y) in a.into_iter().zip(b) {
+        let new = x.cmp(&y);
+        match (old, new) {
+            (Ordering::Less, Ordering::Greater) | (Ordering::Greater, Ordering::Less) => {
+                return Ordering::Equal;
+            }
+
+            (Ordering::Less, Ordering::Less | Ordering::Equal)
+            | (Ordering::Greater, Ordering::Greater | Ordering::Equal)
+            | (Ordering::Equal, Ordering::Equal) => (),
+
+            (Ordering::Equal, Ordering::Greater | Ordering::Less) => {
+                old = new;
             }
         }
-        true
+    }
+    if ASSUME_UNIQUE {
+        old
     } else {
-        dominating.into_iter().zip(to_dominate).all(|(d, t)| d >= t)
+        match old {
+            Ordering::Equal | Ordering::Greater => Ordering::Greater,
+            Ordering::Less => Ordering::Less,
+        }
     }
 }
 
 impl CCParetoFront {
     /// Removes all elements in the front that are dominated by `new_element`,
     /// starting at index `index_start`.
-    fn remove_dominated_starting_at(&mut self, registers: &[u32], start: usize) {
+    fn remove_dominated_starting_at<const ASSUME_UNIQUE: bool>(
+        &mut self,
+        registers: &[u32],
+        start: usize,
+    ) {
         let mut write_idx = start;
         for read_idx in start..self.0.len() {
             let member = &self.0[read_idx];
-            if !dominate(registers.iter().copied(), member.iter().copied()) {
+            if dominate::<ASSUME_UNIQUE>(registers.iter().copied(), member.iter().copied()).is_le()
+            {
                 self.0[write_idx] = Arc::clone(&self.0[read_idx]);
                 write_idx += 1;
             }
@@ -68,26 +91,30 @@ impl CCParetoFront {
 
     pub fn push(&mut self, existing: Arc<[u32]>) -> bool {
         for (i, member) in self.0.iter().enumerate() {
-            if dominate(member.iter().copied(), existing.iter().copied()) {
-                // `new_element` is dominated by `element`, it is thus not part of the Pareto
-                // front swap `element` with the previous element in order to
-                // percolate the best elements to the top NOTE: in my benchmarks
-                // this brings clear performance benefits by putting "killer" elements first
-                if i > 0 {
-                    // SAFETY: `i` is in range, and `i - 1` must also be in range because of the
-                    // if. Note that the safe version was not optimizing the bounds check
-                    unsafe {
-                        self.0.swap_unchecked(i, i - 1);
-                    }
+            match dominate::<true>(member.iter().copied(), existing.iter().copied()) {
+                Ordering::Less => {
+                    // `new_element` dominates `element`, it is thus part of the Pareto front
+                    self.0.remove(i);
+                    // looks at the rest of the Pareto front to remove any further element that
+                    // are dominated
+                    self.remove_dominated_starting_at::<true>(&existing, i);
+                    break;
                 }
-                return false;
-            } else if dominate(existing.iter().copied(), member.iter().copied()) {
-                // `new_element` dominates `element`, it is thus part of the Pareto front
-                self.0.remove(i);
-                // looks at the rest of the Pareto front to remove any further element that
-                // are dominated
-                self.remove_dominated_starting_at(&existing, i);
-                break;
+                Ordering::Equal => (),
+                Ordering::Greater => {
+                    // `new_element` is dominated by `element`, it is thus not part of the Pareto
+                    // front swap `element` with the previous element in order to
+                    // percolate the best elements to the top NOTE: in my benchmarks
+                    // this brings clear performance benefits by putting "killer" elements first
+                    if i > 0 {
+                        // SAFETY: `i` is in range, and `i - 1` must also be in range because of the
+                        // if. Note that the safe version was not optimizing the bounds check
+                        unsafe {
+                            self.0.swap_unchecked(i, i - 1);
+                        }
+                    }
+                    return false;
+                }
             }
         }
 
@@ -102,32 +129,36 @@ impl CCParetoFront {
     ) -> bool {
         let mut domatinating_check_failed = false;
         for (i, member) in self.0.iter().enumerate() {
-            if dominate(member.iter().copied(), registers.iter()) {
-                // `new_element` is dominated by `element`, it is thus not part of the Pareto
-                // front swap `element` with the previous element in order to
-                // percolate the best elements to the top NOTE: in my benchmarks
-                // this brings clear performance benefits by putting "killer" elements first
-                if i > 0 {
-                    // SAFETY: `i` is in range, and `i - 1` must also be in range because of the
-                    // if. Note that the safe version was not optimizing the bounds check
-                    unsafe {
-                        self.0.swap_unchecked(i, i - 1);
+            match dominate::<true>(member.iter().copied(), registers.iter()) {
+                Ordering::Less => {
+                    if !domatinating_check_failed {
+                        if let Some(cycle_combination) = (dominating_check)(registers) {
+                            // `new_element` dominates `element`, it is thus part of the Pareto front
+                            self.0.remove(i);
+                            // looks at the rest of the Pareto front to remove any further element that
+                            // are dominated
+                            self.remove_dominated_starting_at::<true>(&cycle_combination, i);
+                            self.0.push(cycle_combination);
+                            return true;
+                        }
+                        domatinating_check_failed = true;
                     }
                 }
-                return false;
-            } else if !domatinating_check_failed
-                && dominate(registers.iter(), member.iter().copied())
-            {
-                if let Some(cycle_combination) = (dominating_check)(registers) {
-                    // `new_element` dominates `element`, it is thus part of the Pareto front
-                    self.0.remove(i);
-                    // looks at the rest of the Pareto front to remove any further element that
-                    // are dominated
-                    self.remove_dominated_starting_at(&cycle_combination, i);
-                    self.0.push(cycle_combination);
-                    return true;
+                Ordering::Equal => (),
+                Ordering::Greater => {
+                    // `new_element` is dominated by `element`, it is thus not part of the Pareto
+                    // front swap `element` with the previous element in order to
+                    // percolate the best elements to the top NOTE: in my benchmarks
+                    // this brings clear performance benefits by putting "killer" elements first
+                    if i > 0 {
+                        // SAFETY: `i` is in range, and `i - 1` must also be in range because of the
+                        // if. Note that the safe version was not optimizing the bounds check
+                        unsafe {
+                            self.0.swap_unchecked(i, i - 1);
+                        }
+                    }
+                    return false;
                 }
-                domatinating_check_failed = true;
             }
         }
 
@@ -142,17 +173,21 @@ impl CCParetoFront {
 
     fn remove_dominated(&mut self, registers: &[u32]) -> bool {
         for (i, member) in self.0.iter().enumerate() {
-            if dominate(member.iter().copied(), registers.iter().copied()) {
-                if i > 0 {
-                    unsafe {
-                        self.0.swap_unchecked(i, i - 1);
-                    }
+            match dominate::<false>(member.iter().copied(), registers.iter().copied()) {
+                Ordering::Less => {
+                    self.0.remove(i);
+                    self.remove_dominated_starting_at::<false>(registers, i);
+                    return true;
                 }
-                return false;
-            } else if dominate(registers.iter().copied(), member.iter().copied()) {
-                self.0.remove(i);
-                self.remove_dominated_starting_at(registers, i);
-                return true;
+                Ordering::Equal => (),
+                Ordering::Greater => {
+                    if i > 0 {
+                        unsafe {
+                            self.0.swap_unchecked(i, i - 1);
+                        }
+                    }
+                    return false;
+                }
             }
         }
         true

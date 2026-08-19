@@ -8,7 +8,7 @@ use std::{
 };
 
 use cycle_combination_finder::{
-    finder::{CycleCombinationFinder, Optimality, SolutionExpansion},
+    finder::{CycleCombinationFinder, NumCores, Optimality, SolutionExpansion},
     puzzle::{
         PuzzleDef,
         cubeN::{self, cube},
@@ -94,7 +94,7 @@ fn main() {
         let cube3 = cubeN::CUBE3.clone();
         let ret = ccf
             .with_puzzle_def(&cube3)
-            .with_register_count(7)
+            .with_register_count(3)
             .validate()
             .unwrap()
             .find()
