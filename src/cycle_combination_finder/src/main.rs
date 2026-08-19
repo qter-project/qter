@@ -44,7 +44,13 @@ fn main() {
             .unwrap()
             .find()
             .unwrap();
+        let mut f = BufWriter::new(File::create(p).unwrap());
         for x in ret.cycle_combinations {
+            writeln!(
+                f,
+                "{}",
+                x.solutions_fmt(&ret.possible_orders_except_one, &minx4)
+            );
             println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
         }
     } else if p == "minx4 4" {
@@ -84,16 +90,18 @@ fn main() {
             );
             println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
         }
-        f.flush().unwrap();
     } else if p == "cube3" {
         let cube3 = cubeN::CUBE3.clone();
-        ccf.with_puzzle_def(&cube3)
-            .with_register_count(2)
-            .with_expected_solutions_count_assertion(Some(5))
+        let ret = ccf.with_puzzle_def(&cube3)
+            .with_register_count(4)
+            .with_expected_solutions_count_assertion(Some(43))
             .validate()
             .unwrap()
             .find()
             .unwrap();
+        for x in ret.cycle_combinations {
+            println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
+        }
     } else {
         println!("Enter minx3 or minx4 or cube3");
     }

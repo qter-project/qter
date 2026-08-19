@@ -570,9 +570,6 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
         } else {
             self.search_dfs(&possible_orders_except_one)
         };
-        if self.sorted {
-            all_possible_registers.sort_unstable();
-        }
         let expansion_percent_done = AtomicUsize::new(0);
         let logged_bucket = Mutex::new(0);
         let possible_registers_len = all_possible_registers.len();
@@ -596,11 +593,11 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
         };
 
         let now = Instant::now();
-        let cycle_combinations = match maybe_pool {
+        let mut cycle_combinations = match maybe_pool {
             Some(pool) => pool.install(expand),
             None => expand(),
         };
-        info!("Expansion took: {}", now.elapsed().human(Truncate::Micro));
+        info!("Expansion took {}", now.elapsed().human(Truncate::Micro));
         debug!(
             "Found {} solutions, with {} expansions average",
             cycle_combinations.len(),
@@ -609,6 +606,9 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
                 .map(|cycle_combination| cycle_combination.solutions.0.len())
                 .sum::<usize>()
         );
+        if self.sorted {
+            cycle_combinations.sort_unstable();
+        }
         if let Some(expected_solution_count) = self.maybe_expected_solution_count {
             assert_eq!(
                 cycle_combinations.len(),
@@ -622,7 +622,6 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
                     .collect::<Vec<_>>()
                     .join("\n")
             );
-            trace!("{cycle_combinations:?}");
         }
         Ok(CycleCombinations {
             cycle_combinations,
