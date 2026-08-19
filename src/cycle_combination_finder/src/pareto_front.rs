@@ -7,7 +7,6 @@ use crate::cycle_combinations_tree::DisjointRegisters;
 #[derive(Debug, Default)]
 pub(crate) struct CCParetoFront {
     pub(crate) possible_registers: Vec<Arc<[u32]>>,
-    index_dominated_elements: Vec<usize>,
 }
 
 impl Ord for CCParetoFront {
@@ -60,26 +59,15 @@ impl CCParetoFront {
     /// Removes all elements in the front that are dominated by `new_element`,
     /// starting at index `index_start`.
     fn remove_dominated_starting_at(&mut self, registers: &[u32], start: usize) {
-        // lists all elements dominated by `new_element`, starting at index
-        // `index_start`
-        let available_elements = self.possible_registers.len().saturating_sub(start);
-        if self.index_dominated_elements.len() < available_elements {
-            self.index_dominated_elements.resize(available_elements, 0);
-        }
-        let mut len = 0;
-        for (i, member) in self.possible_registers.iter().enumerate().skip(start) {
-            if dominate(registers.iter().copied(), member.iter().copied()) {
-                self.index_dominated_elements[len] = i;
-                len += 1;
+        let mut write_idx = start;
+        for read_idx in start..self.possible_registers.len() {
+            let member = &self.possible_registers[read_idx];
+            if !dominate(registers.iter().copied(), member.iter().copied()) {
+                self.possible_registers[write_idx] = Arc::clone(&self.possible_registers[read_idx]);
+                write_idx += 1;
             }
         }
-
-        // removes the elements at the listed indexes
-        // in reverse order to take into acount that each removed index shift all the
-        // following indexes
-        for &i in self.index_dominated_elements.iter().take(len).rev() {
-            self.possible_registers.swap_remove(i);
-        }
+        self.possible_registers.truncate(write_idx);
     }
 
     pub fn push(&mut self, existing: Arc<[u32]>) -> bool {
@@ -99,7 +87,7 @@ impl CCParetoFront {
                 return false;
             } else if dominate(existing.iter().copied(), member.iter().copied()) {
                 // `new_element` dominates `element`, it is thus part of the Pareto front
-                self.possible_registers.swap_remove(i);
+                self.possible_registers.remove(i);
                 // looks at the rest of the Pareto front to remove any further element that
                 // are dominated
                 self.remove_dominated_starting_at(&existing, i);
@@ -136,7 +124,7 @@ impl CCParetoFront {
             {
                 if let Some(cycle_combination) = (dominating_check)(registers) {
                     // `new_element` dominates `element`, it is thus part of the Pareto front
-                    self.possible_registers.swap_remove(i);
+                    self.possible_registers.remove(i);
                     // looks at the rest of the Pareto front to remove any further element that
                     // are dominated
                     self.remove_dominated_starting_at(&cycle_combination, i);
@@ -166,7 +154,7 @@ impl CCParetoFront {
                 }
                 return false;
             } else if dominate(registers.iter().copied(), member.iter().copied()) {
-                self.possible_registers.swap_remove(i);
+                self.possible_registers.remove(i);
                 self.remove_dominated_starting_at(registers, i);
                 return true;
             }
@@ -202,7 +190,6 @@ impl From<CCParetoFront> for Vec<Arc<[u32]>> {
     fn from(
         CCParetoFront {
             possible_registers,
-            index_dominated_elements: _,
         }: CCParetoFront,
     ) -> Vec<Arc<[u32]>> {
         possible_registers
