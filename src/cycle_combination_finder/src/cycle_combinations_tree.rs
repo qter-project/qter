@@ -524,13 +524,9 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
                 .unwrap();
         let real_time = Instant::now();
         let cpu_time = ThreadTime::now();
-        loop {
-            let maybe_batch_packed_queue = match candidates_receiver.try_recv() {
-                Ok(batch_packed_queue) => Some(batch_packed_queue),
-                Err(TryRecvError::Disconnected) => break,
-                Err(TryRecvError::Empty) => None,
-            };
-
+        while let Ok(PackedCycleCombinationCandidateQueue(batch_packed_queue)) =
+            candidates_receiver.recv()
+        {
             loop {
                 match solutions_receiver.try_recv() {
                     Ok((c, s)) => {
@@ -542,13 +538,7 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
                     Err(TokioTryRecvError::Empty | TokioTryRecvError::Lagged(_)) => break,
                 }
             }
-
-            let PackedCycleCombinationCandidateQueue(batch_packed_queue) =
-                match maybe_batch_packed_queue.map_or_else(|| candidates_receiver.recv(), Ok) {
-                    Ok(batch_packed_queue) => batch_packed_queue,
-                    Err(RecvError) => break,
-                };
-
+            
             let (candidate_counts, mut packed_candidates) =
                 batch_packed_queue.split_at(self.mss_batch_size.get());
             for &candidate_count in candidate_counts {
@@ -568,6 +558,7 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
                         prefix_registers,
                         last_register,
                     };
+
                     if !cycle_combinations.push_and_dominating_check(
                         disjoint_registers,
                         |dominating_registers| {
