@@ -104,18 +104,25 @@ pub struct CycleCombination {
     pub(crate) solutions: CycleCombinationSolutions,
 }
 
+#[derive(Debug)]
 pub struct CycleCombinations<const N: usize> {
     pub cycle_combinations: Box<[CycleCombination]>,
     pub possible_orders_except_one: Arc<[PossibleOrder<N>]>,
 }
 
 #[derive(Error, Debug)]
-pub enum CycleCombinationFinderError {
+pub enum CycleCombinationFinderError<const N: usize> {
     #[error(
         "This puzzle has too many orders. This is a hint that your puzzle is anyways too large \
          for the CCF to finish computing in a reasonable amount of time."
     )]
     PuzzleTooManyOrders,
+    #[error("Expected {expected} solutions, found {actual}.")]
+    MismatchedSolutionCount {
+        cycle_combinations: CycleCombinations<N>,
+        expected: usize,
+        actual: usize,
+    },
 }
 
 #[derive(Error, Debug)]
@@ -544,7 +551,7 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
     /// Panics if an expected length assertion was set via
     /// [`Self::with_expected_length_assertion`] and the solutions length
     /// mismatches.
-    pub fn find(self) -> Result<CycleCombinations<N>, CycleCombinationFinderError> {
+    pub fn find(self) -> Result<CycleCombinations<N>, CycleCombinationFinderError<N>> {
         let maybe_pool = match self.num_cores {
             ValidatedNumCores::AllCores => None,
             ValidatedNumCores::Num(num_cores) => Some(
@@ -565,7 +572,7 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
             mk_possible_orders_except_one(self.puzzle_def, possible_orders);
         let possible_orders_except_one = Arc::from(possible_orders_except_one.into_boxed_slice());
 
-        let mut all_possible_registers = if self.optimality == Optimality::EQUIVALENT {
+        let all_possible_registers = if self.optimality == Optimality::EQUIVALENT {
             unimplemented!()
         } else {
             self.search_dfs(&possible_orders_except_one)
@@ -609,24 +616,22 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
         if self.sorted {
             cycle_combinations.sort_unstable();
         }
-        if let Some(expected_solution_count) = self.maybe_expected_solution_count {
-            assert_eq!(
-                cycle_combinations.len(),
-                expected_solution_count,
-                "Expected {expected_solution_count} solutions, found {}. Solutions: {}",
-                cycle_combinations.len(),
-                cycle_combinations
-                    .into_iter()
-                    .map(|cycle_combination| cycle_combination
-                        .orders_fmt(&possible_orders_except_one))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            );
-        }
-        Ok(CycleCombinations {
+        let actual_solution_count = cycle_combinations.len();
+        let cycle_combinations = CycleCombinations {
             cycle_combinations,
             possible_orders_except_one,
-        })
+        };
+        if let Some(expected_solution_count) = self.maybe_expected_solution_count
+            && actual_solution_count != expected_solution_count
+        {
+            Err(CycleCombinationFinderError::MismatchedSolutionCount {
+                cycle_combinations,
+                expected: expected_solution_count,
+                actual: actual_solution_count,
+            })
+        } else {
+            Ok(cycle_combinations)
+        }
     }
 }
 
