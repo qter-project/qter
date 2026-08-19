@@ -940,7 +940,7 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
 
         #[allow(clippy::cast_precision_loss)]
         let pruned_orders_percentage =
-            f64::from(max_last_register) / ((possible_orders_except_one.len() * num_cores) as f64);
+            f64::from(max_last_register) / (possible_orders_except_one.len() as f64);
 
         #[allow(clippy::cast_precision_loss)]
         let full_sends_percentage = full_sends as f64 / sends as f64;
