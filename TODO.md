@@ -9,20 +9,21 @@
 
 ## CCF
 
-- turn maybe_expected_solution_count into an Err
-- dominate should return an ordering based on what daniel said
-- maybe_min_order_ratio
-- a list of numbers such that every number in the list is in the solutions?
-- parity; look in stash!
-- fit orienting cycles first
-- fit equal fitting cycles first into orbis
-- generate less possible orders with optimality not equivalent, see asher's code
-- note that batching "ramps up" the mkp threads when the batch size is large; there are few solutions/batch in the beginning which helps make sure the 
-- after MSS
+- important
+  - dominate should return an ordering based on what daniel said
+  - maybe_min_order_ratio
+  - fit orienting cycles first
+  - fit equal fitting cycles first into orbis
+  - parity; look in stash!
+  - generate less possible orders with optimality not equivalent, see asher's code
+  - a list of numbers such that every number in the list is in the solutions?
   - min piece count doesnt work with orientation constraint none
-  - reuse possible orders list if two orbits are the same
   - is possible_order.0.simd_ne(Simd::splat(0)) really needed
+
+- tree
+  - note that batching "ramps up" the mkp threads when the batch size is large; there are few solutions/batch in the beginning which helps make sure the 
 - possible orders
+  - reuse possible orders list if two orbits are the same
   - store next trie levels inline
   - cache orbit orders
   - daniel's SIMD gcd algorithm

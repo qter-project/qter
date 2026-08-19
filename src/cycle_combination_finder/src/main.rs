@@ -23,7 +23,7 @@ fn main() {
     };
     env_logger::init();
 
-    let ccf = CycleCombinationFinder::builder().with_sorted(false);
+    let ccf = CycleCombinationFinder::builder().with_time_limit(Some(Duration::from_hours(10)));
     if p == "minx3" {
         let minx3 = minxN::MINX3.clone();
         ccf.with_puzzle_def(&minx3)
@@ -92,9 +92,9 @@ fn main() {
         }
     } else if p == "cube3" {
         let cube3 = cubeN::CUBE3.clone();
-        let ret = ccf.with_puzzle_def(&cube3)
-            .with_register_count(4)
-            .with_expected_solutions_count_assertion(Some(43))
+        let ret = ccf
+            .with_puzzle_def(&cube3)
+            .with_register_count(7)
             .validate()
             .unwrap()
             .find()
@@ -102,7 +102,5 @@ fn main() {
         for x in ret.cycle_combinations {
             println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
         }
-    } else {
-        println!("Enter minx3 or minx4 or cube3");
     }
 }
