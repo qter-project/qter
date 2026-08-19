@@ -14,7 +14,7 @@ use log::{Level, debug, log_enabled, trace};
 
 use crate::{
     FIRST_65_PRIMES,
-    cycle_combinations_tree::DisjointRegisters,
+    cycle_combinations_tree::{DisjointRegisters, dbg_registers},
     finder::{
         CycleCombination, PossibleOrder, ValidatedCycleCombinationFinder,
         ValidatedSolutionExpansion,
@@ -52,7 +52,7 @@ pub struct CycleCombinationSolutionsCalculator<'a, const N: usize> {
     register_index: u16,
 
     maybe_solutions: Option<CycleCombinationSolutions>,
-    maybe_fitting_tries: Option<(u32, u32)>,
+    fitting_tries: u32,
 
     /// Map of every register, to its cycles, to which orbit its prime power
     /// component is assigned to and bitmask
@@ -268,10 +268,7 @@ impl<'a, const N: usize> ValidatedCycleCombinationFinder<'a, N> {
             register_orbit_constraints,
             orbit_remaining_pieces,
             expansion: false,
-            maybe_fitting_tries: self
-                .maybe_max_fitting_tries
-                .map(|max_fitting_tries| (max_fitting_tries, max_fitting_tries)),
-
+            fitting_tries: 0,
             ccf: self,
             // register_exponent_sorter,
             // best_orientations_queue,
@@ -287,12 +284,13 @@ impl<'a, const N: usize> ValidatedCycleCombinationFinder<'a, N> {
 impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
     // TODO: inline this more for previous calls
     fn recursive_backtrack(&mut self, registers: DisjointRegisters) -> bool {
-        if let Some((_, remaining_fitting_tries)) = self.maybe_fitting_tries.as_mut() {
-            if let Some(next_remaining_fitting_tries) = remaining_fitting_tries.checked_sub(1) {
-                *remaining_fitting_tries = next_remaining_fitting_tries;
-            } else {
+        if let Some(max_fitting_tries) = self.ccf.maybe_max_fitting_tries {
+            self.fitting_tries += 1;
+            if self.fitting_tries == max_fitting_tries {
                 return false;
             }
+        } else if log_enabled!(Level::Debug) {
+            self.fitting_tries += 1;
         }
         let register_index2 = usize::from(self.register_index);
         let unassigned_exponents_mask =
@@ -959,23 +957,17 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
         // println!("{:?}", self.orbit_remaining_piece_counts);
         // TODO: if an orbit has at least the first highest cycle + second highest cycle
         // number of pieces, we will never not satisfy an orientation constraint
-        if let Some(&mut (initial_fitting_tries, ref mut remaining_fitting_tries)) =
-            self.maybe_fitting_tries.as_mut()
-        {
-            *remaining_fitting_tries = initial_fitting_tries;
-        }
+        self.fitting_tries = 0;
         if self.expansion {
             self.recursive_backtrack(registers);
             SolutionsCalculation::MaybeExpansion(self.maybe_solutions.take())
         } else {
             let existence = self.recursive_backtrack(registers);
-            if existence
-                && let Some(&(initial_fitting_tries, remaining_fitting_tries)) =
-                    self.maybe_fitting_tries.as_ref()
-            {
+            if existence {
                 debug!(
-                    "Solution in {} tries",
-                    initial_fitting_tries - remaining_fitting_tries
+                    "Solution for {} in {} tries",
+                    dbg_registers(registers.iter(), self.immutable.possible_orders_except_one),
+                    self.fitting_tries
                 );
             }
             SolutionsCalculation::Existence(existence)

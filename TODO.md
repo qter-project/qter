@@ -9,12 +9,12 @@
 
 ## CCF
 
-- solution in blank should apply everywhere
+- turn maybe_expected_solution_count into an Err
 - dominate should return an ordering based on what daniel said
-- the MSS was wrong earlier, it said unused instead of ignored on a corners solution
 - maybe_min_order_ratio
 - a list of numbers such that every number in the list is in the solutions?
 - parity; look in stash!
+- fit orienting cycles first
 - fit equal fitting cycles first into orbis
 - generate less possible orders with optimality not equivalent, see asher's code
 - note that batching "ramps up" the mkp threads when the batch size is large; there are few solutions/batch in the beginning which helps make sure the 
