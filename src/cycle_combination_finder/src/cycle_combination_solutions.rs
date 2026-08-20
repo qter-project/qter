@@ -485,7 +485,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
             .order;
         let register_order_exp = register_order.prime_exponent(prime_index2);
 
-        let mut traverse_canonically_orients = false;
+        let mut traverse_canonically_orients = true;
         let mut maybe_prev_traversal_state: Option<OrbitTraversalState<N>> = None;
         let orientations_exps = self.ccf.puzzle_def.orientations_exps();
         // if p is 3, visit oris 8 7 5 4 2 9 3
@@ -533,12 +533,12 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                     },
                 )
             else {
-                if traverse_canonically_orients {
+                if !traverse_canonically_orients {
                     trace!("reg {register_index2} finished traversing");
                     break;
                 }
-                trace!("reg {register_index2} traversing canonical");
-                traverse_canonically_orients = true;
+                trace!("reg {register_index2} traversing noncanonical");
+                traverse_canonically_orients = false;
                 maybe_prev_traversal_state = None;
                 continue;
             };

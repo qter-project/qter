@@ -10,14 +10,16 @@
 ## CCF
 
 - important
-  - maybe_min_order_ratio
   - fit orienting cycles first
   - fit equal fitting cycles first into orbis
   - parity; look in stash!
+  - maybe_min_order_ratio
   - generate less possible orders with optimality not equivalent, see asher's code
   - a list of numbers such that every number in the list is in the solutions?
   - min piece count doesnt work with orientation constraint none
   - is possible_order.0.simd_ne(Simd::splat(0)) really needed
+
+- find registers to compute 3 body problem
 
 - tree
   - note that batching "ramps up" the mkp threads when the batch size is large; there are few solutions/batch in the beginning which helps make sure the 
@@ -28,6 +30,7 @@
   - daniel's SIMD gcd algorithm
   - compute minimum piece count
   - can we just remove parity constraints?
+  - 1) find max possible order 2) check existence using MSS 3) if exists, return all divisors 4) if not, compute possible orders normally
   - can we just ignore added extra orbits
     - perhaps I can do separate analysis beforehand to show that 5354228880 can fit on the puzzle, and then if so, try to remove orbits and then see if 5354228880 still fits
 - min piece count
