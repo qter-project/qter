@@ -3,7 +3,7 @@ A: 3x3
 
 0  | input "Number to modulus:"
            U R U' D2 B
-           max-input 209
+		   max-input 209
 1  | print "A is now"
            B' D2 U R' U'
            counting-until UBL BL

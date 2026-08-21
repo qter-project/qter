@@ -20,9 +20,8 @@ use rhai::ParseError;
 use crate::{
     Block, BlockID, BlockInfo, BlockInfoTracker, Code, DefineUnresolved, DefineValue,
     ExpansionInfo, Instruction, Macro, MacroArgTy, MacroBranch, MacroBranchKey, MacroPattern,
-    MacroPatternComponent, ParsedSyntax, Puzzle, RegistersDecl, Reporter, ResolvedValue, RhaiCall,
-    Value,
-    parsing::tokenizer::{Attempt, Encloser, Symbol, TokenIter, TokenNL, TokenW},
+    MacroPatternComponent, ParsedSyntax, Puzzle, RegistersDecl, ResolvedValue, RhaiCall, Value,
+    parsing::tokenizer::{Attempt, Encloser, Symbol, TokenIter},
     rhai::RhaiMacros,
 };
 
@@ -30,7 +29,7 @@ use super::tokenizer::Token;
 
 pub fn parse(
     iter: &mut TokenIter,
-    find_import: Rc<impl Fn(&str) -> Result<ArcIntern<str>, String> + 'static>,
+    find_import: &Rc<impl Fn(&str) -> Result<ArcIntern<str>, String> + 'static>,
     is_prelude: bool,
 ) -> Option<ParsedSyntax> {
     let registers = match registers(iter) {
@@ -92,8 +91,10 @@ pub fn parse(
             continue;
         }
 
-        let TokenW { token, reporter } = iter.next()?;
-        match token {
+        let token = iter.next()?;
+        let span = token.span();
+
+        match &*token {
             Token::Directive(ident) if &**ident == "macro" => {
                 let (name, def) = macro_def(iter, parsed_syntax.expansion_info.fresh_branch_key())?;
 
@@ -120,7 +121,7 @@ pub fn parse(
                 );
             }
             Token::Directive(ident) if &**ident == "import" => {
-                let filename = iter.next_nl()?.token("a file to import")?.ident()?;
+                let filename = iter.ident()?;
 
                 if !filename.ends_with(".qat") {
                     iter.report(
@@ -144,11 +145,11 @@ pub fn parse(
                     }
                 };
 
-                let find_import = Rc::clone(&find_import);
+                let find_import = Rc::clone(find_import);
 
                 let Some(importee) = super::parse(
                     &File::new(filename.value, import),
-                    find_import,
+                    &find_import,
                     is_prelude,
                     iter.r(),
                 ) else {
@@ -163,13 +164,11 @@ pub fn parse(
                     &iter.r(),
                 );
             }
-            Token::Directive(ident) if &**ident == "start-rhai" => {
-                let (code, pos_to_span) = iter.take_rhai()?;
-
-                if let Err(ParseError(err, pos)) = rhai_macros.add_code(code.slice()) {
-                    let (span, default) = match pos_to_span(pos) {
+            Token::RhaiCode(rhai_code) => {
+                if let Err(ParseError(err, pos)) = rhai_macros.add_code(rhai_code.span().slice()) {
+                    let (span, default) = match rhai_code.pos_to_span(pos) {
                         Some(span) => (span, false),
-                        None => (ident.span().clone(), true),
+                        None => (span.clone(), true),
                     };
 
                     let mut report = Report::build(ReportKind::Error, span.clone())
@@ -184,7 +183,7 @@ pub fn parse(
                     iter.report(report.finish());
                 }
             }
-            Token::EndOfEnclosure(encloser, _) => {
+            Token::EndOfEnclosure(encloser) => {
                 assert!(encloser.is_none());
 
                 parsed_syntax
@@ -194,9 +193,8 @@ pub fn parse(
 
                 return Some(parsed_syntax);
             }
-            t => {
-                return TokenW { token: t, reporter }
-                    .unexpected("an instruction, macro, import, or rhai block");
+            _ => {
+                return iter.unexpected(token, "an instruction, macro, import, or rhai block");
             }
         }
     }
@@ -206,30 +204,19 @@ fn registers(t: &mut TokenIter) -> Attempt<Option<WithSpan<RegistersDecl>>> {
     let marker = t.marker();
 
     t.attempt(|t, commit| {
-        t.next()?.word(".registers")?;
+        t.word(".registers")?;
 
         *commit = true;
 
-        let decls = t.next()?.enclosure(Encloser::Brace)?.parse(|t| {
-            let mut decls = Vec::new();
-
-            loop {
-                let is_empty = matches!(
-                    t.attempt(|t, commit| {
-                        t.next();
-                        *commit = t.is_empty();
-                    }),
-                    Attempt::Taken(())
-                );
-
-                if is_empty {
-                    break;
-                }
-
-                decls.push(register_decl(t)?);
-            }
-
-            Some(decls)
+        let decls = t.enclosure(Encloser::Brace)?.into_inner().parse(|t| {
+            t.parse_list(
+                |t, c| register_decl(t).c(c),
+                |t, c| {
+                    t.nl()?;
+                    *c = true;
+                    Some(())
+                },
+            )
         })?;
 
         Some(t.cash_in(marker).with(RegistersDecl {
@@ -238,72 +225,76 @@ fn registers(t: &mut TokenIter) -> Attempt<Option<WithSpan<RegistersDecl>>> {
     })
 }
 
-fn register_decl(t: &mut TokenIter) -> Option<Puzzle> {
-    let mut names = Vec::new();
+fn register_decl(t: &mut TokenIter) -> Attempt<Option<Puzzle>> {
+    t.attempt(|t, commit| {
+        let mut names = Vec::new();
 
-    let start = t.marker();
+        let start = t.marker();
 
-    loop {
-        names.push(t.next()?.ident()?);
+        loop {
+            names.push(t.ident()?);
 
-        let tokenw = t.next()?;
-        match tokenw.token {
-            Token::Symbol(s) if *s == Symbol::Comma => {}
-            Token::Symbol(s) if *s == Symbol::AssignArrow => break,
-            _ => return tokenw.unexpected("a ',' followed by a register name or a '<-' followed by the architecture definition")
-        }
-    }
+            *commit = true;
 
-    let arch = register_architecture(t)?;
-
-    match arch {
-        PuzzleUnnamed::Theoretical { order } => {
-            if names.len() == 1 {
-                Some(Puzzle::Theoretical {
-                    name: names.pop().unwrap(),
-                    order,
-                })
-            } else {
-                t.report(
-                    Report::build(ReportKind::Error, t.cash_in(start))
-                        .with_message(format!(
-                            "Expected one register name whereas {} were provided.",
-                            names.len()
-                        ))
-                        .finish(),
-                );
-
-                None
+            let token = t.next()?;
+            match &*token {
+                Token::Symbol(s) if *s == Symbol::Comma => {}
+                Token::Symbol(s) if *s == Symbol::AssignArrow => break,
+                _ => return t.unexpected(token, "a ',' followed by a register name or a '<-' followed by the architecture definition")
             }
         }
-        PuzzleUnnamed::Real {
-            architecture,
-            def_span,
-        } => {
-            let span = architecture.span().clone();
-            let (arch, swizzle) = architecture.into_inner();
 
-            if arch.registers().len() == names.len() {
-                swizzle.apply(&mut names);
+        let arch = register_architecture(t)?;
 
-                Some(Puzzle::Real {
-                    architectures: vec![(names, span.with(arch), def_span)],
-                })
-            } else {
-                t.report(
-                    Report::build(ReportKind::Error, t.cash_in(start))
-                        .with_message(format!(
-                            "Expected {} names whereas {} were provided.",
-                            arch.registers().len(),
-                            names.len()
-                        ))
-                        .finish(),
-                );
+        match arch {
+            PuzzleUnnamed::Theoretical { order } => {
+                if names.len() == 1 {
+                    Some(Puzzle::Theoretical {
+                        name: names.pop().unwrap(),
+                        order,
+                    })
+                } else {
+                    t.report(
+                        Report::build(ReportKind::Error, t.cash_in(start))
+                            .with_message(format!(
+                                "Expected one register name whereas {} were provided.",
+                                names.len()
+                            ))
+                            .finish(),
+                    );
 
-                None
+                    None
+                }
+            }
+            PuzzleUnnamed::Real {
+                architecture,
+                def_span,
+            } => {
+                let span = architecture.span().clone();
+                let (arch, swizzle) = architecture.into_inner();
+
+                if arch.registers().len() == names.len() {
+                    swizzle.apply(&mut names);
+
+                    Some(Puzzle::Real {
+                        architectures: vec![(names, span.with(arch), def_span)],
+                    })
+                } else {
+                    t.report(
+                        Report::build(ReportKind::Error, t.cash_in(start))
+                            .with_message(format!(
+                                "Expected {} names whereas {} were provided.",
+                                arch.registers().len(),
+                                names.len()
+                            ))
+                            .finish(),
+                    );
+
+                    None
+                }
             }
         }
-    }
+    })
 }
 
 #[derive(Clone, Debug)]
@@ -320,11 +311,10 @@ enum PuzzleUnnamed {
 fn register_architecture(t: &mut TokenIter) -> Option<PuzzleUnnamed> {
     let start = t.marker();
 
-    let puzzle_def = t.next()?.ident()?;
+    let puzzle_def = t.ident()?;
 
     if &**puzzle_def == "theoretical" {
-        let order = t.next()?.number()?;
-        t.next_nl()?.nl()?;
+        let order = t.number()?;
 
         return Some(PuzzleUnnamed::Theoretical { order });
     }
@@ -353,164 +343,126 @@ fn register_architecture(t: &mut TokenIter) -> Option<PuzzleUnnamed> {
 
     let def_span = puzzle_def.span().clone();
 
-    let tokenw = t.next()?;
-    let arch = match tokenw.token {
-        Token::Ident(ident) => {
-            if &**ident == "builtin" {
-                let tokenw = t.next()?;
-                let orders = match tokenw.token {
-                    Token::Number(num) => vec![*num],
-                    Token::Enclosure(Encloser::Paren, token_enclosure) => token_enclosure
-                        .parse(|t| {
-                            let mut out = Vec::new();
+    let group = puzzle?.permutation_group();
 
-                            loop {
-                                let tokenw = t.next()?;
-                                let num = match tokenw.token {
-                                    Token::Number(num) => *num,
-                                    Token::EndOfEnclosure(_, _) => return Some(out),
-                                    _ => return tokenw.unexpected("a number or ')'"),
-                                };
-
-                                out.push(num);
-
-                                let tokenw = t.next()?;
-                                match tokenw.token {
-                                    Token::Symbol(sym) if *sym == Symbol::Comma => {}
-                                    Token::EndOfEnclosure(_, _) => return Some(out),
-                                    _ => return tokenw.unexpected("a comma or ')'"),
-                                }
-                            }
-                        })?
-                        .into_inner(),
-                    _ => {
-                        return tokenw.unexpected("an number or parenthezised list of numbers");
-                    }
-                };
-
-                Some(
-                    t.cash_in(start)
-                        .with(with_presets(puzzle?.permutation_group()).get_preset(&orders)?),
-                )
-            } else {
-                let group = puzzle?.permutation_group();
-
-                let mut alg = Some(Algorithm::identity(Arc::clone(&group)));
-
-                try_append(&mut alg, ident, &group, t.r());
-
-                loop {
-                    let tokenw = t.next_nl()?;
-                    match tokenw.token {
-                        TokenNL::NewLine(_) => {
-                            break alg.map(|alg| {
-                                t.cash_in(start).with((
-                                    Arc::new(Architecture::new(group, vec![alg].into())),
-                                    Permutation::identity(),
-                                ))
-                            });
-                        }
-                        TokenNL::Token(Token::Ident(turn)) => {
-                            try_append(&mut alg, turn, &group, t.r())
-                        }
-                        TokenNL::Token(token) => {
-                            return TokenW {
-                                token,
-                                reporter: tokenw.reporter,
-                            }
-                            .unexpected("a move or a line break");
-                        }
-                    }
-                }
-            }
-        }
-        Token::Enclosure(Encloser::Paren, token_enclosure) => token_enclosure.parse(|t| {
-            let group = puzzle?.permutation_group();
-
-            let mut algs = Some(Vec::new());
-
-            let mut alg = Some(Algorithm::identity(Arc::clone(&group)));
-            let mut has_moves = false;
-
-            loop {
-                let tokenw = t.next()?;
-
-                if let Token::Ident(turn) = tokenw.token {
-                    try_append(&mut alg, turn, &group, t.r());
-                    has_moves = true;
-                    continue;
-                }
-
-                let mut done = false;
-                if has_moves
-                    && let Token::Symbol(sym) = &tokenw.token
-                    && **sym == Symbol::Comma
-                {
-                    // ok
-                } else if let Token::EndOfEnclosure(_, _) = &tokenw.token {
-                    // ok
-                    done = true;
-                } else {
-                    return tokenw.unexpected(if has_moves {
-                        "a move, a comma, or a ')'"
-                    } else {
-                        "a move or a ')'"
-                    });
-                }
-
-                if has_moves && let (Some(algs), Some(alg)) = (&mut algs, alg) {
-                    algs.push(alg);
-                }
-                alg = Some(Algorithm::identity(Arc::clone(&group)));
-
-                if done {
-                    break algs.map(|algs| {
-                        (
-                            Arc::new(Architecture::new(group, algs.into())),
-                            Permutation::identity(),
-                        )
-                    });
-                }
-            }
-        }),
-        _ => tokenw.unexpected("an algorithm, parenthezised list of algorithms, or `builtin`"),
-    };
-
-    arch.map(|v| PuzzleUnnamed::Real {
-        architecture: v,
+    arch(t, &group).map(|v| PuzzleUnnamed::Real {
+        architecture: t.cash_in(start).with(v),
         def_span,
     })
 }
 
-fn try_append(
-    alg: &mut Option<Algorithm>,
-    turn: WithSpan<ArcIntern<str>>,
+fn arch(
+    t: &mut TokenIter,
     group: &Arc<PermutationGroup>,
-    r: Reporter,
-) {
-    let span = turn.span().clone();
+) -> Option<(Arc<Architecture>, Permutation)> {
+    let builtin = t.attempt(|t, commit| {
+        t.word("builtin")?;
+        *commit = true;
 
-    match Algorithm::new_from_move_seq(Arc::clone(group), vec![turn.into_inner()]) {
-        Ok(alg2) => {
-            if let Some(alg) = alg {
-                alg.compose_into(&alg2);
+        let token = t.next()?;
+        let orders = match &*token {
+            Token::Number(num) => Box::from([*num]),
+            Token::Enclosure(Encloser::Paren, token_enclosure) => (**token_enclosure)
+                .clone()
+                .parse(|t| {
+                    t.parse_list(
+                        |t, commit| {
+                            let num = t.number()?;
+                            *commit = true;
+                            Some(num.into_inner())
+                        },
+                        |t, commit| {
+                            t.symbol(Symbol::Comma)?;
+                            *commit = true;
+                            Some(())
+                        },
+                    )
+                })?
+                .into_inner(),
+            _ => {
+                return t.unexpected(token, "an number or parenthezised list of numbers");
             }
-        }
-        Err(_) => {
-            r.push(
-                Report::build(ReportKind::Error, span)
-                    .with_message("This move is not a member of the specified puzzle.")
-                    .with_help(format!(
-                        "Valid options are {}",
-                        group
-                            .generators()
-                            .sorted_by(|a, b| a.0.cmp(&b.0))
-                            .format_with(", ", |v, f| f(&format_args!("`{}`", v.0)))
-                    ))
-                    .finish(),
-            );
+        };
 
-            *alg = None;
+        with_presets(Arc::clone(group)).get_preset(&orders)
+    });
+
+    if let Attempt::Taken(v) = builtin {
+        return v;
+    }
+
+    let algs = t.attempt(|t, commit| {
+        let e = t.enclosure(Encloser::Paren)?;
+        *commit = true;
+        e.into_inner().parse(|t| {
+            t.parse_list(
+                |t, commit| {
+                    *commit = true;
+                    parse_alg(t, group)
+                },
+                |t, commit| {
+                    t.symbol(Symbol::Comma)?;
+                    *commit = true;
+                    Some(())
+                },
+            )
+        })
+    });
+
+    if let Attempt::Taken(algs) = algs {
+        let algs = algs?.into_inner();
+
+        return Some((
+            Arc::new(Architecture::new(Arc::clone(group), algs)),
+            Permutation::identity(),
+        ));
+    }
+
+    let alg = parse_alg(t, group)?;
+
+    Some((
+        Arc::new(Architecture::new(Arc::clone(group), Box::from([alg]))),
+        Permutation::identity(),
+    ))
+}
+
+fn parse_alg(t: &mut TokenIter, group: &Arc<PermutationGroup>) -> Option<Algorithm> {
+    let mut spans = HashMap::<ArcIntern<str>, Vec<Span>>::new();
+
+    let move_seq = t.parse_list(
+        |t, commit| {
+            let ident = t.ident()?;
+            spans
+                .entry((*ident).clone())
+                .or_default()
+                .push(ident.span().clone());
+            *commit = true;
+            Some(ident.into_inner())
+        },
+        |_, commit| {
+            *commit = true;
+            Some(())
+        },
+    )?;
+
+    match Algorithm::new_from_move_seq(Arc::clone(group), move_seq.to_vec()) {
+        Ok(v) => Some(v),
+        Err(k) => {
+            for span in spans.get(&k).unwrap() {
+                t.report(
+                    Report::build(ReportKind::Error, span.clone())
+                        .with_message("Nonexistant move")
+                        .with_help(format!(
+                            "Valid options are {}",
+                            group
+                                .generators()
+                                .sorted_by(|a, b| a.0.cmp(&b.0))
+                                .format_with(", ", |v, f| f(&format_args!("`{}`", v.0)))
+                        ))
+                        .finish(),
+                );
+            }
+            None
         }
     }
 }
@@ -519,24 +471,24 @@ fn instruction(t: &mut TokenIter) -> Attempt<Option<WithSpan<Instruction>>> {
     let marker = t.marker();
     t.attempt(|t, commit| {
         *commit = true;
-        let tokenw = t.next()?;
-        match tokenw.token {
+        let token = t.next()?;
+        let span = token.span().clone();
+        match token.into_inner() {
             Token::Ident(name) => {
                 if let Attempt::Taken(v) = t.attempt(|t, commit| {
                     if t.whitespace().is_some() {
                         return None;
                     }
 
-                    t.next()?.symbol(Symbol::Colon)?;
+                    t.symbol(Symbol::Colon)?;
 
                     *commit = true;
 
-                    t.next_nl()?.nl()?;
+                    t.nl()?;
 
-                    let (name, public) = if name.value.starts_with('!') {
-                        (ArcIntern::from(&name.value[1..]), true)
-                    } else {
-                        (name.value.clone(), false)
+                    let (name, public) = match name.strip_prefix("!") {
+                        Some(stripped) => (ArcIntern::from(stripped), true),
+                        None => (name.clone(), false),
                     };
 
                     Some(Instruction::Label(crate::Label {
@@ -548,18 +500,20 @@ fn instruction(t: &mut TokenIter) -> Attempt<Option<WithSpan<Instruction>>> {
                 }) {
                     v
                 } else {
-                    Some(Instruction::Code(Code::Macro(crate::MacroCall {
-                        name,
-                        arguments: args(t)?,
-                    })))
+                    Some(if name == "rhai" {
+                        Instruction::RhaiCall(rhai_call(t)?)
+                    } else {
+                        Instruction::Code(Code::Macro(crate::MacroCall {
+                            name: span.with(name),
+                            arguments: args(t)?,
+                        }))
+                    })
                 }
             }
-            Token::Directive(ident) if &**ident == "define" => {
-                Some(Instruction::Define(define(t)?))
-            }
-            Token::Constant(ident) => Some(Instruction::Constant(ident.value)),
+            Token::Directive(ident) if &*ident == "define" => Some(Instruction::Define(define(t)?)),
+            Token::Constant(ident) => Some(Instruction::Constant(ident)),
             Token::Enclosure(Encloser::Brace, enclosure) => Some(Instruction::Block(
-                enclosure.parse(|t| block(t))?.value.value,
+                enclosure.into_inner().parse(block)?.value.value,
             )),
             _ => {
                 *commit = false;
@@ -572,64 +526,50 @@ fn instruction(t: &mut TokenIter) -> Attempt<Option<WithSpan<Instruction>>> {
 
 fn args(t: &mut TokenIter) -> Option<WithSpan<Vec<WithSpan<Value>>>> {
     let marker = t.marker();
-    let mut args = Vec::new();
+    let mut args = Some(Vec::new());
 
-    loop {
-        let v = t.attempt(|t, commit| {
-            *commit = true;
-            let tokenw = t.next_nl()?;
-            match tokenw.token {
-                TokenNL::NewLine(_) | TokenNL::Token(Token::EndOfEnclosure(_, _)) => {
-                    *commit = false;
-                }
-                TokenNL::Token(token) => match value(token) {
-                    Ok(v) => args.push(v?),
-                    Err(token) => TokenW {
-                        token,
-                        reporter: tokenw.reporter,
-                    }
-                    .unexpected("an argument for an instruction")?,
-                },
-            };
-            Some(())
-        });
-
-        match v {
-            Attempt::Taken(v) => v?,
-            Attempt::NotTaken(_) => return Some(t.cash_in(marker).with(args)),
+    while let Attempt::NotTaken(_) = t.attempt(|t, commit| {
+        t.nl()?;
+        *commit = true;
+        Some(())
+    }) {
+        let token = t.next()?;
+        if let Some(v) = value(t, token) {
+            if let Some(args) = &mut args {
+                args.push(v);
+            }
+        } else {
+            args = None;
         }
     }
+
+    args.map(|args| t.cash_in(marker).with(args))
 }
 
-fn value<'a>(t: Token<'a>) -> Result<Option<WithSpan<Value>>, Token<'a>> {
-    Ok(match t {
-        Token::Ident(ident) => Some(ident.span().clone().with(Value::Resolved(
-            ResolvedValue::Ident {
-                ident,
-                as_reg: OnceLock::new(),
-            },
-        ))),
-        Token::Constant(constant) => Some(
-            constant
-                .span()
-                .clone()
-                .with(Value::Constant(constant.into_inner())),
-        ),
-        Token::Number(num) => Some(
-            num.span()
-                .clone()
-                .with(Value::Resolved(ResolvedValue::Int(*num))),
-        ),
-        Token::Enclosure(Encloser::Brace, enclosure) => enclosure.parse(|t| block(t)).map(|v| {
-            let block = v.value;
+fn value(t: &TokenIter, token: WithSpan<Token>) -> Option<WithSpan<Value>> {
+    let span = token.span().clone();
+    match &*token {
+        Token::Ident(ident) => Some(span.clone().with(Value::Resolved(ResolvedValue::Ident {
+            ident: span.with(ident.clone()),
+            as_reg: OnceLock::new(),
+        }))),
+        Token::Constant(constant) => Some(span.with(Value::Constant(constant.clone()))),
+        Token::Number(num) => Some(span.with(Value::Resolved(ResolvedValue::Int(*num)))),
+        Token::Enclosure(Encloser::Brace, enclosure) => {
+            (**enclosure).clone().parse(block).map(|v| {
+                let block = v.value;
 
-            block
-                .span()
-                .clone()
-                .with(Value::Resolved(ResolvedValue::Block(block.value)))
-        }),
-        _ => return Err(t),
-    })
+                block
+                    .span()
+                    .clone()
+                    .with(Value::Resolved(ResolvedValue::Block(block.value)))
+            })
+        }
+        _ => {
+            t.unexpected(token, "an argument for an instruction")?;
+            None
+        }
+    }
 }
 
 fn block(t: &mut TokenIter) -> Option<WithSpan<Block>> {
@@ -637,9 +577,10 @@ fn block(t: &mut TokenIter) -> Option<WithSpan<Block>> {
 
     loop {
         if let Attempt::Taken(v) = t.attempt(|t, commit| {
-            let tokenw = t.next()?;
-            match tokenw.token {
-                Token::EndOfEnclosure(_, span) => {
+            let token = t.next()?;
+            let span = token.span().clone();
+            match token.into_inner() {
+                Token::EndOfEnclosure(_) => {
                     *commit = true;
                     Some(span.with(Block {
                         code: mem::take(&mut code),
@@ -671,17 +612,12 @@ fn block(t: &mut TokenIter) -> Option<WithSpan<Block>> {
 fn define(t: &mut TokenIter) -> Option<DefineUnresolved> {
     // Expects the `.define` to already be consumed
 
-    let name = t
-        .next_nl()?
-        .token("the name for a `define` statement")?
-        .ident();
+    let name = t.ident();
 
     Some(
         match t.attempt(|t, commit| {
             let marker = t.marker();
-            if let Token::Ident(v) = t.next()?.token
-                && &**v == "rhai"
-            {
+            if t.word("rhai").is_some() {
                 *commit = true;
                 rhai_call(t).map(|v| t.cash_in(marker).with(v))
             } else {
@@ -693,55 +629,48 @@ fn define(t: &mut TokenIter) -> Option<DefineUnresolved> {
                 value: DefineValue::RhaiCall(v?),
             },
             Attempt::NotTaken(_) => {
-                let TokenW { token, reporter } =
-                    t.next_nl()?.token("the value of a `define` statement")?;
+                let token = t.next()?;
 
-                match value(token) {
-                    Ok(Some(v)) => {
-                        return Some(DefineUnresolved {
-                            name: name?,
-                            value: DefineValue::Value(v),
-                        });
-                    }
-                    Ok(None) => return None,
-                    Err(token) => TokenW { token, reporter }
-                        .unexpected("a constant, identifier, number, or code block")?,
-                }
+                return Some(DefineUnresolved {
+                    name: name?,
+                    value: DefineValue::Value(value(t, token)?),
+                });
             }
         },
     )
 }
 
 fn rhai_call(t: &mut TokenIter) -> Option<RhaiCall> {
-    let name = t.next_nl()?.token("a rhai function to call")?.ident()?;
+    let name = t.ident()?;
 
-    let args = t
-        .next_nl()?
-        .token("an arguments list")?
-        .enclosure(Encloser::Paren)?
-        .parse(|t| {
-            let mut values = Vec::new();
-
-            loop {
-                let TokenW { token, reporter } = t.next()?;
-                match token {
-                    Token::EndOfEnclosure(_, _) => return Some(values),
-                    v => match value(v) {
-                        Ok(Some(v)) => values.push(v),
-                        Ok(None) => return None,
-                        Err(t) => TokenW { token: t, reporter }
-                            .unexpected("a constant, identifier, number, or code block")?,
-                    },
+    let args = t.enclosure(Encloser::Paren)?.into_inner().parse(|t| {
+        t.parse_list(
+            |t, commit| {
+                let token = t.next()?;
+                match &*token {
+                    Token::EndOfEnclosure(_) => None,
+                    _ => {
+                        *commit = true;
+                        value(t, token)
+                    }
                 }
-
-                let tokenw = t.next()?;
-                match tokenw.token {
-                    Token::EndOfEnclosure(_, _) => return Some(values),
-                    Token::Symbol(sym) if *sym == Symbol::Comma => continue,
-                    _ => tokenw.unexpected("a comma or closing parenthesis")?,
+            },
+            |t, commit| {
+                let token = t.next()?;
+                match &*token {
+                    Token::EndOfEnclosure(_) => None,
+                    Token::Symbol(sym) if *sym == Symbol::Comma => {
+                        *commit = true;
+                        Some(())
+                    }
+                    _ => {
+                        *commit = true;
+                        t.unexpected(token, "a comma or closing parenthesis")?
+                    }
                 }
-            }
-        })?;
+            },
+        )
+    })?;
 
     Some(RhaiCall {
         function_name: name,
@@ -753,13 +682,13 @@ fn macro_def(
     t: &mut TokenIter,
     fresh_branch_key: impl Fn() -> MacroBranchKey,
 ) -> Option<(WithSpan<ArcIntern<str>>, WithSpan<Macro>)> {
-    let name = t.next()?.ident()?;
+    let name = t.ident()?;
 
-    let macro_def = t.next()?.enclosure(Encloser::Brace)?.parse(|t| {
+    let macro_def = t.enclosure(Encloser::Brace)?.into_inner().parse(|t| {
         let mut branches = Vec::new();
 
         while let Attempt::Taken(branch) = macro_branch(t, &fresh_branch_key) {
-            branches.push(branch?)
+            branches.push(branch?);
         }
 
         Some(Macro::UserDefined { branches })
@@ -775,19 +704,19 @@ fn macro_branch(
     t.attempt(|t, commit| {
         let start = t.marker();
 
-        let pattern = t.next()?.enclosure(Encloser::Paren)?.parse(|t| {
+        let pattern = t.enclosure(Encloser::Paren)?.into_inner().parse(|t| {
             *commit = true;
 
             let mut pattern = Vec::new();
 
             while let Attempt::Taken(component) = macro_pattern_component(t) {
-                pattern.push(component?)
+                pattern.push(component?);
             }
 
             Some(MacroPattern(pattern))
         })?;
 
-        t.next()?.symbol(Symbol::DefineArrow)?;
+        t.symbol(Symbol::DefineArrow)?;
 
         let subst = match instruction(t) {
             Attempt::NotTaken(span) => {
@@ -816,46 +745,43 @@ fn macro_branch(
 }
 
 fn macro_pattern_component(t: &mut TokenIter) -> Attempt<Option<WithSpan<MacroPatternComponent>>> {
-    t.attempt(|t, commit| match t.next()?.token {
-        Token::Ident(word) => {
-            *commit = true;
-            Some(
-                word.span()
-                    .clone()
-                    .with(MacroPatternComponent::Word(word.into_inner())),
-            )
-        }
-        Token::Constant(name) => {
-            *commit = true;
-
-            let marker = t.marker();
-
-            if let Some(ws) = t.whitespace() {
-                t.report(
-                    Report::build(ReportKind::Error, ws)
-                        .with_message("Expected colon, found whitespace")
-                        .finish(),
-                );
-                return None;
+    t.attempt(|t, commit| {
+        let token = t.next()?;
+        let span = token.span().clone();
+        match token.into_inner() {
+            Token::Ident(word) => {
+                *commit = true;
+                Some(span.with(MacroPatternComponent::Word(word)))
             }
+            Token::Constant(name) => {
+                *commit = true;
 
-            t.next()?.symbol(Symbol::Colon)?;
+                let marker = t.marker();
 
-            let ty = t
-                .next()?
-                .one_of([
+                if let Some(ws) = t.whitespace() {
+                    t.report(
+                        Report::build(ReportKind::Error, ws)
+                            .with_message("Expected colon, found whitespace")
+                            .finish(),
+                    );
+                    return None;
+                }
+
+                t.symbol(Symbol::Colon)?;
+
+                let ty = t.one_of([
                     ("int", MacroArgTy::Int),
                     ("reg", MacroArgTy::Reg),
                     ("block", MacroArgTy::Block),
                     ("ident", MacroArgTy::Ident),
-                ])
-                .map(|(ty, span)| span.with(ty))?;
+                ])?;
 
-            Some(
-                t.cash_in(marker)
-                    .with(MacroPatternComponent::Argument { name, ty }),
-            )
+                Some(t.cash_in(marker).with(MacroPatternComponent::Argument {
+                    name: span.with(name),
+                    ty,
+                }))
+            }
+            _ => None,
         }
-        _ => None,
     })
 }

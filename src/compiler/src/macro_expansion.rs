@@ -11,7 +11,7 @@ use crate::{
     resolve_just_these_defines, tag_with_key,
 };
 
-pub fn expand(mut parsed: ParsedSyntax, r: Reporter) -> Option<ExpandedCode> {
+pub fn expand(mut parsed: ParsedSyntax, r: &Reporter) -> Option<ExpandedCode> {
     let branch_key_fn = parsed.expansion_info.fresh_branch_key();
 
     for macro_ in &mut parsed.expansion_info.macros {
@@ -31,7 +31,7 @@ pub fn expand(mut parsed: ParsedSyntax, r: Reporter) -> Option<ExpandedCode> {
     let before = r.count();
 
     while let Some(span) =
-        expand_block(BlockID(0), &mut parsed.expansion_info, &mut parsed.code, &r)
+        expand_block(BlockID(0), &mut parsed.expansion_info, &mut parsed.code, r)
     {
         limit -= 1;
 
@@ -53,7 +53,7 @@ pub fn expand(mut parsed: ParsedSyntax, r: Reporter) -> Option<ExpandedCode> {
         registers: match parsed.expansion_info.registers {
             Some(decl) => decl.into_inner(),
             None => RegistersDecl {
-                puzzles: Vec::new(),
+                puzzles: Box::from([]),
             },
         },
         block_info: parsed.expansion_info.block_info,
@@ -103,7 +103,7 @@ fn expand_block(
 
             tagged_instruction
         })
-        .map(|tagged_instruction| {
+        .flat_map(|tagged_instruction| {
             let span = tagged_instruction.span().to_owned();
 
             let (instruction, maybe_block_id, maybe_branch_key) = tagged_instruction.into_inner();
@@ -131,9 +131,8 @@ fn expand_block(
                         return vec![]
                     }
 
-                    let resolved = match expansion_info.resolve(define.value, block_id, r) {
-                        Some(v) => v,
-                        None => return vec![],
+                    let Some(resolved) = expansion_info.resolve(define.value, block_id, r) else {
+                        return vec![]
                     };
 
                     let new_define = Define {
@@ -193,9 +192,8 @@ fn expand_block(
                     }
                 }
                 Instruction::RhaiCall(call) => {
-                    let value = match call.perform(span.clone(), expansion_info, block_id, r) {
-                        Some(v) => v,
-                        None => return vec![],
+                    let Some(value) = call.perform(span.clone(), expansion_info, block_id, r) else {
+                        return vec![]
                     };
                     let _ = changed.set(span.clone());
 
@@ -230,7 +228,7 @@ fn expand_block(
                 },
             }
         })
-    ).flatten()
+    )
     .collect_vec()
         ;
 
@@ -375,13 +373,13 @@ mod tests {
 
         let parsed = parse(
             &file(code),
-            Rc::new(|_: &str| unreachable!()),
+            &Rc::new(|_: &str| unreachable!()),
             false,
             Arc::clone(&reporter),
         )
         .unwrap();
 
-        let expanded = expand(parsed.into_inner(), Arc::clone(&reporter)).unwrap();
+        let expanded = expand(parsed.into_inner(), &reporter).unwrap();
 
         let reports = Arc::try_unwrap(reporter).unwrap();
         assert_eq!(reports.count(), 0);

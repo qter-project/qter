@@ -2,7 +2,9 @@
 #![allow(
     clippy::too_many_lines,
     clippy::similar_names,
-    clippy::single_match_else
+    clippy::single_match_else,
+    clippy::enum_glob_use,
+    clippy::question_mark
 )]
 
 use std::{
@@ -47,11 +49,11 @@ pub fn compile(
     find_import: impl Fn(&str) -> Result<ArcIntern<str>, String> + 'static,
     reporter: &Reporter,
 ) -> Option<(Program, Option<WithSpan<RegistersDecl>>)> {
-    let parsed = parse(qat, Rc::new(find_import), false, Arc::clone(reporter))?;
+    let parsed = parse(qat, &Rc::new(find_import), false, Arc::clone(reporter))?;
 
     let arch = parsed.expansion_info.registers.clone();
 
-    let expanded = expand(parsed.into_inner(), Arc::clone(reporter))?;
+    let expanded = expand(parsed.into_inner(), reporter)?;
 
     strip_expanded(expanded, reporter).map(|v| (v, arch))
 }
@@ -352,7 +354,7 @@ enum Code {
 #[derive(Clone, Debug)]
 struct RhaiCall {
     function_name: WithSpan<ArcIntern<str>>,
-    args: Vec<WithSpan<Value>>,
+    args: Box<[WithSpan<Value>]>,
 }
 
 impl RhaiCall {
@@ -576,7 +578,7 @@ struct BlockID(pub usize);
 
 #[derive(Clone, Debug)]
 pub struct RegistersDecl {
-    puzzles: Vec<Puzzle>,
+    puzzles: Box<[Puzzle]>,
 }
 
 impl RegistersDecl {
@@ -812,8 +814,6 @@ struct ExpandedCode {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use internment::ArcIntern;
     use puzzle_theory::span::File;
 

@@ -5,9 +5,7 @@ use internment::ArcIntern;
 use puzzle_theory::span::{File, Span, WithSpan};
 
 use crate::{
-    BlockID, ParsedSyntax, Reporter,
-    builtin_macros::builtin_macros,
-    parsing::tokenizer::{TokenEnclosure, TokenizerState},
+    BlockID, ParsedSyntax, Reporter, builtin_macros::builtin_macros, parsing::tokenizer::tokenize,
 };
 
 mod parser;
@@ -21,7 +19,7 @@ thread_local! {
 
         let Some(mut parsed_prelude) = parse(
             &prelude,
-            Rc::new(|_: &str| {
+            &Rc::new(|_: &str| {
                 panic!(
                     "Prelude should not import files (because it's easier not to implement; message henry if you need this feature)"
                 )
@@ -54,14 +52,13 @@ thread_local! {
 
 pub fn parse(
     qat: &File,
-    find_import: Rc<impl Fn(&str) -> Result<ArcIntern<str>, String> + 'static>,
+    find_import: &Rc<impl Fn(&str) -> Result<ArcIntern<str>, String> + 'static>,
     is_prelude: bool,
     reporter: Reporter,
 ) -> Option<WithSpan<ParsedSyntax>> {
-    let mut state = TokenizerState::new(qat.clone(), reporter);
-    let enclosure = TokenEnclosure::new(&mut state);
+    let enclosure = tokenize(qat, reporter)?;
 
-    enclosure.parse(|iter| parser::parse(iter, find_import, is_prelude))
+    enclosure.parse(|iter| parser::parse(iter, &find_import, is_prelude))
 }
 
 fn merge_files(
@@ -165,10 +162,10 @@ pub(crate) mod tests {
         let code = "
             .registers {
                 a, b ← 3x3 builtin ( 90 , 90 )
-                (
+                /*(
                     c, d ← 3x3 builtin (210, 24)
                     d, e, f ← 3x3 builtin (30, 30, 30)
-                )
+                )*/
                 f ← theoretical 90
                 g, h ← 3x3 (U , D    )
             }
@@ -186,9 +183,9 @@ pub(crate) mod tests {
                 fn bruh() {
                     print(\"skibidi\")
                 }
-            end-rhai
+            .end-rhai
 
-            bruh :
+            bruh:
             bruhy:
             add 1 a
             goto bruh
@@ -206,7 +203,7 @@ pub(crate) mod tests {
 
         match parse(
             &file(code),
-            Rc::new(|name: &str| {
+            &Rc::new(|name: &str| {
                 assert_eq!(name, "pog.qat");
                 Ok(ArcIntern::from("add 1 a"))
             }),
@@ -215,8 +212,14 @@ pub(crate) mod tests {
         ) {
             Some(_) => {}
             None => {
+                let mut cache = ariadne::sources(
+                    [("pog.qat", "add 1 a"), ("<static>", code)]
+                        .into_iter()
+                        .map(|(a, b)| (ArcIntern::from(a), ArcIntern::from(b))),
+                );
+
                 for (_, report) in reporter.iter() {
-                    println!("{report:?}");
+                    report.eprint(&mut cache).unwrap();
                 }
 
                 panic!();

@@ -43,10 +43,11 @@ Ambiguities are resolved in the following way:
     - If parsable, it's a number
 - Otherwise it's an ident
 
+A `.start-rhai` directive is special cased and all text after it is dumped into a `<rhai-code>` token, ending at the text `.end-rhai`.
+
 A shebang at the start of the file is special-cased and thrown away by the tokenizer.
 
 Special commands:
-- `<rhai-code>` Tells the tokenizer to dump all text byte-for-byte until seeing the text `.end-rhai`
 - `<!ws>` Tells the tokenizer to assert that there is no whitespace or new-lines after a token
 
 = Parser

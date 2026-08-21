@@ -492,7 +492,6 @@ dependencies = [
  "chumsky",
  "internment",
  "itertools 0.14.0",
- "polonius-the-crab",
  "puzzle_theory",
  "qter_core",
  "rhai",
@@ -1131,17 +1130,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49b668274fa5581eb527cef09a3e33028f8edee0faa6fa7853eff3271f0030f7"
 
 [[package]]
-name = "higher-kinded-types"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e690f8474c6c5d8ff99656fcbc195a215acc3949481a8b0b3351c838972dc776"
-dependencies = [
- "macro_rules_attribute",
- "never-say-never",
- "paste",
-]
-
-[[package]]
 name = "httlib-huffman"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1471,22 +1459,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
-name = "macro_rules_attribute"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3ae8f6d608c795738406608304d30a2dfbdc8e58e44f7ba43236da5208ded3c"
-dependencies = [
- "macro_rules_attribute-proc_macro",
- "pastey",
-]
-
-[[package]]
-name = "macro_rules_attribute-proc_macro"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc04a4c58212d57930a24bf47d3fa87485264a3a054e9c10e042eb373573ad3c"
-
-[[package]]
 name = "matchers"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1530,12 +1502,6 @@ dependencies = [
 [[package]]
 name = "movecount_coefficient_calculator"
 version = "0.1.0"
-
-[[package]]
-name = "never-say-never"
-version = "6.6.666"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf5a574dadd7941adeaa71823ecba5e28331b8313fb2e1c6a5c7e5981ea53ad6"
 
 [[package]]
 name = "nom"
@@ -1719,12 +1685,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
-name = "pastey"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ee67f1008b1ba2321834326597b8e186293b049a023cdef258527550b9935b4"
-
-[[package]]
 name = "pem"
 version = "3.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1840,16 +1800,6 @@ version = "0.1.0"
 source = "git+https://github.com/qter-project/pog-ans#8d9ff67805777f49756f0489567c903681feb953"
 dependencies = [
  "num-traits",
-]
-
-[[package]]
-name = "polonius-the-crab"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec242d7eccbb2fd8b3b5b6e3cf89f94a91a800f469005b44d154359609f8af72"
-dependencies = [
- "higher-kinded-types",
- "never-say-never",
 ]
 
 [[package]]

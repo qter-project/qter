@@ -455,7 +455,7 @@ mod tests {
         ";
 
         let reporter = Reporter::default();
-        let (program, _) = match compile(&file(code), |_| unreachable!(), Arc::clone(&reporter)) {
+        let (program, _) = match compile(&file(code), |_| unreachable!(), &reporter) {
             Some(v) => v,
             None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
@@ -539,7 +539,7 @@ mod tests {
         ";
 
         let reporter = Reporter::default();
-        let (program, _) = match compile(&file(code), |_| unreachable!(), Arc::clone(&reporter)) {
+        let (program, _) = match compile(&file(code), |_| unreachable!(), &reporter) {
             Some(v) => v,
             None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
@@ -619,7 +619,7 @@ mod tests {
         "#;
 
         let reporter = Reporter::default();
-        let (program, _) = match compile(&file(code), |_| unreachable!(), Arc::clone(&reporter)) {
+        let (program, _) = match compile(&file(code), |_| unreachable!(), &reporter) {
             Some(v) => v,
             None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
@@ -686,7 +686,7 @@ mod tests {
         cases: impl Iterator<Item = ([usize; N], String)>,
     ) {
         let reporter = Reporter::default();
-        let (program, _) = match compile(&file(code), |_| unreachable!(), Arc::clone(&reporter)) {
+        let (program, _) = match compile(&file(code), |_| unreachable!(), &reporter) {
             Some(v) => v,
             None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
@@ -851,7 +851,7 @@ mod tests {
         ";
 
         let reporter = Reporter::default();
-        let (program, _) = match compile(&file(code), |_| unreachable!(), Arc::clone(&reporter)) {
+        let (program, _) = match compile(&file(code), |_| unreachable!(), &reporter) {
             Some(v) => v,
             None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
@@ -953,7 +953,7 @@ mod tests {
         ";
 
         let reporter = Reporter::default();
-        let (program, _) = match compile(&file(code), |_| unreachable!(), Arc::clone(&reporter)) {
+        let (program, _) = match compile(&file(code), |_| unreachable!(), &reporter) {
             Some(v) => v,
             None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
@@ -1055,7 +1055,7 @@ A: 3x3
         ";
 
         let reporter = Reporter::default();
-        let (program, _) = match compile(&file(code), |_| unreachable!(), Arc::clone(&reporter)) {
+        let (program, _) = match compile(&file(code), |_| unreachable!(), &reporter) {
             Some(v) => v,
             None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
@@ -1118,7 +1118,7 @@ A: 3x3
         ";
 
         let reporter = Reporter::default();
-        let (program, _) = match compile(&file(code), |_| unreachable!(), Arc::clone(&reporter)) {
+        let (program, _) = match compile(&file(code), |_| unreachable!(), &reporter) {
             Some(v) => v,
             None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
@@ -1204,7 +1204,7 @@ A: 3x3
         ";
 
         let reporter = Reporter::default();
-        let (program, _) = match compile(&file(code), |_| unreachable!(), Arc::clone(&reporter)) {
+        let (program, _) = match compile(&file(code), |_| unreachable!(), &reporter) {
             Some(v) => v,
             None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
