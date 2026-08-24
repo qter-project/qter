@@ -1,5 +1,3 @@
-<!-- cspell:disable -->
-
 # TODO
 
 ⭐means it's important to be done before the video series
@@ -23,9 +21,9 @@
 
 - tree
   - note that batching "ramps up" the mkp threads when the batch size is large; there are few solutions/batch in the beginning which helps make sure the 
+  - note that less fitting tries produces more expansions on avg which is better for CCS
 - possible orders
   - reuse possible orders list if two orbits are the same
-  - store next trie levels inline
   - cache orbit orders
   - daniel's SIMD gcd algorithm
   - compute minimum piece count
