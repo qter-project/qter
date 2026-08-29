@@ -960,6 +960,11 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
         self.fitting_tries = 0;
         if self.expansion {
             self.recursive_backtrack(registers);
+            debug!(
+                "Solution for {} in {} tries",
+                dbg_registers(registers.iter(), self.immutable.possible_orders_except_one),
+                self.fitting_tries
+            );
             SolutionsCalculation::MaybeExpansion(self.maybe_solutions.take())
         } else {
             let existence = self.recursive_backtrack(registers);
@@ -1283,13 +1288,13 @@ mod tests {
         let possible_orders_except_one =
             mk_possible_orders_except_one(&minx5, minx5.possible_orders(None).unwrap());
         let ccf = CycleCombinationFinder::builder()
-            .with_register_count(3)
-            .clone()
+            .with_register_count(4)
+            .with_solution_expansion(SolutionExpansion::FIRST)
             .with_puzzle_def(&minx5)
             .validate()
             .unwrap();
         let mut solutions_calculator = ccf.solutions_calculator(&possible_orders_except_one);
-        let register_orders = vec![38_798_760, 19_399_380, 6_126_120];
+        let register_orders = vec![3593520, 1531530, 471240, 471240];
 
         let mut registers = register_orders
             .into_iter()
@@ -1310,13 +1315,24 @@ mod tests {
         registers.sort_by_key(|&r| std::cmp::Reverse(r));
         let registers = Arc::from(registers);
         let now = Instant::now();
-        let solutions = solutions_calculator.expansion(DisjointRegisters::from(
-            NonemptySlice::try_from(&*registers).unwrap(),
-        ));
+        let solutions = solutions_calculator
+            .expansion(DisjointRegisters::from(
+                NonemptySlice::try_from(&*registers).unwrap(),
+            ))
+            .unwrap();
+        let len = solutions.0.len();
+        let cycle_combination = CycleCombination {
+            registers: Arc::clone(&registers),
+            solutions,
+        };
+
         println!(
-            "Found {} solutions in {}",
-            solutions.unwrap().0.len(),
-            now.elapsed().human(Truncate::Micro)
+            "Found {len} solutions in {}:\n{}",
+            now.elapsed().human(Truncate::Millis),
+            cycle_combination.solutions_fmt(
+                solutions_calculator.immutable.possible_orders_except_one,
+                solutions_calculator.ccf.puzzle_def,
+            )
         );
         panic!();
     }
