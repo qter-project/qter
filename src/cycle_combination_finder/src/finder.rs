@@ -504,7 +504,8 @@ impl<'a, const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'
     ///
     /// # Errors
     ///
-    /// Errors following the variants of `CycleCombinationFinderValidationError`.
+    /// Errors following the variants of
+    /// `CycleCombinationFinderValidationError`.
     pub fn validate(
         self,
     ) -> Result<ValidatedCycleCombinationFinder<'a, N>, CycleCombinationFinderValidationError> {

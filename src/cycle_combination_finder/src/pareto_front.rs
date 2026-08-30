@@ -145,10 +145,11 @@ impl CCParetoFront {
                 Ordering::Less => {
                     if !domatinating_check_failed {
                         if let Some(cycle_combination) = (dominating_check)(registers) {
-                            // `new_element` dominates `element`, it is thus part of the Pareto front
+                            // `new_element` dominates `element`, it is thus part of the Pareto
+                            // front
                             self.0.remove(i);
-                            // looks at the rest of the Pareto front to remove any further element that
-                            // are dominated
+                            // looks at the rest of the Pareto front to remove any further element
+                            // that are dominated
                             self.remove_dominated_starting_at::<true>(&cycle_combination, i);
                             self.0.push(cycle_combination);
                             return true;
