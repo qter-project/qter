@@ -8,7 +8,8 @@
 ## CCF
 
 - important
-  - fit orienting cycles first
+  - optimize orbit traversal algorithm
+    - dont loop twice to change states
   - fit equal fitting cycles first into orbis
   - parity; look in stash!
   - maybe_min_order_ratio
