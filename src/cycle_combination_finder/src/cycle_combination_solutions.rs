@@ -355,7 +355,15 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                             orbit_remaining_piece.unused_and_ignored = orbit_remaining_piece
                                 .unused_and_ignored
                                 .checked_sub(1)
-                                .unwrap_or_else(|| panic!("{orbit_index2} is the index"));
+                                .unwrap_or_else(|| {
+                                    panic!(
+                                        "{orbit_index2} is the index: {}",
+                                        dbg_registers(
+                                            registers.iter(),
+                                            self.immutable.possible_orders_except_one
+                                        )
+                                    )
+                                });
                         }
                         if *known_share_state == ShareState::None {
                             *known_share_state = ShareState::Orientation;
