@@ -17,6 +17,7 @@
   - a list of numbers such that every number in the list is in the solutions?
   - min piece count doesnt work with orientation constraint none
   - is possible_order.0.simd_ne(Simd::splat(0)) really needed
+  - note that we deduplicate orbits. in general catalog all optimizations
 
 - find registers to compute 3 body problem
 

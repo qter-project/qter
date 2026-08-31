@@ -194,22 +194,23 @@ impl<const N: usize> OrbitTraversalState<'_, N> {
                             .required_ignored_pieces(),
                     ),
             )
-            // We need this. Assume both orbits share nothing
-            //
-            // o1:
-            // 10 pieces
-            // 2+ cycle
-            //
-            // o2:
-            // 8 pieces
-            //
-            // We can't treat them the same. Placing a 3 cycle would require a leftover piece for
-            // the second orbit but not the first
-            .then(
-                register_orbit_constraint
-                    .orientation_satisfied_by
-                    .cmp(&register_orbit_constraint_1.orientation_satisfied_by),
-            )
+        // TODO: NO WE DONT??????/
+        // // We need this. Assume both orbits share nothing
+        // //
+        // // o1:
+        // // 10 pieces
+        // // 2+ cycle
+        // //
+        // // o2:
+        // // 8 pieces
+        // //
+        // // We can't treat them the same. Placing a 3 cycle would require a
+        // leftover piece for // the second orbit but not the first
+        // .then(
+        //     register_orbit_constraint
+        //         .orientation_satisfied_by
+        //         .cmp(&register_orbit_constraint_1.orientation_satisfied_by),
+        // )
     }
 }
 
@@ -380,7 +381,15 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                         orbit_remaining_piece.unused_and_ignored = orbit_remaining_piece
                             .unused_and_ignored
                             .checked_sub(1)
-                            .unwrap_or_else(|| panic!("{orbit_index2} is the index"));
+                            .unwrap_or_else(|| {
+                                panic!(
+                                    "{orbit_index2} is the index: {}",
+                                    dbg_registers(
+                                        registers.iter(),
+                                        self.immutable.possible_orders_except_one
+                                    )
+                                )
+                            });
                         if orbit_remaining_piece.unused_and_ignored
                             < known_share_state.required_ignored_pieces()
                         {
@@ -653,7 +662,10 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                                 .known_share_state
                                 .required_ignored_pieces();
                         // fast check to make sure the nonorienting prime fits into this orbit
-                        if !traverse_orients && f64::from(register_order_exp) * f64::from(prime).ln() > f64::from(unused_piece_count).ln() {
+                        if !traverse_orients
+                            && f64::from(register_order_exp) * f64::from(prime).ln()
+                                > f64::from(unused_piece_count).ln()
+                        {
                             return acc;
                         }
                         let curr = OrbitTraversalState {
@@ -1233,7 +1245,7 @@ mod tests {
             .validate()
             .unwrap();
         let mut solutions_calculator = ccf.solutions_calculator(&possible_orders_except_one);
-        let register_orders = vec![3593520, 1531530, 471240, 471240];
+        let register_orders = vec![4289040, 720720, 720720, 556920];
 
         let mut registers = register_orders
             .into_iter()
