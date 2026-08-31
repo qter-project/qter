@@ -620,7 +620,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
             .order;
         let register_order_exp = register_order.prime_exponent(prime_index2);
 
-        let mut traverse_orients = true;
+        let mut traverse_orients = orienting_unassigned_exponents_mask != 0;
         let mut maybe_prev_traversal_state: Option<OrbitTraversalState<N>> = None;
         let orientations_exps = self.ccf.puzzle_def.orientations_exps();
         loop {
@@ -1101,16 +1101,16 @@ mod tests {
         let register_orders = vec![2520, 630, 420];
 
         let expected = "
-            2520: c: (3+, 5) e: (4+, 7)
-             630: c: (3+) e: (5+, 7)
-             420: c: (7+) e: (2+, 5)
+            2520: c: (3+, 7) e: (4+, 5)
+             630: c: (3+) e: (5, 7+)
+             420: c: (5+) e: (2+, 7)
 
             c: 1 ignored, 1 unused
             e: 0 ignored, 0 unused
 
-            2520: c: (3+, 7) e: (4+, 5)
-             630: c: (3+) e: (5+, 7)
-             420: c: (5+) e: (2+, 7)
+            2520: c: (3+, 5) e: (4+, 7)
+             630: c: (3+) e: (5, 7+)
+             420: c: (7+) e: (2+, 5)
 
             c: 1 ignored, 1 unused
             e: 0 ignored, 0 unused
@@ -1127,8 +1127,7 @@ mod tests {
         let ccf = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx3)
             .with_register_count(3)
-            // .with_solution_expansion(SolutionExpansion::All)
-            .with_solution_expansion(SolutionExpansion::FIRST)
+            .with_solution_expansion(SolutionExpansion::All)
             .with_max_fitting_tries(None)
             .validate()
             .unwrap();
@@ -1137,9 +1136,9 @@ mod tests {
         let register_orders = vec![840, 840, 840];
 
         let expected = "
+            840: c: (7+) e: (4+, 5)
+            840: c: (7+) e: (4+, 5)
             840: c: (5+) e: (4+, 7)
-            840: c: (7+) e: (4+, 5)
-            840: c: (7+) e: (4+, 5)
 
             c: 1 ignored, 0 unused
             e: 0 ignored, 1 unused
@@ -1151,9 +1150,9 @@ mod tests {
             c: 1 ignored, 0 unused
             e: 0 ignored, 1 unused
 
-            840: c: (7+) e: (4+, 5)
-            840: c: (7+) e: (4+, 5)
             840: c: (5+) e: (4+, 7)
+            840: c: (7+) e: (4+, 5)
+            840: c: (7+) e: (4+, 5)
 
             c: 1 ignored, 0 unused
             e: 0 ignored, 1 unused
