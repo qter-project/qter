@@ -720,12 +720,9 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                 self.orbit_remaining_pieces[orbit_index2].unused_and_ignored;
 
             // TODO: do parity by checking ParityConstraint::Even first in OrbitDef
-
+            // put in the 2 cycle case here
             let orient_states = if traverse_orients {
-                // true first so we have a greater chance of finding a solution earlier
-                // TODO: I think we have to check both? what if there isnt enough space for a
-                // canonical orient in that orbit and it must be noncanonical
-                &[CycleOrientState::Canonical, CycleOrientState::None][..]
+                &[CycleOrientState::Canonical][..]
             } else {
                 &[CycleOrientState::None][..]
             };
@@ -999,7 +996,7 @@ mod tests {
 
     use crate::{
         cycle_combination_solutions::CycleCombinationSolutionsCalculator,
-        cycle_combinations_tree::DisjointRegisters,
+        cycle_combinations_tree::{DisjointRegisters, dbg_registers},
         finder::{
             CycleCombination, CycleCombinationFinder, PossibleOrder, SolutionExpansion,
             mk_possible_orders_except_one,
@@ -1147,7 +1144,7 @@ mod tests {
         let ccf = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx3)
             .with_register_count(3)
-            .with_solution_expansion(SolutionExpansion::All)
+            .with_solution_expansion(SolutionExpansion::FIRST)
             .with_max_fitting_tries(None)
             .validate()
             .unwrap();
@@ -1248,6 +1245,9 @@ mod tests {
             mk_possible_orders_except_one(&minx5, minx5.possible_orders(None).unwrap());
         let ccf = CycleCombinationFinder::builder()
             .with_register_count(4)
+            .with_max_fitting_tries(Some(250000))
+            .with_optimality(crate::finder::Optimality::MaxOrderRatio(10.0))
+            // .with_solution_expansion(SolutionExpansion::Limit(10000))
             .with_solution_expansion(SolutionExpansion::FIRST)
             .with_puzzle_def(&minx5)
             .validate()
