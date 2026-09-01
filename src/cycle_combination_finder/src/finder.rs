@@ -280,7 +280,7 @@ impl CycleCombination {
                             char::from_digit(u32::from(orbit_index_cast(orbit_index2)), 10).unwrap()
                         }),
                     orbit_remaining_piece.ignored,
-                    orbit_remaining_piece.unused_and_ignored - orbit_remaining_piece.ignored
+                    orbit_remaining_piece.unused,
                 );
             }
             let _ = writeln!(&mut ret);
