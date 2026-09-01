@@ -339,7 +339,6 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                 .zip(self.orbit_remaining_pieces.iter_mut())
                 .enumerate()
             {
-                let prev_known_share_state = *known_share_state;
                 // Promote only if we have no other share rn
                 match orientation_satisfied_by {
                     OrientationSatisfiedBy::LeftoverPiece(
@@ -347,6 +346,10 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                     ) => {
                         if *known_share_state == ShareState::None {
                             *known_share_state = ShareState::Orientation;
+                            // NOTE: we must make sure we immediately use an unused piece. If we do
+                            // so at the end of this match statement, the checked_sub will mistake
+                            // the unused piece as a canonically orienting cycle.
+                            orbit_remaining_piece.unused -= 1;
                         }
                         if let Some(noncanonically_orienting_prime_index) =
                             maybe_noncanonically_orienting_prime_index
@@ -395,8 +398,6 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                     }
                     _ => (),
                 }
-                orbit_remaining_piece.unused -= known_share_state.required_ignored_pieces()
-                    - prev_known_share_state.required_ignored_pieces();
                 if let Some(RegisterOrbitConstraint {
                     known_share_state: next_share_state,
                     ..
@@ -454,10 +455,6 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                         .zip(orbits_constraints)
                         .zip(self.orbit_remaining_pieces.iter_mut())
                     {
-                        orbit_remaining_piece.unused += known_share_state.required_ignored_pieces()
-                            - prev_known_share_state.required_ignored_pieces();
-                        *known_share_state = prev_known_share_state;
-
                         match orientation_satisfied_by {
                             OrientationSatisfiedBy::LeftoverPiece(Some(
                                 noncanonically_orienting_prime_index,
@@ -475,6 +472,10 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                             }
                             _ => (),
                         }
+
+                        orbit_remaining_piece.unused += known_share_state.required_ignored_pieces()
+                            - prev_known_share_state.required_ignored_pieces();
+                        *known_share_state = prev_known_share_state;
                     }
                 } else {
                     for (
@@ -490,8 +491,6 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                         .take(self.ccf.puzzle_def.orbit_defs().len().get())
                         .zip(self.orbit_remaining_pieces.iter_mut())
                     {
-                        orbit_remaining_piece.unused += known_share_state.required_ignored_pieces();
-                        *known_share_state = ShareState::default();
                         match orientation_satisfied_by {
                             OrientationSatisfiedBy::LeftoverPiece(Some(
                                 noncanonically_orienting_prime_index,
@@ -509,6 +508,9 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                             }
                             _ => (),
                         }
+                        
+                        orbit_remaining_piece.unused += known_share_state.required_ignored_pieces();
+                        *known_share_state = ShareState::default();
                     }
                 }
 
@@ -1216,7 +1218,6 @@ mod tests {
 
     #[test_log::test]
     fn noncanonical_edge_case() {
-        panic!();
         let minx5 = MINX5.clone();
         let possible_orders_except_one =
             mk_possible_orders_except_one(&minx5, minx5.possible_orders(None).unwrap());
@@ -1227,7 +1228,7 @@ mod tests {
             .validate()
             .unwrap();
         let mut solutions_calculator = ccf.solutions_calculator(&possible_orders_except_one);
-        let register_orders = vec![2217072, 1420848, 1081080, 240240];
+        let register_orders = vec![9129120, 2162160, 1531530, 1081080];
 
         let mut registers = register_orders
             .into_iter()
