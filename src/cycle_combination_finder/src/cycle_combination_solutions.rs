@@ -702,7 +702,13 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
             // TODO: do parity by checking ParityConstraint::Even first in OrbitDef
             // put in the 2 cycle case here
             let orient_states = if traverse_orients {
-                &[CycleOrientState::Canonical][..]
+                if self.ccf.fast_assumptions {
+                    &[CycleOrientState::Canonical][..]
+                } else {
+                    // see https://discord.com/channels/1528552221695021096/1528556519602389062/1544422221815087105
+                    // canonical first so we find a solution faster
+                    &[CycleOrientState::Canonical, CycleOrientState::None][..]
+                }
             } else {
                 &[CycleOrientState::None][..]
             };

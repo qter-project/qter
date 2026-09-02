@@ -177,6 +177,7 @@ pub struct CycleCombinationFinder<R: RegisterCountState, P: PuzzleDefState> {
     solution_expansion: Option<ValidatedSolutionExpansion>,
     mss_batch_size: MssBatchSize,
     maybe_time_limit: Option<Duration>,
+    fast_assumptions: bool,
 }
 
 #[derive(Clone)]
@@ -191,6 +192,7 @@ pub struct ValidatedCycleCombinationFinder<'a, const N: usize> {
     pub(crate) solution_expansion: ValidatedSolutionExpansion,
     pub(crate) mss_batch_size: NonZeroUsize,
     pub(crate) maybe_time_limit: Option<Duration>,
+    pub(crate) fast_assumptions: bool,
 }
 
 impl CycleCombination {
@@ -331,9 +333,9 @@ impl CycleCombinationFinder<NeedsRegisterCount, NeedsPuzzleDef> {
             maybe_expected_solution_count: None,
             maybe_max_fitting_tries: None,
             solution_expansion: Some(ValidatedSolutionExpansion::default()),
-            #[allow(clippy::missing_panics_doc)]
             mss_batch_size: MssBatchSize::Default,
             maybe_time_limit: None,
+            fast_assumptions: true,
         }
     }
 }
@@ -427,6 +429,12 @@ impl<R: RegisterCountState, P: PuzzleDefState> CycleCombinationFinder<R, P> {
     }
 
     #[must_use]
+    pub fn with_fast_assumptions(mut self, fast_assumptions: bool) -> Self {
+        self.fast_assumptions = fast_assumptions;
+        self
+    }
+
+    #[must_use]
     pub fn with_register_count(
         self,
         register_count: u16,
@@ -442,6 +450,7 @@ impl<R: RegisterCountState, P: PuzzleDefState> CycleCombinationFinder<R, P> {
             solution_expansion: self.solution_expansion,
             mss_batch_size: self.mss_batch_size,
             maybe_time_limit: self.maybe_time_limit,
+            fast_assumptions: self.fast_assumptions,
         }
     }
 
@@ -461,6 +470,7 @@ impl<R: RegisterCountState, P: PuzzleDefState> CycleCombinationFinder<R, P> {
             solution_expansion: self.solution_expansion,
             mss_batch_size: self.mss_batch_size,
             maybe_time_limit: self.maybe_time_limit,
+            fast_assumptions: self.fast_assumptions,
         }
     }
 }
@@ -509,25 +519,34 @@ impl<'a, const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'
     pub fn validate(
         self,
     ) -> Result<ValidatedCycleCombinationFinder<'a, N>, CycleCombinationFinderValidationError> {
+        let CycleCombinationFinder {
+            register_count,
+            puzzle_def,
+            optimality,
+            num_cores,
+            sorted,
+            maybe_expected_solution_count,
+            maybe_max_fitting_tries,
+            solution_expansion,
+            mss_batch_size,
+            maybe_time_limit,
+            fast_assumptions,
+        } = self;
         Ok(ValidatedCycleCombinationFinder {
-            register_count: self
-                .register_count
+            register_count: register_count
                 .0
                 .ok_or(CycleCombinationFinderValidationError::InvalidRegisterCount)?,
-            puzzle_def: self.puzzle_def.0,
-            optimality: self
-                .optimality
+            puzzle_def: puzzle_def.0,
+            optimality: optimality
                 .ok_or(CycleCombinationFinderValidationError::InvalidOptimality)?,
-            num_cores: self
-                .num_cores
+            num_cores: num_cores
                 .ok_or(CycleCombinationFinderValidationError::InvalidNumCores)?,
-            sorted: self.sorted,
-            maybe_expected_solution_count: self.maybe_expected_solution_count,
-            maybe_max_fitting_tries: self.maybe_max_fitting_tries,
-            solution_expansion: self
-                .solution_expansion
+            sorted,
+            maybe_expected_solution_count,
+            maybe_max_fitting_tries,
+            solution_expansion: solution_expansion
                 .ok_or(CycleCombinationFinderValidationError::InvalidSolutionExpansion)?,
-            mss_batch_size: match self.mss_batch_size {
+            mss_batch_size: match mss_batch_size {
                 MssBatchSize::Invalid => {
                     return Err(CycleCombinationFinderValidationError::InvalidMssBatchSize);
                 }
@@ -535,7 +554,8 @@ impl<'a, const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'
                 MssBatchSize::Default => NonZeroUsize::new(1000).unwrap(),
                 MssBatchSize::Value(value) => value,
             },
-            maybe_time_limit: self.maybe_time_limit,
+            maybe_time_limit,
+            fast_assumptions,
         })
     }
 }
