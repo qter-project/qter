@@ -254,9 +254,7 @@ impl<'a, const N: usize> ValidatedCycleCombinationFinder<'a, N> {
                 })
             })
             .collect::<Box<[_]>>();
-        let initial_register_orbit_constraints = Box::clone_from_ref(
-            &register_orbit_constraints[..self.puzzle_def.orbit_defs().len().get()],
-        );
+        let initial_register_orbit_constraints = register_orbit_constraints.clone();
         let orbit_remaining_pieces = orbit_defs
             .iter()
             .map(|orbit_def| OrbitRemainingPieces {
@@ -508,7 +506,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                             }
                             _ => (),
                         }
-                        
+
                         orbit_remaining_piece.unused += known_share_state.required_ignored_pieces();
                         *known_share_state = ShareState::default();
                     }
@@ -869,7 +867,13 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
 
     #[must_use]
     fn calculate(&mut self, registers: DisjointRegisters) -> SolutionsCalculation {
-        self.register_orbit_constraints[..self.ccf.puzzle_def.orbit_defs().len().get()]
+        // Although we just need the first register orbits, we copy the initial state
+        // for all of the other registers because we need *all* the
+        // `orientation_satisfied_by` fields to be in the initial state. We copy the
+        // entire slice even though we don't need to populate `known_share_state`. This
+        // is because it is faster to utilize `clone_from_slice` because `memcpy` is
+        // optimized.
+        self.register_orbit_constraints
             .clone_from_slice(&self.immutable.initial_register_orbit_constraints);
         self.orbit_remaining_pieces
             .clone_from_slice(&self.immutable.initial_orbit_remaining_piece_counts);
@@ -1228,7 +1232,7 @@ mod tests {
             .validate()
             .unwrap();
         let mut solutions_calculator = ccf.solutions_calculator(&possible_orders_except_one);
-        let register_orders = vec![9129120, 2162160, 1531530, 1081080];
+        let register_orders = vec![4594590, 1141140, 570570, 510510];
 
         let mut registers = register_orders
             .into_iter()
