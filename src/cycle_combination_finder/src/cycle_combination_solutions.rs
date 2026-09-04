@@ -326,86 +326,8 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                 self.orbit_remaining_pieces, self.register_orbit_constraints,
             );
 
-            let (orbits_constraints, next_orbits_constraints) = self.register_orbit_constraints
-                [register_index2 * self.ccf.puzzle_def.orbit_defs().len().get()..]
-                .split_at_mut(self.ccf.puzzle_def.orbit_defs().len().get());
-            let mut orbits_unused_piece_count_sum = 0;
-            let mut invalid = false;
-            for (
-                orbit_index2,
-                (
-                    &mut RegisterOrbitConstraint {
-                        ref mut known_share_state,
-                        orientation_satisfied_by,
-                        ref mut borrowed_noncanonical_piece,
-                    },
-                    orbit_remaining_piece,
-                ),
-            ) in orbits_constraints
-                .iter_mut()
-                .zip(self.orbit_remaining_pieces.iter_mut())
-                .enumerate()
-            {
-                // Promote only if we have no other share rn
-                if let OrientationSatisfiedBy::RemainingPiece(
-                    maybe_noncanonically_orienting_prime_index,
-                    remaining_piece_type,
-                ) = orientation_satisfied_by
-                {
-                    if *known_share_state == ShareState::None {
-                        // NOTE: we must make sure we immediately use an unused piece. If we
-                        // do so at the end of this match
-                        // statement, the checked_sub will mistake
-                        // the unused piece as a canonically orienting cycle.
-                        match remaining_piece_type {
-                            RemainingPieceType::Leftover => {
-                                *known_share_state = ShareState::Orientation;
-                                orbit_remaining_piece.unused -= 1;
-                            }
-                            // In this branch we don't guarantee from the recursive step that we
-                            // have space.
-                            RemainingPieceType::Unknown => {
-                                if orbit_remaining_piece.unused == 0 {
-                                    invalid = true;
-                                } else {
-                                    *known_share_state = ShareState::Orientation;
-                                    orbit_remaining_piece.unused -= 1;
-                                }
-                            }
-                            RemainingPieceType::Shared => (),
-                        }
-                    }
-                    if let Some(noncanonically_orienting_prime_index) =
-                        maybe_noncanonically_orienting_prime_index
-                    {
-                        trace!("assigning piece to orbit {orbit_index2}");
-
-                        self.register_assignments[register_index2].cycle_assignments
-                            [usize::from(noncanonically_orienting_prime_index)] =
-                            PrimePowerCycleAssignment::Orbit(
-                                orbit_index_cast(orbit_index2),
-                                CycleOrientState::Canonical,
-                            );
-                        if let Some(next_orbit_unused_piece_count) =
-                            orbit_remaining_piece.unused.checked_sub(1)
-                        {
-                            *borrowed_noncanonical_piece = true;
-                            orbit_remaining_piece.unused = next_orbit_unused_piece_count;
-                        } else {
-                            invalid = true;
-                        }
-                    }
-                }
-                if let Some(RegisterOrbitConstraint {
-                    known_share_state: next_share_state,
-                    orientation_satisfied_by: _,
-                    borrowed_noncanonical_piece: _,
-                }) = next_orbits_constraints.get_mut(orbit_index2)
-                {
-                    *next_share_state = *known_share_state;
-                }
-                orbits_unused_piece_count_sum += u32::from(orbit_remaining_piece.unused);
-            }
+            let (orbits_unused_piece_count_sum, invalid) =
+                self.finalize_register_orbits(register_index2);
 
             trace!(
                 "{register_index2} after: {:?} {:?}",
@@ -416,90 +338,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                 if invalid {
                     false
                 } else {
-                    if self.expansion {
-                        trace!("{:#?}", self.register_assignments);
-                        // TODO: allocator
-                        let mut register_orbit_cycles =
-                            vec![
-                                vec![];
-                                NonZeroUsize::from(self.ccf.register_count).get()
-                                    * self.ccf.puzzle_def.orbit_defs().len().get()
-                            ]
-                            .into_boxed_slice();
-                        for register_index in 0..self.ccf.register_count.get() {
-                            let register_index2 = usize::from(register_index);
-                            let register_order = &registers
-                                .get_order(
-                                    register_index,
-                                    self.immutable.possible_orders_except_one,
-                                )
-                                .unwrap()
-                                .order;
-                            let register_assignment = &self.register_assignments[register_index2];
-                            let mut all_exponents = register_assignment.all_exponents_mask;
-                            while all_exponents != 0 {
-                                let prime_index = all_exponents.trailing_zeros() as usize;
-                                let prime = FIRST_65_PRIMES[prime_index];
-                                let register_order_exp = register_order.prime_exponent(prime_index);
-                                // We can have a 7+ on edges to serve as following the 2 cycle and a
-                                // 7 cycle, in the false case
-                                if let PrimePowerCycleAssignment::Orbit(orbit_index, orient_state) =
-                                    register_assignment.cycle_assignments[prime_index]
-                                {
-                                    let orbit_index2 = usize::from(orbit_index);
-                                    let orientation_exps =
-                                        &self.ccf.puzzle_def.orientations_exps()[orbit_index2];
-                                    let exp = if orient_state == CycleOrientState::Canonical {
-                                        let orientation_exp =
-                                            orientation_exps.prime_exponent(prime_index);
-                                        register_order_exp.saturating_sub(orientation_exp)
-                                    } else {
-                                        register_order_exp
-                                    };
-                                    let register_orbit_index = register_index2
-                                        * self.ccf.puzzle_def.orbit_defs().len().get()
-                                        + orbit_index2;
-                                    let cycle_piece_count = prime.pow(u32::from(exp));
-                                    register_orbit_cycles[register_orbit_index].push(Cycle {
-                                        piece_count: cycle_piece_count,
-                                        must_orient: orient_state.must_orient(),
-                                    });
-                                }
-                                all_exponents ^= all_exponents.isolate_lowest_one();
-                            }
-                            for (orbit_index2, register_orbit_cycle) in register_orbit_cycles
-                                .iter_mut()
-                                .skip(
-                                    register_index2 * self.ccf.puzzle_def.orbit_defs().len().get(),
-                                )
-                                .take(self.ccf.puzzle_def.orbit_defs().len().get())
-                                .enumerate()
-                            {
-                                register_orbit_cycle
-                                    .sort_unstable_by_key(|&Cycle { piece_count, .. }| piece_count);
-                                // only the last register has the most recent share state
-                                // propagation
-                                if register_index == self.ccf.register_count.get() - 1 {
-                                    let register_orbit_index = register_index2
-                                        * self.ccf.puzzle_def.orbit_defs().len().get()
-                                        + orbit_index2;
-                                    self.orbit_remaining_pieces[orbit_index2].ignored = self
-                                        .register_orbit_constraints[register_orbit_index]
-                                        .known_share_state
-                                        .required_ignored_pieces();
-                                }
-                            }
-                        }
-
-                        self.maybe_solutions.get_or_insert_default().0.push(
-                            CycleCombinationSolution {
-                                orbit_remaining_pieces: self.orbit_remaining_pieces.clone(),
-                                register_orbit_cycles,
-                            },
-                        );
-                    }
-                    trace!("Solution!");
-                    true
+                    self.emit_solution(registers)
                 }
             } else {
                 self.register_index += 1;
@@ -509,16 +348,12 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                         self.immutable.possible_orders_except_one,
                     )
                     .unwrap();
-                // TODO:
-                // i also have to make sure this is valid before uncommenting. ie what does the
-                // piece count mean when theres a single orienting cycle
                 let found = if u32::from(next_register.min_piece_count_naive)
                     > orbits_unused_piece_count_sum
                 {
                     trace!("pruned by min piece count");
                     false
                 } else if invalid {
-                    // let found = if invalid {
                     trace!("pruned by invalid");
                     false
                 } else {
@@ -529,81 +364,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
             };
 
             trace!("post {register_index2}");
-            if let Some(prev_register_index2) = register_index2.checked_sub(1) {
-                let (prev_orbits_constraints, orbits_constraints) = self.register_orbit_constraints
-                    [prev_register_index2 * self.ccf.puzzle_def.orbit_defs().len().get()..]
-                    .split_at_mut(self.ccf.puzzle_def.orbit_defs().len().get());
-                for (
-                    (
-                        &RegisterOrbitConstraint {
-                            known_share_state: prev_known_share_state,
-                            orientation_satisfied_by: _,
-                            borrowed_noncanonical_piece: _,
-                        },
-                        &mut RegisterOrbitConstraint {
-                            ref mut known_share_state,
-                            orientation_satisfied_by,
-                            borrowed_noncanonical_piece: ref mut foo,
-                        },
-                    ),
-                    orbit_remaining_piece,
-                ) in prev_orbits_constraints
-                    .iter()
-                    .zip(orbits_constraints)
-                    .zip(self.orbit_remaining_pieces.iter_mut())
-                {
-                    orbit_remaining_piece.unused += known_share_state.required_ignored_pieces()
-                        - prev_known_share_state.required_ignored_pieces();
-                    *known_share_state = prev_known_share_state;
-
-                    if let OrientationSatisfiedBy::RemainingPiece(
-                        Some(noncanonically_orienting_prime_index),
-                        _,
-                    ) = orientation_satisfied_by
-                    {
-                        self.register_assignments[register_index2].cycle_assignments
-                            [usize::from(noncanonically_orienting_prime_index)] =
-                            PrimePowerCycleAssignment::Unassigned;
-                        trace!("unassigned piece from orbit");
-                        if *foo {
-                            orbit_remaining_piece.unused += 1;
-                            *foo = false;
-                        }
-                    }
-                }
-            } else {
-                for (
-                    &mut RegisterOrbitConstraint {
-                        ref mut known_share_state,
-                        orientation_satisfied_by,
-                        borrowed_noncanonical_piece: ref mut foo,
-                    },
-                    orbit_remaining_piece,
-                ) in self
-                    .register_orbit_constraints
-                    .iter_mut()
-                    .take(self.ccf.puzzle_def.orbit_defs().len().get())
-                    .zip(self.orbit_remaining_pieces.iter_mut())
-                {
-                    orbit_remaining_piece.unused += known_share_state.required_ignored_pieces();
-                    *known_share_state = ShareState::default();
-
-                    if let OrientationSatisfiedBy::RemainingPiece(
-                        Some(noncanonically_orienting_prime_index),
-                        _,
-                    ) = orientation_satisfied_by
-                    {
-                        trace!("unassigned piece from orbit");
-                        self.register_assignments[register_index2].cycle_assignments
-                            [usize::from(noncanonically_orienting_prime_index)] =
-                            PrimePowerCycleAssignment::Unassigned;
-                        if *foo {
-                            orbit_remaining_piece.unused += 1;
-                            *foo = false;
-                        }
-                    }
-                }
-            }
+            self.undo_register_frame(register_index2);
             return ret;
         }
 
@@ -885,6 +646,227 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
         false
     }
 
+    #[inline]
+    fn finalize_register_orbits(&mut self, register_index2: usize) -> (u32, bool) {
+        let (orbits_constraints, next_orbits_constraints) = self.register_orbit_constraints
+            [register_index2 * self.ccf.puzzle_def.orbit_defs().len().get()..]
+            .split_at_mut(self.ccf.puzzle_def.orbit_defs().len().get());
+        let mut orbits_unused_piece_count_sum = 0;
+        let mut invalid = false;
+        for (
+            orbit_index2,
+            (
+                &mut RegisterOrbitConstraint {
+                    ref mut known_share_state,
+                    orientation_satisfied_by,
+                    ref mut borrowed_noncanonical_piece,
+                },
+                orbit_remaining_piece,
+            ),
+        ) in orbits_constraints
+            .iter_mut()
+            .zip(self.orbit_remaining_pieces.iter_mut())
+            .enumerate()
+        {
+            // Promote only if we have no other share rn
+            if let OrientationSatisfiedBy::RemainingPiece(
+                maybe_noncanonically_orienting_prime_index,
+                remaining_piece_type,
+            ) = orientation_satisfied_by
+            {
+                if *known_share_state == ShareState::None {
+                    // NOTE: we must make sure we immediately use an unused piece. If we
+                    // do so at the end of this match
+                    // statement, the checked_sub will mistake
+                    // the unused piece as a canonically orienting cycle.
+                    match remaining_piece_type {
+                        RemainingPieceType::Leftover => {
+                            *known_share_state = ShareState::Orientation;
+                            orbit_remaining_piece.unused -= 1;
+                        }
+                        // In this branch we don't guarantee from the recursive step that we
+                        // have space.
+                        RemainingPieceType::Unknown => {
+                            if orbit_remaining_piece.unused == 0 {
+                                invalid = true;
+                            } else {
+                                *known_share_state = ShareState::Orientation;
+                                orbit_remaining_piece.unused -= 1;
+                            }
+                        }
+                        RemainingPieceType::Shared => (),
+                    }
+                }
+                if let Some(noncanonically_orienting_prime_index) =
+                    maybe_noncanonically_orienting_prime_index
+                {
+                    trace!("assigning piece to orbit {orbit_index2}");
+
+                    self.register_assignments[register_index2].cycle_assignments
+                        [usize::from(noncanonically_orienting_prime_index)] =
+                        PrimePowerCycleAssignment::Orbit(
+                            orbit_index_cast(orbit_index2),
+                            CycleOrientState::Canonical,
+                        );
+                    if let Some(next_orbit_unused_piece_count) =
+                        orbit_remaining_piece.unused.checked_sub(1)
+                    {
+                        *borrowed_noncanonical_piece = true;
+                        orbit_remaining_piece.unused = next_orbit_unused_piece_count;
+                    } else {
+                        invalid = true;
+                    }
+                }
+            }
+            if let Some(RegisterOrbitConstraint {
+                known_share_state: next_share_state,
+                orientation_satisfied_by: _,
+                borrowed_noncanonical_piece: _,
+            }) = next_orbits_constraints.get_mut(orbit_index2)
+            {
+                *next_share_state = *known_share_state;
+            }
+            orbits_unused_piece_count_sum += u32::from(orbit_remaining_piece.unused);
+        }
+        (orbits_unused_piece_count_sum, invalid)
+    }
+
+    #[inline]
+    fn emit_solution(&mut self, registers: DisjointRegisters) -> bool {
+        if self.expansion {
+            trace!("{:#?}", self.register_assignments);
+            // TODO: allocator
+            let mut register_orbit_cycles = vec![
+                vec![];
+                NonZeroUsize::from(self.ccf.register_count).get()
+                    * self.ccf.puzzle_def.orbit_defs().len().get()
+            ]
+            .into_boxed_slice();
+            for register_index in 0..self.ccf.register_count.get() {
+                let register_index2 = usize::from(register_index);
+                let register_order = &registers
+                    .get_order(register_index, self.immutable.possible_orders_except_one)
+                    .unwrap()
+                    .order;
+                let register_assignment = &self.register_assignments[register_index2];
+                let mut all_exponents = register_assignment.all_exponents_mask;
+                while all_exponents != 0 {
+                    let prime_index = all_exponents.trailing_zeros() as usize;
+                    let prime = FIRST_65_PRIMES[prime_index];
+                    let register_order_exp = register_order.prime_exponent(prime_index);
+                    // We can have a 7+ on edges to serve as following the 2 cycle and a
+                    // 7 cycle, in the false case
+                    if let PrimePowerCycleAssignment::Orbit(orbit_index, orient_state) =
+                        register_assignment.cycle_assignments[prime_index]
+                    {
+                        let orbit_index2 = usize::from(orbit_index);
+                        let orientation_exps =
+                            &self.ccf.puzzle_def.orientations_exps()[orbit_index2];
+                        let exp = if orient_state == CycleOrientState::Canonical {
+                            let orientation_exp = orientation_exps.prime_exponent(prime_index);
+                            register_order_exp.saturating_sub(orientation_exp)
+                        } else {
+                            register_order_exp
+                        };
+                        let register_orbit_index = register_index2
+                            * self.ccf.puzzle_def.orbit_defs().len().get()
+                            + orbit_index2;
+                        let cycle_piece_count = prime.pow(u32::from(exp));
+                        register_orbit_cycles[register_orbit_index].push(Cycle {
+                            piece_count: cycle_piece_count,
+                            must_orient: orient_state.must_orient(),
+                        });
+                    }
+                    all_exponents ^= all_exponents.isolate_lowest_one();
+                }
+                for (orbit_index2, register_orbit_cycle) in register_orbit_cycles
+                    .iter_mut()
+                    .skip(register_index2 * self.ccf.puzzle_def.orbit_defs().len().get())
+                    .take(self.ccf.puzzle_def.orbit_defs().len().get())
+                    .enumerate()
+                {
+                    register_orbit_cycle
+                        .sort_unstable_by_key(|&Cycle { piece_count, .. }| piece_count);
+                    // only the last register has the most recent share state
+                    // propagation
+                    if register_index == self.ccf.register_count.get() - 1 {
+                        let register_orbit_index = register_index2
+                            * self.ccf.puzzle_def.orbit_defs().len().get()
+                            + orbit_index2;
+                        self.orbit_remaining_pieces[orbit_index2].ignored = self
+                            .register_orbit_constraints[register_orbit_index]
+                            .known_share_state
+                            .required_ignored_pieces();
+                    }
+                }
+            }
+
+            self.maybe_solutions
+                .get_or_insert_default()
+                .0
+                .push(CycleCombinationSolution {
+                    orbit_remaining_pieces: self.orbit_remaining_pieces.clone(),
+                    register_orbit_cycles,
+                });
+        }
+        trace!("Solution!");
+        true
+    }
+
+    #[inline]
+    fn undo_register_frame(&mut self, register_index2: usize) {
+        let orbit_defs_len = self.ccf.puzzle_def.orbit_defs().len().get();
+        let (prev_orbits_constraints, orbits_constraints) = match register_index2.checked_sub(1) {
+            Some(prev_register_index2) => {
+                let (prev_orbits_constraints, orbits_constraints) = self.register_orbit_constraints
+                    [prev_register_index2 * orbit_defs_len..]
+                    .split_at_mut(orbit_defs_len);
+                (&*prev_orbits_constraints, orbits_constraints)
+            }
+            None => (
+                &self.immutable.initial_register_orbit_constraints[..],
+                &mut self.register_orbit_constraints[..],
+            ),
+        };
+        for (
+            (
+                &mut RegisterOrbitConstraint {
+                    ref mut known_share_state,
+                    orientation_satisfied_by,
+                    ref mut borrowed_noncanonical_piece,
+                },
+                orbit_remaining_piece,
+            ),
+            &RegisterOrbitConstraint {
+                known_share_state: prev_known_share_state,
+                ..
+            },
+        ) in orbits_constraints
+            .iter_mut()
+            .zip(self.orbit_remaining_pieces.iter_mut())
+            .zip(prev_orbits_constraints)
+        {
+            orbit_remaining_piece.unused += known_share_state.required_ignored_pieces()
+                - prev_known_share_state.required_ignored_pieces();
+            *known_share_state = prev_known_share_state;
+
+            if let OrientationSatisfiedBy::RemainingPiece(
+                Some(noncanonically_orienting_prime_index),
+                _,
+            ) = orientation_satisfied_by
+            {
+                self.register_assignments[register_index2].cycle_assignments
+                    [usize::from(noncanonically_orienting_prime_index)] =
+                    PrimePowerCycleAssignment::Unassigned;
+                trace!("unassigned piece from orbit");
+                if *borrowed_noncanonical_piece {
+                    orbit_remaining_piece.unused += 1;
+                    *borrowed_noncanonical_piece = false;
+                }
+            }
+        }
+    }
+
     #[must_use]
     fn calculate(&mut self, registers: DisjointRegisters) -> SolutionsCalculation {
         // Although we just need the first register orbits, we copy the initial state
@@ -1121,7 +1103,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
             self.recursive_backtrack(registers);
             if self.maybe_solutions.is_some() {
                 debug!(
-                    "Solution for {} in {} tries",
+                    "Expansion for {} in {} steps",
                     dbg_registers(registers.iter(), self.immutable.possible_orders_except_one),
                     self.fitting_tries
                 );
@@ -1446,7 +1428,7 @@ mod tests {
     }
 
     #[test_log::test]
-    fn noncanonical_edge_case() {
+    fn main1() {
         let minx5 = MINX5.clone();
         let possible_orders_except_one =
             mk_possible_orders_except_one(&minx5, minx5.possible_orders(None).unwrap());
@@ -1458,6 +1440,62 @@ mod tests {
             .unwrap();
         let mut solutions_calculator = ccf.solutions_calculator(&possible_orders_except_one);
         let register_orders = vec![959_310, 765_765, 765_765, 622_440];
+
+        let mut registers = register_orders
+            .into_iter()
+            .map(|register_order| {
+                possible_orders_len_cast(
+                    solutions_calculator
+                        .immutable
+                        .possible_orders_except_one
+                        .iter()
+                        .position(|possible_order| {
+                            u64::try_from(possible_order.order.as_bigint()).unwrap()
+                                == register_order
+                        })
+                        .unwrap(),
+                )
+            })
+            .collect::<Box<[_]>>();
+        registers.sort_by_key(|&r| std::cmp::Reverse(r));
+        let registers = Arc::from(registers);
+        let now = Instant::now();
+        let solutions = solutions_calculator
+            .expansion(DisjointRegisters::from(
+                NonemptySlice::try_from(&*registers).unwrap(),
+            ))
+            .unwrap();
+        let len = solutions.0.len();
+        let cycle_combination = CycleCombination {
+            registers: Arc::clone(&registers),
+            solutions,
+        };
+
+        println!(
+            "Found {len} solutions in {}:\n{}",
+            now.elapsed().human(Truncate::Micro),
+            cycle_combination.solutions_fmt(
+                solutions_calculator.immutable.possible_orders_except_one,
+                solutions_calculator.ccf.puzzle_def,
+            )
+        );
+        panic!();
+    }
+
+    #[test_log::test]
+    fn main2() {
+        let minx5 = MINX3.clone();
+        let possible_orders_except_one =
+            mk_possible_orders_except_one(&minx5, minx5.possible_orders(None).unwrap());
+        let ccf = CycleCombinationFinder::builder()
+            .with_register_count(4)
+            .with_solution_expansion(SolutionExpansion::All)
+            .with_fast_assumptions(true)
+            .with_puzzle_def(&minx5)
+            .validate()
+            .unwrap();
+        let mut solutions_calculator = ccf.solutions_calculator(&possible_orders_except_one);
+        let register_orders = vec![15120, 180, 30, 12];
 
         let mut registers = register_orders
             .into_iter()

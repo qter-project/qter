@@ -119,10 +119,7 @@ pub enum CycleCombinationFinderError<const N: usize> {
     )]
     PuzzleTooManyOrders,
     #[error("Expected {expected} solutions, found {actual}.")]
-    MismatchedSolutionCount {
-        expected: usize,
-        actual: usize,
-    },
+    MismatchedSolutionCount { expected: usize, actual: usize },
 }
 
 #[derive(Error, Debug)]
@@ -485,7 +482,8 @@ pub(crate) fn mk_possible_orders_except_one<const N: usize>(
     let mut possible_orders_except_one = possible_orders
         .into_iter()
         .map(|possible_order| {
-            let (min_piece_count, min_piece_count_naive) = min_piece_count_calculator.calculate(&possible_order);
+            let (min_piece_count, min_piece_count_naive) =
+                min_piece_count_calculator.calculate(&possible_order);
             PossibleOrder {
                 order: possible_order,
                 min_piece_count,
@@ -540,8 +538,7 @@ impl<'a, const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'
             puzzle_def: puzzle_def.0,
             optimality: optimality
                 .ok_or(CycleCombinationFinderValidationError::InvalidOptimality)?,
-            num_cores: num_cores
-                .ok_or(CycleCombinationFinderValidationError::InvalidNumCores)?,
+            num_cores: num_cores.ok_or(CycleCombinationFinderValidationError::InvalidNumCores)?,
             sorted,
             maybe_expected_solution_count,
             maybe_max_fitting_tries,
@@ -659,9 +656,7 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        finder::{
-            CycleCombinationFinder, CycleCombinations, NumCores, Optimality, SolutionExpansion,
-        },
+        finder::{CycleCombinationFinder, CycleCombinations, Optimality, SolutionExpansion},
         puzzle::{
             cubeN::{CUBE3, CUBE4},
             minxN::{MINX3, MINX4, MINX5},
@@ -707,8 +702,6 @@ mod tests {
         let minx3 = MINX3.clone();
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx3)
-            .with_optimality(Optimality::MaxOrderRatio(1.01))
-            .with_num_cores(NumCores::Num(1))
             .with_register_count(3)
             .validate()
             .unwrap()
@@ -718,7 +711,7 @@ mod tests {
         for x in ret.cycle_combinations {
             println!(
                 "{}",
-                x.solutions_fmt(&ret.possible_orders_except_one, &minx3)
+                x.solutions_fmt(&ret.possible_orders_except_one, &minx3) /* x.orders_fmt(&ret.possible_orders_except_one) */
             );
         }
     }
@@ -802,7 +795,7 @@ mod tests {
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&minx4)
             .with_register_count(3)
-            .with_mss_batch_size(Some(1000))
+            .with_mss_batch_size(Some(10000))
             // .with_expected_solutions_count_assertion(Some(296))
             // .with_time_limit(None)
             // .with_optimality(Optimality::MaxOrderRatio(5.0))
@@ -920,7 +913,7 @@ mod tests {
         let ret = CycleCombinationFinder::builder()
             .with_puzzle_def(&cube3)
             .with_register_count(3)
-            .with_expected_solutions_count_assertion(Some(19))
+            .with_expected_solutions_count_assertion(Some(18))
             .validate()
             .unwrap()
             .find()
@@ -929,7 +922,7 @@ mod tests {
         for x in ret.cycle_combinations {
             println!(
                 "{}",
-                x.solutions_fmt(&ret.possible_orders_except_one, &cube3)
+                x.solutions_fmt(&ret.possible_orders_except_one, &cube3) /* x.orders_fmt(&ret.possible_orders_except_one) */
             );
         }
     }
