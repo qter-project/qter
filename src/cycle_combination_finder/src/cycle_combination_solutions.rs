@@ -21,11 +21,10 @@ use crate::{
     },
     nonemptyvec::NonemptySlice,
     orderexps::OrderExps,
-    puzzle::{
-        OrientationStatus, OrientationSumConstraint, ParityConstraint, orbit_index_cast,
-        register_index_cast,
-    },
+    puzzle::{OrientationStatus, OrientationSumConstraint, orbit_index_cast, register_index_cast},
 };
+
+const MAX_ORIENTATION_EXP: usize = 8;
 
 enum SolutionsCalculation {
     Existence(bool),
@@ -61,7 +60,7 @@ pub struct CycleCombinationSolutionsCalculator<'a, const N: usize> {
     /// Gives the best registers (register index, the exponent)
     register_exponent_sorter: Vec<(u16, u8)>,
     /// Gives the best orientation orders
-    best_orientations_queue: [BestOrientation; 9],
+    best_orientations_queue: [BestOrientation; MAX_ORIENTATION_EXP],
 
     /// Map of every register, to its cycles, to which orbit its prime power
     /// component is assigned to and bitmask
@@ -96,8 +95,6 @@ enum ShareState {
 #[derive(Clone, Copy, Debug, Ord, Eq, PartialEq, PartialOrd)]
 enum OrientationSatisfiedBy {
     NoConstraint,
-    // LeftoverPiece(Option<u8>),
-    // SharedPieces(Option<u8>),
     RemainingPiece(Option<u8>, RemainingPieceType),
     RegisterCycle,
 }
@@ -126,14 +123,13 @@ pub struct OrbitRemainingPieces {
 struct RegisterOrbitConstraint {
     known_share_state: ShareState,
     orientation_satisfied_by: OrientationSatisfiedBy,
-    foo: bool,
+    borrowed_noncanonical_piece: bool,
 }
 
 #[derive(Debug, Clone)]
 struct RegisterCycleAssignments<const N: usize> {
     all_exponents_mask: u64,
     unassigned_exponents_mask: u64,
-    // unassigned_exponents_mask: u64,
     cycle_assignments: [PrimePowerCycleAssignment; N],
 }
 
@@ -262,7 +258,7 @@ impl<'a, const N: usize> ValidatedCycleCombinationFinder<'a, N> {
                     RegisterOrbitConstraint {
                         known_share_state: ShareState::default(),
                         orientation_satisfied_by,
-                        foo: false,
+                        borrowed_noncanonical_piece: false,
                     }
                 })
             })
@@ -284,7 +280,7 @@ impl<'a, const N: usize> ValidatedCycleCombinationFinder<'a, N> {
             .to_bitmask();
         let register_exponent_sorter =
             Vec::with_capacity(NonZeroUsize::from(self.register_count).get());
-        let best_orientations_queue = [BestOrientation::Unassigned; 9];
+        let best_orientations_queue = [BestOrientation::Unassigned; MAX_ORIENTATION_EXP];
         CycleCombinationSolutionsCalculator {
             register_index: 0,
             maybe_solutions: None,
@@ -341,7 +337,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                     &mut RegisterOrbitConstraint {
                         ref mut known_share_state,
                         orientation_satisfied_by,
-                        ref mut foo,
+                        ref mut borrowed_noncanonical_piece,
                     },
                     orbit_remaining_piece,
                 ),
@@ -393,7 +389,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                         if let Some(next_orbit_unused_piece_count) =
                             orbit_remaining_piece.unused.checked_sub(1)
                         {
-                            *foo = true;
+                            *borrowed_noncanonical_piece = true;
                             orbit_remaining_piece.unused = next_orbit_unused_piece_count;
                         } else {
                             invalid = true;
@@ -403,7 +399,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                 if let Some(RegisterOrbitConstraint {
                     known_share_state: next_share_state,
                     orientation_satisfied_by: _,
-                    foo: _,
+                    borrowed_noncanonical_piece: _,
                 }) = next_orbits_constraints.get_mut(orbit_index2)
                 {
                     *next_share_state = *known_share_state;
@@ -542,12 +538,12 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                         &RegisterOrbitConstraint {
                             known_share_state: prev_known_share_state,
                             orientation_satisfied_by: _,
-                            foo: _,
+                            borrowed_noncanonical_piece: _,
                         },
                         &mut RegisterOrbitConstraint {
                             ref mut known_share_state,
                             orientation_satisfied_by,
-                            ref mut foo,
+                            borrowed_noncanonical_piece: ref mut foo,
                         },
                     ),
                     orbit_remaining_piece,
@@ -580,7 +576,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                     &mut RegisterOrbitConstraint {
                         ref mut known_share_state,
                         orientation_satisfied_by,
-                        ref mut foo,
+                        borrowed_noncanonical_piece: ref mut foo,
                     },
                     orbit_remaining_piece,
                 ) in self
@@ -735,7 +731,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                 let RegisterOrbitConstraint {
                     known_share_state,
                     orientation_satisfied_by,
-                    foo: _,
+                    borrowed_noncanonical_piece: _,
                 } = &mut self.register_orbit_constraints[register_orbit_constraint_index];
                 let mut exp = register_order_exp;
                 let cycle_piece_count = if orient_state == CycleOrientState::Canonical {
@@ -929,13 +925,8 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                 let prime = FIRST_65_PRIMES[prime_index];
                 self.best_orientations_queue
                     .fill(BestOrientation::Unassigned);
-                for (orbit_index, (orientation_exps, &orbit_def)) in self
-                    .ccf
-                    .puzzle_def
-                    .orientations_exps()
-                    .iter()
-                    .zip(self.ccf.puzzle_def.orbit_defs().iter())
-                    .enumerate()
+                for (orbit_index, orientation_exps) in
+                    self.ccf.puzzle_def.orientations_exps().iter().enumerate()
                 {
                     let orbit_index = orbit_index_cast(orbit_index);
                     // counterexample:
@@ -1013,7 +1004,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                         let RegisterOrbitConstraint {
                             known_share_state: _,
                             orientation_satisfied_by,
-                            foo: _,
+                            borrowed_noncanonical_piece: _,
                         } = &mut self.register_orbit_constraints[register_orbit_constraint_index];
 
                         let exp = register_order_exp.saturating_sub(orientation_exp);
@@ -1211,7 +1202,7 @@ mod tests {
 
     use crate::{
         cycle_combination_solutions::CycleCombinationSolutionsCalculator,
-        cycle_combinations_tree::{DisjointRegisters, dbg_registers},
+        cycle_combinations_tree::DisjointRegisters,
         finder::{
             CycleCombination, CycleCombinationFinder, PossibleOrder, SolutionExpansion,
             mk_possible_orders_except_one,
@@ -1466,7 +1457,7 @@ mod tests {
             .validate()
             .unwrap();
         let mut solutions_calculator = ccf.solutions_calculator(&possible_orders_except_one);
-        let register_orders = vec![959310, 765765, 765765, 622440];
+        let register_orders = vec![959_310, 765_765, 765_765, 622_440];
 
         let mut registers = register_orders
             .into_iter()

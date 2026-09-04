@@ -105,14 +105,10 @@ impl<const N: usize> MinPieceCount<'_, N> {
 
         self.orbit_orientation_contributions.fill(OrderExps::one());
 
-        let mut maybe_two_orientation_contribution_orbit_index = None;
         for (prime_power_index, orbit) in prime_power_to_orbit.into_iter().enumerate() {
             let Some((orbit_index, _)) = orbit else {
                 continue;
             };
-            if prime_power_index == 0 && required_cycle_prime_powers.two_exponent() != 0 {
-                maybe_two_orientation_contribution_orbit_index = Some(orbit_index);
-            }
             *self.orbit_orientation_contributions[orbit_index]
                 .prime_exponent_mut(prime_power_index) = self
                 .puzzle_def

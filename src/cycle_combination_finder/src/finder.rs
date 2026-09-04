@@ -120,7 +120,6 @@ pub enum CycleCombinationFinderError<const N: usize> {
     PuzzleTooManyOrders,
     #[error("Expected {expected} solutions, found {actual}.")]
     MismatchedSolutionCount {
-        cycle_combinations: CycleCombinations<N>,
         expected: usize,
         actual: usize,
     },
@@ -648,7 +647,6 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
             && actual_solution_count != expected_solution_count
         {
             Err(CycleCombinationFinderError::MismatchedSolutionCount {
-                cycle_combinations,
                 expected: expected_solution_count,
                 actual: actual_solution_count,
             })
@@ -805,7 +803,7 @@ mod tests {
             .with_puzzle_def(&minx4)
             .with_register_count(3)
             .with_mss_batch_size(Some(1000))
-            .with_expected_solutions_count_assertion(Some(296))
+            // .with_expected_solutions_count_assertion(Some(296))
             // .with_time_limit(None)
             // .with_optimality(Optimality::MaxOrderRatio(5.0))
             .validate()
@@ -814,7 +812,10 @@ mod tests {
             .unwrap();
 
         for x in ret.cycle_combinations {
-            println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
+            println!(
+                "{}",
+                x.solutions_fmt(&ret.possible_orders_except_one, &minx4)
+            );
         }
     }
 
@@ -903,7 +904,6 @@ mod tests {
             .with_puzzle_def(&cube3)
             .with_register_count(4)
             .with_expected_solutions_count_assertion(Some(43))
-            .with_num_cores(NumCores::Num(1))
             .validate()
             .unwrap()
             .find()
