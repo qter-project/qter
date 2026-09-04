@@ -152,14 +152,14 @@ struct OrbitTraversalState<'a, const N: usize> {
 
 #[derive(Debug, Clone, Copy)]
 enum BestOrientation {
-    Orbit(u16, ShareState),
+    Orbit(u16),
     Ambiguous,
     Unassigned,
 }
 
 #[derive(Debug, Clone, Copy)]
 enum SaturatingOrbit {
-    Orbit(u16, u8, ShareState),
+    Orbit(u16, u8),
     Ambiguous,
     None,
 }
@@ -952,27 +952,6 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                         continue;
                     }
                     let orientation_exp = orientation_exps.prime_exponent(prime_index);
-                    let required_extra_pieces = if prime_index == 0
-                        && (orbit_def.parity_constraint == ParityConstraint::Even
-                            || orbit_def.parity_constraint == ParityConstraint::None)
-                    {
-                        // - 2^n is not necessarily valid with +1 of space because of parity
-                        // we COULD parity swap with another orbit; however we just focus on the
-                        // worst case
-                        ShareState::Parity
-                    } else if matches!(
-                        orbit_def.orientation,
-                        OrientationStatus::CanOrient {
-                            count: _,
-                            sum_constraint: OrientationSumConstraint::Zero
-                        }
-                    ) {
-                        // - x^n is not necessarily valid with +0 of space because of
-                        // orientation
-                        ShareState::Orientation
-                    } else {
-                        ShareState::None
-                    };
 
                     // If there is an ambiguity among an exponent between two exponents,
                     // we can assign a register to either; this violates the guarantee
@@ -980,7 +959,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                     match slot {
                         BestOrientation::Orbit(..) => *slot = BestOrientation::Ambiguous,
                         BestOrientation::Unassigned => {
-                            *slot = BestOrientation::Orbit(orbit_index, required_extra_pieces);
+                            *slot = BestOrientation::Orbit(orbit_index);
                         }
                         BestOrientation::Ambiguous => (),
                     }
@@ -1019,8 +998,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                 {
                     let register_index2 = usize::from(register_index);
                     let mut try_assign_pp_to_orbit = |orbit_index: u16,
-                                                      orientation_exp: u8,
-                                                      required_extra_pieces: ShareState|
+                                                      orientation_exp: u8|
                      -> bool {
                         let orbit_index2 = usize::from(orbit_index);
                         let orbit_unused_piece_count =
@@ -1103,15 +1081,15 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                     };
                     // Descending exp order of available orientation-sharing cycles
                     let mut saturated_orbit_found = SaturatingOrbit::None;
-                    for (orbit_index, orientation_exp, required_extra_pieces) in self
+                    for (orbit_index, orientation_exp) in self
                         .best_orientations_queue
                         .iter()
                         .enumerate()
                         .filter_map(|(orientation_exp, &slot)| {
-                            if let BestOrientation::Orbit(orbit_index, required_share) = slot {
+                            if let BestOrientation::Orbit(orbit_index) = slot {
                                 // array is 9 elements long
                                 #[allow(clippy::cast_possible_truncation)]
-                                Some((orbit_index, orientation_exp as u8, required_share))
+                                Some((orbit_index, orientation_exp as u8))
                             } else {
                                 None
                             }
@@ -1128,27 +1106,17 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                             if let SaturatingOrbit::Orbit(..) = saturated_orbit_found {
                                 saturated_orbit_found = SaturatingOrbit::Ambiguous;
                             } else {
-                                saturated_orbit_found = SaturatingOrbit::Orbit(
-                                    orbit_index,
-                                    orientation_exp,
-                                    required_extra_pieces,
-                                );
+                                saturated_orbit_found =
+                                    SaturatingOrbit::Orbit(orbit_index, orientation_exp);
                             }
-                        } else if try_assign_pp_to_orbit(
-                            orbit_index,
-                            orientation_exp,
-                            required_extra_pieces,
-                        ) {
+                        } else if try_assign_pp_to_orbit(orbit_index, orientation_exp) {
                             break;
                         }
                     }
-                    if let SaturatingOrbit::Orbit(
-                        orbit_index,
-                        orientation_exp,
-                        required_extra_pieces,
-                    ) = saturated_orbit_found
+                    if let SaturatingOrbit::Orbit(orbit_index, orientation_exp) =
+                        saturated_orbit_found
                     {
-                        try_assign_pp_to_orbit(orbit_index, orientation_exp, required_extra_pieces);
+                        try_assign_pp_to_orbit(orbit_index, orientation_exp);
                     }
                 }
 
