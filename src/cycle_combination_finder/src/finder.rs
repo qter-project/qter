@@ -96,6 +96,7 @@ enum MssBatchSize {
 pub struct PossibleOrder<const N: usize> {
     pub(crate) order: OrderExps<N>,
     pub(crate) min_piece_count: NonZeroU16,
+    pub(crate) min_piece_count_naive: u16,
 }
 
 #[derive(Debug)]
@@ -180,7 +181,7 @@ pub struct CycleCombinationFinder<R: RegisterCountState, P: PuzzleDefState> {
     fast_assumptions: bool,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ValidatedCycleCombinationFinder<'a, const N: usize> {
     pub(crate) register_count: NonZeroU16,
     pub(crate) puzzle_def: &'a PuzzleDef<N>,
@@ -485,10 +486,11 @@ pub(crate) fn mk_possible_orders_except_one<const N: usize>(
     let mut possible_orders_except_one = possible_orders
         .into_iter()
         .map(|possible_order| {
-            let min_piece_count = min_piece_count_calculator.calculate(&possible_order).0;
+            let (min_piece_count, min_piece_count_naive) = min_piece_count_calculator.calculate(&possible_order);
             PossibleOrder {
                 order: possible_order,
                 min_piece_count,
+                min_piece_count_naive,
             }
         })
         .collect::<Vec<_>>();

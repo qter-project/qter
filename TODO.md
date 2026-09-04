@@ -8,9 +8,11 @@
 ## CCF
 
 - important
+  - make sure its still fast with two orbits with the sam ori
   - optimize orbit traversal algorithm
     - dont loop twice to change states
   - fit equal fitting cycles first into orbis
+    - if the remaining pieces is less than a prime number, then fit it there last
   - parity; look in stash!
   - maybe_min_order_ratio
   - generate less possible orders with optimality not equivalent, see asher's code

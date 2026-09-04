@@ -52,7 +52,7 @@ impl<const N: usize> MinPieceCount<'_, N> {
     /// This method panics if one is the possible order, since the minimum
     /// number of piece is zero, and it would be preferrable for this function
     /// to always return a `NonZero` type.
-    pub fn calculate(&mut self, possible_order: &OrderExps<N>) -> (NonZeroU16, Option<usize>) {
+    pub fn calculate(&mut self, possible_order: &OrderExps<N>) -> (NonZeroU16, u16) {
         assert_ne!(possible_order, &OrderExps::one());
 
         let mut leftover_prime_powers_sum = 0;
@@ -167,7 +167,7 @@ impl<const N: usize> MinPieceCount<'_, N> {
         (
             // Every non-one order requires at least one piece
             NonZeroU16::new(min_piece_count).unwrap(),
-            maybe_two_orientation_contribution_orbit_index,
+            leftover_prime_powers_count,
         )
     }
 }
