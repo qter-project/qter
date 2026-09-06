@@ -9,7 +9,7 @@ mod common;
 #[test_log::test]
 fn optimal_2() {
     let big = BIG1.clone();
-    let cycle_combinations = CycleCombinationFinderBuilder::new()
+    let cycle_combinations = CycleCombinationFinderBuilder::default()
         .with_puzzle_def(&big)
         .with_register_count(2)
         .validate()

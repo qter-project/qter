@@ -8,6 +8,7 @@
 ## CCF
 
 - important
+  - dont pass possible_orders_except_one everywhere
   - "maybe this can be fixed with my algorithm being a little smarter and not assigning the 4 to edges in this case"
   - make sure its still fast with two orbits with the sam ori
   - optimize orbit traversal algorithm

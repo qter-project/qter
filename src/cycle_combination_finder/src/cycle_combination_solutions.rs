@@ -15,7 +15,7 @@ use log::{Level, debug, log_enabled, trace};
 use crate::{
     FIRST_65_PRIMES,
     cycle_combinations_tree::{DisjointRegisters, dbg_registers},
-    finder::{CycleCombination, CycleCombinationFinder, PossibleOrder, ValidatedSolutionExpansion},
+    finder::{CycleCombination, CycleCombinationFinder, ValidatedSolutionExpansion},
     nonemptyvec::NonemptySlice,
     orderexps::OrderExps,
     puzzle::{OrientationStatus, OrientationSumConstraint, orbit_index_cast, register_index_cast},
@@ -66,16 +66,14 @@ pub struct CycleCombinationSolutionsCalculator<'a, const N: usize> {
     /// Remaining piece count for every orbit
     orbit_remaining_pieces: Box<[OrbitRemainingPieces]>,
     ccf: &'a CycleCombinationFinder<'a, N>,
-    immutable: CycleCombinationSolutionsCalculatorImmutable<'a, N>,
+    immutable: CycleCombinationSolutionsCalculatorImmutable<N>,
 }
 
 #[derive(Debug)]
 #[non_exhaustive]
-pub struct CycleCombinationSolutionsCalculatorImmutable<'a, const N: usize> {
-    // TODO: make this one orbit defs long
+pub struct CycleCombinationSolutionsCalculatorImmutable<const N: usize> {
     initial_register_orbit_constraints: Box<[RegisterOrbitConstraint]>,
     initial_orbit_remaining_piece_counts: Box<[OrbitRemainingPieces]>,
-    possible_orders_except_one: &'a [PossibleOrder<N>],
     orientations_exps_mask: u64,
 }
 
@@ -223,10 +221,7 @@ impl<const N: usize> OrbitTraversalState<'_, N> {
 
 impl<'a, const N: usize> CycleCombinationFinder<'a, N> {
     #[must_use]
-    pub(crate) fn solutions_calculator(
-        &'a self,
-        possible_orders_except_one: &'a [PossibleOrder<N>],
-    ) -> CycleCombinationSolutionsCalculator<'a, N> {
+    pub(crate) fn solutions_calculator(&'a self) -> CycleCombinationSolutionsCalculator<'a, N> {
         let register_assignments = vec![
             RegisterCycleAssignments {
                 all_exponents_mask: 0,
@@ -292,7 +287,6 @@ impl<'a, const N: usize> CycleCombinationFinder<'a, N> {
             immutable: CycleCombinationSolutionsCalculatorImmutable {
                 initial_register_orbit_constraints,
                 initial_orbit_remaining_piece_counts,
-                possible_orders_except_one,
                 orientations_exps_mask,
             },
         }
@@ -340,10 +334,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
             } else {
                 self.register_index += 1;
                 let next_register = registers
-                    .get_order(
-                        self.register_index,
-                        self.immutable.possible_orders_except_one,
-                    )
+                    .get_order(self.register_index, &self.ccf.possible_orders_except_one)
                     .unwrap();
                 let found = if u32::from(next_register.min_piece_count_naive)
                     > orbits_unused_piece_count_sum
@@ -384,10 +375,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
 
         // Nonzero because it is in the unassigned mask
         let register_order = &registers
-            .get_order(
-                self.register_index,
-                self.immutable.possible_orders_except_one,
-            )
+            .get_order(self.register_index, &self.ccf.possible_orders_except_one)
             .unwrap()
             .order;
         let register_order_exp = register_order.prime_exponent(prime_index);
@@ -742,7 +730,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
             for register_index in 0..self.ccf.register_count.get() {
                 let register_index2 = usize::from(register_index);
                 let register_order = &registers
-                    .get_order(register_index, self.immutable.possible_orders_except_one)
+                    .get_order(register_index, &self.ccf.possible_orders_except_one)
                     .unwrap()
                     .order;
                 let register_assignment = &self.register_assignments[register_index2];
@@ -881,7 +869,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
         let mut orienting_registers_prime_mask = Mask::splat(false);
 
         for (register_index, possible_order) in registers
-            .iter_orders(self.immutable.possible_orders_except_one)
+            .iter_orders(&self.ccf.possible_orders_except_one)
             .enumerate()
         {
             let all_exponents = possible_order.order.0.simd_ne(Simd::splat(0));
@@ -939,7 +927,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
                 // which registers have the largest power of this prime.
                 self.register_exponent_sorter.extend(
                     registers
-                        .iter_orders(self.immutable.possible_orders_except_one)
+                        .iter_orders(&self.ccf.possible_orders_except_one)
                         .enumerate()
                         .filter_map(|(register_index2, possible_order)| {
                             let register_index = register_index_cast(register_index2);
@@ -1101,7 +1089,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
             if self.maybe_solutions.is_some() {
                 debug!(
                     "Expansion for {} in {} steps",
-                    dbg_registers(registers.iter(), self.immutable.possible_orders_except_one),
+                    dbg_registers(registers.iter(), &self.ccf.possible_orders_except_one),
                     self.fitting_tries
                 );
             }
@@ -1112,7 +1100,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
             if existence {
                 debug!(
                     "Solution for {} in {} tries",
-                    dbg_registers(registers.iter(), self.immutable.possible_orders_except_one),
+                    dbg_registers(registers.iter(), &self.ccf.possible_orders_except_one),
                     self.fitting_tries
                 );
             }
@@ -1184,7 +1172,6 @@ mod tests {
         cycle_combinations_tree::DisjointRegisters,
         finder::{
             CycleCombination, CycleCombinationFinderBuilder, PossibleOrder, SolutionExpansion,
-            mk_possible_orders_except_one,
         },
         nonemptyvec::NonemptySlice,
         orderexps::OrderExps,
@@ -1206,7 +1193,7 @@ mod tests {
             .map(|register_order| {
                 possible_orders_len_cast(
                     solutions_calculator
-                        .immutable
+                        .ccf
                         .possible_orders_except_one
                         .iter()
                         .position(|possible_order| {
@@ -1232,7 +1219,7 @@ mod tests {
         let mut expected = expected.to_string();
         expected.retain(|c| !c.is_whitespace());
         let mut actual = cycle_combination.solutions_fmt(
-            solutions_calculator.immutable.possible_orders_except_one,
+            &solutions_calculator.ccf.possible_orders_except_one,
             solutions_calculator.ccf.puzzle_def,
         );
         let actual_copy = actual.clone();
@@ -1266,19 +1253,20 @@ mod tests {
         ))
         .unwrap();
 
-        let ccf = CycleCombinationFinderBuilder::new()
+        let mut ccf = CycleCombinationFinderBuilder::default()
             .with_puzzle_def(&crazy)
             .with_register_count(1)
             .with_solution_expansion(SolutionExpansion::All)
             .with_max_fitting_tries(None)
             .validate()
             .unwrap();
-        ccf.solutions_calculator(&[PossibleOrder {
+        ccf.possible_orders_except_one = Arc::from(vec![PossibleOrder {
             order: OrderExps::try_from(NonZeroU16::new(3).unwrap()).unwrap(),
             min_piece_count: 1.try_into().unwrap(),
             min_piece_count_naive: 1,
-        }])
-        .existence(DisjointRegisters::from(
+        }]);
+        let mut solutions_calculator = ccf.solutions_calculator();
+        solutions_calculator.existence(DisjointRegisters::from(
             NonemptySlice::try_from(&[0][..]).unwrap(),
         ));
     }
@@ -1286,16 +1274,14 @@ mod tests {
     #[test_log::test]
     fn minx3_optimal_3() {
         let minx3 = MINX3.clone();
-        let ccf = CycleCombinationFinderBuilder::new()
+        let ccf = CycleCombinationFinderBuilder::default()
             .with_puzzle_def(&minx3)
             .with_register_count(3)
             .with_solution_expansion(SolutionExpansion::All)
             .with_max_fitting_tries(None)
             .validate()
             .unwrap();
-        let possible_orders_except_one =
-            mk_possible_orders_except_one(&minx3, minx3.possible_orders(None).unwrap());
-        let solutions_calculator = ccf.solutions_calculator(&possible_orders_except_one);
+        let solutions_calculator = ccf.solutions_calculator();
         // 2520 630 420
         //
         // 2 2 2 3 3 5 7 : 4e 3c
@@ -1325,16 +1311,14 @@ mod tests {
     #[test_log::test]
     fn minx3_equivalent_3() {
         let minx3 = MINX3.clone();
-        let possible_orders_except_one =
-            mk_possible_orders_except_one(&minx3, minx3.possible_orders(None).unwrap());
-        let ccf = CycleCombinationFinderBuilder::new()
+        let ccf = CycleCombinationFinderBuilder::default()
             .with_puzzle_def(&minx3)
             .with_register_count(3)
             .with_solution_expansion(SolutionExpansion::All)
             .with_max_fitting_tries(None)
             .validate()
             .unwrap();
-        let solutions_calculator = ccf.solutions_calculator(&possible_orders_except_one);
+        let solutions_calculator = ccf.solutions_calculator();
         // 840: 2 2 2 3 5 7
         let register_orders = vec![840, 840, 840];
 
@@ -1366,7 +1350,7 @@ mod tests {
 
     #[test_log::test]
     fn orienting_3_cycle() {
-        let ccf_base = CycleCombinationFinderBuilder::new()
+        let ccf_base = CycleCombinationFinderBuilder::default()
             .with_register_count(1)
             .with_solution_expansion(SolutionExpansion::All)
             .with_max_fitting_tries(None);
@@ -1383,10 +1367,8 @@ mod tests {
             EvenParityConstraints(vec![vec![]]),
         ))
         .unwrap();
-        let possible_orders_except_one =
-            mk_possible_orders_except_one(&crazy, crazy.possible_orders(None).unwrap());
         let ccf = ccf_base.clone().with_puzzle_def(&crazy).validate().unwrap();
-        let solutions_calculator = ccf.solutions_calculator(&possible_orders_except_one);
+        let solutions_calculator = ccf.solutions_calculator();
         let register_orders = vec![6];
 
         let expected = "
@@ -1409,10 +1391,8 @@ mod tests {
             EvenParityConstraints(vec![vec![]]),
         ))
         .unwrap();
-        let possible_orders_except_one =
-            mk_possible_orders_except_one(&crazy, crazy.possible_orders(None).unwrap());
         let ccf = ccf_base.with_puzzle_def(&crazy).validate().unwrap();
-        let solutions_calculator = ccf.solutions_calculator(&possible_orders_except_one);
+        let solutions_calculator = ccf.solutions_calculator();
         let register_orders = vec![3];
 
         let expected = "
@@ -1427,15 +1407,13 @@ mod tests {
     #[test_log::test]
     fn main1() {
         let minx5 = MINX5.clone();
-        let possible_orders_except_one =
-            mk_possible_orders_except_one(&minx5, minx5.possible_orders(None).unwrap());
-        let ccf = CycleCombinationFinderBuilder::new()
+        let ccf = CycleCombinationFinderBuilder::default()
             .with_register_count(4)
             .with_solution_expansion(SolutionExpansion::FIRST)
             .with_puzzle_def(&minx5)
             .validate()
             .unwrap();
-        let mut solutions_calculator = ccf.solutions_calculator(&possible_orders_except_one);
+        let mut solutions_calculator = ccf.solutions_calculator();
         let register_orders = vec![959_310, 765_765, 765_765, 622_440];
 
         let mut registers = register_orders
@@ -1443,7 +1421,7 @@ mod tests {
             .map(|register_order| {
                 possible_orders_len_cast(
                     solutions_calculator
-                        .immutable
+                        .ccf
                         .possible_orders_except_one
                         .iter()
                         .position(|possible_order| {
@@ -1472,7 +1450,7 @@ mod tests {
             "Found {len} solutions in {}:\n{}",
             now.elapsed().human(Truncate::Micro),
             cycle_combination.solutions_fmt(
-                solutions_calculator.immutable.possible_orders_except_one,
+                &solutions_calculator.ccf.possible_orders_except_one,
                 solutions_calculator.ccf.puzzle_def,
             )
         );
@@ -1482,16 +1460,14 @@ mod tests {
     #[test_log::test]
     fn main2() {
         let minx5 = MINX3.clone();
-        let possible_orders_except_one =
-            mk_possible_orders_except_one(&minx5, minx5.possible_orders(None).unwrap());
-        let ccf = CycleCombinationFinderBuilder::new()
+        let ccf = CycleCombinationFinderBuilder::default()
             .with_register_count(4)
             .with_solution_expansion(SolutionExpansion::All)
             .with_fast_assumptions(true)
             .with_puzzle_def(&minx5)
             .validate()
             .unwrap();
-        let mut solutions_calculator = ccf.solutions_calculator(&possible_orders_except_one);
+        let mut solutions_calculator = ccf.solutions_calculator();
         let register_orders = vec![15120, 180, 30, 12];
 
         let mut registers = register_orders
@@ -1499,7 +1475,7 @@ mod tests {
             .map(|register_order| {
                 possible_orders_len_cast(
                     solutions_calculator
-                        .immutable
+                        .ccf
                         .possible_orders_except_one
                         .iter()
                         .position(|possible_order| {
@@ -1528,7 +1504,7 @@ mod tests {
             "Found {len} solutions in {}:\n{}",
             now.elapsed().human(Truncate::Micro),
             cycle_combination.solutions_fmt(
-                solutions_calculator.immutable.possible_orders_except_one,
+                &solutions_calculator.ccf.possible_orders_except_one,
                 solutions_calculator.ccf.puzzle_def,
             )
         );

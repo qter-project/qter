@@ -508,13 +508,12 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
         mut solutions_receiver: tokio::sync::broadcast::Receiver<(CoreId, Arc<[u32]>)>,
         solutions_sender: tokio::sync::broadcast::Sender<(CoreId, Arc<[u32]>)>,
         pareto_efficient_prunings: &AtomicPtr<u32>,
-        possible_orders_except_one: &[PossibleOrder<N>],
     ) -> SolutionsThreadInfo {
         if core_affinity::set_for_current(core_id) {
             debug!("Solutions: Pinned {core_id:?}");
         }
         let mut cycle_combinations = CCParetoFront::default();
-        let mut solutions_calculator = self.solutions_calculator(possible_orders_except_one);
+        let mut solutions_calculator = self.solutions_calculator();
 
         let mut processed_candidate_count = 0;
         let mut post_candidate_count = 0;
@@ -633,7 +632,6 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
         num_cores: usize,
         exact_piece_count: NonZeroU32,
         mut shard: CycleCombinationsTreeShard,
-        possible_orders_except_one: &[PossibleOrder<N>],
         old_bucket: &Mutex<usize>,
         time_limit_reached: &AtomicBool,
     ) -> TreeThreadInfo {
@@ -646,7 +644,8 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
             self.optimality.maybe_min_max_order_ratio();
 
         let mut candidate_count = 0;
-        for (i, possible_order) in possible_orders_except_one
+        for (i, possible_order) in self
+            .possible_orders_except_one
             .iter()
             .enumerate()
             .rev()
@@ -688,12 +687,12 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
             if log_enabled!(Level::Debug) {
                 const PERCENT: usize = 1;
 
-                let num = possible_orders_except_one.len() - i;
+                let num = self.possible_orders_except_one.len() - i;
                 // We don't subtract `max_last_register` here. Cores with large
                 // `max_last_register` values are going to exist early, while those with lower
                 // values will persist and perform this logging, so the % meter typically goes
                 // up to 100%.
-                let den = possible_orders_except_one.len();
+                let den = self.possible_orders_except_one.len();
                 let new_bucket = num * 100 / (PERCENT * den);
                 let mut bucket = old_bucket.lock();
                 if new_bucket > *bucket {
@@ -722,7 +721,7 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
 
             if let Some(next_remaining_piece_count) = NonZeroU32::new(next_remaining_piece_count)
                 && let Ok(next_possible_orders_except_one) =
-                    NonemptySlice::try_from(&possible_orders_except_one[..=i])
+                    NonemptySlice::try_from(&self.possible_orders_except_one[..=i])
             {
                 *shard.registers.first_mut() = i_u32;
                 if let Some(max_order_ratio) = maybe_max_order_ratio {
@@ -761,10 +760,7 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
         }
     }
 
-    pub(crate) fn search_dfs(
-        &self,
-        possible_orders_except_one: &[PossibleOrder<N>],
-    ) -> Vec<Arc<[u32]>> {
+    pub(crate) fn search_dfs(&self) -> Vec<Arc<[u32]>> {
         // If we return a None here then /shrug
         #[allow(clippy::missing_panics_doc)]
         let mut core_ids = core_affinity::get_core_ids().unwrap();
@@ -852,7 +848,6 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                             num_cores,
                             exact_piece_count,
                             shard,
-                            possible_orders_except_one,
                             old_bucket,
                             time_limit_reached,
                         )
@@ -868,7 +863,6 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                             solutions_receiver,
                             solutions_sender,
                             pareto_efficient_prunings,
-                            possible_orders_except_one,
                         )
                     });
                     (tree_thread_handle, solutions_thread_handle)
@@ -911,7 +905,7 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                 .filter_map(|x| {
                     let s = dbg_registers_iter(
                         x.0.iter().map(|combination| combination.iter().copied()),
-                        possible_orders_except_one,
+                        &self.possible_orders_except_one,
                     );
                     if s.is_empty() { None } else { Some(s) }
                 })
@@ -940,7 +934,7 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
 
         #[allow(clippy::cast_precision_loss)]
         let pruned_orders_percentage =
-            f64::from(max_last_register) / (possible_orders_except_one.len() as f64);
+            f64::from(max_last_register) / (self.possible_orders_except_one.len() as f64);
 
         #[allow(clippy::cast_precision_loss)]
         let full_sends_percentage = full_sends as f64 / sends as f64;
