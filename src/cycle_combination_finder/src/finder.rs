@@ -163,7 +163,7 @@ impl PuzzleDefState for NeedsPuzzleDef {}
 impl<const N: usize> PuzzleDefState for HasPuzzleDef<'_, N> {}
 
 #[derive(Clone)]
-pub struct CycleCombinationFinder<R: RegisterCountState, P: PuzzleDefState> {
+pub struct CycleCombinationFinderBuilder<R: RegisterCountState, P: PuzzleDefState> {
     register_count: R,
     puzzle_def: P,
     optimality: Option<Optimality>,
@@ -178,7 +178,7 @@ pub struct CycleCombinationFinder<R: RegisterCountState, P: PuzzleDefState> {
 }
 
 #[derive(Clone, Debug)]
-pub struct ValidatedCycleCombinationFinder<'a, const N: usize> {
+pub struct CycleCombinationFinder<'a, const N: usize> {
     pub(crate) register_count: NonZeroU16,
     pub(crate) puzzle_def: &'a PuzzleDef<N>,
     pub(crate) optimality: Optimality,
@@ -318,10 +318,10 @@ impl<const N: usize> CycleCombinations<N> {
     }
 }
 
-impl CycleCombinationFinder<NeedsRegisterCount, NeedsPuzzleDef> {
+impl CycleCombinationFinderBuilder<NeedsRegisterCount, NeedsPuzzleDef> {
     #[must_use]
-    pub fn builder() -> Self {
-        CycleCombinationFinder {
+    pub fn new() -> Self {
+        CycleCombinationFinderBuilder {
             register_count: NeedsRegisterCount,
             puzzle_def: NeedsPuzzleDef,
             optimality: Some(Optimality::Optimal),
@@ -337,7 +337,7 @@ impl CycleCombinationFinder<NeedsRegisterCount, NeedsPuzzleDef> {
     }
 }
 
-impl<R: RegisterCountState, P: PuzzleDefState> CycleCombinationFinder<R, P> {
+impl<R: RegisterCountState, P: PuzzleDefState> CycleCombinationFinderBuilder<R, P> {
     #[must_use]
     pub fn with_sorted(mut self, sorted: bool) -> Self {
         self.sorted = sorted;
@@ -435,8 +435,8 @@ impl<R: RegisterCountState, P: PuzzleDefState> CycleCombinationFinder<R, P> {
     pub fn with_register_count(
         self,
         register_count: u16,
-    ) -> CycleCombinationFinder<HasRegisterCount, P> {
-        CycleCombinationFinder {
+    ) -> CycleCombinationFinderBuilder<HasRegisterCount, P> {
+        CycleCombinationFinderBuilder {
             register_count: HasRegisterCount(NonZeroU16::new(register_count)),
             puzzle_def: self.puzzle_def,
             optimality: self.optimality,
@@ -455,8 +455,8 @@ impl<R: RegisterCountState, P: PuzzleDefState> CycleCombinationFinder<R, P> {
     pub fn with_puzzle_def<const N: usize>(
         self,
         puzzle_def: &PuzzleDef<N>,
-    ) -> CycleCombinationFinder<R, HasPuzzleDef<'_, N>> {
-        CycleCombinationFinder {
+    ) -> CycleCombinationFinderBuilder<R, HasPuzzleDef<'_, N>> {
+        CycleCombinationFinderBuilder {
             register_count: self.register_count,
             puzzle_def: HasPuzzleDef(puzzle_def),
             optimality: self.optimality,
@@ -508,7 +508,7 @@ pub(crate) fn mk_possible_orders_except_one<const N: usize>(
     possible_orders_except_one
 }
 
-impl<'a, const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'a, N>> {
+impl<'a, const N: usize> CycleCombinationFinderBuilder<HasRegisterCount, HasPuzzleDef<'a, N>> {
     /// Validate the builder.
     ///
     /// # Errors
@@ -517,8 +517,8 @@ impl<'a, const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'
     /// `CycleCombinationFinderValidationError`.
     pub fn validate(
         self,
-    ) -> Result<ValidatedCycleCombinationFinder<'a, N>, CycleCombinationFinderValidationError> {
-        let CycleCombinationFinder {
+    ) -> Result<CycleCombinationFinder<'a, N>, CycleCombinationFinderValidationError> {
+        let CycleCombinationFinderBuilder {
             register_count,
             puzzle_def,
             optimality,
@@ -531,7 +531,7 @@ impl<'a, const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'
             maybe_time_limit,
             fast_assumptions,
         } = self;
-        Ok(ValidatedCycleCombinationFinder {
+        Ok(CycleCombinationFinder {
             register_count: register_count
                 .0
                 .ok_or(CycleCombinationFinderValidationError::InvalidRegisterCount)?,
@@ -558,7 +558,7 @@ impl<'a, const N: usize> CycleCombinationFinder<HasRegisterCount, HasPuzzleDef<'
     }
 }
 
-impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
+impl<const N: usize> CycleCombinationFinder<'_, N> {
     /// Search for CCF solutions in parallel.
     ///
     /// # Errors
@@ -656,7 +656,7 @@ impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        finder::{CycleCombinationFinder, CycleCombinations, Optimality, SolutionExpansion},
+        finder::{CycleCombinationFinderBuilder, CycleCombinations, Optimality, SolutionExpansion},
         puzzle::{
             cubeN::{CUBE3, CUBE4},
             minxN::{MINX3, MINX4, MINX5},
@@ -680,7 +680,7 @@ mod tests {
     #[test_log::test]
     fn minx3_optimal_2() {
         let minx3 = MINX3.clone();
-        let ret = CycleCombinationFinder::builder()
+        let ret = CycleCombinationFinderBuilder::new()
             .with_puzzle_def(&minx3)
             .with_mss_batch_size(Some(10))
             .with_register_count(2)
@@ -700,7 +700,7 @@ mod tests {
     #[test_log::test]
     fn minx3_optimal_3() {
         let minx3 = MINX3.clone();
-        let ret = CycleCombinationFinder::builder()
+        let ret = CycleCombinationFinderBuilder::new()
             .with_puzzle_def(&minx3)
             .with_register_count(3)
             .validate()
@@ -719,7 +719,7 @@ mod tests {
     #[test_log::test]
     fn minx3_optimal_4() {
         let minx3 = MINX3.clone();
-        let ret = CycleCombinationFinder::builder()
+        let ret = CycleCombinationFinderBuilder::new()
             .with_puzzle_def(&minx3)
             .with_register_count(4)
             .validate()
@@ -735,7 +735,7 @@ mod tests {
     #[test_log::test]
     fn minx3_optimal_5() {
         let minx3 = MINX3.clone();
-        let ret = CycleCombinationFinder::builder()
+        let ret = CycleCombinationFinderBuilder::new()
             .with_puzzle_def(&minx3)
             .with_register_count(5)
             .with_optimality(Optimality::MaxOrderRatio(10.0))
@@ -755,7 +755,7 @@ mod tests {
     #[test_log::test]
     fn minx3_optimal_6() {
         let minx3 = MINX3.clone();
-        let ret = CycleCombinationFinder::builder()
+        let ret = CycleCombinationFinderBuilder::new()
             .with_puzzle_def(&minx3)
             .with_register_count(6)
             .with_optimality(Optimality::MaxOrderRatio(10.0))
@@ -775,7 +775,7 @@ mod tests {
     #[test_log::test]
     fn minx4_optimal_2() {
         let minx4 = MINX4.clone();
-        let ret = CycleCombinationFinder::builder()
+        let ret = CycleCombinationFinderBuilder::new()
             .with_puzzle_def(&minx4)
             .with_register_count(2)
             .with_mss_batch_size(Some(1))
@@ -792,7 +792,7 @@ mod tests {
     #[test_log::test]
     fn minx4_optimal_3() {
         let minx4 = MINX4.clone();
-        let ret = CycleCombinationFinder::builder()
+        let ret = CycleCombinationFinderBuilder::new()
             .with_puzzle_def(&minx4)
             .with_register_count(3)
             .with_mss_batch_size(Some(10000))
@@ -815,7 +815,7 @@ mod tests {
     #[test_log::test]
     fn minx4_optimal_4() {
         let minx4 = MINX4.clone();
-        let ret = CycleCombinationFinder::builder()
+        let ret = CycleCombinationFinderBuilder::new()
             .with_puzzle_def(&minx4)
             .with_register_count(4)
             .with_optimality(Optimality::MaxOrderRatio(10.0))
@@ -835,7 +835,7 @@ mod tests {
     #[test_log::test]
     fn minx4_optimal_5() {
         let minx4 = MINX4.clone();
-        let ret = CycleCombinationFinder::builder()
+        let ret = CycleCombinationFinderBuilder::new()
             .with_puzzle_def(&minx4)
             .with_register_count(5)
             .with_optimality(Optimality::MaxOrderRatio(10.0))
@@ -855,7 +855,7 @@ mod tests {
     #[test_log::test]
     fn minx5_optimal_2() {
         let minx5 = MINX5.clone();
-        let ret = CycleCombinationFinder::builder()
+        let ret = CycleCombinationFinderBuilder::new()
             .with_puzzle_def(&minx5)
             .with_register_count(2)
             .with_mss_batch_size(Some(1000))
@@ -873,7 +873,7 @@ mod tests {
     #[test_log::test]
     fn minx5_optimal_3() {
         let minx5 = MINX5.clone();
-        let ret = CycleCombinationFinder::builder()
+        let ret = CycleCombinationFinderBuilder::new()
             .with_puzzle_def(&minx5)
             .with_register_count(3)
             // .with_max_fitting_tries(Some(500))
@@ -893,7 +893,7 @@ mod tests {
     #[test_log::test]
     fn cube3_optimal_4() {
         let cube3 = CUBE3.clone();
-        let ret = CycleCombinationFinder::builder()
+        let ret = CycleCombinationFinderBuilder::new()
             .with_puzzle_def(&cube3)
             .with_register_count(4)
             .with_expected_solutions_count_assertion(Some(43))
@@ -910,7 +910,7 @@ mod tests {
     #[test_log::test]
     fn cube3_optimal_3() {
         let cube3 = CUBE3.clone();
-        let ret = CycleCombinationFinder::builder()
+        let ret = CycleCombinationFinderBuilder::new()
             .with_puzzle_def(&cube3)
             .with_register_count(3)
             .with_expected_solutions_count_assertion(Some(18))
@@ -930,7 +930,7 @@ mod tests {
     #[test_log::test]
     fn cube3_optimal_2() {
         let cube3 = CUBE3.clone();
-        let ret = CycleCombinationFinder::builder()
+        let ret = CycleCombinationFinderBuilder::new()
             .with_puzzle_def(&cube3)
             .with_register_count(2)
             .with_expected_solutions_count_assertion(Some(7))
@@ -947,7 +947,7 @@ mod tests {
     #[test_log::test]
     fn cube4_optimal_2() {
         let cube4 = CUBE4.clone();
-        let ret = CycleCombinationFinder::builder()
+        let ret = CycleCombinationFinderBuilder::new()
             .with_puzzle_def(&cube4)
             .with_register_count(2)
             .validate()

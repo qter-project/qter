@@ -7,7 +7,7 @@ use std::{
 
 use bitgauss::BitMatrix;
 use cycle_combination_finder::{
-    finder::{CycleCombinationFinder, Optimality},
+    finder::{CycleCombinationFinderBuilder, Optimality},
     puzzle::{
         EvenParityConstraints, OrbitDef, OrientationStatus, OrientationSumConstraint,
         ParityConstraint, PuzzleDef,

@@ -1,7 +1,7 @@
 #![warn(clippy::pedantic)]
 
 use cycle_combination_finder::{
-    finder::{CycleCombinationFinder, Optimality},
+    finder::{CycleCombinationFinderBuilder, Optimality},
     puzzle::minxN::MINX3,
 };
 
@@ -12,7 +12,7 @@ mod common;
 #[test_log::test]
 fn optimal_2() {
     let minx3 = MINX3.clone();
-    let cycle_combinations = CycleCombinationFinder::builder()
+    let cycle_combinations = CycleCombinationFinderBuilder::new()
         .with_puzzle_def(&minx3)
         .with_register_count(2)
         .validate()
@@ -43,7 +43,7 @@ fn optimal_2() {
 #[test_log::test]
 fn optimal_3() {
     let minx3 = MINX3.clone();
-    let cycle_combinations = CycleCombinationFinder::builder()
+    let cycle_combinations = CycleCombinationFinderBuilder::new()
         .with_puzzle_def(&minx3)
         .with_register_count(3)
         .validate()
@@ -75,7 +75,7 @@ fn optimal_3() {
 #[test_log::test]
 fn equivalent_2() {
     let minx3 = MINX3.clone();
-    let cycle_combinations = CycleCombinationFinder::builder()
+    let cycle_combinations = CycleCombinationFinderBuilder::new()
         .with_puzzle_def(&minx3)
         .with_register_count(2)
         .with_optimality(Optimality::EQUIVALENT)
@@ -89,7 +89,7 @@ fn equivalent_2() {
 #[test_log::test]
 fn equivalent_3() {
     let minx3 = MINX3.clone();
-    let cycle_combinations = CycleCombinationFinder::builder()
+    let cycle_combinations = CycleCombinationFinderBuilder::new()
         .with_puzzle_def(&minx3)
         .with_register_count(3)
         .with_optimality(Optimality::EQUIVALENT)

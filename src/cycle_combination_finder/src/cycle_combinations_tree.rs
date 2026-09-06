@@ -20,7 +20,7 @@ use log::{Level, debug, info, log_enabled, trace};
 use tokio::sync::broadcast::error::TryRecvError as TokioTryRecvError;
 
 use crate::{
-    finder::{PossibleOrder, ValidatedCycleCombinationFinder, ValidatedNumCores},
+    finder::{CycleCombinationFinder, PossibleOrder, ValidatedNumCores},
     nonemptyvec::{NonemptySlice, NonemptyVec},
     pareto_front::CCParetoFront,
     puzzle::possible_orders_len_cast,
@@ -500,7 +500,7 @@ impl CycleCombinationsTreeShard<'_> {
     }
 }
 
-impl<const N: usize> ValidatedCycleCombinationFinder<'_, N> {
+impl<const N: usize> CycleCombinationFinder<'_, N> {
     fn solutions_thread(
         &self,
         core_id: CoreId,

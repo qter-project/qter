@@ -15,10 +15,7 @@ use log::{Level, debug, log_enabled, trace};
 use crate::{
     FIRST_65_PRIMES,
     cycle_combinations_tree::{DisjointRegisters, dbg_registers},
-    finder::{
-        CycleCombination, PossibleOrder, ValidatedCycleCombinationFinder,
-        ValidatedSolutionExpansion,
-    },
+    finder::{CycleCombination, CycleCombinationFinder, PossibleOrder, ValidatedSolutionExpansion},
     nonemptyvec::NonemptySlice,
     orderexps::OrderExps,
     puzzle::{OrientationStatus, OrientationSumConstraint, orbit_index_cast, register_index_cast},
@@ -68,7 +65,7 @@ pub struct CycleCombinationSolutionsCalculator<'a, const N: usize> {
     register_orbit_constraints: Box<[RegisterOrbitConstraint]>,
     /// Remaining piece count for every orbit
     orbit_remaining_pieces: Box<[OrbitRemainingPieces]>,
-    ccf: &'a ValidatedCycleCombinationFinder<'a, N>,
+    ccf: &'a CycleCombinationFinder<'a, N>,
     immutable: CycleCombinationSolutionsCalculatorImmutable<'a, N>,
 }
 
@@ -224,7 +221,7 @@ impl<const N: usize> OrbitTraversalState<'_, N> {
     }
 }
 
-impl<'a, const N: usize> ValidatedCycleCombinationFinder<'a, N> {
+impl<'a, const N: usize> CycleCombinationFinder<'a, N> {
     #[must_use]
     pub(crate) fn solutions_calculator(
         &'a self,
@@ -1186,7 +1183,7 @@ mod tests {
         cycle_combination_solutions::CycleCombinationSolutionsCalculator,
         cycle_combinations_tree::DisjointRegisters,
         finder::{
-            CycleCombination, CycleCombinationFinder, PossibleOrder, SolutionExpansion,
+            CycleCombination, CycleCombinationFinderBuilder, PossibleOrder, SolutionExpansion,
             mk_possible_orders_except_one,
         },
         nonemptyvec::NonemptySlice,
@@ -1269,7 +1266,7 @@ mod tests {
         ))
         .unwrap();
 
-        let ccf = CycleCombinationFinder::builder()
+        let ccf = CycleCombinationFinderBuilder::new()
             .with_puzzle_def(&crazy)
             .with_register_count(1)
             .with_solution_expansion(SolutionExpansion::All)
@@ -1289,7 +1286,7 @@ mod tests {
     #[test_log::test]
     fn minx3_optimal_3() {
         let minx3 = MINX3.clone();
-        let ccf = CycleCombinationFinder::builder()
+        let ccf = CycleCombinationFinderBuilder::new()
             .with_puzzle_def(&minx3)
             .with_register_count(3)
             .with_solution_expansion(SolutionExpansion::All)
@@ -1330,7 +1327,7 @@ mod tests {
         let minx3 = MINX3.clone();
         let possible_orders_except_one =
             mk_possible_orders_except_one(&minx3, minx3.possible_orders(None).unwrap());
-        let ccf = CycleCombinationFinder::builder()
+        let ccf = CycleCombinationFinderBuilder::new()
             .with_puzzle_def(&minx3)
             .with_register_count(3)
             .with_solution_expansion(SolutionExpansion::All)
@@ -1369,7 +1366,7 @@ mod tests {
 
     #[test_log::test]
     fn orienting_3_cycle() {
-        let ccf_base = CycleCombinationFinder::builder()
+        let ccf_base = CycleCombinationFinderBuilder::new()
             .with_register_count(1)
             .with_solution_expansion(SolutionExpansion::All)
             .with_max_fitting_tries(None);
@@ -1432,7 +1429,7 @@ mod tests {
         let minx5 = MINX5.clone();
         let possible_orders_except_one =
             mk_possible_orders_except_one(&minx5, minx5.possible_orders(None).unwrap());
-        let ccf = CycleCombinationFinder::builder()
+        let ccf = CycleCombinationFinderBuilder::new()
             .with_register_count(4)
             .with_solution_expansion(SolutionExpansion::FIRST)
             .with_puzzle_def(&minx5)
@@ -1487,7 +1484,7 @@ mod tests {
         let minx5 = MINX3.clone();
         let possible_orders_except_one =
             mk_possible_orders_except_one(&minx5, minx5.possible_orders(None).unwrap());
-        let ccf = CycleCombinationFinder::builder()
+        let ccf = CycleCombinationFinderBuilder::new()
             .with_register_count(4)
             .with_solution_expansion(SolutionExpansion::All)
             .with_fast_assumptions(true)

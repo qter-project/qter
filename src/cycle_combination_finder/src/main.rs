@@ -8,7 +8,7 @@ use std::{
 };
 
 use cycle_combination_finder::{
-    finder::{CycleCombinationFinder, NumCores, Optimality, SolutionExpansion},
+    finder::{CycleCombinationFinderBuilder, NumCores, Optimality, SolutionExpansion},
     puzzle::{
         PuzzleDef,
         cubeN::{self, cube},
@@ -23,7 +23,7 @@ fn main() {
     };
     env_logger::init();
 
-    let ccf = CycleCombinationFinder::builder().with_time_limit(Some(Duration::from_hours(10)));
+    let ccf = CycleCombinationFinderBuilder::new().with_time_limit(Some(Duration::from_hours(10)));
     if p == "minx3" {
         let minx3 = minxN::MINX3.clone();
         ccf.with_puzzle_def(&minx3)
@@ -35,7 +35,7 @@ fn main() {
             .unwrap();
     } else if p == "minx4 3" {
         let minx4 = minxN::MINX4.clone();
-        let ret = CycleCombinationFinder::builder()
+        let ret = CycleCombinationFinderBuilder::new()
             .with_puzzle_def(&minx4)
             .with_register_count(3)
             .with_mss_batch_size(Some(1000))
@@ -55,7 +55,7 @@ fn main() {
         }
     } else if p == "minx4 4" {
         let minx4 = minxN::MINX4.clone();
-        let ret = CycleCombinationFinder::builder()
+        let ret = CycleCombinationFinderBuilder::new()
             .with_puzzle_def(&minx4)
             .with_register_count(4)
             .with_optimality(Optimality::MaxOrderRatio(10.0))
@@ -69,7 +69,7 @@ fn main() {
         }
     } else if p == "minx5" {
         let minx5 = minxN::MINX5.clone();
-        let ret = CycleCombinationFinder::builder()
+        let ret = CycleCombinationFinderBuilder::new()
             .with_puzzle_def(&minx5)
             .with_register_count(3)
             .with_max_fitting_tries(Some(2500))
