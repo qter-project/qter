@@ -371,7 +371,9 @@ impl Default for CycleCombinationFinderBuilder<NeedsRegisterCount, NeedsPuzzleDe
             sorted: true,
             maybe_expected_solution_count: None,
             maybe_max_fitting_tries: None,
-            solution_expansion: Some(ValidatedSolutionExpansion::default()),
+            solution_expansion: Some(ValidatedSolutionExpansion::Limit(
+                NonZeroUsize::new(10_000).unwrap(),
+            )),
             mss_batch_size: MssBatchSize::Default,
             maybe_time_limit: None,
             fast_assumptions: true,
@@ -791,13 +793,8 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
 
 #[cfg(test)]
 mod tests {
-    use puzzle_theory::numbers::{Int, U};
-
     use crate::{
-        finder::{
-            CycleCombinationFinderBuilder, CycleCombinations, Optimality, RequiredRegisterOrder,
-            SolutionExpansion,
-        },
+        finder::{CycleCombinationFinderBuilder, CycleCombinations, Optimality, SolutionExpansion},
         puzzle::{
             cubeN::{CUBE3, CUBE4},
             minxN::{MINX3, MINX4, MINX5},

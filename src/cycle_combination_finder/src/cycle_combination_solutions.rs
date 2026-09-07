@@ -226,7 +226,6 @@ impl<'a, const N: usize> CycleCombinationFinder<'a, N> {
             RegisterCycleAssignments {
                 all_exponents_mask: 0,
                 unassigned_exponents_mask: !0,
-                // unassigned_exponents_mask: !0,
                 cycle_assignments: [PrimePowerCycleAssignment::Unassigned; N],
             };
             NonZeroUsize::from(self.register_count).get()
@@ -296,7 +295,9 @@ impl<'a, const N: usize> CycleCombinationFinder<'a, N> {
 impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
     // TODO: inline this more for previous calls
     fn recursive_backtrack(&mut self, registers: DisjointRegisters) -> bool {
-        if let Some(max_fitting_tries) = self.ccf.maybe_max_fitting_tries {
+        if !self.expansion
+            && let Some(max_fitting_tries) = self.ccf.maybe_max_fitting_tries
+        {
             if self.fitting_tries == max_fitting_tries {
                 return false;
             }

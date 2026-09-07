@@ -8,8 +8,6 @@
 ## CCF
 
 - important
-  - get rid of anyhow
-  - dont have a solution expansion max tries limit
   - "maybe this can be fixed with my algorithm being a little smarter and not assigning the 4 to edges in this case"
   - make sure its still fast with two orbits with the sam ori
   - optimize orbit traversal algorithm
