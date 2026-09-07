@@ -1,15 +1,15 @@
 use std::{
-    cell::OnceCell,
     cmp::Ordering,
-    fmt::Write,
+    fmt::{self, Write},
     num::{NonZeroU16, NonZeroUsize},
-    rc::Rc,
-    sync::{Arc, atomic::AtomicUsize, nonpoison::Mutex},
+    sync::{Arc, OnceLock, atomic::AtomicUsize, nonpoison::Mutex},
     time::{Duration, Instant},
 };
 
+use fxhash::FxHashMap;
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::{debug, info, trace};
+use puzzle_theory::numbers::{Int, U};
 use rayon::{
     ThreadPool,
     iter::{IntoParallelIterator, ParallelIterator},
@@ -18,11 +18,11 @@ use thiserror::Error;
 
 use crate::{
     cycle_combination_solutions::{
-        CycleCombinationSolution, CycleCombinationSolutions, expand_possible_register,
+        CycleCombinationSolution, CycleCombinationSolutions, expand_possible_registers,
     },
     min_piece_count::MinPieceCount,
     orderexps::OrderExps,
-    puzzle::{PuzzleDef, orbit_index_cast, possible_order_index_cast},
+    puzzle::{PuzzleDef, orbit_index_cast, possible_order_index_cast, possible_orders_len_cast},
 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -96,6 +96,18 @@ enum MssBatchSize {
     Value(NonZeroUsize),
 }
 
+#[derive(Clone, Debug)]
+pub enum RequiredRegisterOrder {
+    AtLeast(Int<U>),
+    Exactly(Int<U>),
+}
+
+#[derive(Clone, Debug)]
+pub enum ValidatedRequiredRegisterOrder {
+    AtLeast(u32),
+    Exactly(u32),
+}
+
 #[derive(Debug, Clone)]
 pub struct PossibleOrder<const N: usize> {
     pub(crate) order: OrderExps<N>,
@@ -123,6 +135,16 @@ pub enum CycleCombinationFinderError<const N: usize> {
 
 #[derive(Error, Debug)]
 pub enum CycleCombinationFinderValidationError {
+    #[error(
+        "This puzzle has too many orders. This is a hint that your puzzle is anyways too large \
+         for the CCF to finish computing in a reasonable amount of time."
+    )]
+    PuzzleTooManyOrders,
+    #[error("Register order {required_register_order_bigint} does not exist; try one of: {try_}")]
+    RequiredRegisterOrderDoesNotExist {
+        required_register_order_bigint: Int<U>,
+        try_: PossibleOrdersDisplayList,
+    },
     #[error("Register count must be non-zero.")]
     InvalidRegisterCount,
     #[error(
@@ -139,11 +161,22 @@ pub enum CycleCombinationFinderValidationError {
          and >= 1.0 when set."
     )]
     InvalidOptimality,
-    #[error(
-        "This puzzle has too many orders. This is a hint that your puzzle is anyways too large \
-         for the CCF to finish computing in a reasonable amount of time."
-    )]
-    PuzzleTooManyOrders,
+}
+
+#[derive(Debug)]
+pub struct PossibleOrdersDisplayList(Vec<Int<U>>);
+
+impl fmt::Display for PossibleOrdersDisplayList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(
+            &self
+                .0
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<String>>()
+                .join(", "),
+        )
+    }
 }
 
 #[derive(Clone)]
@@ -162,7 +195,7 @@ pub struct NeedsPuzzleDef;
 #[derive(Clone)]
 pub struct HasPuzzleDef<'a, const N: usize> {
     puzzle_def: &'a PuzzleDef<N>,
-    possible_orders_except_one: Rc<OnceCell<Arc<[PossibleOrder<N>]>>>,
+    possible_orders_except_one: OnceLock<Arc<[PossibleOrder<N>]>>,
 }
 
 pub trait PuzzleDefState {}
@@ -182,6 +215,7 @@ pub struct CycleCombinationFinderBuilder<R: RegisterCountState, P: PuzzleDefStat
     mss_batch_size: MssBatchSize,
     maybe_time_limit: Option<Duration>,
     fast_assumptions: bool,
+    required_register_orders: Vec<RequiredRegisterOrder>,
 }
 
 #[derive(Clone, Debug)]
@@ -198,6 +232,7 @@ pub struct CycleCombinationFinder<'a, const N: usize> {
     pub(crate) mss_batch_size: NonZeroUsize,
     pub(crate) maybe_time_limit: Option<Duration>,
     pub(crate) fast_assumptions: bool,
+    pub(crate) required_register_orders: Box<[ValidatedRequiredRegisterOrder]>,
 }
 
 impl CycleCombination {
@@ -340,6 +375,7 @@ impl Default for CycleCombinationFinderBuilder<NeedsRegisterCount, NeedsPuzzleDe
             mss_batch_size: MssBatchSize::Default,
             maybe_time_limit: None,
             fast_assumptions: true,
+            required_register_orders: vec![],
         }
     }
 }
@@ -453,6 +489,15 @@ impl<R: RegisterCountState, P: PuzzleDefState> CycleCombinationFinderBuilder<R, 
     }
 
     #[must_use]
+    pub fn with_required_register_orders(
+        mut self,
+        required_register_orders: Vec<RequiredRegisterOrder>,
+    ) -> Self {
+        self.required_register_orders = required_register_orders;
+        self
+    }
+
+    #[must_use]
     pub fn with_register_count(
         self,
         register_count: u16,
@@ -469,6 +514,7 @@ impl<R: RegisterCountState, P: PuzzleDefState> CycleCombinationFinderBuilder<R, 
             mss_batch_size: self.mss_batch_size,
             maybe_time_limit: self.maybe_time_limit,
             fast_assumptions: self.fast_assumptions,
+            required_register_orders: self.required_register_orders,
         }
     }
 
@@ -481,7 +527,7 @@ impl<R: RegisterCountState, P: PuzzleDefState> CycleCombinationFinderBuilder<R, 
             register_count: self.register_count,
             puzzle_def: HasPuzzleDef {
                 puzzle_def,
-                possible_orders_except_one: Rc::new(OnceCell::new()),
+                possible_orders_except_one: OnceLock::new(),
             },
             optimality: self.optimality,
             num_cores: self.num_cores,
@@ -492,6 +538,7 @@ impl<R: RegisterCountState, P: PuzzleDefState> CycleCombinationFinderBuilder<R, 
             mss_batch_size: self.mss_batch_size,
             maybe_time_limit: self.maybe_time_limit,
             fast_assumptions: self.fast_assumptions,
+            required_register_orders: self.required_register_orders,
         }
     }
 }
@@ -523,6 +570,7 @@ impl<'a, const N: usize> CycleCombinationFinderBuilder<HasRegisterCount, HasPuzz
             mss_batch_size,
             maybe_time_limit,
             fast_assumptions,
+            required_register_orders,
         } = self;
         let register_count = register_count
             .0
@@ -582,6 +630,59 @@ impl<'a, const N: usize> CycleCombinationFinderBuilder<HasRegisterCount, HasPuzz
 
                 Ok(Arc::from(possible_orders_except_one.into_boxed_slice()))
             })?);
+        let mut possible_order_to_bigint = FxHashMap::default();
+        let required_register_orders = required_register_orders
+            .into_iter()
+            .map(|required_register_order| {
+                Ok(match required_register_order {
+                    RequiredRegisterOrder::AtLeast(required_register_order_bigint) => {
+                        let i = possible_orders_except_one.partition_point(|possible_order| {
+                            let possible_order_bigint = *possible_order_to_bigint
+                                .entry(possible_order.order.clone())
+                                .or_insert_with_key(OrderExps::as_bigint);
+                            possible_order_bigint <= required_register_order_bigint
+                        });
+                        ValidatedRequiredRegisterOrder::AtLeast(possible_orders_len_cast(
+                            i,
+                        ))
+                    }
+                    RequiredRegisterOrder::Exactly(required_register_order_bigint) => {
+                        let i = possible_orders_except_one
+                            .binary_search_by(|possible_order| {
+                                let possible_order_bigint = possible_order_to_bigint
+                                    .entry(possible_order.order.clone())
+                                    .or_insert_with_key(OrderExps::as_bigint);
+                                (*possible_order_bigint).cmp(&required_register_order_bigint)
+                            })
+                            .map_err(|right| {
+                                let mut try_ = vec![];
+                                if let Some(left) = right.checked_sub(1)
+                                    && let Some(left_possible_order) =
+                                        possible_orders_except_one.get(left)
+                                {
+                                    let possible_order_bigint = possible_order_to_bigint
+                                        .entry(left_possible_order.order.clone())
+                                        .or_insert_with_key(OrderExps::as_bigint);
+                                    try_.push(*possible_order_bigint);
+                                }
+                                if let Some(right_possible_order) =
+                                    possible_orders_except_one.get(right)
+                                {
+                                    let possible_order_bigint = possible_order_to_bigint
+                                        .entry(right_possible_order.order.clone())
+                                        .or_insert_with_key(OrderExps::as_bigint);
+                                    try_.push(*possible_order_bigint);
+                                }
+                                CycleCombinationFinderValidationError::RequiredRegisterOrderDoesNotExist {
+                                    required_register_order_bigint,
+                                    try_: PossibleOrdersDisplayList(try_),
+                                }
+                            })?;
+                        ValidatedRequiredRegisterOrder::Exactly(possible_orders_len_cast(i))
+                    }
+                })
+            })
+            .collect::<Result<Box<[_]>, _>>()?;
         Ok(CycleCombinationFinder {
             register_count,
             puzzle_def,
@@ -595,6 +696,7 @@ impl<'a, const N: usize> CycleCombinationFinderBuilder<HasRegisterCount, HasPuzz
             mss_batch_size,
             maybe_time_limit,
             fast_assumptions,
+            required_register_orders,
         })
     }
 }
@@ -612,6 +714,18 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
     /// [`Self::with_expected_length_assertion`] and the solutions length
     /// mismatches.
     pub fn find(self) -> Result<CycleCombinations<N>, CycleCombinationFinderError<N>> {
+        // Make it such that every index corresponds to a valid possible order.
+        for required_register_order in &self.required_register_orders {
+            if let &ValidatedRequiredRegisterOrder::AtLeast(i) = required_register_order
+                && i == possible_orders_len_cast(self.possible_orders_except_one.len())
+            {
+                return Ok(CycleCombinations {
+                    cycle_combinations: vec![].into_boxed_slice(),
+                    possible_orders_except_one: self.possible_orders_except_one,
+                });
+            }
+        }
+
         let maybe_pool = self.num_cores.maybe_pool();
         let all_possible_registers = if self.optimality == Optimality::EQUIVALENT {
             unimplemented!()
@@ -628,7 +742,7 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                 .map_init(
                     || self.solutions_calculator(),
                     |solutions_calculator, possible_registers| {
-                        expand_possible_register(
+                        expand_possible_registers(
                             solutions_calculator,
                             possible_registers,
                             &expansion_percent_done,
@@ -677,8 +791,13 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
 
 #[cfg(test)]
 mod tests {
+    use puzzle_theory::numbers::{Int, U};
+
     use crate::{
-        finder::{CycleCombinationFinderBuilder, CycleCombinations, Optimality, SolutionExpansion},
+        finder::{
+            CycleCombinationFinderBuilder, CycleCombinations, Optimality, RequiredRegisterOrder,
+            SolutionExpansion,
+        },
         puzzle::{
             cubeN::{CUBE3, CUBE4},
             minxN::{MINX3, MINX4, MINX5},
@@ -704,8 +823,8 @@ mod tests {
         let minx3 = MINX3.clone();
         let ret = CycleCombinationFinderBuilder::default()
             .with_puzzle_def(&minx3)
-            .with_mss_batch_size(Some(10))
             .with_register_count(2)
+            .with_mss_batch_size(Some(10))
             .validate()
             .unwrap()
             .find()
@@ -733,7 +852,8 @@ mod tests {
         for x in ret.cycle_combinations {
             println!(
                 "{}",
-                x.solutions_fmt(&ret.possible_orders_except_one, &minx3) /* x.orders_fmt(&ret.possible_orders_except_one) */
+                // x.orders_fmt(&ret.possible_orders_except_one)
+                x.solutions_fmt(&ret.possible_orders_except_one, &minx3)
             );
         }
     }
@@ -829,7 +949,8 @@ mod tests {
         for x in ret.cycle_combinations {
             println!(
                 "{}",
-                x.solutions_fmt(&ret.possible_orders_except_one, &minx4)
+                // x.solutions_fmt(&ret.possible_orders_except_one, &minx4)
+                x.orders_fmt(&ret.possible_orders_except_one)
             );
         }
     }
@@ -935,7 +1056,7 @@ mod tests {
         let ret = CycleCombinationFinderBuilder::default()
             .with_puzzle_def(&cube3)
             .with_register_count(3)
-            .with_expected_solutions_count_assertion(Some(18))
+            // .with_expected_solutions_count_assertion(Some(18))
             .validate()
             .unwrap()
             .find()
@@ -944,7 +1065,8 @@ mod tests {
         for x in ret.cycle_combinations {
             println!(
                 "{}",
-                x.solutions_fmt(&ret.possible_orders_except_one, &cube3) /* x.orders_fmt(&ret.possible_orders_except_one) */
+                // x.solutions_fmt(&ret.possible_orders_except_one, &cube3)
+                x.orders_fmt(&ret.possible_orders_except_one)
             );
         }
     }

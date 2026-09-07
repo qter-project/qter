@@ -8,7 +8,8 @@
 ## CCF
 
 - important
-  - dont pass possible_orders_except_one everywhere
+  - get rid of anyhow
+  - dont have a solution expansion max tries limit
   - "maybe this can be fixed with my algorithm being a little smarter and not assigning the 4 to edges in this case"
   - make sure its still fast with two orbits with the sam ori
   - optimize orbit traversal algorithm
@@ -17,8 +18,7 @@
     - if the remaining pieces is less than a prime number, then fit it there last
   - parity; look in stash!
   - maybe_min_order_ratio
-  - generate less possible orders with optimality not equivalent, see asher's code
-  - a list of numbers such that every number in the list is in the solutions?
+  - generate less possible orders with optimality equivalent: find max # 
   - min piece count doesnt work with orientation constraint none
   - is possible_order.0.simd_ne(Simd::splat(0)) really needed
   - note that we deduplicate orbits. in general catalog all optimizations

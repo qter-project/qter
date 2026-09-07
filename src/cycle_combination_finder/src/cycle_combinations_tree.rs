@@ -662,7 +662,7 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
             if time_limit_reached.load(atomic::Ordering::Relaxed) {
                 break;
             }
-            // TODO
+            // TODO for min order ratio
             // 9 8 7 6
             // 6
             // 16 8 4 2

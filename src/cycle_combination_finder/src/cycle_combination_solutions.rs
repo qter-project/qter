@@ -1126,7 +1126,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
     }
 }
 
-pub fn expand_possible_register<const N: usize>(
+pub fn expand_possible_registers<const N: usize>(
     solutions_calculator: &mut CycleCombinationSolutionsCalculator<N>,
     possible_registers: Arc<[u32]>,
     expansion_percent_done: &AtomicUsize,
@@ -1257,7 +1257,6 @@ mod tests {
             .with_puzzle_def(&crazy)
             .with_register_count(1)
             .with_solution_expansion(SolutionExpansion::All)
-            .with_max_fitting_tries(None)
             .validate()
             .unwrap();
         ccf.possible_orders_except_one = Arc::from(vec![PossibleOrder {
@@ -1277,8 +1276,7 @@ mod tests {
         let ccf = CycleCombinationFinderBuilder::default()
             .with_puzzle_def(&minx3)
             .with_register_count(3)
-            .with_solution_expansion(SolutionExpansion::All)
-            .with_max_fitting_tries(None)
+            .with_solution_expansion(SolutionExpansion::FIRST)
             .validate()
             .unwrap();
         let solutions_calculator = ccf.solutions_calculator();
@@ -1315,7 +1313,6 @@ mod tests {
             .with_puzzle_def(&minx3)
             .with_register_count(3)
             .with_solution_expansion(SolutionExpansion::All)
-            .with_max_fitting_tries(None)
             .validate()
             .unwrap();
         let solutions_calculator = ccf.solutions_calculator();
@@ -1352,8 +1349,7 @@ mod tests {
     fn orienting_3_cycle() {
         let ccf_base = CycleCombinationFinderBuilder::default()
             .with_register_count(1)
-            .with_solution_expansion(SolutionExpansion::All)
-            .with_max_fitting_tries(None);
+            .with_solution_expansion(SolutionExpansion::All);
 
         let crazy = PuzzleDef::<64>::new((
             vec![PartialOrbitDef {

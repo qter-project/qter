@@ -8,13 +8,17 @@ use std::{
 };
 
 use cycle_combination_finder::{
-    finder::{CycleCombinationFinderBuilder, NumCores, Optimality, SolutionExpansion},
+    finder::{
+        CycleCombinationFinderBuilder, CycleCombinationFinderValidationError, NumCores, Optimality,
+        RequiredRegisterOrder, SolutionExpansion,
+    },
     puzzle::{
         PuzzleDef,
         cubeN::{self, cube},
         minxN,
     },
 };
+use puzzle_theory::numbers::{Int, U};
 
 fn main() {
     let Some(p) = std::env::args().nth(1) else {
@@ -31,9 +35,9 @@ fn main() {
             .with_register_count(3)
             .with_expected_solutions_count_assertion(Some(347))
             .validate()
-            .unwrap()
+            .unwrap_or_else(|e| panic!("{e}"))
             .find()
-            .unwrap();
+            .unwrap_or_else(|e| panic!("{e}"));
     } else if p == "minx4 3" {
         let minx4 = minxN::MINX4.clone();
         let ret = CycleCombinationFinderBuilder::default()
@@ -42,9 +46,9 @@ fn main() {
             .with_mss_batch_size(Some(1000))
             .with_expected_solutions_count_assertion(Some(296))
             .validate()
-            .unwrap()
+            .unwrap_or_else(|e| panic!("{e}"))
             .find()
-            .unwrap();
+            .unwrap_or_else(|e| panic!("{e}"));
         let mut f = BufWriter::new(File::create(p).unwrap());
         for x in ret.cycle_combinations {
             writeln!(
@@ -62,9 +66,9 @@ fn main() {
             .with_optimality(Optimality::MaxOrderRatio(10.0))
             .with_mss_batch_size(Some(1))
             .validate()
-            .unwrap()
+            .unwrap_or_else(|e| panic!("{e}"))
             .find()
-            .unwrap();
+            .unwrap_or_else(|e| panic!("{e}"));
         for x in ret.cycle_combinations {
             println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
         }
@@ -79,9 +83,9 @@ fn main() {
             .with_solution_expansion(SolutionExpansion::Limit(100))
             .with_optimality(Optimality::MaxOrderRatio(1.3))
             .validate()
-            .unwrap()
+            .unwrap_or_else(|e| panic!("{e}"))
             .find()
-            .unwrap();
+            .unwrap_or_else(|e| panic!("{e}"));
         let mut f = BufWriter::new(File::create("results.txt").unwrap());
         for x in ret.cycle_combinations {
             writeln!(
@@ -97,9 +101,9 @@ fn main() {
             .with_puzzle_def(&cube3)
             .with_register_count(3)
             .validate()
-            .unwrap()
+            .unwrap_or_else(|e| panic!("{e}"))
             .find()
-            .unwrap();
+            .unwrap_or_else(|e| panic!("{e}"));
         for x in ret.cycle_combinations {
             println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
         }
