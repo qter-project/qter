@@ -179,43 +179,43 @@ impl<const N: usize> OrbitTraversalState<'_, N> {
         let &OrbitTraversalState {
             unused_piece_count,
             orientation_exps,
-            register_orbit_constraint,
+            register_orbit_constraint:
+                RegisterOrbitConstraint {
+                    known_share_state,
+                    orientation_satisfied_by,
+                    borrowed_noncanonical_piece: _,
+                },
         } = self;
         let &OrbitTraversalState {
             unused_piece_count: unused_piece_count_1,
             orientation_exps: orientation_exps_1,
-            register_orbit_constraint: register_orbit_constraint_1,
+            register_orbit_constraint:
+                RegisterOrbitConstraint {
+                    known_share_state: known_share_state_1,
+                    orientation_satisfied_by: orientation_satisfied_by_1,
+                    borrowed_noncanonical_piece: _,
+                },
         } = other;
         unused_piece_count
             .cmp(&unused_piece_count_1)
             .then(orientation_exps.cmp(orientation_exps_1))
             .then(
-                register_orbit_constraint
-                    .known_share_state
+                known_share_state
                     .required_ignored_pieces()
-                    .cmp(
-                        &register_orbit_constraint_1
-                            .known_share_state
-                            .required_ignored_pieces(),
-                    ),
+                    .cmp(&known_share_state_1.required_ignored_pieces()),
             )
-        // TODO: NO WE DONT??????/
-        // // We need this. Assume both orbits share nothing
-        // //
-        // // o1:
-        // // 10 pieces
-        // // 2+ cycle
-        // //
-        // // o2:
-        // // 8 pieces
-        // //
-        // // We can't treat them the same. Placing a 3 cycle would require a
-        // leftover piece for // the second orbit but not the first
-        // .then(
-        //     register_orbit_constraint
-        //         .orientation_satisfied_by
-        //         .cmp(&register_orbit_constraint_1.orientation_satisfied_by),
-        // )
+            // We need this. Assume both orbits share nothing
+            //
+            // o1:
+            // 10 pieces
+            // 2+ cycle
+            //
+            // o2:
+            // 8 pieces
+            //
+            // We can't treat them the same. Placing a 3 cycle would require a leftover piece for
+            // the second orbit but not the first
+            .then(orientation_satisfied_by.cmp(&orientation_satisfied_by_1))
     }
 }
 
