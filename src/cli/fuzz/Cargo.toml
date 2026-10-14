@@ -1,0 +1,28 @@
+[package]
+name = "cli-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+qter_core.workspace = true
+compiler.workspace = true
+interpreter.workspace = true
+ariadne.workspace = true
+log.workspace = true
+internment.workspace = true
+puzzle_theory.workspace = true
+
+[dependencies.cli]
+path = ".."
+
+[[bin]]
+name = "pipeline"
+path = "fuzz_targets/pipeline.rs"
+test = false
+doc = false
+bench = false

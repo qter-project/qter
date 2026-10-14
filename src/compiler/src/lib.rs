@@ -9,9 +9,10 @@
 
 use std::{
     collections::HashMap,
+    fmt::Display,
     rc::Rc,
     sync::{
-        Arc, OnceLock,
+        Arc,
         atomic::{AtomicUsize, Ordering},
     },
 };
@@ -20,7 +21,7 @@ use ariadne::{Report, ReportKind};
 use internment::ArcIntern;
 use parsing::parse;
 use puzzle_theory::{
-    numbers::{Int, ParseIntError, U},
+    numbers::{Int, U},
     span::{File, Span, WithSpan},
 };
 use qter_core::{Program, architectures::Architecture};
@@ -37,7 +38,47 @@ pub mod q_emitter;
 mod rhai;
 mod strip_expanded;
 
-pub type Reporter = Arc<boxcar::Vec<Report<'static, Span>>>;
+#[derive(Clone, Default, Debug)]
+pub struct Reporter(Arc<boxcar::Vec<Report<'static, Span>>>);
+
+impl Reporter {
+    pub fn push(&self, report: Report<'static, Span>) {
+        self.0.push(report);
+    }
+
+    #[must_use]
+    pub fn count(&self) -> usize {
+        self.0.count()
+    }
+
+    #[must_use]
+    pub fn iter(&self) -> boxcar::vec::Iter<'_, Report<'static, Span>> {
+        self.0.iter()
+    }
+
+    #[must_use]
+    pub fn ptr_eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+
+    #[must_use]
+    pub fn drain(mut self) -> impl IntoIterator<Item = Report<'static, Span>> {
+        Arc::try_unwrap(std::mem::take(&mut self.0)).expect("the reporter not to be kept")
+    }
+}
+
+// impl Drop for Reporter {
+//     fn drop(&mut self) {
+//         if Arc::strong_count(&self.0) != 1 || self.0.count() == 0 {
+//             return;
+//         }
+
+//         eprintln!("{}", std::backtrace::Backtrace::force_capture());
+//         for (_, report) in self.0.iter() {
+//             eprintln!("{report:?}");
+//         }
+//     }
+// }
 
 /// Compiles a QAT program into a Q program while returning the register architecture used.
 ///
@@ -49,7 +90,7 @@ pub fn compile(
     find_import: impl Fn(&str) -> Result<ArcIntern<str>, String> + 'static,
     reporter: &Reporter,
 ) -> Option<(Program, Option<WithSpan<RegistersDecl>>)> {
-    let parsed = parse(qat, &Rc::new(find_import), false, Arc::clone(reporter))?;
+    let parsed = parse(qat, &Rc::new(find_import), false, reporter)?;
 
     let arch = parsed.expansion_info.registers.clone();
 
@@ -106,10 +147,8 @@ fn tag_with_key(instr: &mut TaggedInstruction, key: Option<MacroBranchKey>) {
                 match &mut **arg {
                     Value::Resolved(resolved_value) => match resolved_value {
                         ResolvedValue::Int(_)
-                        | ResolvedValue::Ident {
-                            ident: _,
-                            as_reg: _,
-                        } => {}
+                        | ResolvedValue::Register(_)
+                        | ResolvedValue::Ident(_) => {}
                         ResolvedValue::Block(block) => {
                             for instr in &mut block.code {
                                 tag_with_key(instr, key);
@@ -128,7 +167,7 @@ fn tag_with_key(instr: &mut TaggedInstruction, key: Option<MacroBranchKey>) {
     }
 }
 
-/// Resolve all defines in this block of code that are found in the table. This is used to resolve macro arguments. Note that macro arguments can't be sugared to define statements because those don't support scoping to a particular macro branch and it would be the case that a constant in a block intended to refer to a macro argument would actually refer to a define statement inside the other macro that the block is an argument of.
+/// Resolve all defines in this block of code that are found in the table. This is used to resolve macro arguments. Note that macro arguments can't be desugared to define statements because those don't support scoping to a particular macro branch and it would be the case that a constant in a block intended to refer to a macro argument would actually refer to a define statement inside the other macro that the block is an argument of.
 fn resolve_just_these_defines(
     this: &mut WithSpan<TaggedInstruction>,
     defines: &HashMap<ArcIntern<str>, Define<WithSpan<ResolvedValue>>>,
@@ -147,17 +186,26 @@ fn resolve_just_these_defines(
         }
         Instruction::Constant(arc_intern) => match defines.get(arc_intern) {
             None => Some(()),
-            Some(value) => match &*value.value {
-                ResolvedValue::Int(_) => todo!(),
-                ResolvedValue::Ident {
-                    ident: _,
-                    as_reg: _,
-                } => todo!(),
-                ResolvedValue::Block(block) => {
-                    this.0 = Instruction::Block(block.clone());
-                    Some(())
+            Some(value) => {
+                let whoops = |which| {
+                    r.push(
+                        Report::build(ReportKind::Error, this.span().clone())
+                            .with_message(format!("This constant cannot be expanded as source code because it defines {which}, not a code block"))
+                            .finish(),
+                    );
+                    None
+                };
+
+                match &*value.value {
+                    ResolvedValue::Int(_) => whoops("an integer"),
+                    ResolvedValue::Ident(_) => whoops("an identifier"),
+                    ResolvedValue::Register(_) => whoops("a register"),
+                    ResolvedValue::Block(block) => {
+                        this.0 = Instruction::Block(block.clone());
+                        Some(())
+                    }
                 }
-            },
+            }
         },
         Instruction::RhaiCall(rhai_call) => {
             rhai_call
@@ -189,37 +237,15 @@ struct RegisterReference {
     modulus: Option<Int<U>>,
 }
 
-impl RegisterReference {
-    fn parse(name: WithSpan<ArcIntern<str>>) -> Result<RegisterReference, ParseIntError<U>> {
-        match Self::try_parse_mod(&name) {
-            Some(Ok((s, mod_))) => Ok(RegisterReference {
-                reg_name: WithSpan::new(ArcIntern::from(s), name.span().to_owned()),
-                modulus: Some(mod_),
-            }),
-            Some(Err(e)) => Err(e),
-            None => Ok(RegisterReference {
-                reg_name: name,
-                modulus: None,
-            }),
-        }
-    }
+impl Display for RegisterReference {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str(&self.reg_name)?;
 
-    fn try_parse_mod(name: &str) -> Option<Result<(&str, Int<U>), ParseIntError<U>>> {
-        let idx = name.rfind('%')?;
-        let num = match name[idx + 1..].parse::<Int<U>>() {
-            Ok(v) => v,
-            Err(e) => return Some(Err(e)),
-        };
-        Some(Ok((&name[0..idx], num)))
-    }
-}
-
-impl ToString for RegisterReference {
-    fn to_string(&self) -> String {
-        match self.modulus {
-            Some(modulus) => format!("{}%{}", &**self.reg_name, modulus),
-            None => (**self.reg_name).to_owned(),
+        if let Some(modulus) = self.modulus {
+            f.write_fmt(format_args!("%{modulus}"))?;
         }
+
+        Ok(())
     }
 }
 
@@ -279,11 +305,9 @@ impl Value {
     ) -> Option<()> {
         match self {
             Value::Resolved(value) => match value {
-                ResolvedValue::Int(_)
-                | ResolvedValue::Ident {
-                    ident: _,
-                    as_reg: _,
-                } => Some(()),
+                ResolvedValue::Int(_) | ResolvedValue::Register(_) | ResolvedValue::Ident(_) => {
+                    Some(())
+                }
                 ResolvedValue::Block(block) => {
                     block
                         .code
@@ -309,32 +333,30 @@ type RegisterInfo = (RegisterReference, RhaiRegInfo);
 #[derive(Clone, Debug)]
 enum ResolvedValue {
     Int(Int<U>),
-    Ident {
-        ident: WithSpan<ArcIntern<str>>,
-        as_reg: OnceLock<Option<RegisterInfo>>,
-    },
+    Ident(WithSpan<ArcIntern<str>>),
+    Register(RegisterReference),
     Block(Block),
+}
+
+enum MaybeReg<'a> {
+    Reg(&'a RegisterReference, RhaiRegInfo),
+    NotAReg(&'static str),
+    RegNotFound(&'a Span),
 }
 
 impl ResolvedValue {
     /// If this value is not an identifier, returns `None`. If this value is an identifier that does not refer to a register, returns `Some(Err(_))`. Otherwise returns `Some(Ok(_))`
-    pub fn as_reg(
-        &self,
-        info: &ExpansionInfo,
-    ) -> Option<Result<&(RegisterReference, RhaiRegInfo), &WithSpan<ArcIntern<str>>>> {
+    pub fn as_reg(&self, info: &ExpansionInfo) -> MaybeReg<'_> {
         match self {
-            ResolvedValue::Ident { ident, as_reg } => Some(
-                as_reg
-                    .get_or_init(|| {
-                        let reg_ref = RegisterReference::parse(ident.clone()).ok()?;
-
-                        info.register_exists(&reg_ref)
-                            .map(|reg_info| (reg_ref, reg_info))
-                    })
-                    .as_ref()
-                    .ok_or(ident),
-            ),
-            _ => None,
+            ResolvedValue::Register(reg) => {
+                match info.register_exists(&reg).map(|reg_info| (reg, reg_info)) {
+                    Some((reg, reg_info)) => MaybeReg::Reg(reg, reg_info),
+                    None => MaybeReg::RegNotFound(reg.reg_name.span()),
+                }
+            }
+            ResolvedValue::Int(_) => MaybeReg::NotAReg("an integer"),
+            ResolvedValue::Ident(_) => MaybeReg::NotAReg("an identifier"),
+            ResolvedValue::Block(_) => MaybeReg::NotAReg("a code block"),
         }
     }
 }
@@ -432,26 +454,14 @@ impl MacroPatternComponent {
         match (self, value) {
             (MacroPatternComponent::Argument { name: _, ty }, value) => match (**ty, value) {
                 (MacroArgTy::Int, ResolvedValue::Int(_))
-                | (
-                    MacroArgTy::Ident,
-                    ResolvedValue::Ident {
-                        ident: _,
-                        as_reg: _,
-                    },
-                )
+                | (MacroArgTy::Ident, ResolvedValue::Ident(_))
                 | (MacroArgTy::Block, ResolvedValue::Block(_)) => true,
-                (
-                    MacroArgTy::Reg,
-                    ResolvedValue::Ident {
-                        ident: _,
-                        as_reg: _,
-                    },
-                ) => value.as_reg(info).is_some(),
+                (MacroArgTy::Reg, ResolvedValue::Register(_)) => {
+                    matches!(value.as_reg(info), MaybeReg::Reg(_, _))
+                }
                 _ => false,
             },
-            (MacroPatternComponent::Word(word), ResolvedValue::Ident { ident, as_reg: _ }) => {
-                word == &**ident
-            }
+            (MacroPatternComponent::Word(word), ResolvedValue::Ident(ident)) => word == &**ident,
             _ => false,
         }
     }
@@ -468,7 +478,7 @@ impl MacroPatternComponent {
                     value,
                 },
             )),
-            (MacroPatternComponent::Word(word), ResolvedValue::Ident { ident, as_reg: _ }) => {
+            (MacroPatternComponent::Word(word), ResolvedValue::Ident(ident)) => {
                 assert_eq!(word, &**ident);
                 None
             }
@@ -826,14 +836,14 @@ mod tests {
                 A <- 3x3 (U)
             }
 
-            .define one 1
-            .define var A
+            .define $one 1
+            .define $var A
 
-            .define X {
+            .define $X {
                 add $var $one
             }
-            .define Y $X
-            .define Z $Y
+            .define $Y $X
+            .define $Z $Y
 
             $X
             $Y
@@ -842,18 +852,22 @@ mod tests {
 
         let reporter = Reporter::default();
 
-        let (program, _) = match compile(
+        let Some((program, _)) = compile(
             &File::new(ArcIntern::from("code.qat"), ArcIntern::from(code)),
             |_| unreachable!(),
             &reporter,
-        ) {
-            Some(v) => v,
-            None => {
-                for report in reporter.iter() {
-                    println!("{:?}", report.1);
-                }
-                panic!();
+        ) else {
+            for report in reporter.iter() {
+                report
+                    .1
+                    .print(ariadne::sources(
+                        [("code.qat", code)]
+                            .into_iter()
+                            .map(|(a, b)| (ArcIntern::from(a), ArcIntern::from(b))),
+                    ))
+                    .unwrap();
             }
+            panic!();
         };
 
         let q_code = emit_q(&program, "code.q".into(), &reporter).unwrap().0;
@@ -875,11 +889,37 @@ A: 3x3
                 A <- 3x3 (U)
             }
 
-            .define X {
+            .define $X {
                 $X
             }
 
             $X
+        ";
+
+        let reporter = Reporter::default();
+
+        match compile(
+            &File::new(ArcIntern::from("code.qat"), ArcIntern::from(code)),
+            |_| unreachable!(),
+            &reporter,
+        ) {
+            Some(v) => panic!("{v:?}"),
+            None => {
+                assert_eq!(reporter.iter().count(), 1);
+            }
+        }
+    }
+
+    #[test]
+    fn test_rhai_error_reporting() {
+        let code = "
+            .registers {
+                A <- 3x3 (U)
+            }
+
+            .start-rhai
+            fn SKIBIDI
+            .end-rhai
         ";
 
         let reporter = Reporter::default();

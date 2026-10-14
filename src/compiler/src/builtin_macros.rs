@@ -1,10 +1,10 @@
-use ariadne::{Report, ReportKind};
+use ariadne::{Label, Report, ReportKind};
 use internment::ArcIntern;
 use puzzle_theory::span::{File, Span, WithSpan};
 
 use crate::{
-    BlockID, ExpansionInfo, LabelReference, Macro, Primitive, RegisterReference, Reporter,
-    ResolvedValue, Value,
+    BlockID, ExpansionInfo, LabelReference, Macro, MaybeReg, Primitive, RegisterReference,
+    Reporter, ResolvedValue, Value,
 };
 
 use std::collections::HashMap;
@@ -15,21 +15,29 @@ fn expect_reg(
     syntax: &ExpansionInfo,
     r: &Reporter,
 ) -> Option<RegisterReference> {
+    let span = reg_value.span();
+
     match syntax.block_info.resolve_ref(block_id, reg_value) {
         Some(value) => match value.as_reg(syntax) {
-            Some(Ok(reg)) => Some(reg.0.clone()),
-            Some(Err(reg_name)) => {
+            MaybeReg::Reg(reg, _) => Some(reg.clone()),
+            MaybeReg::RegNotFound(reg_name) => {
                 r.push(
-                    Report::build(ReportKind::Error, reg_value.span().clone())
-                        .with_message(format!("The register {} does not exist", &**reg_name))
+                    Report::build(ReportKind::Error, span.clone())
+                        .with_label(
+                            Label::new(span.clone())
+                                .with_message(format!("The register {reg_name} does not exist")),
+                        )
                         .finish(),
                 );
                 None
             }
-            None => {
+            MaybeReg::NotAReg(actually) => {
                 r.push(
-                    Report::build(ReportKind::Error, reg_value.span().clone())
-                        .with_message("Expected a register")
+                    Report::build(ReportKind::Error, span.clone())
+                        .with_label(
+                            Label::new(span.clone())
+                                .with_message(format!("Expected a register, found {actually}")),
+                        )
                         .finish(),
                 );
                 None
@@ -37,8 +45,10 @@ fn expect_reg(
         },
         None => {
             r.push(
-                Report::build(ReportKind::Error, reg_value.span().clone())
-                    .with_message("Constant not found in this scope")
+                Report::build(ReportKind::Error, span.clone())
+                    .with_label(
+                        Label::new(span.clone()).with_message("Constant not found in this scope"),
+                    )
                     .finish(),
             );
             None
@@ -53,7 +63,7 @@ fn expect_label(
     r: &Reporter,
 ) -> Option<WithSpan<LabelReference>> {
     match syntax.block_info.resolve_ref(block_id, label_value) {
-        Some(ResolvedValue::Ident { ident, as_reg: _ }) => Some(WithSpan::new(
+        Some(ResolvedValue::Ident(ident)) => Some(WithSpan::new(
             LabelReference {
                 name: ArcIntern::clone(ident),
                 block_id,
@@ -112,9 +122,7 @@ fn print_like(
     let message = args.pop().unwrap();
     let span = message.span().to_owned();
     let message = match syntax.block_info.resolve(block_id, message.into_inner()) {
-        Some(ResolvedValue::Ident { ident, as_reg: _ }) => {
-            WithSpan::new((**ident).to_owned(), span)
-        }
+        Some(ResolvedValue::Ident(ident)) => WithSpan::new((**ident).to_owned(), span),
         Some(_) => {
             r.push(
                 Report::build(ReportKind::Error, span.clone())
@@ -142,7 +150,7 @@ pub fn builtin_macros(prelude: &File) -> HashMap<(File, ArcIntern<str>), WithSpa
     let dummy_span = Span::new(
         File::new(ArcIntern::from("BUILTIN"), ArcIntern::from(" ")),
         0,
-        0,
+        1,
     );
 
     macros.insert(
@@ -249,7 +257,7 @@ pub fn builtin_macros(prelude: &File) -> HashMap<(File, ArcIntern<str>), WithSpa
                 let second_arg = args.pop().unwrap();
                 let span = second_arg.span().to_owned();
                 let message = match syntax.block_info.resolve(block_id, second_arg.into_inner()) {
-                    Some(ResolvedValue::Ident { ident, as_reg: _ }) => {
+                    Some(ResolvedValue::Ident(ident)) => {
                         WithSpan::new(ident.trim_matches('"').to_owned(), span)
                     }
                     Some(_) => {

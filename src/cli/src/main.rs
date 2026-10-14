@@ -101,6 +101,10 @@ fn compile_qat(file: &Path) -> color_eyre::Result<(Program, File)> {
     let sources: Rc<RefCell<HashMap<ArcIntern<str>, ArcIntern<str>>>> =
         Rc::new(RefCell::new(HashMap::new()));
     sources.borrow_mut().insert(path.clone(), contents.clone());
+    sources.borrow_mut().insert(
+        "prelude.qat".into(),
+        include_str!("../../qter_core/prelude.qat").into(),
+    );
 
     let reporter = Reporter::default();
 

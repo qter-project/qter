@@ -4,10 +4,9 @@ use ariadne::{Label, Report, ReportKind, Source};
 use internment::ArcIntern;
 use puzzle_theory::span::{File, Span, WithSpan};
 
-use crate::{
-    BlockID, ParsedSyntax, Reporter, builtin_macros::builtin_macros, parsing::tokenizer::tokenize,
-};
+use crate::{BlockID, ParsedSyntax, Reporter, builtin_macros::builtin_macros, parsing::level_two::tokenize};
 
+mod level_two;
 mod parser;
 mod tokenizer;
 
@@ -25,7 +24,7 @@ thread_local! {
                 )
             }),
             true,
-            reporter.clone(),
+            &reporter,
         ) else {
             for report in reporter.iter() {
                 report.1.eprint((ArcIntern::from("prelude.qat"), Source::from(prelude.inner()))).unwrap();
@@ -54,11 +53,20 @@ pub fn parse(
     qat: &File,
     find_import: &Rc<impl Fn(&str) -> Result<ArcIntern<str>, String> + 'static>,
     is_prelude: bool,
-    reporter: Reporter,
+    reporter: &Reporter,
 ) -> Option<WithSpan<ParsedSyntax>> {
-    let enclosure = tokenize(qat, reporter)?;
+    let enclosure = tokenize(qat, reporter.clone())?;
 
-    enclosure.parse(|iter| parser::parse(iter, &find_import, is_prelude))
+    let v = enclosure.parse(|iter| {
+        assert!(iter.r().ptr_eq(reporter));
+        parser::parse(iter, find_import, is_prelude)
+    });
+
+    if reporter.count() != 0 {
+        None
+    } else {
+        v
+    }
 }
 
 fn merge_files(
@@ -145,7 +153,7 @@ fn merge_files(
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use std::{rc::Rc, sync::Arc};
+    use std::rc::Rc;
 
     use internment::ArcIntern;
     use puzzle_theory::span::File;
@@ -161,13 +169,13 @@ pub(crate) mod tests {
     fn bruh() {
         let code = "
             .registers {
-                a, b ← 3x3 builtin ( 90 , 90 )
+                A, B ← 3x3 builtin ( 90 , 90 )
                 /*(
                     c, d ← 3x3 builtin (210, 24)
                     d, e, f ← 3x3 builtin (30, 30, 30)
                 )*/
-                f ← theoretical 90
-                g, h ← 3x3 (U , D    )
+                F ← theoretical 90
+                G, H ← 3x3 (U , D    )
             }
 
             .macro bruh {
@@ -187,15 +195,14 @@ pub(crate) mod tests {
 
             bruh:
             bruhy:
-            add 1 a
+            add 1 A
             goto bruh
 
             rhai bruh( 1,2 , 3)
 
-            .define yeet rhai bruh(1, 2, 3)
-            .define pog 4
+            .define $yeet rhai bruh(1, 2, 3)
+            .define $pog 4
 
-            .import pog.qat
             .import \"pog.qat\"
         ";
 
@@ -208,7 +215,7 @@ pub(crate) mod tests {
                 Ok(ArcIntern::from("add 1 a"))
             }),
             false,
-            Arc::clone(&reporter),
+            &reporter,
         ) {
             Some(_) => {}
             None => {

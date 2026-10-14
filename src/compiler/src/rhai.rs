@@ -1,13 +1,13 @@
-use std::{fmt::Debug, sync::OnceLock};
+use std::fmt::Debug;
 
-use ariadne::{Report, ReportKind};
+use ariadne::{Color, Label, Report, ReportKind, Span as _};
 use internment::ArcIntern;
 use itertools::Itertools;
 use puzzle_theory::{
     numbers::{I, Int, U},
     span::{Span, WithSpan},
 };
-use rhai::{AST, Array, CustomType, Dynamic, Engine, ImmutableString, ParseError, Scope};
+use rhai::{AST, Array, CustomType, Dynamic, Engine, ImmutableString, Position, Scope};
 
 use crate::{
     Block, Code, ExpansionInfo, Instruction, MacroBranchKey, MacroCall, RegisterInfo, Reporter,
@@ -87,23 +87,80 @@ impl CustomType for WRegisterInfo {
 }
 
 #[derive(Clone, Debug)]
+pub struct RhaiCode(Span);
+
+impl RhaiCode {
+    pub fn new(span: Span) -> RhaiCode {
+        RhaiCode(span)
+    }
+
+    pub fn span(&self) -> &Span {
+        &self.0
+    }
+
+    pub fn pos_to_span(&self, pos: Position) -> Option<Span> {
+        let (mut line, pos) = match (pos.line(), pos.position()) {
+            (Some(line), Some(pos)) => (line - 1, pos - 1),
+            (Some(line), None) => (line - 1, 0),
+            _ => return None,
+        };
+
+        let source = self.span().source().inner();
+
+        let mut start = self.span().start();
+
+        while line != 0 {
+            start += source[start..].find('\n')? + 1;
+            line -= 1;
+        }
+
+        start += pos;
+
+        Some(Span::new(self.span().source(), start, start + 1))
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct RhaiMacros {
-    rhai_ast: AST,
+    rhai_asts: Vec<(RhaiCode, AST)>,
 }
 
 impl RhaiMacros {
     pub fn new() -> RhaiMacros {
         RhaiMacros {
-            rhai_ast: AST::empty(),
+            rhai_asts: Vec::new(),
         }
     }
 
-    pub fn add_code(&mut self, code: &str) -> Result<(), ParseError> {
-        let compiled = ENGINE.with(|engine| engine.compile(code))?;
+    pub fn add_code(&mut self, rhai_code: RhaiCode, r: &Reporter) -> Option<()> {
+        let compiled = match ENGINE.with(|engine| engine.compile(rhai_code.span().slice())) {
+            Ok(v) => v,
+            Err(err) => {
+                let pos = err.position();
+                let (span, default) = match rhai_code.pos_to_span(pos) {
+                    Some(span) => (span, false),
+                    None => (rhai_code.span().clone(), true),
+                };
 
-        self.rhai_ast.combine(compiled);
+                let mut report = Report::build(ReportKind::Error, span.clone()).with_label(
+                    Label::new(span)
+                        .with_color(Color::Red)
+                        .with_message(err.to_string()),
+                );
 
-        Ok(())
+                if default {
+                    report = report.with_note("The Rhai compiler did not provide span information");
+                }
+
+                r.push(report.finish());
+
+                return None;
+            }
+        };
+
+        self.rhai_asts.push((rhai_code, compiled));
+
+        Some(())
     }
 
     pub fn do_rhai_call(
@@ -116,22 +173,57 @@ impl RhaiMacros {
     ) -> Option<ResolvedValue> {
         let args = args
             .into_iter()
-            .map(|v| into_rhai(v.into_inner(), info))
-            .collect_vec();
+            .map(|v| into_rhai(v.into_inner(), info, r))
+            .collect::<Option<Vec<_>>>()?;
 
-        let result = ENGINE.with(|engine| {
-            let mut scope = Scope::new();
-            engine.call_fn::<Dynamic>(&mut scope, &self.rhai_ast, name, args)
-        });
+        let mut result = None;
+        let mut found_with_args = None;
+
+        'done: for (code, ast) in &self.rhai_asts {
+            for f in ast.iter_functions() {
+                if f.name == name {
+                    found_with_args = Some(f.params.len());
+                    if f.params.len() == args.len() {
+                        // Found the right AST!
+
+                        result = Some((
+                            code,
+                            ENGINE.with(|engine| {
+                                let mut scope = Scope::new();
+                                engine.call_fn::<Dynamic>(&mut scope, ast, name, args)
+                            }),
+                        ));
+
+                        break 'done;
+                    }
+                }
+            }
+        }
 
         let value = match result {
-            Ok(v) => v,
-            Err(e) => {
+            Some((_, Ok(v))) => v,
+            Some((code, Err(e))) => {
+                let rhai_span = code.pos_to_span(e.position()).unwrap();
                 r.push(
-                    Report::build(ReportKind::Error, span)
-                        .with_message(e.to_string())
+                    Report::build(ReportKind::Error, rhai_span.clone())
+                        .with_label(Label::new(rhai_span).with_message(e.to_string()))
+                        .with_label(Label::new(span).with_message("Rhai function invoked here"))
                         .finish(),
                 );
+                return None;
+            }
+            None => {
+                let mut report = Report::build(ReportKind::Error, span.clone()).with_label(
+                    Label::new(span).with_message("Function not declared in any Rhai block"),
+                );
+
+                if let Some(n) = found_with_args {
+                    report = report.with_help(format!(
+                        "Found a function with the same name that takes {n} parameters"
+                    ));
+                }
+
+                r.push(report.finish());
                 return None;
             }
         };
@@ -142,23 +234,31 @@ impl RhaiMacros {
     }
 }
 
-fn into_rhai(arg: ResolvedValue, info: &ExpansionInfo) -> Dynamic {
-    match arg {
+fn into_rhai(arg: ResolvedValue, info: &ExpansionInfo, r: &Reporter) -> Option<Dynamic> {
+    Some(match arg {
         ResolvedValue::Int(int) => Dynamic::from(WInt(int.into())),
-        ResolvedValue::Ident {
-            ref ident,
-            as_reg: _,
-        } => match arg.as_reg(info) {
-            Some(Ok(reg)) => Dynamic::from(WRegisterInfo(reg.to_owned())),
-            Some(Err(_)) | None => {
-                let str = ImmutableString::from(&***ident);
-                Dynamic::from(str)
+        ResolvedValue::Register(_) => match arg.as_reg(info) {
+            crate::MaybeReg::Reg(register_reference, rhai_reg_info) => {
+                Dynamic::from(WRegisterInfo((register_reference.clone(), rhai_reg_info)))
             }
+            crate::MaybeReg::RegNotFound(span) => {
+                r.push(
+                    Report::build(ReportKind::Error, span.clone())
+                        .with_message("Register does not exist")
+                        .finish(),
+                );
+                return None;
+            }
+            crate::MaybeReg::NotAReg(_) => unreachable!(),
         },
+        ResolvedValue::Ident(ident) => {
+            let str = ImmutableString::from(&**ident);
+            Dynamic::from(str)
+        }
         ResolvedValue::Block(_block) => {
             todo!()
         }
-    }
+    })
 }
 
 fn from_rhai(
@@ -198,22 +298,14 @@ fn from_rhai(
 
     let value = match value.try_cast_result::<ImmutableString>() {
         Ok(str) => {
-            return Some(ResolvedValue::Ident {
-                ident: span.with(ArcIntern::from(&*str)),
-                as_reg: OnceLock::new(),
-            });
+            return Some(ResolvedValue::Ident(span.with(ArcIntern::from(&*str))));
         }
         Err(v) => v,
     };
 
     let value = match value.try_cast_result::<WRegisterInfo>() {
         Ok(WRegisterInfo(str)) => {
-            let span = str.0.reg_name.span().clone();
-
-            return Some(ResolvedValue::Ident {
-                ident: span.with(ArcIntern::from(str.0.to_string())),
-                as_reg: OnceLock::new(),
-            });
+            return Some(ResolvedValue::Register(str.0));
         }
         Err(v) => v,
     };
@@ -290,10 +382,17 @@ fn try_decode_block(
 
 #[cfg(test)]
 mod tests {
-    use puzzle_theory::numbers::{I, Int};
+    use puzzle_theory::{
+        numbers::{I, Int},
+        span::Span,
+    };
     use rhai::{Dynamic, Scope};
 
-    use crate::rhai::{ENGINE, WInt};
+    use crate::{
+        Reporter,
+        parsing::tests::file,
+        rhai::{ENGINE, RhaiCode, WInt},
+    };
 
     use super::RhaiMacros;
 
@@ -301,9 +400,9 @@ mod tests {
     fn custom_numeric() {
         let mut rhai_vm = RhaiMacros::new();
 
-        rhai_vm
-            .add_code(
-                r#"
+        let r = Reporter::default();
+
+        let code = r#"
             fn assert(x) {
                 if !x {
                     throw "oopsie";
@@ -326,14 +425,18 @@ mod tests {
                 assert(10 - big(4) == big(6));
                 assert(-big(10) == big(-10));
             }
-        "#,
-            )
+        "#;
+
+        let file = file(code);
+
+        rhai_vm
+            .add_code(RhaiCode::new(Span::new(file, 0, code.len())), &r)
             .unwrap();
 
         ENGINE.with(|v| {
             let mut scope = Scope::new();
             assert!(
-                v.call_fn::<Dynamic>(&mut scope, &rhai_vm.rhai_ast, "fail", ())
+                v.call_fn::<Dynamic>(&mut scope, &rhai_vm.rhai_asts[0].1, "fail", ())
                     .is_err()
             );
         });
@@ -347,11 +450,13 @@ mod tests {
             let mut scope = Scope::new();
             let status = v.call_fn::<Dynamic>(
                 &mut scope,
-                &rhai_vm.rhai_ast,
+                &rhai_vm.rhai_asts[0].1,
                 "test",
                 (zero, too_big, tenth_too_big),
             );
             assert!(status.is_ok());
         });
+
+        assert_eq!(r.count(), 0);
     }
 }

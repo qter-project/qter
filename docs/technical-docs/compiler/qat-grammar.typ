@@ -17,10 +17,14 @@ Tokenization occurs at the same time that parsing does; the tokenizer is driven 
 <(>  ::= "("        // Open Paren
 <)>  ::= ")"        // Close Paren
 <:>  ::= ":"        // Colon
+<%>  ::= "%"        // Percent
+<.>  ::= "."        // Dot
 <">  ::= "\""       // Quote
 <\n> ::= "\n"       // New line
+       | "//"
  _   ::= " " | "\t" // Whitespace
        | "\r"
+       | "/*" char* "*/"
 ```
 
 Special cases:
@@ -30,10 +34,10 @@ Special cases:
 After splitting the text, we are left with a sequence of UTF-8 strings which are tokenized in the following way:
 
 ```
-.("str") ::= "." <char>*     // Directive
 $<const> ::= "$" <char>*     // Constant
 <num>    ::= <digit>*        // Number 
-<ident>  ::= <char>*         // Ident
+<name>    ::= <capital-char>* // Register name (all caps)
+<ident>  ::= <char>*   // Ident
            | <"> <char>* <">
 ```
 
@@ -41,7 +45,9 @@ Ambiguities are resolved in the following way:
 - Check for prefixes
 - Test parseability as an unsigned integer
     - If parsable, it's a number
-- Otherwise it's an ident
+- Check the case of each character
+    - All uppercase: Register name
+    - Some lowercase / All mixed case: Ident
 
 A `.start-rhai` directive is special cased and all text after it is dumped into a `<rhai-code>` token, ending at the text `.end-rhai`.
 
@@ -50,18 +56,30 @@ A shebang at the start of the file is special-cased and thrown away by the token
 Special commands:
 - `<!ws>` Tells the tokenizer to assert that there is no whitespace or new-lines after a token
 
+= Level Two Tokenizer
+
+This collects tokens into a syntax tree without doing a full parse. BNF:
+
+```
+.("str")        ::= "." <char>*                        // Directive
+<register>      ::= <name> (<!ws> <%> <!ws> <number>)? // Register
+<( token* )>    ::= <(> token* <)>                     // Parenthesis enclosure
+<{ token* }>    ::= <(> token* <)>                     // Brace enclosure
+```
+
+All other tokens are kept the same, however `<name>` is always converted into `<register>`
+
 = Parser
 
 Here's the grammar in BNF form. 
 
-For readability, I'll be extending BNF notation with `*`, `+`, and `?` which have the same meaning as in regex. Also, the grammar will generally treat `<\n>` as whitespace, so I'll add a fake `<!\n>` token to notate when a newline is explicitly required to not be present. 
+Also, the grammar will generally treat `<\n>` as whitespace, so I'll add a fake `<!\n>` token to notate when a newline is explicitly required to not be present, and also `<!ws>` meaning "no whitespace". 
 
 ```
 <program>       ::= <registers>? <statement>*
 
-
-<registers>     ::= .("registers") <{> <register-decl>+ <}>
-<register-decl> ::= (<ident> <,>)* <ident> <←> <architecture> <\n>
+<registers>     ::= .("registers") <{ <register-decl>+ }>
+<register-decl> ::= (<register> <,>)* <ident> <←> <architecture> <\n>
 
 <architecture>  ::= <theoretical>
                   | <real>
@@ -71,11 +89,12 @@ For readability, I'll be extending BNF notation with `*`, `+`, and `?` which hav
 <real>          ::= <inline>
                   | <builtin>
 <inline>        ::= <ident> <algorithm!nl>
-                  | <ident> <(> (<algorithm> <,>)* <algorithm> <,>? <)> 
+                  | <ident> <( (<algorithm> <,>)* <algorithm> <,>? )> 
 <builtin>       ::= "builtin" <ident> <algorithm!nl>
-                  | "builtin" <ident> <(> (<num> <,>)* <num> <,>? <)>
+                  | "builtin" <ident> <( (<num> <,>)* <num> <,>? )>
 
-<algorithm>     ::= <ident>+
+// (Note that `U` would parse as a register)
+<algorithm>     ::= (<ident> | <register>)+
 <algorithm!nl>  ::= (ident <!\n>)+
 
 
@@ -86,8 +105,8 @@ For readability, I'll be extending BNF notation with `*`, `+`, and `?` which hav
 <import>        ::= .("import") <!\n> <ident> <\n>
 <rhai_block>    ::= .("start-rhai") <rhai-code>
 
-<macro>         ::= .("macro") <ident> <{> (<macro-branch>)* <macro-branch> <}>
-<macro-branch>  ::= <(> (<ident> | <const> <!ws> <:> <!ws> <macro-arg-ty>)* <)> <⇒> <instruction>
+<macro>         ::= .("macro") <ident> <{ (<macro-branch>)* <macro-branch> }>
+<macro-branch>  ::= <( (<ident> | <const> <!ws> <:> <!ws> <macro-arg-ty>)* )> <⇒> <instruction>
 <macro-arg-ty>  ::= "int" | "reg" | "block" | "ident"
 
 
@@ -100,13 +119,14 @@ For readability, I'll be extending BNF notation with `*`, `+`, and `?` which hav
 
 <value>         ::= <const>
                   | <ident>
+                  | <register>
                   | <num>
                   | <block>
 
 <label>         ::= <ident> <!ws> <:> <\n>
 <code>          ::= <ident> <!\n> (<value> <!\n>)* <\n>
-<rhai-call>     ::= "rhai" <!\n> <ident> <!\n> <(> (<value> <,>)* <value>? <,>? <)> <\n>
-<define>        ::= .("define") <!\n> <ident> <!\n> <value> <\n>
+<rhai-call>     ::= "rhai" <!\n> <ident> <!\n> <( (<value> <,>)* <value>? <,>? )> <\n>
+<define>        ::= .("define") <!\n> <const> <!\n> <value> <\n>
                   | .("define") <!\n> <ident> <!\n> <rhai-call> <\n>
-<block>         ::= <{> <instruction>* <}>
+<block>         ::= <{ <instruction>* }>
 ```

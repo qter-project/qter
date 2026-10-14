@@ -155,19 +155,16 @@ fn expand_block(
                     expand_code(block_id, expansion_info, code, span, &changed, maybe_branch_key, r)
                 }
                 Instruction::Constant(name) => {
+                    let whoops = |actually| {
+                            r.push(Report::build(ReportKind::Error, span.clone()).with_message(format!("Expected a code block, found {actually}")).finish());
+                            vec![]
+                    };
+
                     match expansion_info.block_info.get_define(block_id, &name) {
                         Some(define) => match &*define.value {
-                            ResolvedValue::Int(_) => {
-                                r.push(Report::build(ReportKind::Error, span).with_message("Expected a code block, found an integer").finish());
-                                vec![]
-                            },
-                            ResolvedValue::Ident {
-                                ident: _,
-                                as_reg: _,
-                            } => {
-                                r.push(Report::build(ReportKind::Error, span).with_message("Expected a code block, found an identifier").finish());
-                                vec![]
-                            },
+                            ResolvedValue::Int(_) => whoops("an integer"),
+                            ResolvedValue::Ident(_) => whoops("an identifier"),
+                            ResolvedValue::Register(_) => whoops("a register"),
                             ResolvedValue::Block(block) => {
                                 let _ = changed.set(span);
 
@@ -197,15 +194,15 @@ fn expand_block(
                     };
                     let _ = changed.set(span.clone());
 
+                    let whoops = |actually| {
+                            r.push(Report::build(ReportKind::Error, span.clone()).with_message(format!("Expected the macro to return a code block; actually returned {actually}")).finish());
+                            vec![]
+                    };
+
                     match value.into_inner() {
-                        ResolvedValue::Int(_) => {
-                            r.push(Report::build(ReportKind::Error, span).with_message("Expected the macro to return a code block; actually returned an integer").finish());
-                            vec![]
-                        },
-                        ResolvedValue::Ident { ident: _, as_reg: _ } => {
-                            r.push(Report::build(ReportKind::Error, span).with_message("Expected the macro to return a code block; actually returned an identifier").finish());
-                            vec![]
-                        },
+                        ResolvedValue::Int(_) => whoops("an integer"),
+                        ResolvedValue::Ident(_) => whoops("an identifier"),
+                        ResolvedValue::Register(_) => whoops("a register"),
                         ResolvedValue::Block(block) => {
                             let _ = changed.set(span);
 
@@ -344,7 +341,9 @@ mod tests {
     use std::rc::Rc;
     use std::sync::Arc;
 
-    use crate::Reporter;
+    use internment::ArcIntern;
+
+use crate::Reporter;
     use crate::parsing::tests::file;
     use crate::{macro_expansion::expand, parsing::parse};
 
@@ -352,37 +351,44 @@ mod tests {
     fn bruh() {
         let code = "
             .registers {
-                a, b ← 3x3 builtin (90, 90)
+                A, B ← 3x3 builtin (90, 90)
             }
 
             loop:
-                add a 1
-                print \"What da heck\" a
-                solved-goto a loop
+                add A 1
+                print \"What da heck\" A
+                solved-goto B loop
 
-                add b 89
-                solved-goto b over
+                add B 89
+                solved-goto B over
                 goto loop
 
             over:
 
-                halt Poggers b
+                halt \"Poggers\" B
         ";
 
         let reporter = Reporter::default();
 
-        let parsed = parse(
+        let Some(parsed) = parse(
             &file(code),
             &Rc::new(|_: &str| unreachable!()),
             false,
-            Arc::clone(&reporter),
-        )
-        .unwrap();
+            &reporter,
+        ) else {
+            for report in reporter.iter() {
+                report.1.print(ariadne::sources(
+                    [("<static>", code)]
+                        .into_iter()
+                        .map(|(a, b)| (ArcIntern::from(a), ArcIntern::from(b))),
+                )).unwrap();
+            }
+            panic!();
+        };
 
         let expanded = expand(parsed.into_inner(), &reporter).unwrap();
 
-        let reports = Arc::try_unwrap(reporter).unwrap();
-        assert_eq!(reports.count(), 0);
+        assert_eq!(reporter.count(), 0);
 
         println!("{expanded:?}");
     }

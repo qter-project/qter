@@ -33,6 +33,7 @@ enum QInstruction {
 ///
 /// Returns `None` and pushes errors to the reporter if `theoretical` registers are present or if there are multiple puzzles.
 #[allow(clippy::missing_panics_doc)]
+#[must_use]
 pub fn emit_q(
     program: &Program,
     file_name: ArcIntern<str>,
@@ -141,9 +142,9 @@ pub fn emit_q(
             }
         };
 
-        let start = out.len();
+        let start = out.chars().count();
         writeln!(&mut out, "{num} | {instr}").unwrap();
-        let end = out.len();
+        let end = out.chars().count();
 
         spans.push((start, end));
     }

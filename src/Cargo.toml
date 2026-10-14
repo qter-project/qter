@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["*"]
+members = ["*", "cli/fuzz"]
 exclude = [".zed", ".config", "target"]
 
 [workspace.lints.clippy]
@@ -12,7 +12,8 @@ qter_core.path = "qter_core"
 interpreter.path = "interpreter"
 compiler.path = "compiler"
 g4g_program.path = "g4g_program"
-puzzle_theory.git = "https://github.com/qter-project/puzzle-theory"
+# puzzle_theory.git = "https://github.com/qter-project/puzzle-theory"
+puzzle_theory.path = "../../puzzle-theory"
 internment = { version = "0.8", features = [ "arc" ] }
 humanize-duration = "0.0.7"
 itertools = "0.14.0"

@@ -37,6 +37,7 @@
           extensions = [
             "rust-src"
             "rust-analyzer"
+            "llvm-tools-preview"
           ];
           targets = [
             "aarch64-unknown-linux-gnu"
@@ -96,12 +97,12 @@
               # }))
               gap
 
-              (python3.withPackages (
-                p: with p; [
-                  sympy
-                ]
-              ))
-              python312Packages.python-lsp-server
+              # (python3.withPackages (
+              #   p: with p; [
+              #     sympy
+              #   ]
+              # ))
+              # python312Packages.python-lsp-server
             ]);
 
           RUST_BACKTRACE = 1;

@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     mem,
     rc::Rc,
-    sync::{Arc, OnceLock, atomic::AtomicUsize},
+    sync::{atomic::AtomicUsize, Arc},
 };
 
 use ariadne::{Color, Label, Report, ReportKind};
@@ -14,18 +14,19 @@ use puzzle_theory::{
     puzzle_geometry::PuzzleGeometry,
     span::{File, Span, WithSpan},
 };
-use qter_core::architectures::{Architecture, with_presets};
+use qter_core::architectures::{with_presets, Architecture};
 use rhai::ParseError;
 
 use crate::{
+    parsing::{
+        level_two::{Attempt, Token, TokenIter},
+        tokenizer::{Encloser, Symbol},
+    },
+    rhai::RhaiMacros,
     Block, BlockID, BlockInfo, BlockInfoTracker, Code, DefineUnresolved, DefineValue,
     ExpansionInfo, Instruction, Macro, MacroArgTy, MacroBranch, MacroBranchKey, MacroPattern,
     MacroPatternComponent, ParsedSyntax, Puzzle, RegistersDecl, ResolvedValue, RhaiCall, Value,
-    parsing::tokenizer::{Attempt, Encloser, Symbol, TokenIter},
-    rhai::RhaiMacros,
 };
-
-use super::tokenizer::Token;
 
 pub fn parse(
     iter: &mut TokenIter,
@@ -61,7 +62,7 @@ pub fn parse(
             &mut parsed_syntax,
             iter.file(),
             super::PRELUDE.with(|v| (*v).clone()),
-            Span::new(iter.file().clone(), 0, iter.file().inner().len()),
+            Span::new(iter.file().clone(), 0, iter.file().inner().chars().count()),
             &iter.r(),
         );
     }
@@ -77,6 +78,8 @@ pub fn parse(
     );
 
     let mut rhai_macros = RhaiMacros::new();
+
+    let mut ok = true;
 
     loop {
         let marker = iter.marker();
@@ -95,93 +98,89 @@ pub fn parse(
         let span = token.span();
 
         match &*token {
-            Token::Directive(ident) if &**ident == "macro" => {
-                let (name, def) = macro_def(iter, parsed_syntax.expansion_info.fresh_branch_key())?;
+            Token::Directive(directive) => {
+                if directive == "macro" {
+                    let (name, def) =
+                        macro_def(iter, parsed_syntax.expansion_info.fresh_branch_key())?;
 
-                if parsed_syntax
-                    .expansion_info
-                    .macros
-                    .contains_key(&(iter.file().clone(), ArcIntern::clone(&name)))
-                {
-                    iter.report(
-                        Report::build(ReportKind::Error, name.span().clone())
-                            .with_message("This macro is already defined.")
-                            .finish(),
-                    );
-                    continue;
-                }
-
-                parsed_syntax
-                    .expansion_info
-                    .macros
-                    .insert((iter.file().clone(), ArcIntern::clone(&name)), def);
-                parsed_syntax.expansion_info.available_macros.insert(
-                    (iter.file().clone(), name.into_inner()),
-                    iter.file().clone(),
-                );
-            }
-            Token::Directive(ident) if &**ident == "import" => {
-                let filename = iter.ident()?;
-
-                if !filename.ends_with(".qat") {
-                    iter.report(
-                        Report::build(ReportKind::Error, filename.span().clone())
-                            .with_message("The file extension must be `.qat`")
-                            .finish(),
-                    );
-                    continue;
-                }
-
-                let import = match (find_import)(&filename.value) {
-                    Ok(v) => v,
-                    Err(e) => {
+                    if parsed_syntax
+                        .expansion_info
+                        .macros
+                        .contains_key(&(iter.file().clone(), ArcIntern::clone(&name)))
+                    {
                         iter.report(
-                            Report::build(ReportKind::Error, filename.span().clone())
-                                .with_message(format!("Unable to find import: {e}"))
+                            Report::build(ReportKind::Error, name.span().clone())
+                                .with_message("This macro is already defined.")
                                 .finish(),
                         );
-
                         continue;
                     }
-                };
 
-                let find_import = Rc::clone(find_import);
+                    parsed_syntax
+                        .expansion_info
+                        .macros
+                        .insert((iter.file().clone(), ArcIntern::clone(&name)), def);
+                    parsed_syntax.expansion_info.available_macros.insert(
+                        (iter.file().clone(), name.into_inner()),
+                        iter.file().clone(),
+                    );
+                } else if directive == "import" {
+                    let filename = iter.ident()?;
 
-                let Some(importee) = super::parse(
-                    &File::new(filename.value, import),
-                    &find_import,
-                    is_prelude,
-                    iter.r(),
-                ) else {
-                    continue;
-                };
-
-                super::merge_files(
-                    &mut parsed_syntax,
-                    iter.file(),
-                    importee.value,
-                    iter.cash_in(marker),
-                    &iter.r(),
-                );
-            }
-            Token::RhaiCode(rhai_code) => {
-                if let Err(ParseError(err, pos)) = rhai_macros.add_code(rhai_code.span().slice()) {
-                    let (span, default) = match rhai_code.pos_to_span(pos) {
-                        Some(span) => (span, false),
-                        None => (span.clone(), true),
-                    };
-
-                    let mut report = Report::build(ReportKind::Error, span.clone())
-                        .with_message(err.to_string())
-                        .with_label(Label::new(span).with_color(Color::Red));
-
-                    if default {
-                        report =
-                            report.with_note("The Rhai compiler did not provide span information");
+                    if !filename.ends_with(".qat") {
+                        iter.report(
+                            Report::build(ReportKind::Error, filename.span().clone())
+                                .with_message("The file extension must be `.qat`")
+                                .finish(),
+                        );
+                        ok = false;
+                        continue;
                     }
 
-                    iter.report(report.finish());
+                    let import = match (find_import)(&filename.value) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            iter.report(
+                                Report::build(ReportKind::Error, filename.span().clone())
+                                    .with_message(format!("Unable to find import: {e}"))
+                                    .finish(),
+                            );
+                            ok = false;
+
+                            continue;
+                        }
+                    };
+
+                    let find_import = Rc::clone(find_import);
+
+                    let Some(importee) = super::parse(
+                        &File::new(filename.value, import),
+                        &find_import,
+                        is_prelude,
+                        &iter.r(),
+                    ) else {
+                        continue;
+                    };
+
+                    super::merge_files(
+                        &mut parsed_syntax,
+                        iter.file(),
+                        importee.value,
+                        iter.cash_in(marker),
+                        &iter.r(),
+                    );
+                } else {
+                    iter.report(
+                        Report::build(ReportKind::Error, span.clone())
+                            .with_message("Unknown directive; expected .macro or .import")
+                            .finish(),
+                    );
+                    return None;
                 }
+            }
+            Token::RhaiCode(rhai_code) => {
+                // if the rhai code doesn't parse, that doesn't stop us from continuing to parse the qat code
+                let _ = rhai_macros.add_code(rhai_code.clone(), &iter.r());
             }
             Token::EndOfEnclosure(encloser) => {
                 assert!(encloser.is_none());
@@ -191,7 +190,7 @@ pub fn parse(
                     .rhai_macros
                     .insert(iter.file().clone(), rhai_macros);
 
-                return Some(parsed_syntax);
+                return if ok { Some(parsed_syntax) } else { None };
             }
             _ => {
                 return iter.unexpected(token, "an instruction, macro, import, or rhai block");
@@ -232,7 +231,13 @@ fn register_decl(t: &mut TokenIter) -> Attempt<Option<Puzzle>> {
         let start = t.marker();
 
         loop {
-            names.push(t.ident()?);
+            let reg = t.reg()?;
+
+            if reg.modulus.is_some() {
+                t.report(Report::build(ReportKind::Error, reg.span().clone()).with_message("Register name should not have a modulus").finish());
+            }
+
+            names.push(reg.span().clone().with(reg.value.reg_name.value));
 
             *commit = true;
 
@@ -321,22 +326,18 @@ fn register_architecture(t: &mut TokenIter) -> Option<PuzzleUnnamed> {
 
     let puzzle = match puzzle_def.parse::<PuzzleGeometry>() {
         Ok(v) => Some(v),
-        Err(errs) => {
-            for err in errs {
-                t.report(
-                    Report::build(ReportKind::Error, err.span().clone())
-                        .with_config(
-                            ariadne::Config::new().with_index_type(ariadne::IndexType::Byte),
-                        )
-                        .with_message(err.to_string())
-                        .with_label(
-                            Label::new(err.span().clone())
-                                .with_message(err.reason().to_string())
-                                .with_color(Color::Red),
-                        )
-                        .finish(),
-                );
-            }
+        Err(err) => {
+            t.report(
+                Report::build(ReportKind::Error, puzzle_def.span().clone())
+                    .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
+                    .with_message(err.clone())
+                    .with_label(
+                        Label::new(puzzle_def.span().clone())
+                            .with_message(err)
+                            .with_color(Color::Red),
+                    )
+                    .finish(),
+            );
             None
         }
     };
@@ -365,7 +366,7 @@ fn arch(
             Token::Enclosure(Encloser::Paren, token_enclosure) => (**token_enclosure)
                 .clone()
                 .parse(|t| {
-                    t.parse_list(
+                    let v = t.parse_list(
                         |t, commit| {
                             let num = t.number()?;
                             *commit = true;
@@ -376,7 +377,11 @@ fn arch(
                             *commit = true;
                             Some(())
                         },
-                    )
+                    )?;
+
+                    t.end_of_enclosure()?;
+
+                    Some(v)
                 })?
                 .into_inner(),
             _ => {
@@ -395,7 +400,7 @@ fn arch(
         let e = t.enclosure(Encloser::Paren)?;
         *commit = true;
         e.into_inner().parse(|t| {
-            t.parse_list(
+            let v = t.parse_list(
                 |t, commit| {
                     *commit = true;
                     parse_alg(t, group)
@@ -405,7 +410,11 @@ fn arch(
                     *commit = true;
                     Some(())
                 },
-            )
+            )?;
+
+            t.end_of_enclosure()?;
+
+            Some(v)
         })
     });
 
@@ -431,13 +440,22 @@ fn parse_alg(t: &mut TokenIter, group: &Arc<PermutationGroup>) -> Option<Algorit
 
     let move_seq = t.parse_list(
         |t, commit| {
-            let ident = t.ident()?;
-            spans
-                .entry((*ident).clone())
-                .or_default()
-                .push(ident.span().clone());
+            let token = t.next()?;
+            let span = token.span().clone();
+            let ident = match token.into_inner() {
+                Token::Ident(v) => v,
+                Token::Register(v) => {
+                    if v.modulus.is_some() {
+                        return None;
+                    }
+
+                    v.reg_name.into_inner()
+                }
+                _ => return None,
+            };
+            spans.entry(ident.clone()).or_default().push(span);
             *commit = true;
-            Some(ident.into_inner())
+            Some(ident)
         },
         |_, commit| {
             *commit = true;
@@ -476,7 +494,7 @@ fn instruction(t: &mut TokenIter) -> Attempt<Option<WithSpan<Instruction>>> {
         match token.into_inner() {
             Token::Ident(name) => {
                 if let Attempt::Taken(v) = t.attempt(|t, commit| {
-                    if t.whitespace().is_some() {
+                    if t.on_whitespace().is_some() {
                         return None;
                     }
 
@@ -549,10 +567,13 @@ fn args(t: &mut TokenIter) -> Option<WithSpan<Vec<WithSpan<Value>>>> {
 fn value(t: &TokenIter, token: WithSpan<Token>) -> Option<WithSpan<Value>> {
     let span = token.span().clone();
     match &*token {
-        Token::Ident(ident) => Some(span.clone().with(Value::Resolved(ResolvedValue::Ident {
-            ident: span.with(ident.clone()),
-            as_reg: OnceLock::new(),
-        }))),
+        Token::Ident(ident) => Some(span.clone().with(Value::Resolved(ResolvedValue::Ident(
+            span.with(ident.clone()),
+        )))),
+        Token::Register(r) => Some(
+            span.clone()
+                .with(Value::Resolved(ResolvedValue::Register(r.clone()))),
+        ),
         Token::Constant(constant) => Some(span.with(Value::Constant(constant.clone()))),
         Token::Number(num) => Some(span.with(Value::Resolved(ResolvedValue::Int(*num)))),
         Token::Enclosure(Encloser::Brace, enclosure) => {
@@ -612,7 +633,7 @@ fn block(t: &mut TokenIter) -> Option<WithSpan<Block>> {
 fn define(t: &mut TokenIter) -> Option<DefineUnresolved> {
     // Expects the `.define` to already be consumed
 
-    let name = t.ident();
+    let name = t.constant();
 
     Some(
         match t.attempt(|t, commit| {
@@ -691,6 +712,8 @@ fn macro_def(
             branches.push(branch?);
         }
 
+        t.end_of_enclosure()?;
+
         Some(Macro::UserDefined { branches })
     })?;
 
@@ -712,6 +735,8 @@ fn macro_branch(
             while let Attempt::Taken(component) = macro_pattern_component(t) {
                 pattern.push(component?);
             }
+
+            t.end_of_enclosure()?;
 
             Some(MacroPattern(pattern))
         })?;
@@ -758,7 +783,7 @@ fn macro_pattern_component(t: &mut TokenIter) -> Attempt<Option<WithSpan<MacroPa
 
                 let marker = t.marker();
 
-                if let Some(ws) = t.whitespace() {
+                if let Some(ws) = t.on_whitespace() {
                     t.report(
                         Report::build(ReportKind::Error, ws)
                             .with_message("Expected colon, found whitespace")

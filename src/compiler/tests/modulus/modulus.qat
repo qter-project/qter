@@ -2,7 +2,7 @@
     B, A ← 3x3 builtin (24, 210)
 }
 
-.define MOD 13
+.define $MOD 13
 
 input "Number to modulus:" A
 

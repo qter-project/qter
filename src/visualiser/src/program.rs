@@ -44,9 +44,7 @@ impl Program {
             match compiler::compile(&s, |_| Err("Imports are not allowed".to_owned()), &reporter) {
                 Some(v) => v,
                 None => {
-                    let reports = Arc::try_unwrap(reporter)
-                        .expect("reporter should be uniquely owned after compile")
-                        .into_iter();
+                    let reports = reporter.drain().into_iter();
                     return Err(reports
                         .map(|report| CompileError {
                             report,
@@ -97,9 +95,7 @@ impl Program {
             match compiler::q_emitter::emit_q(&program, "<output>".into(), &reporter) {
                 Some(v) => v,
                 None => {
-                    let reports = Arc::try_unwrap(reporter)
-                        .expect("reporter should be uniquely owned after emit_q")
-                        .into_iter();
+                    let reports = reporter.drain().into_iter();
                     return Err(reports
                         .map(|report| CompileError {
                             report,
