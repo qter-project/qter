@@ -1,0 +1,39 @@
+,VLS Algorithm,EO Setup,ZBLL Case
+,"R' F R d R' U R U2 R' 
+F' U' F U R U2 R'
+R' F R F' U' R U R' U R U2 R'",R' F R F',Sune
+,M' U R U' r',R' F R F',L
+,F2 L F L' F U' R U R',R' F R F',U
+,"y' r' U' R U M' 
+R' U' R' F R U R U' F'",R' F R F',Sune
+,y' R2 F' r U' r' F2 R2,R' F R F',H
+,"R U' R' F R U R' U' F'
+x' R' D R2 U R' D' R U' R'",R' F R F',L
+,"R' U' R U R U' r' U' R' U r
+x' R' D R2 U' R' D' R U R'
+",R' F R F',T
+,R' F R F' R U R' U R U2 R',R' F R F',Sune
+,R U R' U2 R' F R2 U R' U' F',R' F R F',Pi
+,R' F R F' U2 R U R' U R U2 R',R' F R F',Sune
+,"R U' R' U2 R U R' U' R' F R F'
+y' R' U R U r' U' R U M'",R' F R F',Pi
+,R' U' R' F R2 F' R' U R,R' F R F',T
+,R U' R' U2 F R U R' U' F',R' F R F',Pi
+,y' R' U R U R' U R U' y R U2 R',R' F R F',Pi
+,r' U' R2 U' R2 U2 r,R' F R F',T
+,R' F R F',R' F R F',Solved
+,R' F R F' R' U' R U' R' U2 R,R' F R F',AntiSune
+,"R U' R' U' R' U' R' F R F' U R
+F' R' U' R F R' U R2 U2 R'",R' F R F',U
+,y' R' M' U R U' r' U' R,R' F R F',T
+,"R' F R F' R U2 R' U' R U' R' 
+U' F' U F R U' R' U R U' R'",R' F R F',AntiSune
+,y' R' U2 R U R2 F R F' R,R' F R F',T
+,"R' F R F2 r U R' U' r' F R
+y' R' U R U' R2 F' r U' r' F2 R2",R' F R F',L
+,"F' L' U2 L U L' U' L U F 
+M' U R U' r' L' U2 L U L' U L",R' F R F',H
+,F' U' F R U R' U' R U' R',R' F R F',AntiSune
+,R' U' R' F R2 F' U' R' U2 R,R' F R F',L
+,R' F R F' U R' U' R U' R' U2 R,R' F R F',AntiSune
+,M' U R U' r' R' U2 R U R' U R,R' F R F',U

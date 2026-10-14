@@ -1,0 +1,21 @@
+Cross Color On Left Of Corner,,,,,,,,"
+
+
+
+",,,,,,,,,,Cross Color On Right Of Corner,,,,,,,,,,,,,,,,,Cross Color On Bottom Of Corner,,,,,,,,,,,,,,,,
+,S R' S',FR,,R U' R' L U2 L',,,R U' R' U2 F U' F' ,,,R' F R S R' f',,,R' F R F' L U2 L',,,"R' F R F' U2 F U' F'
+U2 R U' R' U L U L'",FR,,"(U2) S U R U' R S'
+F R' F' R U R' U2 R U
+R U R' U2' f R f' 
+(U') R U2' R' U f R f'",,,R U R' U L U L',,,F R' F' R L' U L,,R U R2' U2 R,,,"R B' U2 B R'
+F R' F' R U R U R' L U L'",,,R U R' U' L' U L,FR,,U' F' U' f R S' ,,,U' F' U2 L U L' F,,,R U R' F U2 R U R' U F',,,R U R' U2 R' U' R,,,"R U' R' U f' L f
+f' U L' U' L2 f
+R U' R' y R' U2 R",,,R U R' L' U' L
+,R' L U' L' R,BR,,R' F U2 F' R,,,R' U2' R2 U' R',,,"R' U' R y R' U' R
+y R' F R S R' f'",,,R' U' R U' L' U' L,,,R' U' R U2 F' U' F,BR,,f R f' U2 L U L',,,R' U R U2 F U F',,,R' U R U R U R',,y R U R2' U2 R,,,R' U R L' U2 L,,,"S R S'
+R' U R F' U F",BR,,R' U' R L U L',,,R' U R F U2 F',,,U' R' U' R U2 R U R',,,y R U R' U2 R' U' R,,,R' U R U R' U' R U L' U' L,,,R' U R2 U2 R' U F' U' F
+,S' L' S,BL,,R B' U2 B R',,,L' U' L2 U2 L' ,,,L U2 L2' U2 L U' L' U L,,,L U' L' U2 F' U' F,,,L U' L' U R' U' R,BL,,L U L' U2 F U F',,,L U L' U R U R',,,L U L' f R f',,L U2 L2' U L,,,L U2 L' U' F' U F,,,L U2 L' U R' U2 R,BL,,L U L' U F U2 R U' R' U F',,,L U L' R U2 R' U2 R U' R',,,y U' R' U' R U2 R U R',,,L U' L' U2 L' U L,,,L U' L' y' R' U2 R,,,L U' L' R' U R
+,R L' U' L R',FL,,"r' U F2 U' r
+L' U' L f R' f'",,,L' U2 L2 U' L',,,L' U' L F' U' F,,,L' U' L U' R' U' R,,,L' U' L U2 y' L' U' L,FL,,"L' U L U' R U R'
+(U) F U' R U R2' F' R",,,"L' U L U2 f R f'
+(U) F U2' S R f' ",,,L' U L U L U L',,L' U L U2 F' U F,,,L' U L R' U2 R,,,y' R U R' U' L' U L,FL,,U' L' U L R U' R',,,L' U L U' f R' f',,,U' L' U L U' L U2 L',,,L' U' L R U' R' U2 F' U' F,,,L' U L U' R' U' R U' R' U' R,,,L' U L U2 y' L' U L U' L' U' L

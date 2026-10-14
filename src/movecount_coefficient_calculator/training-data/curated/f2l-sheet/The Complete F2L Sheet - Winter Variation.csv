@@ -1,0 +1,32 @@
+,3 Corners Oriented,Type Of ZBLL,WV Algorithm
+,U R U' R' Into ZBLL,L,U L' U2 R U R' U2 L
+,2 Corners Oriented,,
+,Do The WV,Skip,U R U' R'
+,U R U' R' Into ZBLL,L,R' F R U R U' R' F'
+,U R U' R' Into ZBLL,T,U R2 D R' U' R D' R2
+,Do The WV,Sune,U R U' R' U R' U' R U' R' U2 R
+,U R U' R' Into ZBLL,U,R U' R' U2 R U' R' U2 R U R'
+,Do The WV,Antisune,U R U R' U' R U' R'
+,1 Corner Oriented,,
+,Do The WV,H,U2 R U' R' U R U2 R'
+,U2 R U2 R' Into ZBLL,T,U2 F' R U2 R' U2 R' F R
+,Do The WV,Pi,R' F R2 U R' U' R U R' U' F'
+,Do The WV,Antisune,U2 R' U' R2 U' R2 U2 R
+,U R U' R' Into ZBLL,T,U R U2 L U L' R' U2 L U L'
+,U R U' R' Into ZBLL,U,U2 R U2 R2 U' R U' R' U2 R
+,Personal Preference,Sune L If You U2 R U2 R',U2 R2 D R' U2 R D' R2
+,Personal Preference,T If You U R U' R',L' U R U' R' L
+,U R U' R' Into ZBLL,U,U2 L' R U R' U' L R U2 R'
+,Do The WV,Sune,U2 R U2 R'
+,U R U' R' Into ZBLL,T,R' F' R U2 R U2 R' F
+,U R U' R' Into ZBLL,U,R' F2 R2 U' R' U' R U R' F2
+,0 Corners Oriented,,
+,U2 R U2 R' Into ZBLL,U,"U R U' R' U' R U R' U R U2 R'
+U' r U' r' U' r U r' F R' F' R"
+,Personal Preference,T If You U R U' R',U2 R U' R D R' U' R D' R2
+,U R U' R' Into ZBLL,L,U R U R D R' U2 R D' R2
+,U2 R U2 R' Into ZBLL,U,R2 U R' U R' U' R U R U2 R2
+,U R U' R' Into ZBLL,L,U2 R U' R' U R U' R' U R U2 R'
+,U R U' R' Into ZBLL,Pi,U2 R U2 R2 U2 R U R' U R
+,U R U' R' Into ZBLL,L,U R U' R2 U' R U' R' U2 R
+,U2 R U2 R' Into ZBLL,L,U R U R' U' R U R' U' R U' R'

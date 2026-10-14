@@ -1,0 +1,111 @@
+,,,,,
+,H set,,Number of known algs :,,0/72
+,,,,,
+,COLL set,Images,3x3 algorithm ,OH algorithm ,Progress
+,H1: 2GLL,,"R U R' U R U' R' U R U' R' U R' U' R2 U' R' U R' U R
+[U] S R' U2' R U R' U' R U2 R U R U' R' U S'","[U] R U' R U R U R U' R' U' R U2 R U R' U' R U R' U R
+R U R' U R U' R' U R U2 R U' R' U' R U R U R U' R",FALSE
+,,,R U R' U R U2 R' U' R' U2 R U R' U R,R' U' R U' R' U2 R U R U2 R' U' R U' R',FALSE
+,,,[U'] R U2 R' U' R U R' U' R U' R',Same ,FALSE
+,,,"[U'] R' U2 R U R' U' R U R' U R
+[U] L' U2 L U L' U' L U L' U L",Same as the 1st one,FALSE
+,,,[U2] R U R' U R U' R' U R U2 R',Same ,FALSE
+,,,"R' U' R U' R' U R U' R' U2 R
+[U2] L' U' L U' L' U L U' L' U2 L",Same as the 1st one,FALSE
+,,,[U] R U2 R' U' R U' R' U' R' U' R U' R' U2 R,Same ,FALSE
+,,,[U] R' U2 R U R' U R U R U R' U R U2 R',Same ,FALSE
+,H2: Diag ,,"[U] F U R U' R' U R U' R' U R U' R' F'
+[U] F R U R' U' R U R' U' R U R' U' F' ",Same as the 2nd one,FALSE
+,,,"F R' F R F' R U2 R' F R' F' R F'
+x' U' R U' R' U R' F2 R U' R U R' U x
+x' U L' U L U2 R U' R' U R' F2 R","R' U L U' R U R' z U' R U R' D R U'
+R U2 R' U' R U' R2 U' R U' F U' R' U' R U F'
+x' U' R U' R' U R' F2' R U' R U R' U",FALSE
+,,,"[U'] R U R' U y' R' U R U' R2' F R F' R
+[U2] f R f' U R' U R U' R2' F R F' R
+[U'] R U R' U R U2 R2' U' R U R' F' R U R' U' R' F R2","[U'] R U R' U y' R' U R U' R2 F R F' R
+[U'] R U R' U R U2 R2 U' R U' F U' R' U' R U F'",FALSE
+,,,"[U'] R' U' R U' y R U' R' U (l R) U' R' U l'
+[U2] R' F R' F' R2 U R' U' R U' f R' f' 
+F' U' F U' R U' R' U (l R) U' R' U l'",[U'] R' U' R U' y R U' R' U x' R2 U' R' U R',FALSE
+,,,"R' F' R U R' U' R' F D' R U2 R' D R U R U' R' U' R
+z U R2 D' R U' R U R2' D R D' R U' R2' D
+[U] R U' R2 U' F2 U' R2 U R2 U F2 R2 U R'","[U'] F R U R' U' R U R' U' F' U R' y' R' U' R U B / y R
+[U'] F R U R' U' R U R' U' F' B' R' U' R U B
+[U'] R' U' R U' F U' R' U' R U F' U R' U2 R U R' U R",FALSE
+,,,"R' U' F' U F R U' F U R U' R' U R U' R' F'
+[U] R U' R2 F2 U' R2 U' R2 U F2 U R2 U R'",[U'] R' U' R U' R' U2 R U R' U' R U' F U' R' U' R U F',FALSE
+,,,"r U2 R2' F R F' R U2 (r' L') U' L U' L' U2 L
+F U R' F R2 U' R' U F' r' F r R U' R' F'
+R' U2 R U R' U R U R' U' R U R' F' R U R' U' R' F R2",R' U2 R U R' U R U R' U' R U' F U' R' U' R U F',FALSE
+,,,"R U' R' U R U R' U' L U L' U' R U R' U2 L U L'
+R' F2 r2 U' r' F r' F2 R2 U R' U R U2 R'
+R U2 R' U' R U' R2' F2 r F' r U r2' F2 R","R' U' R F U' R' U' R U F' R' U' L U' R U L'
+R' U' R U' R' U2 R2 U2 L' U R' U' L U' R U' R'",FALSE
+,H3: Corner line ,,"R U R' U R U r' F R' F' r
+R U R' U R U L' U R' U' L
+[U2] F' r U R' U' r' F U2' R U R' U R",R U R' U R U L' U R' U' L / r,FALSE
+,,,"R' F' R U2 R U2 R' F U' R U' R'
+[U2] L' U' L U' r' F' R F' r U R'",R' U' R U' R' U' L U' R U L' / r',FALSE
+,,,[U] R U R' U R U2 R' F R U' R' U' R U2 R' U' F',"Same
+[U] R U R' U R U2 R2 U' R F U' R' U2 R U F'",FALSE
+,,,"R' U' R D' R U' R' U2 R U2 R U R U' R2' D
+[U2] R2' D' R U' R' D R2 U' R2' D' r U2 r' D R2
+[U'] R’ U’ R f U R U2 R' U2 R' U2 R2 U R' f'","R' U' R D' R U' R' U2 R U2 R U R U' R2 D
+R U R' B' U R U2 R' y U2 R U' R' U2 R",FALSE
+,,,"[U'] R U R2' F R F' r U' r' U r U r'
+[U'] l U' R U (R' l') U r U' r' U r U r'","[U2] R' U L U' R U L' R' U' R U' R' U2 R
+[U] R U2 R' U' R U' R' U' R' U L U' R U L'
+[U'] R U R2 F R F' r U' r' U r U r'",FALSE
+,,,"[U] R' F R' F' R2 U' r' U r U' r' U' r
+[U'] r' U L' U' (L r) U' R' F R U' R' F' R","[U] R U R' U R U2 R D' R U' R' D R U R
+[U2] R U' L' U R' U' L R U R' U R U2 R'
+[U] R U R' U R U2 R' F U R' U' R F' R' U R",FALSE
+,,,"R' F' R U2 R U2 R' F R' U' R2 U' R' U R' U R
+R' U2 R' D' R2 D2 R' U R D2 R' U R' D R2
+F R' F' R U2 R U2 R' U' R' F2 r U r' F R","[U2] R U R' U R' U' R2 U' R2 U' L U' R U L' / r'
+L' U R U' L U2 R' U R' U' R2 U' R2 U2 R",FALSE
+,,,[U2] R' U' R U' R' U F' R U R' U' R' F R2 U' R' U R,"Same
+R' U' R2 U R' U' R2 U' R2 L' U R' U' R' L / r",FALSE
+,,,"[U'] R U2 R' U' R2 D R' U R D' R2' U' R U' R'
+[U2] R2 D R' U2 R D' R U' R2' U' R2 U2 R",[U2] R2 D R' U2 R D' R U' R2 U' R2 U2 R,FALSE
+,,,[U] R' U2 R U R2' D' R U' R' D R2 U R' U R,[U'] R U2 R2 U' R' D R' U' R D' R U2 R,FALSE
+,,,[U'] R' U2 R U R' U' F' R U R' U' R' F R U2 R,[U'] L U' R U L' U2 R' U R U R' U' R U R',FALSE
+,,,"[U2] R2' D' R U' R' D R2 U' R2 D' R U2 R' D R2
+R2 U' R2' U F R2 U R2' U' F' R2 U R2'",[U] L' U R' U' L U2 R U' R' U' R U R' U' R,FALSE
+,H4: Corner column,,F R U' R' U R U2 R' U' R U R' U' F',Same,FALSE
+,,,"[U2] R U R' U R U' R2' F' R U2 R U2 R' F R U' R'
+[U] F R U R' U' R' F' U2 R U R' U R2 U2 R'
+R' U' R U' R' U R U R' F R U R' U' R' F' R2","F R U' R' U' R U2 R' U' F' R U2 R' U' R U' R'
+Same as the last one",FALSE
+,,,"[U] F R' F' r U R U' r2 F2 r U L' U L
+F U R U' R' F' L' U' L U r U' r' F
+F U R U' R' S U R' U' R U R U' f' / B'",L' R U R' U R U' R' U2 L U' R U2 R',FALSE
+,,,"[U'] R' U' F' U F R U R U R' U' R' F R F'
+[U'] F' r U R' U' r' F R2 U2 R' U' R U' R'
+R U R' U' R' F R U R U' R' F' R U R' U R U2 R' ",[U2] L R' U' R U' R' U R U2 L' U R' U2 R,FALSE
+,,,[U] R U2 R' U' R U R' U' F' R U R' U' R' F R2 U' R',"Same
+[U'] R' U2 R U2 F U' R' U2 R U F' U R' U R
+[U] R U2 R' U' R U R' U' R U R' U' R U2 L' U R' U' r / L",FALSE
+,,,"[U2] R' F' R U R' U' R' F D' R U' R' D R U2 R
+R' U2 R2 U R2' U R U2 R' F R U R U' R' F'
+[U2] R U R' U R U' R' U R U' R2' F' R U R U' R' F R U' R'",[U] R' U2 R U R' U' R U R' U' R U R' U2 L U' R U L' / r',FALSE
+,,,"[U2] F U' R U2 R' U2 R U' R' U' R U R' U F'
+R' B' R2 U R2 U R2 U2 R2 U B R
+[U] R U' R' D R' U' R U2 R' U' R (U' D') R U R'",Same as the 1st one,FALSE
+,,,"[U2] R F R2' U' R2 U' R2' U2 R2 U' F' R'
+[U2] R' F R U R' U' F' R U' R' U R' F R F' U R
+F R' F' R2 U2 R' U R U2 R' U R U' R2' F R F'","[U] R' U R D' R U R' U2 R U R' (U D) R' U' R
+[U] R' U R U' y R U R' U2 R U R' U2 y' R' U' R
+R U2 R2 U' R2 U' R' U' L' U R' U' L U' R",FALSE
+,,,"R' U2 R U R' U R3 D R' U R D' R' U' R'
+R' U2 R U R' U R' D R' U R D' R' U' R'
+[U] R U2 R2' F U' R2 U' R2 U F' U R","R' U2 R U R' U (R r) U' r' y' r U R U' r'
+L' U R U' L U' R' U2 L' U R U' R' L / r",FALSE
+,,,"[U] R U2 R' U' R U R' U2 R' F R2 U' R' U' R U R' F'
+[U2] R U2 R' U' R U' R D' R U' R' D R U R",Same as the last one,FALSE
+,,,[U] R' U2 R U2 R2 F' R U R U' R' F U R,"[U] R' U2 R L U2 R' U R U2 L' U R' U R
+Same",FALSE
+,,,"[U'] F' R U2 R' U2 R' F R U R U R' U' R U' R'
+f R2 S' U' R2' U' R2 U R2' F'","Same as the 1st one
+[U] R U2 R' L' U2 R U' R' U2 L U' R U' R'",FALSE

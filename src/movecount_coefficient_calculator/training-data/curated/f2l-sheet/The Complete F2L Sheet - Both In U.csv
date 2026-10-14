@@ -1,0 +1,114 @@
+,Free Pair,,,,,,,,,,
+FR,,R U' R',,,"y U' L' U L
+U' F' U F
+EO -  F R' F' R
+EO - U' F R' F' R2 U' R'",,,"F' U' F
+y L' U' L
+y' R' U' R",,,R U R'
+BR,,"f R' f'
+y R U' R'",,,"R' U2 R
+U R' U R",,,R' U' R,,,"(U') f R f'
+y (U') R U R'
+y' (U') L U L'"
+BL,,L U' L',,,"U' f' L f
+y' U' L' U L",,,"f' L' f
+y R' U' R",,,U2 L U L'
+FL,,"(U2) F U' F'
+y (U') L U2 L'
+y' (U2) R U' R'",,,U' L' U L,,,L' U' L U,,,"F U F'
+y L U L'
+y' R U R'"
+,Cross Color On Right Of Corner,,,,,,,,,,
+FR,,"U' r U' R' U R U r' U
+(y' U) R' U' R U R' U2' R",,,"r' U2 R2 U R2' U r
+y' R' U2' R U R' U2' R
+F’ U’ L’ U2 L U’ F",,,U' R U R' U R U R',,,R U' R' U R U' R' U2 R U' R'
+BR,,R' U' R U2 R' U R,,,R' U2' R U R' U2' R, ,,"U R' U R U' f R f'
+R2' U' F' U F R2
+y U' R U R' U R U R'",,,R' U2 R U' f R f'
+BL,,"y R' U' R U R' U2' R
+U f' U' L' U L2 f",,,"y R' U2' R U R' U2' R
+R' F2 r2 B r2 F R", ,,L U' L' U' L U L',,,L' U2 L2 U L2 U L
+FL,,U L' U' L U2' L' U L,  ,,(U2) L' U2 L U2' L' U L,,,F U' R U R' U2' F',,,F U' R U2 R' U2 F'
+,,,,,,,,,,,
+FR,,,,,U' R U' R' U R U R' U',,,"R U' R' U2 F' U' F U
+F' U2 L' U' L U' F
+R U' B U' B' U2' R'
+(U) F U R U' R' F' R U R'
+(U) M' U R U' r' U' R U R'",,,
+BR,,,,,"d' R U' R' U R U R' U'
+R' U' R U' R' U R f R f'
+M U R' U' R U R' U2' r
+(U') F U R U' R' S R f'",,,"f R' f' U2 R' U' R
+f R' U R' U' R2 f'
+F R' F' R U2' R' U' R2 U' R'
+R' U' R U R D R' U' R D' R'
+S' R' U' R S R' U2' R",,,
+BL,,,,,L U' L' U L U L',,,L U' L' y U2 R' U' R,,,
+FL,,,,,"d' L U' L' U L U L'
+U2 F R U' R' U R U2 R' F'
+F U M' U R U' r' F'
+(U2) R' F R2 U2' R2' F' R2 U2' R'",,,F U' R U' R' U2 F',,,
+,Cross Color On Left Of Corner,,,,,,,,,,
+FR,,U' R U R' U2 R U' R',,,U' R U2' R' U2 R U' R' U,,,"U' R U' R' U F' U' F
+R2' U f R' f' R2
+R' U' R S R' S' R' U R",,,R U2 R' U F' U' F
+BR,,U' R' F R U R' U' F' R ,,,"r U2 R2 U' R2 U' r' U
+F R U R2' U' R F'",,,R' U R U R' U' R,,,R U2' R2' U' R2 U' R'
+BL,,L U L' U' L U2 L',,,U' L U2 L' U' L U2 L',,,y U R' U' R U' R' U' R,,,y R U2' R2' U' R2 U' R'
+FL,,"(U') F U R U' R' U F'
+(U2) F R U R' U2 F'",,,"F U R U2' R' U F'
+F U2 R U' R' U F'",,,"U2' L' U L U L' U' L
+(U2) l' U L U L' U' l (EO Trick)
+(U2) R' F r U r' F' R (EO Trick)
+(U) F U R U' R' U2 F' (EO Trick)",,,L U2 L2 U' L2 U' L'
+,,,,,,,,,,,
+FR,,,,,"y U L' U L U' L' U' L 
+R U' R' U R' F R F' R U R'
+F’ L’ U L U’ L’ U2 L F",,,"R U2 R' U R U R' U R U' R'
+R' D' R U' R' D R U R U' R' 
+(U) R' F R F' U R U R'
+(U) S' R U R' S R U2' R'",,,
+BR,,,,,U R' U R U' R' U' R,,,"R2' F R F' R U2' R' U R
+R' U R U2' f R f'
+f R2' U R U' R f'
+R' U' S' R U2' R' S R",,,
+BL,,,,,y U R' U R U' R' U' R ,,,L U2 L' U L U L' U L U' L' ,,,
+FL,,,,,U L' U L U' L' U' L ,,,L' U L U2 F U F',,,
+,Cross Color On Top Of Corner,,,,,,,,,,
+FR,,R U2 R' U' R U R',,,y' R' U2 R U R' U' R ,,,"U R U2 R' U R U' R'
+EO - U R U2' R2' F R F'",,,"y U' L' U2 L U' L' U L U'
+(U')R U’ R2’ F R F’ R U’ R’
+EO - y' U' R' U' F R' F' R2
+EO - R U' R2' F R F' U' R' F R F'"
+BR,,y R U2' R' U' R U R',,,R' U2 R U R' U' R,,,y U R U2' R' U R U' R',,,U' R' U2 R U' R' U R 
+BL,,L U2 L' U' L U L',,,y R' U2' R U R' U' R ,,,"U L U2 L' U L U' L' 
+EO - U r B U' r B r2'",,,y U' R' U2 R U' R' U R 
+FL,,"L F' L' F L' U L U' L' U L 
+y' R U2 R' U' R U R'",,,L' U2 L U L' U' L,,,"y' U R U2' R' U R U' R'
+(U2) F U R’ F R F2’
+F U R’ F R F2’",,,L' U2 L2 F' L' F
+,,,,,,,,,,,
+FR,,"R U R' U R U' R' 
+R B' R B R2'
+(U2) R B U2' B' R'
+EO - R U R2' F R F'",,,"r U' r' U2 r U r' 
+F' L' U2 L F
+EO - y' U2 R' F R' F' R2
+EO - y U2 r' U r' F' R2
+",,,"R U' R2' D' R U2 R' D R
+U R U' R' U' R U' R' U R U' R'
+U F R' F' R U R U R'
+",,,"F U R U' R' F' R U' R'
+R U' R2' F R F' R U' R'
+F R' F' D' R U R' D R (EO)"
+BR,,"r' U r U2' r' U' r
+f U R U' R f'
+",,,"R' F R' F' R2 
+R' F' U2' F R",,,"U R' F R' F' R2 U' R' U R 
+R' F' r U' r' F2 U' R
+(U2) R' F' U' F2 R' F' R2",,,R U R' U R U2' R2' U R
+BL,,"L U' L' U2 L U L'
+EO - U2 r U' r B r2'",,,l U' l' U2 l U l' ,,,L U' L' U' L U' L' U L U' L' U,,,r U R' U R U2 B r' 
+FL,,F R U2 R' F' ,,,"U2 L' U' L U' L' U L 
+r' U r' F' r2",,,F U' R U R' U R U2' R' F' ,,,F U' R U2 R' U R U2 R' F' 

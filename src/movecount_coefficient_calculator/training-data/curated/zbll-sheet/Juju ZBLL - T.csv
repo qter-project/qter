@@ -1,0 +1,232 @@
+ ,,,,,,,,,
+,T set,,Number of known algs :,,0/72,,,,
+,,,,,,,,,
+,COLL set,Images,3x3 algorithms,OH algorithms,Progress,,,,
+,T1: 2GLL,,"R U R' U R U2 R' U2 R' U' R U' R' U2 R
+[U'] R U R' U' R' F D' R U R' D R2 U' R' F'
+[U2] L' U' L U' L' U2 (L R) U R' U R U2 R' ","Same as the 1st one
+R U R' U R U2 R' z U' R' U R' U' R2 U z' 
+R U R' U' R' U R U2 R U2 R' U R' U2 R   ",FALSE,,,,
+,,,"[U] x D' R' U R D R2' D2 R U' R' D2 (R l)
+[U'] x' D R U' R' D' R2 D2 R' U R D2 (R' l')
+R U R' U R U' R2 U' R' U' R U R' U' R2 U2 R
+[U] R' U2 R2 U R2' U R2 U2 R' L' U' L U' L' U2 L","[U] R' U R U2 R' U' R U' R U R' U' R' U' R U R U' R'
+[U'] R U' R' U2 R U R' U R' U' R U R U R' U' R' U R",FALSE,,,,
+,,,[U] R U2 R' U' R U' R2 U2 R U R' U R,Same ,FALSE,,,,
+,,,"[U'] R' U2 R U R' U R2 U2 R' U' R U' R'
+[U] L' U2 L U L' U L2 U2 L' U' L U' L'",Same as the 1st one,FALSE,,,,
+,,,"R U R' U R U2 R' U' R U2 R' U' R U' R'
+[U] R' U R U2 R' U' R U2 R' U' R U' R' U R","Same as the 1st one
+Same as the 2nd one",FALSE,,,,
+,,,[U'] R U' R' U2 R U R' U2 R U R' U R U' R' ,Same ,FALSE,,,,
+,,,[U] R U2 R' U' R U' R' U R U R' U R U2 R' ,Same ,FALSE,,,,
+,,,"[U'] R' U2 R U R' U R U' R' U' R U' R' U2 R
+[U] L' U2 L U L' U L U' L' U' L U' L' U2 L",Same as the 1st one,FALSE,,,,
+,,,R U R' U R U' R' U R' U' R2 U' R2' U2 R,R U R' U R U' R' U R' U' R2 U' R2 U2 R,FALSE,,,,
+,,,"R' U' R U' R' U R U' R U R2' U R2 U2 R'
+[U2] L' U' L U' L' U L U' L U L2' U L2 U2 L'
+[U] R' U R2 U R' U R' U' R U' R' U' R U R U' R'",[U'] R' U R' U2 R' U2 R U' R' U' R U R U' R,FALSE,,,,
+,,,R U R2 U' R2 U' R2 U2 R U' R U' R',Same,FALSE,,,,
+,,,R' U' R2 U R2 U R2 U2 R' U R' U R,"Same as the 1st one
+[U] R U2 R' U2 R' U2 R U R U' R' U R' U R
+[U'] R' U2 R U2 R U2 R' U' R U' R' U R' U R",FALSE,,,,
+,T2: Diag,, [U'] R U' R2' D' r U2 r' D R2 U R'," [U'] R U' R2 D' r U2 r' D R2 U R'
+[U] L' U2 R U' R' U2 L R U R' U' R U' R'",FALSE,,,,
+,,,"[U] R' U R2 D r' U2 r D' R2' U' R
+[U'] R' U' R U' R' U R U R' F' R U R' U' R' F R2","[U'] R' U' R U' R' U R U' F U' R' U' R U F'
+[U] R' U R2 D r' U2 r D' R2 U' R",FALSE,,,,  
+,,,"[U'] R U R' F' R U R' U' R' F R U' R' F R U R U' R' F'
+[U2] R U R' U R U R2' D' r U2 r' D R2 U R'",[U] R' U' R U' F U' R' U' R U F' R' U' R U' R' U2 R,FALSE,,,,
+,,,"[U'] R U2 R' U2 R U R2' D' R U' R' D R U2 R U' R'
+[U2] R U' R2' D' r U2 r' D R2 U' R' U' R U' R'","[U2] R U' R2 D' r U2 r' D R2 U' R' U' R U' R'
+R' U2 R U R' U R F U' R' U R U F' U R' U R",FALSE,,,,
+,,,"[U'] R U R' U2 R' D' R U R' D R2 U' R' U R U' R'
+[U] R2 U R' D' R U R' D R' U' R2 U' R2'","R U2 R' U' R U L' U L U2 R' L' U L
+R U2 R' U' R U L' U R' U' L R U2 R'
+[U'] R' U R U' F U R' U' R U R U2 R' U R U R' F'",FALSE,,,,
+,,,[U] R' U' R U2 R D R' U' R D' R2 U R U' R' U R,R' U2 R U R' U' L U' R U L' R' U2 R,FALSE,,,,
+,,,"[U2] R U R' U' R U R2 D' R U' R' D R U2 R U' R'
+R2' U' R U F' U2 R' U2 R F U' R","[U2] R U2 R' L' U R U' L U' R' U R U2 R'
+F R U' R' U' R U2 R' U' R' U R U' F' U R' U' R
+R2 U' R U F' U2 R' U2 R F U' R",FALSE,,,,
+,,,"[U2] R' U' R U R' U' R2 D R' U R D' R' U2 R' U R
+[U] R2' D' R U' R' D R2 U' R' U R' D' R U R' D R2",[U2] R' U2 R L U' R' U L' U R U' R' U2 R,FALSE,,,,
+,,,"[U'] z D' R2 D R' U' R D' R' U2 R' D R U' (z')
+[U] M' U R U' r' U' R U R' r' D' r U r' D r
+[U'] F U R' U' R F' R' U' R' D' R U2 R' D R2
+[U] R U R' U R U2 R' U R' U' R U R' F' R U R' U' R' F R2","[U] F U' R U' R' U R' U2 R U R' U R U' R U' R' U' F'
+[U'] R' U2 R U' z U' R D' R' U2 R' D R U'",FALSE,,,,
+,,,"[U] R' F' R U R' U2 R' D R U2 R' D' R U' R' F R U R
+[U] f' U' F R' D' R U2 R' D R U' f R' F' R
+[U2] R' U R U' R' U R U R' U2 R U' R' U' R' D' R U' R' D R2", [U'] R' U2 R F U' R' U' R U' y' R' U' R U R' U' R U' R',FALSE,,,,
+,,,"[U'] R (U' D) R' U2 R D' R U R' U2 R U R2'
+R2' U R U2 R' U R D' R U2 R' D U' R
+[U2] R2' F R U R U' R' F R U2 R' U2 R' F2 R2","[U'] R U' R' U2 R D' R U R' U2 R U R' D R'
+[U] F R U2 R' U R2 U2 R' U' R U' R2 U F'
+[U'] R (U' D) R' U2 R D' R U R' U2 R U R2",FALSE,,,,
+,,,"[U] R U' R' U R U R' U' R U R' U R' D' R U R' D R
+[U] R' U R U2 R' D R' U' R U2 R' U' R D' R
+[U] R' (U D') R U2 R' D R' U' R U2 R' U' R2
+[U] F U' R2 U R' U R U2 R2' U' R U2 R' F'","R D' R U' R' U2 R U' R' D R' U2 R U R'
+[U] F U' R2 U R' U R U2 R2 U' R U2 R' F'
+[U] R' U D' R U2 R' D R' U' R U2 R' U' R2",FALSE,,,,
+,T3: Same/Opposite,,"[U'] R U' R' U2 L R U' R' U L' 
+[U] R' U2 R U R2 F R U R U' R' F' R","[U'] R U' R' U2 R L U' R' U L' / r'
+[U'] R U' R' U' B U' R U' R' U2 f'
+[U] L U' R U L' R' U2 R U R'",FALSE,,,,
+,,,"[U] R' U R U2 r' R' F R F' r
+[U'] r' F R' F' r R U2 R' U' R",[U] R' U R U2 R' L' U R U' L / r,FALSE,,,,
+,,,"[U'] R' U' R2 U R' F' R U R' U' R' F R2 U' R' U' R' U R
+[U] R U R' U R' D' R U' R' D R U' R' F R2 U' R' U' R U R' F'
+[U'] R' F R' F' R2 U' f U' R' U S' R U R' F' ","[U] R U R2 U2 R U R' U2 L U' R U L' R U' R'
+[U'] R' U' R U R U' L U2 R' U R U2 L' R2 U R",FALSE,,,,
+,,,[U'] r U' r U2 R' F R U2 r2 F ,"[U'] F' r2 U2 R' F' R U2 r' U r'
+[U2] R' F' R U2 R' U' R U' R' F U R U2 R' U' R
+Same",FALSE,,,,
+,,,"R' U' R' D' R U R' D R U2 R U R' U R 
+[U'] R' U' R U' R' U2 R' D' R U' R' D R U R 
+[U2] R' F R' F' R2 U' R' U' F' U' F R
+[U] R U2 R' U' R' F R2 U' R' U' R U R' F' R U' R' ","[U'] R' L U' R' U L' U' R2 U' R' U2 R
+[U] R U2 R' U' R U' R' U R U' L' U R' U' L / r
+Same as the 1st one",FALSE,,,,
+,,,"R U R D R' U' R D' R' U2 R' U' R U' R'
+[U] R U R' U R U2 R D R' U R D' R' U' R'
+[U2] R U R2' F R F' R U' R' F' U F",R U2 R' U' R2 U' L' U R' U' R' L / r,FALSE,,,,
+,,,"[U] F U' R' U2 R U F' R' U' R U R' U R
+[U'] R' D' R U R' D R U R U' R' U R U' R' U' R U R'",Same as the 1st one,FALSE,,,,
+,,,[U] R D R' U' R D' R' U' R' U R U' R' U R U R' U' R,"R' U y' R U2 R' U' B R U R' U' R U' R'
+R' U F U2 F' U' R y' R U R' U' R U' R'",FALSE,,,,
+,,,"[U] R U' R' U R U R' U' R U R' U' R' D' R U' R' D R
+[U] L' U' L U' L' U L F U R U2 R' U' F'
+[U'] R' U' R U' R' U R F U' R' U2 R U F'",Same as the last one,FALSE,,,,
+,,,"[U] R U R' U R U' R' U' R' F2 R F2 L' U2 L 
+[U'] R' U R U' R' U' R U R' U' R U R D R' U R D' R'","[U] R U R' U R U' R' z F' R' U' R2 U R F
+[U] R U R' U R U' R' U' L' U2 R U2 R' U2 r / L ",FALSE,,,,
+,,,"[U] R' U2 R U R' U R F U R U2 R' U R U R' F'
+[U] R' F' R U' R' D R U2 R' (U' D') R' F R U R
+[U] r' U2 R U R' l' U2 R U R' U2 l U r
+[U'] L F R U2 R' U R U2 R' l' U R U2 r'",Same as the 1st one,FALSE,,,,
+,,,"[U] r' U' l' U2 R U' R' U2 l R U' R' U2 r
+R U R' U R' D' R U R' D R U R' F R U R U' R' F'",[U] F R U' R' U' R U2 R' U' F' R' U' R U' R' U2 R,FALSE,,,,
+,T4: Opposite/Same,,[U'] F R U R' U' R U' R' U' R U R' F',Same,FALSE,,,,
+,,,"R U R' U2 R U' R' U2 R U' R2 F' R U R U' R' F
+[U] r U2 R2 F R F' U2 r' F R U R U' R' F'","[U2] R U R' U2 R U' y R U' R' U' R U2 R' U2 F'
+R' U' R U2' R' U y' R' U R U R' U2' R U2 B",FALSE,,,,
+,,,"l' U2 R' D2 R U2 R' D2 (R l)
+[U2] R' D U' R D R' U2 R D' R' D' U' R
+[U'] R U2 R' U2 R' F' R U2 R U2 R' F ","[U'] F U' R' U2 R U F' U' R' U2 R
+[U'] R U2 R' U R U R' y' R' U' R U2 R' U' R
+x R' U2 R' D2 R U2 R' D2 R2",FALSE,,,,
+,,,"l U2 R D2 R' U2 R D2 (R' l')
+[U2] R D' U R' D' R U2 R' D R D U R'
+[U] R' U2 R U' R' F R U R' U' R' F' R U' R ","[U] R' U2 R U' R' U' R y R U R' U2 R U R' 
+x' R U2 R D2 R' U2 R D2 R2 ",FALSE,,,,
+,,,"R U R2' D' R U2 R' D R U2 R U R' U' R U' R'
+[U] R' U2 R' D' R U2 R' D R3 U R' U R U2 R' 
+[U] R' U2 R' D' R U2 R' D R' U R' U R U2 R'","R U R2 D' R U2 R' D R U2 R U R' U' R U' R'
+[U'] R U2 R' U' R U' R' F U R U2 R' U R U R' F'",FALSE,,,,
+,,,"[U'] R U2 R D R' U2 R D' R U' R U' R' U2 R
+R' U2 R U R' U R U' R' U2 R' D' R U2 R' D R2
+[U] F R U R' U' F' R U R' U R U' R' U' R' F R F'
+[U] R U R' U' R' F R2 U R2' U' F' U R U R U' R'",Same as the 1st one,FALSE,,,,
+,,,"[U2] R U R' U R' D' R U' R' D R U R U2 R'
+[U] R' D' R U R' D R U2 R U2 R' U R U R'","Same as the 1st one
+Same as the 2nd one
+[U'] R F R' U R U2 R' U R U F' R'",FALSE,,,,
+,,,"[U2] R' U' R U' R D R' U R D' R' U' R' U2 R
+[U2] R' U' R' D' R U R' D R U' R U' R' U2 R","Same as the 2nd one
+[U'] R' U' R F R' U R U' F' R' U' R U' R' U2 R",FALSE,,,,
+,,,"[U'] R U' R2 D' R U' R' D R U' R U R' U R U R'
+[U'] R U2 R' U' R U' R2 F' r U R U' r' F",[U'] L' R U R U' L U R' U R' U' R U' R',FALSE,,,,
+,,,"[U] r U2 R2' F R F' R U' R' U' r' F R F'
+[U2] f R' F' R U2' R' F R F' R U2' R' S'
+[U] R' U R2 D R' U R D' R' U R' U' R U' R' U' R
+[U] r U R' U' r' F R F' R' U2 R U R' U R ",[U] L R' U' R' U L' U' R U' R U R' U R,FALSE,,,,
+,,,[U2] R' U' R U' F U' R' U R U F' R' U R,Same ,FALSE,,,,
+,,,"[U2] R U R' L' U2 R U' R' U2 L U R U' R'
+[U] R' D' R U R' D R2 U R' U2 R U' R' U' R U' R'","Same as the 1st one
+z U R U' R F' R U R' U' R' F U R' U'
+[U2] R U R' U B' U R U' R' U' B R U' R'",FALSE,,,,
+,T5: Adjacent/Same,,"r U R' U' r' F R F'
+[U] R U R D R' U' R D' R2
+[U'] x' D R U' R' D' R U R'","r U R' U' r' F R F'
+r U R' U' z U' R z' R U'
+[U'] x' D R U' R' D' R U R'",FALSE,,,,
+,,,"R U2 R' U2 R' F R U R U' R' F'
+L' U' L U r U r' U2 L' U2 L F'","Same as the 1st one
+[U] R' U' R U2 R' U' R y R U R' U2 R U R'",FALSE,,,,
+,,,"[U'] R' U' R (U D') R U' R U R U' R2' D
+[U] R U R D R' U (R r') U2 r D' R2'",[U'] R' U' R U D' R U' R U R U' R2 D,FALSE,,,,
+,,,"R' D' R U R' D R2 U' R' U R U R' U' R U R'
+[U] R' D R2 U' R' U R U R' U' R U R2 D' R","[U] F' U R' U2 R U R' U' R U2 F U' R' U R
+[U2] R' L' U2 R U R' U' R U' L U2 R' U R",FALSE,,,,
+,,,"F' U' L' U2 L U' L' U' L F
+F' U' L' U2 L U F R U' R'
+[U'] R' U' R U' R' U R' F' R U R U' R' F R","[U'] R' y' U' R' U2 R U' R' U' R B / y R
+z F' R' U' R2 U R' U' R' U F
+[U] R' U y' R U2 R' U' B R U' R'",FALSE,,,,
+,,,"R U R' U' R U' (R' L) U' R U R' L'
+R U R' U' R' F R f' R U R' S R U' R'
+R U S' R' U' R S R2 F R F'
+R U R' U' R' F R F' R' F R S R' F' R S'",R U R' U' R U' R' L U' R U R' L' / r',FALSE,,,,
+,,,"[U2] R U R' U R U R' U2 L R U' R' U L'
+[U] S R' U R2 U' F U R2 U' F' R S'
+[U] F R' F' R U2 R U2 R2 U' F R' F' R U R","[U2] R U R' U R U R' U2 R L U' R' U L' / r'
+[U'] R' U' R U F U' R' U2 R U F' R' U2 R",FALSE,,,,
+,,,"[U2] R2 U R' U' R' U R' (U' D) U' R' U2 R D'
+R U2 R2' D R' U' R U D' R U' R2 U' R'
+[U] L U2 r' D' F r U' r' F' D r U' L'","R U2 R2 D R' U' R U D' R U' R2 U' R'
+[U2] R2 U R' U' R' U R' (U' D) U' R' U2 R u'
+[U] z U R2 U' F' R U R' U' R' F U R' U'",FALSE,,,,
+,,,[U] R' U' R U' R2' F' R U R U' R' F U R U' R' U2 R,R' U2 R U2 R' U R U' L U' R' U L' U R,FALSE,,,,
+,,,"R U' R' U R' D' r U2 r' D R U R U R'
+[U'] r' R F R' F' r U R U R' U' R U' R'
+[U'] r' F R F' r U' R' U' R U R' U' R U' R'
+[U2] R' U' R U R' U' R2 D R' U2 R D' R' U R' U R","[U'] L' U R U' L U' R' U' R U R' U' R U' R'
+[U'] L' R U R' U' L U R U R' U' R U' R'",FALSE,,,,
+,,,R U' R' U' R U R D R' U2 R D' R' U' R',R U' r' U2 y' R' U2 R U2 S',FALSE,,,,
+,,,"[U] M U' r U R' U' R' F R F' (R r') U M'
+[U'] F R U R' U' R' F' U2 R U R U' R2 U2 R","[U'] R U2 R' U R U' y R U' R' U' R U2 R' U2 F'
+[U'] R2 U2 R U' R' U R' U2 R' U' L U' R' U L' / r'
+Same as the last one",FALSE,,,,
+,T6: Adjacent/Opposite ,,"F R F' r U R' U' r'
+[U'] R' U' R' D' R U R' D R2
+[U2] R' F' r U R U' r' F
+[U] R U2 R D R' U' R D' R' U' R'","r' U' R U L U' R' U
+F R F' r U R' U' r'
+[U2] R' F' r U R U' z U' R
+[U'] x' R U R' D R U' R' u'",FALSE,,,,
+,,,[U2] R U R' U' R' F' R U2 R U2 R' F,"Same 
+[U2] R U R' U2 R U R' y' R' U' R U2 R' U' R",FALSE,,,,
+,,,"[U] R U R' (U' D) R' U R' U' R' U R2 D'
+[U'] R' U' R' D' R U' M' U2 r' D R2","[U] R U R' (U' D) R' U R' U' R' U R2 u'
+R' U2 R' U2 R F U' R' U' R U F' R",FALSE,,,,
+,,,"R D R' U' R D' R2' U R U' R' U' R U R' U' R
+[U] R U R' U' R' U' F R f' R' U R S
+[U2] R2' U R2 U R2' U' R D R' U' R D' R",[U2] R L U2 R' U' R U R' U L' U2 R U' R',FALSE,,,,
+,,,[U2] F U R U2 R' U R U R' F',"Same
+F U' R' U2 R U F' R' U R",FALSE,,,,
+,,,"[U] R U R' U' R U' R' U' F R U R' U' R' F' R
+R' U' R U R' U R r' F R' F' r R
+[U2] r' D' F' r U r' F r U r' F' D r
+R' B' U' R U R' U R U R' U' B R",R' U' R U R' U R L' U R' U' R L / r,FALSE,,,,
+,,,"L' U' L U' L' U' L U2 R' L' U L U' R
+[U'] S R U' R2 U B' U' R2 U B R' S'
+R' U2 R' (U' D) R' U' R D' R U R U R2' 
+[U] R U R' U' F' U' L' U2 L U F R U2 R'
+[U2] R' U' R U' R' U' R U2 r' R' F R F' r","[U2] R' U' R U' R' U' R U2 R' L' U R U' L / r
+[U2] R' U' R U' R' U' z U' R' U D R2 U' R' U",FALSE,,,,
+,,,[U] R' U2 R F U' R' U R U F' R' U R,Same ,FALSE,,,,
+,,,[U2] F R U R' U' R U R' U' F' R U R' U' R' F R F',"R U2 R' U2 R U' R' U L' U R U' L U' R'
+[U'] R' U' R U' F U' R' U R U F' R' U' R U R' U R",FALSE,,,,
+,,,"F U R' U' R F' R' U' R U R' U R
+[U2] R U R' U' R U R2 D' R U2 R' D R U' R U' R'",Same as the 1st one,FALSE,,,,
+,,,R' U R U R' U' R' D' R U2 R' D R U R,"R' U r U2 y R U2 R' U2 S'
+R' U2 R U F U' R' U' R U F' R' U2 R",FALSE,,,,
+,,,"[U] R' U2 R U' R' D R' U R U R' U2 R U' D' R
+[U] R' (U2 D') R U' R' D R' U R U R' U2 R U' R
+[U2] R' U2 R2 U R' U' R' U2 F' R U2 R U2 R' F
+[U2] f U R U' R' U R' U' R f' R' U' R U R' U R","Same as the last one 
+[U] R U' R' U R U' R' F' R U2 R' U' R U' R' F R U2 R'
+[U] R2 U2 R' U R U' R U2 R U L' U R U' L / r
+[U] R' D' U2 R U' R' D R' U R U R' U2 R U' R",FALSE,,,,

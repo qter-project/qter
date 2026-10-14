@@ -1,0 +1,4 @@
+.devenv
+.venv
+__pycache__
+model.pth

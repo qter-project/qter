@@ -1,0 +1,38 @@
+,VLS Algorithm,EO Setup,ZBLL Case
+,"R U2 R2 U' F' U F R
+y' R D r' U r D' R'",,
+,y' R' F U R U' R' F2 U' F R,,
+,R U' R2 U2 x' R2 U' R' U l' U2 R,,
+,R U' R2 F' U' F U R2 U2 R',,
+,"R' F R F L F L' F R U R' 
+L' U U R U R' L U F R U R' F'",,
+,"M' U R U R' U' R U' r'
+R' U' F U R2 U' R' F'",,
+,y' R2 D' r U' r' D R2,,
+,r U r' U2 R U' R2 r U r' R,,
+,"R U2 R2 F2 r U r' F R
+R U R' r' U' R2 U' R2 U2 r",,
+,R U R' U' R U' R' F R U R' U' F',,
+,"y' R U2 R2 U' R2 y R U' R2 F' R 
+y r' U' R U' R' U2 r2 U' r' F",,
+,y' M' R' F' U' F R2 r',,
+,R U' R' U R U' R' U' R' F R F',,
+,R U R' U2 R' F R F',,
+,"M' U2 R U' R' U R U2 r' 
+r' R2 U' R' U r U2 R'",,
+,R U' R2 U' F U R U' R' F' R,,
+,R U2 R2 F R2 B' R2 F' R2 B R',,
+,R' F R2 U' R' U2 R U R' F',,
+,"R U' R' U r' U2 R U R' U r
+R U2 R' F R U' R' U' R U R' F' 
+y' R2 D' r U r' D R U2 R",,
+,R U' R' U R U2 R' F R U R' U' F',,
+,y' R' U2 R2 D r' U' r D' R',,
+,F' R U R' U' R' F R U' R' F R F',,
+,F' U F R U' R2 F R F',,
+,"R U2 R' F U R U' R' F'
+R U' R' U' r U R' U R U2 r'",,
+,y' R' F' U' F R2 U R' U' R' F R F',,
+,R' U' R2 U' R2 U2 R U2 R' F R F',,
+,"R2 D R' U' R D' R F R F' 
+R' F R2 U' R' U R U2 R' U' F'",,

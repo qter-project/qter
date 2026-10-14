@@ -1,0 +1,177 @@
+NOTE,,Free Pair (Does Not Benefit From Empty Slot),,,,,,,,,,,,Cross Color On Right Of Corner,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,Cross Color On Left Of Corner,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,Cross Color On Top Of Corner,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+"The first column for the individual case will be when the BR slot is empty, the second column will be when the BL slot is empty,",,,R U' R',,,"y U' L' U L
+U' F' U F
+EO -  F R' F' R
+EO - U' F R' F' R2 U' R'",,,"F' U' F
+y L' U' L
+y' R' U' R",,,R U R',FR,,R' U' R U' F' U F,,,"U' r U' R' U R U r' U
+y' R' U' R U R' U2' R",,,(U2) L' U' L F' U2 F,Grey seperates each case,,R' U2 R U' F' U F,,,"(U') L U2 L' U2 F U R U' R' F' R U' R'
+Top alg only for picture showing empty slot
+Bottom two algs probably best
+r' U2 R2 U R2' U r
+y' R' U2' R U R' U2' R
+",,,"r' U2 R2 U R2' U r
+y' R' U2' R U R' U2' R",,,R' U R2 U R',,,U' R U R' U R U R',,,"U' R U R' U R U R'
+L' U' L U R U R'",,,R' U2 R2 U R',,,"R' U2' R2 U R2 U R
+R U' R' U R U' R' U2 R U' R'",,,(U2) L' U2 L U2 R U R',,,U' R U' R' U R U R' U',,,U' R U' R' U R U R' U',,,U' R U' R' U R U R' U',,,"R U' R' U2 F' U' F U
+F' U2 L' U' L U' F
+R U' B U' B' U2' R'
+(U) F U R U' R' F' R U R'
+(U) M' U R U' r' U' R U R'",,,"R U' R' U2 F' U' F U
+F' U2 L' U' L U' F
+R U' B U' B' U2' R'
+(U) F U R U' R' F' R U R'
+(U) M' U R U' r' U' R U R'",,,"R U' R' U2 F' U' F U
+F' U2 L' U' L U' F
+R U' B U' B' U2' R'
+(U) F U R U' R' F' R U R'
+(U) M' U R U' r' U' R U R'",,FR,,U' R U R' U2 R U' R',,,U' R U R' U2 R U' R',,,U' R U R' U2 R U' R',,,U' R U2' R' U2 R U' R' U,,,U' R U2' R' U2 R U' R' U,,,U' R U2' R' U2 R U' R' U,,,R' U' R F' U' F,,,R' U' R F' U' F,,,R' U' R F' U' F,,,R U2 R' U F' U' F,,,R U2 R' U F' U' F,,,R U2 R' U F' U' F,,,"y U L' U L U' L' U' L 
+R U' R' U R' F R F' R U R'",,,"y U L' U L U' L' U' L 
+R U' R' U R' F R F' R U R'",,,"y U L' U L U' L' U' L 
+R U' R' U R' F R F' R U R'",,,"R' D' R U' R' D R U R U' R' 
+(U) R' F R F' U R U R'
+(U) S' R U R' S R U2' R'",,,"R' D' R U' R' D R U R U' R' 
+(U) R' F R F' U R U R'
+(U) S' R U R' S R U2' R'",,,"R' D' R U' R' D R U R U' R' 
+(U) R' F R F' U R U R'
+(U) S' R U R' S R U2' R'",,FR,,R U2 R' U' R U R',,,R U2 R' U' R U R',,,R U2 R' U' R U R',,,y' R' U2 R U R' U' R U,,,y' R' U2 R U R' U' R U,,,y' R' U2 R U R' U' R U,,,"U R U2 R' U R U' R' U
+EO - U R U2' R2' F R F'
+",,,"U R U2 R' U R U' R' U
+EO - U R U2' R2' F R F'
+",,,"U R U2 R' U R U' R' U
+EO - U R U2' R2' F R F'
+",,,(U2) F' R' U2 R U F,,,(U2) F' R' U2 R U F,,,(U2) F' R' U2 R U F,,,"R U R' U R U' R' 
+R B' R B R2'
+(U2) R B U2' B' R'
+EO - R U R2' F R F'",,,"R U R' U R U' R' 
+R B' R B R2'
+(U2) R B U2' B' R'
+EO - R U R2' F R F'",,,"R U R' U R U' R' 
+R B' R B R2'
+(U2) R B U2' B' R'
+EO - R U R2' F R F'",,,"r U' r' U2 r U r' 
+EO - y' U2 R' F R' F' R2
+EO - y U2 r' U r' F' R2",,,"r U' r' U2 r U r' 
+EO - y' U2 R' F R' F' R2
+EO - y U2 r' U r' F' R2",,,"r U' r' U2 r U r' 
+EO - y' U2 R' F R' F' R2
+EO - y U2 r' U r' F' R2",,,R U' R2' D' R U2 R' D R,,,R U' R2' D' R U2 R' D R,,,R U' R2' D' R U2 R' D R,,,"F U R U' R' F' R U' R'
+F R' F' D' R U R' D R (EO)",,,"F U R U' R' F' R U' R'
+F R' F' D' R U R' D R (EO)",,,"F U R U' R' F' R U' R'
+F R' F' D' R U R' D R (EO)"
+and the third column is when the FL slot is empty. This formatting is consistent for every empty slot case.,,,"f R' f'
+y R U' R'",,,"R' U2 R
+U R' U R",,,R' U' R,,,"(U') f R f'
+y (U') R U R'
+y' (U') L U L'",BR,,R' U' R U R' U2 R,,,R' U' R U R' U2 R,,,R' U' R U R' U2 R,,,R' U2' R U R' U2' R,,,R' U2' R U R' U2' R,,,R' U2' R U R' U2' R,,,"U R' U R U' f R f'
+R2' U' F' U F R2
+y U' R U R' U R U R'",,,L' U' L f R f',,,R U R' f R f',,,R' U2 R U' f R f',,,R' U2 R U' f R f',,,R' U2 R U' f R f',,,"d' R U' R' U R U R' U'
+R' U' R U' R' U R f R f'
+M U R' U' R U R' U2' r
+(U') F U R U' R' S R f'",,,"d' R U' R' U R U R' U'
+R' U' R U' R' U R f R f'
+M U R' U' R U R' U2' r
+(U') F U R U' R' S R f'",,,"d' R U' R' U R U R' U'
+R' U' R U' R' U R f R f'
+M U R' U' R U R' U2' r
+(U') F U R U' R' S R f'",,,"M' U' r' U F R
+F R' F' R U2' R' U' R2 U' R'",,,"M' U' r' U F R
+F R' F' R U2' R' U' R2 U' R'",,,"M' U' r' U F R
+F R' F' R U2' R' U' R2 U' R'",,BR,,U' R' F R U R' U' F' R ,,,U' R' F R U R' U' F' R ,,,U' R' F R U R' U' F' R ,,,"r U2 R2 U' R2 U' r' U
+F R U R2' U' R F'",,,"r U2 R2 U' R2 U' r' U
+F R U R2' U' R F'",,,"r U2 R2 U' R2 U' r' U
+F R U R2' U' R F'",,,R' U R U R' U' R,,,R' U R U R' U' R,,,R' U R U R' U' R,,,R U2' R2' U' R2 U' R',,,R U2' R2' U' R2 U' R',,,R U2' R2' U' R2 U' R',,,U R' U R U' R' U' R,,,U R' U R U' R' U' R,,,U R' U R U' R' U' R,,,"R2' F R F' R U2' R' U R
+R' U R U2' f R f'
+f R2' U R U' R f'
+R' U' S' R U2' R' S R",,,"R2' F R F' R U2' R' U R
+R' U R U2' f R f'
+f R2' U R U' R f'
+R' U' S' R U2' R' S R",,,"R2' F R F' R U2' R' U R
+R' U R U2' f R f'
+f R2' U R U' R f'
+R' U' S' R U2' R' S R",,BR,,y R U2' R' U' R U R',,,y R U2' R' U' R U R',,,y R U2' R' U' R U R',,,R' U2 R U R' U' R,,,R' U2 R U R' U' R,,,R' U2 R U R' U' R,,,y U R U2' R' U R U' R' U,,,y U R U2' R' U R U' R' U,,,y U R U2' R' U R U' R' U,,,U' R' U2 R U' R' U R ,,,U' R' U2 R U' R' U R ,,,U' R' U2 R U' R' U R ,,,"r' U r U2' r' U' r
+f U R U' R f'
+",,,"r' U r U2' r' U' r
+f U R U' R f'
+",,,"r' U r U2' r' U' r
+f U R U' R f'
+",,,"R' F R' F' R2 
+R' F' U2' F R",,,"R' F R' F' R2 
+R' F' U2' F R",,,"R' F R' F' R2 
+R' F' U2' F R",,,"(U) F R' F' R f R f'
+(U2) R U2' R' U' S R' S'
+(U) R U' R' U' S R' S'
+U R' F R' F' R2 U' R' U R 
+R' F' r U' r' F2 U' R
+(U2) R' F' U' F2 R' F' R2",,,"(U) F R' F' R f R f'
+(U2) R U2' R' U' S R' S'
+(U) R U' R' U' S R' S'
+U R' F R' F' R2 U' R' U R 
+R' F' r U' r' F2 U' R
+(U2) R' F' U' F2 R' F' R2",,,"(U) F R' F' R f R f'
+(U2) R U2' R' U' S R' S'
+(U) R U' R' U' S R' S'
+U R' F R' F' R2 U' R' U R 
+R' F' r U' r' F2 U' R
+(U2) R' F' U' F2 R' F' R2",,,"R' F R F' U2 R' U' R
+R2 U2' R U R' U R2 
+R2' U2' R U R' U R2
+R U R' U S R2' S'",,,"R' F R F' U2 R' U' R
+R2 U2' R U R' U R2 
+R2' U2' R U R' U R2
+R U R' U S R2' S'",,,"R' F R F' U2 R' U' R
+R2 U2' R U R' U R2 
+R2' U2' R U R' U R2
+R U R' U S R2' S'"
+"The reason for this disclaimer is that some cases don't have better solutions with an empty slot, so you use the default LS solution.",,,L U' L',,,"U' f' L f
+y' U' L' U L",,,"f' L' f
+y R' U' R",,,U2 L U L',BL,,"y R' U' R U R' U2' R
+f' U' L' U L2 f
+",,,"y R' U' R U R' U2' R
+f' U' L' U L2 f
+",,,"y R' U' R U R' U2' R
+f' U' L' U L2 f
+",,,"y R' U2' R U R' U2' R
+R' F2 r2 B r2 F R",,,"R U2 R' r U R' U R U2 B r'
+y R' U2' R U R' U2' R
+R' F2 r2 B r2 F R",,,"y R' U2' R U R' U2' R
+R' F2 r2 B r2 F R",,,L' U L2 U L',,,(U') R U R' U' L U L',,,L U' L' U' L U L',,,L' U2 L2 U L',,,L' U2 L2 U L2 U L,,,R' U2 R U2 L U L',,,L U' L' U L U L',,,L U' L' U L U L',,,L U' L' U L U L',,,"L U' L' y U2 R' U' R 
+F R U R' U' F' L U L'",,,"L U' L' y U2 R' U' R 
+F R U R' U' F' L U L'",,,"L U' L' y U2 R' U' R 
+F R U R' U' F' L U L'",,BL,,L U L' U' L U2 L',,,L U L' U' L U2 L',,,L U L' U' L U2 L',,,U' L U2 L' U' L U2 L',,,U' L U2 L' U' L U2 L',,,U' L U2 L' U' L U2 L',,,y U R' U' R U' R' U' R,,,y U R' U' R U' R' U' R,,,y U R' U' R U' R' U' R,,,y R U2' R2' U' R2 U' R',,,y R U2' R2' U' R2 U' R',,,y R U2' R2' U' R2 U' R',,,y U R' U R U' R' U' R ,,,y U R' U R U' R' U' R ,,,y U R' U R U' R' U' R ,,,L U2 L' U L U L' U L U' L' ,,,"L U2 L' U L U L' U L U' L' 
+L F L' U2 L U L' U L F' L'",,,L U2 L' U L U L' U L U' L' ,,BL,,L U2 L' U' L U L',,,L U2 L' U' L U L',,,L U2 L' U' L U L',,,y R' U2' R U R' U' R ,,,y R' U2' R U R' U' R ,,,y R' U2' R U R' U' R ,,,"U L U2 L' U L U' L' U
+EO - U r B U' r B r2'",,,"U L U2 L' U L U' L' U
+EO - U r B U' r B r2'",,,"U L U2 L' U L U' L' U
+EO - U r B U' r B r2'",,,y U' R' U2 R U' R' U R ,,,y U' R' U2 R U' R' U R ,,,y U' R' U2 R U' R' U R ,,,"L U' L' U2 L U L'
+EO - U2 r U' r B r2'",,,"L U' L' U2 L U L'
+EO - U2 r U' r B r2'",,,"L U' L' U2 L U L'
+EO - U2 r U' r B r2'",,,l U' l' U2 l U l' ,,,l U' l' U2 l U l' ,,,l U' l' U2 l U l' ,,,L U' L' U' L U' L' U L U' L' U,,,L U' L' U' L U' L' U L U' L' U,,,L U' L' U' L U' L' U L U' L' U,,,r U R' U R U2 B r' ,,,r U R' U R U2 B r' ,,,r U R' U R U2 B r' 
+"The problem is that no slots show as empty in the picture, so just make sure you remember this formatting.",,,"(U2) F U' F'
+y (U') L U2 L'
+y' (U2) R U' R'",,,U' L' U L,,,L' U' L U,,,"F U F'
+y L U L'
+y' R U R'",FL,,U L' U' L U2' L' U L,,,R' U' R L' U L,,,U L' U' L U2' L' U L,,,(U2) L' U2 L U2' L' U L,,,R' U2 R L' U L,,,(U2) L' U2 L U2' L' U L,,,F U' R U R' U2' F',,,F U' R U R' U2' F',,,F U' R U R' U2' F',,,F U' R U2 R' U2 F',,,F U' R U2 R' U2 F',,,F U' R U2 R' U2 F',,,"d' L U' L' U L U L'
+U2 F R U' R' U R U2 R' F'
+F U M' U R U' r' F'
+(U2) R' F R2 U2' R2' F' R2 U2' R'",,,"d' L U' L' U L U L'
+U2 F R U' R' U R U2 R' F'
+F U M' U R U' r' F'
+(U2) R' F R2 U2' R2' F' R2 U2' R'",,,"d' L U' L' U L U L'
+U2 F R U' R' U R U2 R' F'
+F U M' U R U' r' F'
+(U2) R' F R2 U2' R2' F' R2 U2' R'",,,F U' R U' R' U2 F',,,F U' R U' R' U2 F',,,F U' R U' R' U2 F',,FL,,"(U') F U R U' R' U F'
+(U2) F R U R' U2 F'",,,"(U') F U R U' R' U F'
+(U2) F R U R' U2 F'",,,"(U') F U R U' R' U F'
+(U2) F R U R' U2 F'",,, F U R U2' R' U F',,, F U R U2' R' U F',,, F U R U2' R' U F',,,"U2' L' U L U L' U' L
+(U2) l' U L U L' U' l (EO Trick)
+(U2) R' F r U r' F' R (EO Trick)
+(U) F U R U' R' U2 F' (EO Trick)",,,"U2' L' U L U L' U' L
+(U2) l' U L U L' U' l (EO Trick)
+(U2) R' F r U r' F' R (EO Trick)
+(U) F U R U' R' U2 F' (EO Trick)",,,"U2' L' U L U L' U' L
+(U2) l' U L U L' U' l (EO Trick)
+(U2) R' F r U r' F' R (EO Trick)
+(U) F U R U' R' U2 F' (EO Trick)",,,L U2 L2 U' L2 U' L',,,L U2 L2 U' L2 U' L',,,L U2 L2 U' L2 U' L',,,U L' U L U' L' U' L ,,,U L' U L U' L' U' L ,,,U L' U L U' L' U' L ,,,L' U L U2 F U F',,,L' U L U2 F U F',,,L' U L U2 F U F',,FL,,L F' L' F L' U L U' L' U L ,,,L F' L' F L' U L U' L' U L ,,,L F' L' F L' U L U' L' U L ,,,L' U2 L U L' U' L U,,,L' U2 L U L' U' L U,,,L' U2 L U L' U' L U,,,y' U R U2' R' U R U' R',,,y' U R U2' R' U R U' R',,,y' U R U2' R' U R U' R',,,L' U2 L2 F' L' F,,,L' U2 L2 F' L' F,,,L' U2 L2 F' L' F,,,F R U2 R' F' ,,,F R U2 R' F' ,,,F R U2 R' F' ,,,"U2 L' U' L U' L' U L 
+r' U r' F' r2",,,"U2 L' U' L U' L' U L 
+r' U r' F' r2",,,"U2 L' U' L U' L' U L 
+r' U r' F' r2",,,F U' R U R' U R U2' R' F' ,,,F U' R U R' U R U2' R' F' ,,,F U' R U R' U R U2' R' F' ,,,F U' R U2 R' U R U2 R' F' ,,,F U' R U2 R' U R U2 R' F' ,,,F U' R U2 R' U R U2 R' F' 
