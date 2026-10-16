@@ -19,6 +19,7 @@ use color_eyre::{
     owo_colors::OwoColorize,
 };
 use compiler::{Reporter, compile, q_emitter::emit_q};
+use crashlog::{ProgramMetadata, cargo_metadata};
 use internment::ArcIntern;
 use interpreter::{
     ActionPerformed, ExecutionState, InputRet, Interpreter, PausedState,
@@ -147,6 +148,9 @@ fn compile_qat(file: &Path) -> color_eyre::Result<(Program, File)> {
 
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {
+    crashlog::setup!(cargo_metadata!(), false);
+    panic!();
+
     let args = Commands::parse();
 
     match args {

@@ -67,19 +67,6 @@ impl Reporter {
     }
 }
 
-// impl Drop for Reporter {
-//     fn drop(&mut self) {
-//         if Arc::strong_count(&self.0) != 1 || self.0.count() == 0 {
-//             return;
-//         }
-
-//         eprintln!("{}", std::backtrace::Backtrace::force_capture());
-//         for (_, report) in self.0.iter() {
-//             eprintln!("{report:?}");
-//         }
-//     }
-// }
-
 /// Compiles a QAT program into a Q program while returning the register architecture used.
 ///
 /// # Errors

@@ -2,6 +2,8 @@
 name = "cli"
 version = "0.1.0"
 edition = "2024"
+repository = "https://github.com/qter-project/qter"
+authors = [ "Arhan Chaudhary", "Henry Rovnyak" ]
 
 [dependencies]
 clap = { version = "4.5", features = [ "derive" ] }
@@ -17,6 +19,7 @@ internment.workspace = true
 puzzle_theory.workspace = true
 chumsky.workspace = true
 tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread"] }
+crashlog = "0.1.5"
 
 [lints]
 workspace = true

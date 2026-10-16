@@ -102,14 +102,15 @@
 ## QAT
 
 - Replace repeat-untils that can never terminate with a `halt` instruction
-- ⭐Rhai macros for QAT
-  - Allow encoding/decoding all possible types of instructions
-- 😎Translate QAT comments into Q
-- ⭐Memory tapes
-  - ⭐Implement in QAT
-- Function macro
+- Allow encoding/decoding all possible types of instructions
+- Memory tapes
+  - Implement in QAT
+- Multiple halt instruction
 - Directory of testing programs instead of hardcoding into Rust
   - Inline testing in the QAT format
+- Syscall instruction
+- Alias register as negative
+- 😎Translate QAT comments into Q
 - 😎Write tree sitter grammar
 - 😎Architecture switching
 - 😎Instruction to copy solving moves to other puzzle
@@ -120,7 +121,7 @@
 - 😎Syntax for declaring what moduli you want from the registers
 - Evaluate repeat instruction for examinx
 - 😎Optimizations
-  - Convert QAT to SSA
+  - Convert QAT to Sea of Variables
     - Make the repeat-until vectorization optimization work with multiple puzzles
     - Unreachable removal with real control flow analysis
     - Dead code removal?
@@ -138,8 +139,8 @@
 
 ## Q
 
-- ⭐Compile to Q
-  - ⭐"[repeat|print|halt] until \_ solved" syntax
+- Update syntax of `halt`
+- Support multiple puzzles
 - Make solved-goto pieces "optimal" in a meaningful sense of "optimal"
 - Parse Q
 
