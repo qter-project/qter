@@ -1,0 +1,694 @@
+﻿At least two algorithms are listed for every case. The first one will preserve edge orientation and the second one will flip edges. The bolded algorithm will be the one that I can execute the fastest, so if you are learning CMLL, I recommend learning the bolded ones first. Additional algs will be below. If you find any mistakes, or any better algorithms than the one I use, please contact me on Facebook or YouTube. 
+Video showing execution: http://bit.ly/2j5WX86 
+O
+Adjacent Swap O1.JPG 
+
+
+
+
+
+
+
+
+
+
+R U R' F' R U R' U' R' F R2 U' R'
+r U R' F' R U R' U' R' F R2 U' r'
+R U R' U' R' F R2 U' R' U' R U R' F'
+r U R' U' r' F R2 U' R' U' R U R' F'
+(U) r U' L U2 R' U R U2 r' L'
+	Diagonal Swap O2.JPG 
+
+
+
+
+
+
+
+
+
+
+F R U' R' U' R U R' F' R U R' U' R' F R F'
+r2 D r' U r D' R2 U' F' U' F
+r' U' r' D' r U' r' D r U r' D' r U r' D r2
+F R U' R' U' R U R' F' r U R' U' r' F R F'
+F R' F R2 U' R' U' R U R' F' R U R' U' F'
+	H
+Columns  
+       
+
+
+
+
+
+
+
+
+
+
+R U2 R’ U’ R U R’ U’ R U’ R’
+r U2 R' U' R U R' U' R U' r'
+(U) R U R' U R U' R' U R U2' R'
+r U’ r’ U’ r U r’ U r U r’
+	Rows  
+
+
+
+
+
+
+
+
+
+
+
+
+F R U R' U' R U R' U' R U R' U' F'
+R' F R U2' R' F' R U F R U R' U F''
+	Column  
+
+
+
+
+
+
+
+
+
+
+
+
+(U) F R U' R' U R U2 R' U' R U R' U' F'
+(U) R U2' R2' F R F' U2 R' F R F'
+	Row  
+
+
+
+
+
+
+
+
+
+
+
+
+(U’) R U R' U R U r' F R' F' r
+(U2) r U' r2' D' r U' r' D r2 U r'
+r U' r' F U2' r2' F r U' r
+	Pi Pi2.JPG 
+Right Bar Pi1.JPG 
+
+
+
+
+
+
+
+
+
+
+R U2' R2' U' R2 U' R2’ U2' R
+F R U R' U' R U R' U' F'
+f R U R' U' R U R' U' f’
+(U2) F U R U’ R’ U R U’ R’ F’
+(U2) F’ L’ U’ L U L’ U’ L U F
+r' U r2 U' r2’ U' r2 U r'
+r U' r2' U r2 U r2' U' r
+R’ U2 r U’ r’ U2 r U r’ U2 R
+	 Back Slash
+
+
+
+
+
+
+(U) F U R U’ R’ U R U’ R2’ F’ R U R U’ R’
+(U) F R' F' R U2 R U' R' U R U2' R'
+(U) R U2 R’ U’ R U’ R2 U L U’ R U L’
+	X Checkerboard Pi3.JPG 
+
+
+
+
+
+
+
+
+
+
+R' F2 D R2 U' R2' D' F2 R
+(U') R' F R U F U' R U R' U' F'
+
+
+	Forward Slash Pi4.JPG 
+
+
+
+
+
+
+
+
+R U R’ U’ R’ F R2 U R’ U’ R U R’ U’ F’
+R U2 R' U' R U R' U2' R' F R F'            (U’) R’ U2 R U R’ U R2 U’ L’ U R’ U’ L
+	Columns Pi5.JPG 
+
+
+
+
+
+
+
+
+
+
+(U2) r’ F R F’ r U' R' U' R U' R'
+(U’) r U' r2' D' r U r' D r2 U r'
+(U2) R' U R U' R2' F R2 U R' U' F' R
+R’ U L U’ R U’ L’ U’ L U’ L’
+	Left Bar Pi6.JPG 
+
+
+
+
+
+
+
+
+
+
+
+
+(U) R U2 R' U' F' R U2 R' U' R U' R' F R U' R'
+(U') R' U' R' F R F' R U' R' U2 R
+(U2) R' U' R U' R' U F' U F R
+	
+
+U
+Forward Slash U1.JPG 
+
+
+
+
+
+
+
+
+
+
+(U2) R2 D R' U2 R D' R' U2 R'
+r U' r' U' r U' r' U' F' U2' F
+	Back Slash U2.JPG 
+
+
+
+
+
+
+
+
+
+
+R2' D' R U2 R' D R U2 R
+R' F R U R' F R U F U2' F'
+	Front Row U3.JPG 
+
+
+
+
+
+
+
+
+
+
+
+
+(U) R U2' R2' U' R2 U' R' U R' U' R U R' U R
+R2' F U' F U F2 R2 U' R' F R
+R’ U’ R U’ R’ U2’ R2 U R’ U R U2’ R’
+	Rows U4.JPG 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+R' F R U' R' U' R U R' F' R U R' U' R' F R F' R
+(U') F R2 D R' U R D' R2' U' F'
+	X Checkerboard U5.JPG 
+
+
+
+
+
+
+
+
+
+
+R U R' U' R' F2 R2 U' R' U' R U R' F2
+(U2) r U' r' U r' D' r U' r' D r
+(U2) R' F U' R F R' U R F'
+(U’) R’ D R U’ R U’ R’ U R’ D’ R
+r’ U r’ D’ r U r’ D r U’ r
+	Back Row U6.JPG 
+
+
+ 
+
+
+
+
+
+
+R U' R' U' R U R D R' U R D' R2
+(U') F R U R' U' F'
+(U’) f R U R' U' f'
+(U) F U R U' R' F'
+	
+
+
+
+
+
+
+
+
+
+
+
+T
+Left Bar T1.JPG 
+
+
+
+
+
+
+
+
+
+
+(U') r U R' U' r' F R F'
+(U') R U R' U' R' F R F'
+	Right Bar T2.JPG 
+
+
+
+
+
+
+
+
+
+
+(U) l' U' L U l F' L' F
+(U) L' U' L U L F' L' F
+(U’) F R U’ R’ U R U R’ F’
+	Rows T3.JPG 
+
+
+
+
+
+
+
+
+
+
+(U)' R U R' U R U' R' U R' U' R2 U' R2' U2' R
+F R' F R2 U' R' U' R U R' F2
+R U2’ R’ U’ R U’ R2’ U2’ R U R’ U R 
+	Front Row T4.JPG 
+
+
+
+
+
+
+
+
+
+
+R' U r U2’ R2’ F R F' r
+r' U r U2’ R2’ F R F' R
+	Back Row T5.JPG 
+
+
+
+
+
+
+
+
+
+
+(U2) F R U R' U' R U' R' U' R U R' F'
+r' D' r U r' D r U' r U r'
+(U) R’ D R U’ R U R’ U R’ D’ R
+r U’ r D r’ U r D’ r’ U r’
+	Columns T6.JPG 
+
+
+
+
+
+
+
+
+
+
+R' U R2 D r' U2 r D' R2’ U' R
+(U2) r2’ D' r U r' D r2 U' r' U' r
+(U2) r U' r2' D' r U2 r' D r2 U r'
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+S
+Left Bar S1.JPG 
+
+
+
+
+
+
+
+
+
+
+(U) R U R' U R U2 R'
+(U) r U R' U R U2 r'  
+	X Checkerboard S2.JPG 
+
+
+
+
+
+
+
+
+
+
+(U) L' U2 L U2’ l F' L' F M'
+(U) L' U2 L U2’ L F' L' F
+	Forward Slash S3.JPG 
+
+
+
+
+
+
+
+
+
+
+(U) M F R' F' R U2 R U2’ r'
+(U) F R' F' R U2 R U2’ R'    
+	Columns S4.JPG 
+
+
+
+
+
+
+
+
+
+
+(U) R U R' U' R' F R F' R U R' U R U2’ R'
+R U R’ U R U’ R D R’ U’ R D’ R2’
+	Right Bar S5.JPG 
+
+
+
+
+
+
+
+
+
+
+
+
+(U') R U R' U L' U R U' L U2 R'
+(U') R U R' U R' F R F' R U2’ R'
+	Back Slash S6.JPG 
+
+
+
+
+
+
+
+
+
+
+
+
+(U) R U' L' U R' U' L
+(U) r U' r’ F R’ F’ R
+(U') L U' R' U L' U' R
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+As
+Right Bar As1.JPG 
+
+
+
+
+
+
+
+
+
+
+(U) R' U' R U' R' U2’ R
+(U) r' U' R U' R' U2’ r
+(U2) R U2 R' U' R U' R'
+	Columns As2.JPG 
+
+
+
+
+
+
+
+
+
+
+(U') R2 D R' U R D' R' U R' U' R U' R'
+(U') r R D R' U R D' R' U R' U' R U' r'
+	Back Slash As3.JPG 
+
+
+
+
+
+
+
+
+
+
+(U') M F' L F L' U2’ L' U2 L M'
+(U') F' L F L' U2’ L' U2 L     
+	X Checkerboard As4.JPG 
+
+
+
+
+
+
+
+
+
+
+(U') R U2’ R' U2 r' F R F' M'
+(U') R U2’ R' U2 R' F R F'
+	Forward Slash As5.JPG 
+
+
+
+
+
+
+
+
+
+
+(U') L' U R U' L U R'
+(U') R' F R F' r U r'   
+(U) R' U L U' R U L'
+	Left Bar As6.JPG 
+
+
+
+
+
+
+
+
+
+
+(U') R' U' R U' L U' R' U L' U2 R
+R' U' R U' R' U R' F R F' U R
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+L
+Mirror L1.JPG 
+
+
+
+
+
+
+
+
+
+
+R2' D' R U' R' D R U R
+(U2) F R U' R' U' R U R' F'
+(U’) F’ r U r’ U’ r’ F r
+(U’) F’ r U R’ U’ r’ F R
+	Inverse L2.JPG 
+
+
+
+
+
+
+
+
+
+
+(U2) F R' F' r U R U' r'
+(U2) F R' F' R U R U' R'
+	Pure L3.JPG 
+
+
+
+
+
+
+
+
+
+
+
+
+R U2 R’ U’ R U R’ U’ R U R’ U’ R U’ R’
+R U R' U' R' F R F' R' F R F' r U r' 
+R U R' U R U' R' U R U' R' U R U2 R'
+	Front Commutator L4.JPG 
+
+
+
+
+
+
+
+
+
+
+
+
+(U2) R U2 R D R' U2 R D' R2’ 
+R U R' U R' F R F' U2 R' F R F'
+(U2) R U R’ U’ F’ U2’ F U R U R’
+	Diag L5.JPG 
+
+
+
+
+
+
+
+
+
+
+
+
+R' U' R U R’ F' R U R' U' R' F R2
+(U2) R U2’ R2’ F R F' R U2’ R'
+(U2) r U2’ R2’ F R F’ R U2’ r’
+	Back Commutator  L6.JPG 
+
+
+
+
+
+
+
+
+
+
+
+
+(U) R' U2 R' D' R U2 R' D R2
+(U2) R U R' U' R' F R2 U' R' U R U R' F'

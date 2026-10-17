@@ -1,0 +1,76 @@
+﻿Arrow (F):  
+UF DF: M 
+UB UR: M’ U’ M’
+UR DB: M’ U M
+UF UR: U M’ U2 M U M
+	6  
+UF DF: U’ M U M’ U’ M U’ M’ U2 M
+DF DB: M’ U’ M’ U’ M U’ M U2 M’ U M
+(with the corners that match the front LR edge on the front)
+	4/0  
+UF UB: M’ (continue with misoriented)
+UF DF: U M’ U2 M’ U2 M’ U’ M
+UF UR: M’ U2 M’ U’ M’ U2 M U M
+DF DB: M’ U’ M’ U’ M U’ M U’ M’ U’ M
+(with the corners that match the front LR edge on right)
+	2o/2 (LR)  
+UF UR: M’ U2 M’ U2 M U M
+UR UL: M2 U’ M’ or U’ M2 U’ M’ (cont.)
+UF DF: M2 U’ M’ U2 M’ U2 M’ U M’
+DF DB: M’ (continue with misoriented)
+UR DF: M’ U2 M U M U2 M’ U’ M’
+UF UB: M2 then 4/0 DF DB with correct AUF
+	2o/0 (FB)  
+UF UR: M’ U’ M U M’ U M’
+UF UB: M’ U’ M U M’ U’ M’
+UF DF: M U M’ U’ M U’ M’
+UR DF: M’ U M U’ M
+UR UL: M’ U’ M’ U’ M’ U2 M U’ M’
+DF DB: R U R’ U’ M’ U R U’ r’
+	0/2  
+UF UR: M’ U’ M’ U M’
+UL UR: M' U' M U' M U2 M' U' M
+UF DF: U M’ U’ M’ U M U M
+DF DB: M’ U’ M’ U M U’ M’ (with corners that match the front LR edge on left) 
+
+
+	2a/0 (BL)  
+UF UL: U M’ U’ M’ U2 M
+UF UR: M' U2 M' U' M' U' M U' M
+UF UB: M' U M U M' U2 M U' M
+UL UB: U M' U' M' U M U' M' U' M
+UF DF: U2 M U M’ U2 M U’ M’ 
+UL DF: M’ U M’ U2 M’ U M
+DF DB: M’ U M’ U2 M’ U’ M’
+	2a/2 (BL) THING.jpg 
+UF UL: U M’ U2 M U M U M
+UF UR: M’ U’ M U2 M U2 M’ U M’
+UF UB: U M’ U’ M’ U’ M’ U’ M
+UL UB: M2 U’ M 
+UF DF: U’ M2 U M U M
+UL DF: U2 M' U2 M' U M'
+DF DB: U M’ U’ M’ U’ M’ U’ M’
+	1/1 (F)  
+UF UR: M’ U M’ U M U M
+UF DF: U’ M’ U M’ U2 M U M 
+UF DB: M’ U’ M’ U’ M U M
+UF UB: M U’ M’ U2 M’ U2 M’ U M
+UR UB: M U’ M’ U’ M’
+UR UL: U’ M’ U M’ U2 M U M’
+UR DF: M’ U’ M’ U’ M’
+UR DB: M U M’ U M U M
+UB DF: U M' U2 M U M U M' U M
+UB DB: U’ M’ (continue with misoriented)
+DF DB: M' U' M' U2 M' U2 M' U M 
+	1/1 (B)  
+UB UR: M U’ M U’ M’ U’ M’
+UB DB: M’ U’ M U’ M’ U’ M
+UB DF: M’ U’ M U’ M’ U M’
+UB UF: M’ U’ M U2 M’ U2 M U’ M
+UR UF: M’ U M U M
+UR UL: U M U’ M U2 M’ U’ M
+UR DB: M U M U M
+UR DF: M’ U’ M U’ M’ U’ M’
+UF DB: U’ M U2 M’ U’ M’ U’ M U’ M
+UF DF: U’ M (continue with misoriented)
+DF DB: M U’ M U2 M’ U2 M U’ M

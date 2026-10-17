@@ -1,0 +1,38 @@
+MW Set,,,,Number of known algs (You) :,0,/ 18
+,,,,Number of known algs (Me) :,0, / 18 
+,,,,,,
+,Subset,# of Oriented Corners,Images,3x3 algorithm,My prog,Your prog
+,"UF
+9 cases / 18","3
+1 case / 9",#REF!,"R' F R d R' U R U2 R' 
+ F' U' F U R U2 R'",FALSE,FALSE
+,,"2
+4 cases / 9",#REF!,M' U R U' r',FALSE,FALSE
+,,,#REF!,F2 L F L' F U' R U R',FALSE,FALSE
+,,,#REF!,"(U) R U' R' F R U R' U' F'
+(U) x' R' D R2 U R' D' R U' R'",FALSE,FALSE
+,,,#REF!,"R' U' R U R U' r' U' R' U r
+ x' R' D R2 U' R' D' R U R'
+R' F R2 U R' U' R' F' R U R U' R'",FALSE,FALSE
+,,"2
+4 cases / 9",#REF!,R' F R F',FALSE,FALSE
+,,,#REF!,R' F R F' R' U' R U' R' U2 R,FALSE,FALSE
+,,,#REF!,"(U) R U' R' U' R' U' R' F R F' U R
+(U) F' R' U' R F R' U R2 U2 R'",FALSE,FALSE
+,,,#REF!,(U) y' R' M' U R U' r' U' R,FALSE,FALSE
+,"UB
+9 cases / 18","3
+2 cases / 18",#REF!,"(U2) M' U' L' U2 R U R' U2 l
+(U2) L R' F' L' F2 R F R' F2 R (same alg, different exec)",FALSE,FALSE
+,,"2
+4 cases / 9",#REF!,(U) F' U F R U' R',FALSE,FALSE
+,,,#REF!,"(U) y r' U' R' F' R U r
+R' U2 r U R U' r' R' U2 R",FALSE,FALSE
+,,,#REF!,"(U) y M U' R' F' R U M' 
+(U) y M' U' r' U' r U M",FALSE,FALSE
+,,,#REF!,(U2) y' R2' F R F' R,FALSE,FALSE
+,,"2
+4 cases / 9",#REF!,(U) F' L' U2 L U F,FALSE,FALSE
+,,,#REF!,(U2) F2 r U2 R' U' r' F R,FALSE,FALSE
+,,,#REF!,(U) R B U' B' R',FALSE,FALSE
+,,,#REF!,(U) R U' R' U R' U' F' U F R,FALSE,FALSE

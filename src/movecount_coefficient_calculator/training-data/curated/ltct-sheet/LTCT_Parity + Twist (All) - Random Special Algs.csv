@@ -1,0 +1,23 @@
+Target (Edges - Corners) ,Alg
+ABDA - QE,F' R U2 R' U2 R' F R U R U' R'
+ADBA - EQ,R U R' U' R' F' R U2 R U2 R' F
+BDB - QDB,U R U' R2 D' r U2 r' D R2 U R'
+BDB - NFB,R U' R2 D' r U2 r' D R2 U R' U'
+ADA - APE ,D R2 U' R' U' R U2 R2 D' R U' R'
+ADA - AKR,R U R' D R2 U2 R' U R U R2 D'
+ADA - ATE,R2 U' R' U' R U2 R2 D' R U' R'
+ADA - AOR ,D' R U R' D R2 U2 R' U R U R2 
+ADA - AXR,R D' R2 U R U2 R' U R2 D R' U
+ADA - ASE,U' R D' R2 U' R U2 R' U' R2 D R'
+CDC - DPF,D' R U R' D R2 U R' U2 R U R2
+CDC - FPD,R2 U' R' U2 R U' R2 D' R U' R' D
+AB - RNVI,R U' R' U2 R U' R'
+B - QEB (0 - AO + B - ONR),U' R D R' U2 R D' R' U' R' U2 R U' R' U' R U'
+B - ONR,R' U2 R U' R' U' R U'
+,
+Easy 5-Style Alg ,
+KWLO,R F' M' F r'
+OLWK,r F' M F R'
+FBGS,D2 R' F' E' F E R D2
+FBOK,R' F' E' F E R
+KOBF,R' E' F' E F R

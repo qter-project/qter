@@ -8,7 +8,6 @@ import rnn
 import altair as alt
 import polars as pl
 from sampler import Sampler
-from scipy.spatial.transform import Rotation
 from algs_dataset import datasets, options, process_alg
 
 
@@ -21,7 +20,7 @@ def train_loop(dataset, model, optimizer, sampler):
 
     for epoch in range(2):
         for i, algs in enumerate(
-            random_split(dataset, [0.02 for _ in range(50)])
+            random_split(dataset, [1/300 for _ in range(300)])
         ):
             total_energy = 0
             total_symbols = 0

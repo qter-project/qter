@@ -1,0 +1,679 @@
+﻿Front Pair Cases with DR Solved
+  
+
+U R U’ R’
+
+
+U2 R U2 R’
+
+
+R’ F R F’
+	  
+
+r U r’
+
+
+F R’ F’ R
+
+
+U’ F’ U F
+
+
+
+
+	  
+
+U2 M U’ r U’ r’
+
+
+U’ R U R’ U2 R U’ R’
+
+
+U’ R U R’ U’ R U2 R’
+
+
+U’ r U’ r’ U2 r U’ r’
+
+
+M’ U’ M U2 R U’ R’
+	  
+
+U’ M U M’ r U r’
+
+
+U r U r’ U2 r U r’
+
+
+U F’ U’ F U’ r U r’
+
+
+U’ r U’ r’ U R U R’
+	  
+
+
+
+U’ M U2 r U’ r’
+
+
+U’ R U2 R’ U2 R U’ R’
+
+
+U r U2 M U R’
+	  
+
+r U2 M2 U’ r’
+
+
+U2 M U2 M’ r U r’
+
+
+U F’ U2 F U’ r U r’
+
+
+M’ U2 M U2 r U r’
+	  
+
+M U r U’ r’
+
+
+R U R’ U2 R U’ R’ U R U’ R’
+
+
+F’ U F U2 R U R’
+
+
+U’ R’ U R U’ R U R’ (free slot)
+
+
+U2 r U M U R’
+	  
+
+
+
+R U’ R’ U’ M R U’ R’
+
+
+R U’ R’ U’ r’ R2 U’ R’
+
+
+U M U’ M’ r U r’
+
+
+U’ M’ U’ M U2 r U r’
+
+
+R U’ R’ U2 F’ U’ F
+	
+
+  
+
+R U R’
+
+
+
+
+	  
+
+F’ U’ F
+
+
+U M R U’ R’
+
+
+
+
+	  
+
+U’ R U R’ U R U R’
+
+
+U2 R U’ R’ U’ R U R’
+
+
+R U M’ U’ M U R’
+
+
+r U' r' U' r U' r’
+
+
+R' U R2 U R' (free slot)
+	  
+
+M2 U r U’ r’
+
+
+U’ R U’ R’ U F’ U’ F
+	  
+
+U’ R U’ R’ U R U R’
+
+
+U’ M’ U M R U R’
+
+
+U M U M’ U2 R U R’
+	  
+
+U2 M2 U’ r U’ r’
+
+
+M U’ M2 U2 R U’ R’
+
+
+U2 r U’ M2 U’ r’
+	
+
+r M2 U2 M’ U’ r’  
+
+
+R U’ R’ U R U’ R’ U2 R U’ R’
+R’ U2 R2 U R’ (free slot)
+R’ U2 R2 U R2 U R
+
+
+U F’ U2 F U’ R U R’
+
+
+M U2 M’ U2 R U R’
+	  
+
+U’ M2 U2 r U’ r’
+
+
+U’ R U2 R’ U F’ U’ F
+	
+
+  
+
+
+
+
+
+
+
+U R U2 R’ U R U’ R’
+	r U’ r’ U2 M’ r U r’  
+
+
+U’ F’ U2 F r U r’
+
+
+U2 R’ U2 R U r U r’ (free slot)
+
+
+U’ M’ U R U2 R’ U’ R U R’
+
+
+U’ R U’ R2 F R F’ R U’ R’
+	R U’ R’ U2 R U R’  
+
+
+U R’ U’ R U R U R’ (free slot)
+
+
+U2 R U R’ U R U’ R’
+
+
+U’ r’ U r R U’ R’ (free slot)
+
+
+U R U2 r’ U r U’ r’
+	  
+
+
+
+r U’ r’ U2 r U r’
+
+
+U R’ U’ R U r U r’ (free slot)
+
+
+U2 R U R’ F’ U’ F
+	  
+
+R U2 R’ U’ R U R’
+	M’ U R U2 R’ U R U’ R’  
+
+
+r U’ R’ U R U’ R’ U R U R’
+
+
+R U R’ U’ R U R’ U’ r U r’
+
+
+U2 r U M' R' U r U' r'
+
+
+r U’ R U R’ U R U2 R2
+
+
+U’ R’ U2 R U R’ U R U’ r U R’
+	U F R’ F’ R U R U R’  
+
+
+r U2 r’ U’ M’ r U r’
+
+
+U R U’ R’ U’ R U’ R’ U R U’ R’
+U2 R2 U2 R’ U’ R U’ R2
+
+
+M’ r U’ r’ U2 r U r’
+
+
+	  
+
+
+
+
+
+U r U2 r’ U r U’ r’
+	
+
+  
+
+
+
+
+
+
+
+R U R’ U’ R U R’
+	  
+
+
+
+M’ U R U’ R’ U R U’ R’
+
+
+R’ F R F’ R’ F R F’
+
+
+M’ U R U’ R2 F R F’
+
+
+M’ U’ r U’ r’ U r U’ r’
+	  
+
+
+
+R U’ R’ U R U’ R’
+
+
+R U’ R2 F R F’
+
+
+U2 r U’ r’ U r U’ r’
+	  
+
+
+
+
+
+R U R’ U’ r U r’
+
+
+F’ U F2 R’ F’ R
+
+
+U2 r U2 r’ U2 r U r’
+	U’ r U’ M U r’  
+U’
+
+
+U' F' R U R' U' R' F R
+
+
+U’ R’ F R F’ R U R’
+
+
+R2 U’ R’ U R2 (freeslot)
+
+
+U D’ R U’ R’ D (freeslot)
+
+
+R’ U’ R’ U’ R’ U R U R    
+	  
+
+
+
+
+
+U R U’ M’ U R’
+
+
+r U2 r’ U’ r U’ r’
+
+
+U r U r’ U r U2 r’
+	
+
+  
+
+U2 r U r’ U r U’ r’
+
+
+(R U R’ U’)3
+
+
+
+
+
+
+
+
+	  
+
+
+
+R U’ R’ U2 r U r’
+
+
+r U2 r’ U’ r U r’
+
+
+U’ R’ F R F’ R U’ R’
+	  
+
+U’ R U’ R’ U2 R U’ R’
+
+
+U’ D R’ U’ R D’ (free slot)
+
+
+U r U r’ U’ r U’ r’
+
+
+U’ r U r’ U2 r U’ r’
+	  
+
+
+
+U2 R U M’ U R’
+
+
+U2 R U’ M U’ R’
+	  
+
+U R U R’ U2 R U R’
+
+
+U’ R U2 R’ U R U R’
+
+
+R U’ M’ U M U R’
+
+
+U2 D R’ U R D’ (free slot)
+
+
+                                           U R' D' R U' R' D R
+	r U’ r’ M U’ r U’ r’  
+
+
+U’ r U r’ U M’ r U r’
+
+
+r U' M2 U' M' U' r'
+
+
+U2 R’ F R F’ U2 R U R’
+
+
+U F’ U’ F’ U’ R U R’
+
+
+U’ R U M' U' R' U R U R'
+U2 R U’ M’ U r’ U2 r U R’
+	
+
+Pizza would be Proud  
+LOLOLOLOLOL
+HAHAHAHAHA
+JAJAJAJAJAJA
+HUEHUEHUEH
+KEKEKEKEKEK
+KKKKKKKKKKK
+Asdfjabariasldiadfldicka
+asldfknlknasdlfukinasdi
+	  
+
+r U’ M2 U2 M’ U’ r’
+
+
+r U’ M’ U2 M2 U’ r’
+
+
+R2 U2 F R2 F’ U2 R’ U R’
+	R U’ R’ U2 M U’ r U’ r’  
+
+
+R U’ R’ U’ R U R’ U2 R U’ R’
+R U R’ U’ R U2 R’ U’ R U R’
+R2 U2 R’ U’ R U’ R’ U2 R’
+
+
+
+
+	r U’ r’ M U r U’ r’  
+
+
+r U M’ U2 r’ U r U’ r’
+
+
+R U r U’ R’ U2 R U’ R2 (freeslot)
+
+
+r U r2 U’ r U M’ r U r’
+
+
+R F U R U’ R’ F’ U’ R’
+R U’ R r2 U r U’ r’
+	  
+
+r U r’ U M’ U2 R U R’
+
+
+R U2 R’ U R U’ R’ U R U R’
+
+
+R U2 R U R’ U R U2 R2
+	r U r’ U’ M’ r U r’  
+
+
+R U’ R’ F’ r’ F2 r F
+
+
+R U F R U R’ U’ F’ R’
+
+
+r U r’ U’ r2 R’ U R’
+
+
+R U’ M’ U’ r’ U2 r U r’
+	 r2U2R'U'RU'R2.PNG 
+ Capture.JPG 
+
+U2 M2 U R U2 R’ U R U’ R’
+
+
+r2 U2 R’ U’ R U’ R2
+U2 R U M’ U R’ U’ r U r’
+R U r’ U’ M U2 R U’ R’
+r U r’ U M R U’ R’
+r U r’ F’ U’ F
+	R U R’ U r U’ r’
+
+
+U r’ U r2 U’ r2 U’ r
+
+
+U r’ U r2 U’ r’ (free slot)
+
+
+U’ R U2 R’ U r U’ r’
+
+
+U2 R U’ M’ R’ U2 R U R’
+	 Capture.JPG 
+
+R’ r2 U r’
+
+
+M’ r U r’
+
+
+	 Capture.JPG 
+
+U2 M2 U2 r U r’
+
+
+U2 M’ U2 R U R’
+
+
+R U2 M’ U’ R’
+
+
+U’ r U r’ U R U R’ 
+
+
+	 M2U2RU'R'.PNG 
+
+M2 U2 R U’ R’
+
+
+M2 U’ R U2 R’
+
+
+
+
+
+
+
+
+	 Capture.JPG 
+
+
+
+r U’ r’
+	
+
+Louis' Multislotting and F-Move Happy Place
+ Capture.JPG 
+
+
+
+F R’ F’ U R
+
+
+
+
+
+
+
+
+
+
+	 Capture.JPG 
+
+
+
+F R2 F’
+	 Capture.JPG 
+
+
+
+
+
+
+
+F’ U’ F R2
+
+
+
+
+
+
+
+
+	 Capture.JPG 
+
+
+
+F’ U’ F R
+
+
+r U’ r’ U’ r
+	 F'U'F'R'.PNG 
+
+F’ U’ F R’
+	 pairswap.PNG 
+
+F’ U R’ U2 R U’ F
+	 FR'F'.PNG 
+
+F R’ F’
+
+
+r U R’ U’ R’
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	 S'U2S.PNG 
+
+(F B’) R2 (F’ B)
+
+
+U2 S R2 S’ R2
+	 fRf'R2.PNG 
+
+f R f’ R2
+	 Capture.JPG 
+
+(F B’) R’ (F’ B)
+
+
+U2 r2 U M’ U’ R2
+
+
+U R2 U’ M’ U R2
+	 R2U2R2U2R2.PNG 
+
+
+
+
+
+
+
+R2 U2 R2 U2 R2
+	F’ U F U2 R’  
+	  
+
+
+
+
+
+F2 U F R’ F
+	  
+
+R’ F R F’ R’ U’ R
+	  
+
+
+
+F R’ F’ R U R’ U2 R
+
+
+R U R’ U (R’ M’) U R

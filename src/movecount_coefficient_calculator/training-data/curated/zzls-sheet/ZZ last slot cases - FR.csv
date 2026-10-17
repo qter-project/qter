@@ -1,0 +1,14 @@
+Edge + corner in U separated,,,,,Edge + corner in U and together,,,,,,Corner in slot and edge in U,,,,,Edge in slot and corner in U,,,,,Both in Slot,,,,
+2,,R U R',,,1,,R U' R',,,,13,,F' R U R' U' R' F R,R' F' R U R U' R' F,,16,,(U) R U' R' U R U' R' U R U' R',(U2) R2 U2 R2 U' R2 U' R2,,19,,R U' R' U' R U R' U2 R U' R',R2 U2 R' U' R U' R' U2 R',R U R' U' R U2 R' U' R U R'
+3,,(U') R U R' U2 R U' R',,,6,,R' U2 R2 U R2 U R,R' D' R U2 R' D R2 U R',,,14,,R U' R' U R U' R',,,17,,(U') R U' R' U2 R U' R',,,20,,R U R' U2 R U' R' U R U R',R U2 R U R' U R U2 R2,R U' R' U R U2 R' U R U' R'
+4,,(U') R U2 R' U2 R U' R' ,,,7,,(U') R U' R' U R U R' ,(U') R2 D R' U R D' R2',,,15,,R U R' U' R U R',,,18,,(U) R U R' U2 R U R',,,21,,,,
+5,,(U') R U R' U R U R' ,(U2) R U' R' U' R U R',,8,,R U2 R' U R U R' U R U' R',R U' R U2 R2 U' R2 U' R2,(U2) R U R' U' R' D' R U R' D R ,(U) R U2 R' U R' D' R U' R' D R,,,,,,,,,,,Do EJLS for these cases,,,,
+10,,(U) R U2 R' U R U' R',,,9,,R U2 R' U' R U R',,,,,,,,,,,,,,,,,,
+11,,(U2) R U R' U R U' R',R U' R' U2 R U R',,12,,(U2) R' U2 R U R' U R2 U R',R U' R' U R' D' R U R' D R,(U2) R2 U2 R' U' R U' R2,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,L F L' U' L' U L F,L U L U L U' L' U' L',,,,,,,,,,,,

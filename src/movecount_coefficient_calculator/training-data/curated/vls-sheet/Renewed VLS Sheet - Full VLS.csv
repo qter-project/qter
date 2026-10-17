@@ -1,0 +1,143 @@
+Full VLS,,,Number of known algs :,31,/ 216,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,WV,,,,,,No Edges,,,,,,UF,,,,,,UB,,,,,,UL,,,,,,UB/UL,,,,,,UF/UL,,,,,,UF/UB,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,# of Oriented Corners,Images,3x3 algorithm,My prog,Your prog,,# of Oriented Corners,Images,3x3 algorithm,My prog,Your prog,,# of Oriented Corners,Images,3x3 algorithm,My prog,Your prog,,# of Oriented Corners,Images,3x3 algorithm,My prog,Your prog,,# of Oriented Corners,Images,3x3 algorithm,My prog,Your prog,,# of Oriented Corners,Images,3x3 algorithm,My prog,Your prog,,# of Oriented Corners,Images,3x3 algorithm,My prog,Your prog,,# of Oriented Corners,Images,3x3 algorithm,My prog,Your prog
+,"3
+1 case / 27",#REF!,"(U) R' D' R U R' D R U' R U' R'
+(U) L' U2 R U' R' U2 L",TRUE,FALSE,,"3
+1 case / 27",#REF!,"(U) l R U' R' U l' U' R' F R2 U R' U' F'
+(U2) y' R U R' U' R' y R U2 R' M' U' M 
+",TRUE,FALSE,,"3
+1 case / 27",#REF!,"R' F R d R' U R U2 R' 
+ F' U' F U R U2 R'",FALSE,FALSE,,"3
+1 case / 27",#REF!,"(U2) M' U' L' U2 R U R' U2 l
+(U2) L R' F' L' F2 R F R' F2 R (same alg, different exec)",FALSE,FALSE,,"3
+1 case / 27",#REF!,(U2) R U2 y R U R' U' F',FALSE,FALSE,,"3
+1 case / 27",#REF!,(U) y' R D r' U' r D' R',FALSE,FALSE,,"3
+1 case / 27",#REF!,"(U2) R U2 R2' U' F' U F R
+(U') y' R D r' U r D' R'",FALSE,FALSE,,"3
+1 case / 27",#REF!,(U) R' F' U' F U R2 U2' R',FALSE,FALSE
+,"2
+6 cases / 27",#REF!,(U) R U' R',TRUE,FALSE,,"2
+6 cases / 27",#REF!,(U2) M' U' R U' r' U2 M' U' M,TRUE,FALSE,,"2
+6 cases / 27",#REF!,M' U R U' r',FALSE,FALSE,,"2
+6 cases / 27",#REF!,(U) F' U F R U' R',FALSE,FALSE,,"2
+6 cases / 27",#REF!,(U) R U' B r' U' M' U L U' L',FALSE,FALSE,,"2
+6 cases / 27",#REF!,"(U) S' R U' R' S
+M U R U' R' U' M'",FALSE,FALSE,,"2
+6 cases / 27",#REF!,(U) y' R' F U R U' R' F2 U' F R,FALSE,FALSE,,"2
+6 cases / 27",#REF!,"(U2) F R' F' R2 U2' R' F R U R' U' F'
+(U') y' R' U' R U R D r' U r D' R'
+(U) R U' M' U R' U' M U R U R'",FALSE,FALSE
+,,#REF!,R' F R U R U' R' F',TRUE,FALSE,,,#REF!,"(U) y' R' U' M' F' U' F R2 r' 
+(U) R B' U' R' U R y R2 U R' U' F' 
+(U) F' U F U' M U R U' R' U' M'",TRUE,FALSE,,,#REF!,F2 L F L' F U' R U R',FALSE,FALSE,,,#REF!,(U) y r' U' R' F' R U r,FALSE,FALSE,,,#REF!,R' U' F R F' U' R' U2 R,FALSE,FALSE,,,#REF!,"r' F R U R U' R' F' U' M'
+(U2) R U' y R U2 R' U' R U2 R' U' F'
+(U) x' U' R U x U' R' U' R' U R",FALSE,FALSE,,,#REF!,(U) R U' R2' U2 x' R2 U' R' U l' U2 R,FALSE,FALSE,,,#REF!,(U2) R U' R' U' R' F R F',FALSE,FALSE
+,,#REF!,(U) R2 D R' U' R D' R2',TRUE,FALSE,,,#REF!,y l' U' l U2 M' U' M,TRUE,FALSE,,,#REF!,"y' r' U' R U M' 
+ R' U' R' F R U R U' F'",FALSE,FALSE,,,#REF!,"(U) y M U' R' F' R U M' 
+(U) y M' U' r' U' r U M",FALSE,FALSE,,,#REF!,R' U' F R F' R' U R,FALSE,FALSE,,,#REF!,"(U2) R U' R' U R' F R F' R U2 R'
+(U2) R U' R' y R' F R U' R' F' R",FALSE,FALSE,,,#REF!,(U2) R U' R2' F' U' F U R2 U2' R',FALSE,FALSE,,,#REF!,"(U2) R U2 x' U' R' F' R U R' U' F U x
+(U2) R L' U L U2 R' L' B' U B L 
+(U) R' D' R U R' D R2 U' R' U' R' F R F'",FALSE,FALSE
+,,#REF!,(U) R U' R' U R' U' R U' R' U2 R,TRUE,FALSE,,,#REF!,(U) y' R' U' F' U' F U' R U l U' R' U x,FALSE,FALSE,,,#REF!,(U2) y' R2' F' r U' r' F2 R2,FALSE,FALSE,,,#REF!,(U2) y' R2' F R F' R,FALSE,FALSE,,,#REF!,"(U) R U' R' U' R' F' r U' r' F2 R 
+(U) R' F R F' d M U' R' U r",FALSE,FALSE,,,#REF!,(U) R U' R' U' R U R' U' R' F R F',FALSE,FALSE,,,#REF!,"(U') R' F R F L F L' F R U R'  
+(U) L' U2 R U R' L U F R U R' F'",FALSE,FALSE,,,#REF!,(U) R' F' R U R U' R' U' F R U' R',FALSE,FALSE
+,,#REF!,(U) R U R' U' R U' R',TRUE,FALSE,,,#REF!,"(U') r U' r' F U R' F R U' F'
+(U2) R U R2' D' r U r' D R2 U R'",FALSE,FALSE,,,#REF!,"(U) R U' R' F R U R' U' F'
+(U) x' R' D R2 U R' D' R U' R'",FALSE,FALSE,,,#REF!,"(U) R U R' U' R U' R2' F' U' F U R 
+(U) y F R2 D R' U' R D' R2' F'
+
+",FALSE,FALSE,,,#REF!,R' F R F' U R U R' U' R' F R F',FALSE,FALSE,,,#REF!,(U) R U R' U' F' L' U' L F,FALSE,FALSE,,,#REF!,"M' U R U R' U' R U' r'
+R' U' F U R2 U' R' F'",FALSE,FALSE,,,#REF!,"M' U R U' r' F R U R' U' F'
+(U) y' R' U' R2 D r' U' r D' R'",FALSE,FALSE
+,,#REF!,"R U' R' U2 R U' R' U2 R U R'
+(U') R' D' R U2 R' D R2 U' R'",TRUE,FALSE,,,#REF!,(U2) R U R2' D' r U' r' D R2 U R',FALSE,FALSE,,,#REF!,"R' U' R U R U' r' U' R' U r
+ x' R' D R2 U' R' D' R U R'
+R' F R2 U R' U' R' F' R U R U' R'",FALSE,FALSE,,,#REF!,(U) R U R2 r U' R U' R' U R r',FALSE,FALSE,,,#REF!,R' U' F U R U' F',FALSE,FALSE,,,#REF!,(U) B' R U' R' U R' U R U' R' U' R B,FALSE,FALSE,,,#REF!,(U) y' R2' D' r U' r' D R2,FALSE,FALSE,,,#REF!,(U) R U' R' U' r' U' R U' R' U2 r,FALSE,FALSE
+,"1
+12 cases / 27",#REF!,(U2) R U2 R',TRUE,FALSE,,"1
+12 cases / 27",#REF!,(U) y' R' U R2 D r' U' r D' R',FALSE,FALSE,,"1
+12 cases / 27",#REF!,R' F R F' R U R' U R U2 R',FALSE,FALSE,,"1
+12 cases / 27",#REF!,(U) F' L' U2 L U F,FALSE,FALSE,,"1
+12 cases / 27",#REF!,(U2) R U' R' U' M U R U' R' U' M',FALSE,FALSE,,"1
+12 cases / 27",#REF!,(U2) r U R' U' M U R U R',FALSE,FALSE,,"1
+12 cases / 27",#REF!,(U') r U r' U2 R U' R2' r U r' R,FALSE,FALSE,,"1
+12 cases / 27",#REF!,(U) R U R' U' R U R' U2 R' F R F',FALSE,FALSE
+,,#REF!,"(U2) R U2 R' U' R U R' U R U2 R'
+R' U2 R U R' U R2 U2 R'",TRUE,FALSE,,,#REF!,(U2) y' R' U R2 D r' U r D' R',FALSE,FALSE,,,#REF!,(U) R U R' U2 R' F R2 U R' U' F',FALSE,FALSE,,,#REF!,"(U2) R U' R' U F' U F U' R U2 R'
+(U) R B U' B' R2' U2 R U R' U R 
+",FALSE,FALSE,,,#REF!,(U) R' F R F' U F R' F' R,FALSE,FALSE,,,#REF!,(U) l U' R U R' U' R U l' U' R',FALSE,FALSE,,,#REF!,"(U2) R U2 R2' F2 r U r' F R
+(U) R U R' r' U' R2 U' R2' U2' r",FALSE,FALSE,,,#REF!,(U2) R U2 R' U2 R U R' U' R' F R F',FALSE,FALSE
+,,#REF!,R' F' R U2 R U2 R' F,TRUE,FALSE,,,#REF!,(U2) x U' r' U2 r U x' R U2 R',FALSE,FALSE,,,#REF!,R' F R F' U2 R U R' U R U2 R',FALSE,FALSE,,,#REF!,(U2) F2 r U2 R' U' r' F R,FALSE,FALSE,,,#REF!,"(U2) R U2 R' U R U R' U' R' F R F'
+(U') y' R' U' R U' r' U r U' r' U' r",FALSE,FALSE,,,#REF!,(U) x' U' R U x U' R' U2 R' U2 R,FALSE,FALSE,,,#REF!,(U) R U R' U' R U' R' F R U R' U' F',FALSE,FALSE,,,#REF!,R' F R2 U R' U' F',FALSE,FALSE
+,,#REF!,(U2) F' R U2 R' U2 R' F R,TRUE,FALSE,,,#REF!,(U) F' U2 F U' R' F R2 U R' U' F',FALSE,FALSE,,,#REF!,"(U) R U' R' U2 R U R' U' R' F R F'
+(U2) y' R' U R U r' U' R U M'
+",FALSE,FALSE,,,#REF!,(U) R U' y R U R' U' R U R' U' F',FALSE,FALSE,,,#REF!,R' U' F U R y' R' U R U2 R',FALSE,FALSE,,,#REF!,(U) R U R' U2 R' U' F U R U' F',FALSE,FALSE,,,#REF!,"(U') y' R U2' R2' U' R2 y R U' R2' F' R 
+(U2) y r' U' R U' R' U2 r2 U' r' F",FALSE,FALSE,,,#REF!,R' F R2 U R' y' U R' U' R U' R',FALSE,FALSE
+,,#REF!,"(U2) R U' R' U' R' F R U R U' R' F'
+(U) R' D' R U R' D R2 U2 R'",TRUE,FALSE,,,#REF!,(U) R2 U' D r' U r D' R' d' r U' r',FALSE,FALSE,,,#REF!,(U) R' U' R' F R2 F' R' U R,FALSE,FALSE,,,#REF!,(U) R B U' B' R',FALSE,FALSE,,,#REF!,(U) F' L' U' L F,FALSE,FALSE,,,#REF!,(U) R U' R2' F' U' F U R,FALSE,FALSE,,,#REF!,(U) y' M' R' F' U' F R2 r',FALSE,FALSE,,,#REF!,"(U) R U' M' U R' U R U2' r' 
+ (U2) R U' R' U' M' U R U' r'",FALSE,FALSE
+,,#REF!,R' F2 R2 U' R' U' R U R' F2,TRUE,FALSE,,,#REF!,(U) R U2 R2' D' r U r' D R2 U R',FALSE,FALSE,,,#REF!,(U) R U' R' U2 F R U R' U' F',FALSE,FALSE,,,#REF!,(U) R U' R' U R' U' F' U F R,FALSE,FALSE,,,#REF!,(U) F' L' U' L F R' U' R U' R' U2 R,FALSE,FALSE,,,#REF!,(U) x' R2 U' R' U x U' R',FALSE,FALSE,,,#REF!,(U2) R U' R' U R U' R' U' R' F R F',FALSE,FALSE,,,#REF!,(U2) F R U R' U' F' U R U R' ,FALSE,FALSE
+,,#REF!,(U2) R U' R' U R U2 R',TRUE,FALSE,,,#REF!,(U) R U R2' F R F' U2 R' F R F',FALSE,FALSE,,,#REF!,(U) y' R' U R U R' U R U' y R U2 R',FALSE,FALSE,,,#REF!,"(U) x U' r' U' r U2 x' R U R' U' F'
+(U) l F' L2 U' L U' L' U2 L U' M' 
+ 
+",FALSE,FALSE,,,#REF!,"(U2) R U2 R2' U' F' U F R
+(U') y' R D r' U r D' R'",FALSE,FALSE,,,#REF!,(U) R U R' U' R B' U' R' U R B R',FALSE,FALSE,,,#REF!,(U) R U R' U2 R' F R F',FALSE,FALSE,,,#REF!,(U2) R U2 R' F R U R' U' F',FALSE,FALSE
+,,#REF!,(U2) R' U' R2 U' R2' U2 R,TRUE,FALSE,,,#REF!,"R' F R S R U R' U' f' 
+ (U2) M U r U2 r' U' r U2 R'",FALSE,FALSE,,,#REF!,(U2) r' U' R2 U' R2' U2 r,FALSE,FALSE,,,#REF!,(U2) r U' R' U R U2 R' U' R r',FALSE,FALSE,,,#REF!,y R U R' F R U' R' F2 U2 F,FALSE,FALSE,,,#REF!,(U) R U R2' U' R U' R' U2 F R F',FALSE,FALSE,,,#REF!,"M' U2 R U' R' U R U2' r' 
+(U2) r' R2 U' R' U r U2' R'",FALSE,FALSE,,,#REF!,(U) R U' R' F U R U' R' F',FALSE,FALSE
+,,#REF!,(U) y' R' U' R U R2' F R F' R,TRUE,FALSE,,,#REF!,(U) y r' U' x R' U' R U R' U' R x' U r,FALSE,FALSE,,,#REF!,R' F R F',FALSE,FALSE,,,#REF!,"(U) y F R U2 R' U' R U2 R' U' F'
+(U) y' R u R' U R' U' R u' R' 
+",FALSE,FALSE,,,#REF!,(U) R B' U' R' U R B R',FALSE,FALSE,,,#REF!,(U) R U' y R U R' U' F',FALSE,FALSE,,,#REF!,(U) R U' R2' U' F U R U' R' F' R,FALSE,FALSE,,,#REF!,(U) R U' R2' U' F' U F R,FALSE,FALSE
+,,#REF!,L' U R U' R' L,TRUE,FALSE,,,#REF!,"(U) y' r' U' r R' U2 R U' r' U' r 
+(U2) y R' F' R L' U2 L U' R' F' R",FALSE,FALSE,,,#REF!,R' F R F' R' U' R U' R' U2 R,FALSE,FALSE,,,#REF!,"(U2) y' R' U R U' R' U R U' y R U2 R' 
+ (U) y' L' U R2 F R F' R U' L
+",FALSE,FALSE,,,#REF!,(U2) R U' R' U R U' B U' B' R',FALSE,FALSE,,,#REF!,"(U2) R r D r' U2 r D' r' R' 
+ (U2) F' r U2 R' U r' F2 R",FALSE,FALSE,,,#REF!,(U2) R U2' R2' F R2 B' R2' F' R2 B R',FALSE,FALSE,,,#REF!,R U' R' F' U' F R U R',FALSE,FALSE
+,,#REF!,(U2) R2 D R' U2 R D' R2',TRUE,FALSE,,,#REF!,"(U) R U' r' U R U R' U' r R2 F R F' 
+(U2) r' R2 U' R' U r U' y R U' R' F'",FALSE,FALSE,,,#REF!,"(U) R U' R' U' R' U' R' F R F' U R
+(U) F' R' U' R F R' U R2 U2 R'",FALSE,FALSE,,,#REF!,(U2) F R' F' r U' R U' R' U R r',FALSE,FALSE,,,#REF!,R' F R F' U F R U R' U' F',FALSE,FALSE,,,#REF!,(U) R U' R' U R U R' U' R' F R F',FALSE,FALSE,,,#REF!,R' F R2 U' R' U2 R U R' F',FALSE,FALSE,,,#REF!,(U2) F R U' R' U R U2 R' U' R' F' R,FALSE,FALSE
+,,#REF!,(U2) R U2 R2' U' R U' R' U2 R,TRUE,FALSE,,,#REF!," L F' U2 M' U R U L' r' 
+ y' R' U2 r U' r' U2 r U M",FALSE,FALSE,,,#REF!,(U) y' R' M' U R U' r' U' R,FALSE,FALSE,,,#REF!,"(U2) R' F R F' R U2 R'
+(U) y R' F R U' R' F' R
+
+",FALSE,FALSE,,,#REF!,(U) R U' x' U L' U L U2 l',FALSE,FALSE,,,#REF!,(U) x' R2 U' R' U l' U R U' R' U R U2' R',FALSE,FALSE,,,#REF!,"(U) R U' R' U r' U2 R U R' U r
+(U2) R U2 R' F R U' R' U' R U R' F' 
+(U) y' R2' D' r U r' D R U2 R",FALSE,FALSE,,,#REF!,(U) R U' R' U R' U' F U R U' R' F' R,FALSE,FALSE
+,"0
+8 cases / 27",#REF!,(U) R U R' U' R U R' U' R U' R',TRUE,FALSE,,"0
+8 cases / 27",#REF!,(U) x' R2 U' R' U x U' R2' U' F' U F R,FALSE,FALSE,,"0
+8 cases / 27",#REF!,"R' F R F' R U2 R' U' R U' R' 
+(U') F' U F R U' R' U R U' R'
+
+",FALSE,FALSE,,"0
+8 cases / 27",#REF!,"(U2) L F' R U' R' U F' R' F R L' 
+(U) F' U R U' L' U R' U L U F
+
+",FALSE,FALSE,,"0
+8 cases / 27",#REF!,(U2) R' U' R U' R' U2 F R F',FALSE,FALSE,,"0
+8 cases / 27",#REF!,(U2) R U' B U' B' R',FALSE,FALSE,,"0
+8 cases / 27",#REF!,(U2) R U' R' U R U2' R' F R U R' U' F',FALSE,FALSE,,"0
+8 cases / 27",#REF!,(U2) L' R U R' U' L y' R2' F R F' R,FALSE,FALSE
+,,#REF!,(U) R U' R' U' R U R' U R U2 R',TRUE,FALSE,,,#REF!,(U2) R' F R F' U' R' U' R' F R U R U' F',FALSE,FALSE,,,#REF!,(U) y' R' U2 R U R2' F R F' R,FALSE,FALSE,,,#REF!,(U) y r U2 R' U' R U' r2' F r,FALSE,FALSE,,,#REF!,(U2) R U2 R2' F' U' F U R,FALSE,FALSE,,,#REF!,"(U2) R' U' F' U F R2 U' R' 
+ (U) y F R U2 R' U' R U R' F'",FALSE,FALSE,,,#REF!,(U) y' R' U2 R2 D r' U' r D' R',FALSE,FALSE,,,#REF!,(U2) R U' R' U' y' r' U' R U M' ,FALSE,FALSE
+,,#REF!,(U) R U' R2' U2 R U R' U R,TRUE,FALSE,,,#REF!,(U2) x U' r' U2 r U x' U' R U' R',FALSE,FALSE,,,#REF!,"R' F R F2 r U R' U' r' F R
+(U2) y' R' U R U' R2' F' r U' r' F2 R2
+
+",FALSE,FALSE,,,#REF!,(U') F' U' F U' R U' R',FALSE,FALSE,,,#REF!,(U2) R U' y R U' R' U R U' R' F',FALSE,FALSE,,,#REF!,(U2) R U2' R' U R' U' F' U F R,FALSE,FALSE,,,#REF!,(U) F' R U R' U' R' F R U' R' F R F',FALSE,FALSE,,,#REF!,(U2) R U' R2' U' R' F R2 F' R' U R,FALSE,FALSE
+,,#REF!,(U2) R U2 R2' U2 R U R' U R,TRUE,FALSE,,,#REF!,(U2) R' F R F' U2 R' F R F',FALSE,FALSE,,,#REF!,"(U) F' L' U2 L U L' U' L U F
+M' U R U' r' L' U2 L U L' U L
+ 
+ ",FALSE,FALSE,,,#REF!,(U) R U' R' r' U' R U' R' U2 r,FALSE,FALSE,,,#REF!,"(U) R U' R' r' U2 R U R' U r 
+ (U) F' U L' U2 L U F",FALSE,FALSE,,,#REF!,(U2) R' U' F' U F R U R U2' R',FALSE,FALSE,,,#REF!,(U') F' U F R U' R2' F R F',FALSE,FALSE,,,#REF!,R U R' F' U' F U' R U2 R',FALSE,FALSE
+,,#REF!,(U) R2 D R' U R D' R' U2 R',TRUE,FALSE,,,#REF!,(U) y' R' U' R' D' r U' r' D R2,FALSE,FALSE,,,#REF!,(U) F' U' F R U R' U' R U' R',FALSE,FALSE,,,#REF!,(U) F' U F U R U2 R',FALSE,FALSE,,,#REF!,(U2) R U' l U' R' U x U' R',FALSE,FALSE,,,#REF!,(U2) R U' R' d R2 F R F' R,FALSE,FALSE,,,#REF!,"(U2) R U2 R' F U R U' R' F'
+R U' R' U' r U R' U R U2' r'",FALSE,FALSE,,,#REF!,(U2) R U2 R2' F R U R' U' F' U R,FALSE,FALSE
+,,#REF!,R2 U R' U R' U' R U R U2' R2',TRUE,FALSE,,,#REF!,(U) y F r' R2 U' R' U r U' R' F',FALSE,FALSE,,,#REF!,(U) R' U' R' F R2 F' U' R' U2 R,FALSE,FALSE,,,#REF!,(U2) R U' R' F' L' U' L F,FALSE,FALSE,,,#REF!,(U) y' R' U R U R2' F R F' R,FALSE,FALSE,,,#REF!,(U) R' D' R U R' D R2 U' B U' B' R',FALSE,FALSE,,,#REF!,(U) y' R' F' U' F R2 U R' U' R' F R F',FALSE,FALSE,,,#REF!,(U) R U' R2' F2 r U r' F R,FALSE,FALSE
+,,#REF!,(U2) R U' R' U R U' R' U R U2 R',TRUE,FALSE,,,#REF!,"(U) F' L' U2 L U' F l R U' R' U l' 
+(U') F' L' U2 L d F' r U' r' F2 R",FALSE,FALSE,,,#REF!,R' F R F' U R' U' R U' R' U2 R,FALSE,FALSE,,,#REF!,(U) R' F R y' R2' U' R U R' U R,FALSE,FALSE,,,#REF!,(U) R U R2' F R F' R U2 R',FALSE,FALSE,,,#REF!,(U) R y R U' R' U R U' R' F',FALSE,FALSE,,,#REF!,(U) R' U' R2 U' R2' U2' R U2 R' F R F',FALSE,FALSE,,,#REF!,(U) R U' R' F R U' R' U' R U R' F',FALSE,FALSE
+,,#REF!,(U) R U' R2' U' R U' R' U2 R,TRUE,FALSE,,,#REF!,(U2) R' F R F' r' U' R2 U' R2' U2 r,FALSE,FALSE,,,#REF!,M' U R U' r' R' U2 R U R' U R,FALSE,FALSE,,,#REF!,(U2) R U2 R' r' U2 R U R' U r,FALSE,FALSE,,,#REF!,(U2) R U' y R U2 R' U' R U R' F',FALSE,FALSE,,,#REF!,(U2) R U2 x' U L' U L U' L' U L U2 l',FALSE,FALSE,,,#REF!,"R2 D R' U' R D' R F R F' 
+R' F R2 U' R' U R U2 R' U' F'",FALSE,FALSE,,,#REF!,(U) R U' R' F x' R2 U' R' U R' D' x,FALSE,FALSE
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,Number of known algs :,27,/ 27,,,,Number of known algs :,4,/ 27,,,,Number of known algs :,0,/ 27,,,,Number of known algs :,0,/ 27,,,,Number of known algs :,0,/ 27,,,,Number of known algs :,0,/ 27,,,,Number of known algs :,0,/ 27,,,,Number of known algs :,0,/ 27

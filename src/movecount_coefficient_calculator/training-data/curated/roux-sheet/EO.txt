@@ -1,0 +1,27 @@
+﻿R U’ r’ U’ M’ U r U r’
+	  
+
+M’ U2 M’ U2 M U’ M’
+	  
+
+M’ U M’ U’ M U’ M’
+	  
+
+M’ U’ M’
+y2 mirror: M U’ M’
+	  
+
+M’ U2 M’ U2 M’ U’ M’
+	  
+
+M’ U M U’ M’ U’ M’
+	  
+
+M’ U M’ U2 M’ U’ M’
+	  
+
+M’ U’ M’ U’ M U’ M’
+y2 mirror: M’ U’ M U’ M’ U’ M’
+	 THING.jpg 
+
+M2 U’ M’ U’ M’

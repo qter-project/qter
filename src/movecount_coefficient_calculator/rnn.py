@@ -47,7 +47,8 @@ class RNNModel(nn.Module):
                     move[2][0],
                     # sine is odd
                     move[2][1] * flip,
-                ]
+                ],
+                dtype=torch.float32,
             )
 
             out = self.recurrent_stack.forward(torch.cat((state, input)))

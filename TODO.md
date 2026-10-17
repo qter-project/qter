@@ -133,8 +133,9 @@
 
 ## Interpreter/CLI
 
-- ⭐Implement tapes
-- Debugging tool
+- Implement tapes
+- Multithreading
+- 😎Debugging tool
 - 😎Implementing the fancy CRT/loop-repetition-calculating thingy
 
 ## Q

@@ -149,7 +149,6 @@ fn compile_qat(file: &Path) -> color_eyre::Result<(Program, File)> {
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {
     crashlog::setup!(cargo_metadata!(), false);
-    panic!();
 
     let args = Commands::parse();
 
