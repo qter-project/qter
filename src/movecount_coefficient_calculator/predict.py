@@ -21,10 +21,17 @@ def main():
     for line in sys.stdin:
         alg = process_alg(line)
         with torch.no_grad():
-            total_energy = sum(model(alg))
+            move_energies = model(alg)
 
-        energy = total_energy.item() if isinstance(total_energy, torch.Tensor) else total_energy
-        print(energy, flush=True)
+        energies = [energy.item() if isinstance(energy, torch.Tensor) else energy for energy in move_energies]
+        total_energy = sum(energies)
+        labels = line.split()
+        if len(labels) != len(energies):
+            labels = [f"move {index + 1}" for index in range(len(energies))]
+
+        for label, energy in zip(labels, energies):
+            print(f"{label:>12}  {energy:>12.6f}")
+        print(f"{'Total':>12}  {total_energy:>12.6f}", flush=True)
 
 
 if __name__ == "__main__":
