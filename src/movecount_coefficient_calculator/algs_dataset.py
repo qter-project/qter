@@ -1,7 +1,27 @@
-from torch.utils.data import Dataset
-from sklearn.model_selection import train_test_split
-from scipy.spatial.transform import Rotation
 import math
+from dataclasses import dataclass
+from enum import Enum
+
+from scipy.spatial.transform import Rotation
+from sklearn.model_selection import train_test_split
+from torch.utils.data import Dataset
+
+
+class TurnType(Enum):
+    FACE = 0
+    SLICE = 1
+    WIDE = 2
+    FULL_CUBE = 3
+
+
+@dataclass
+class MoveOption:
+    # minecraft coordinates
+    direction: tuple[int, int, int]
+    turn_type: TurnType
+    # (cos, sin)
+    turn: tuple[int, int]
+
 
 # turn type indicators
 face = 0
@@ -114,14 +134,10 @@ def process_alg(alg: str):
             previous_axis, _, previous_rotation = moves.pop()
 
             # The stored pair is (cos(angle), sin(angle)).
-            previous_angle = math.atan2(
-                previous_rotation[1], previous_rotation[0]
-            )
+            previous_angle = math.atan2(previous_rotation[1], previous_rotation[0])
             angle = math.atan2(rotation[1], rotation[0])
             previous = Rotation.from_rotvec(
-                tuple(
-                    component * previous_angle for component in previous_axis
-                )
+                tuple(component * previous_angle for component in previous_axis)
             )
             current = Rotation.from_rotvec(
                 tuple(component * angle for component in axis)
