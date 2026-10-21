@@ -3,7 +3,7 @@ use std::{
     collections::BinaryHeap,
     fmt::{self, Debug, Display},
     num::{NonZeroU16, NonZeroU32, NonZeroUsize},
-    ptr::NonNull,
+    ptr::{self, NonNull},
     sync::{
         Arc,
         atomic::{self, AtomicBool, AtomicPtr},
@@ -601,7 +601,15 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                             // be reading them
                             Ok(_) => (),
                             Err(curr_raw_prunings) => {
-                                unsafe { drop(Box::from_raw(next_raw_prunings.as_ptr())) }
+                                // SAFETY: `next_raw_prunings` was never published, and
+                                // `try_next_pareto_efficient_prunings` allocates it as a
+                                // `Box<[u32]>` of `raw_pruning_len` length
+                                unsafe {
+                                    drop(Box::from_raw(ptr::slice_from_raw_parts_mut(
+                                        next_raw_prunings.as_ptr(),
+                                        raw_pruning_len.get(),
+                                    )));
+                                }
                                 maybe_raw_prunings = curr_raw_prunings;
                             }
                         }
