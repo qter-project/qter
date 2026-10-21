@@ -597,13 +597,9 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                             atomic::Ordering::Release,
                             atomic::Ordering::Acquire,
                         ) {
-                            Ok(maybe_curr_raw_prunings) => {
-                                if let Some(curr_raw_prunings) =
-                                    NonNull::new(maybe_curr_raw_prunings)
-                                {
-                                    unsafe { drop(Box::from_raw(curr_raw_prunings.as_ptr())) }
-                                }
-                            }
+                            // The replaced prunings are leaked because DFS threads may still
+                            // be reading them
+                            Ok(_) => (),
                             Err(curr_raw_prunings) => {
                                 unsafe { drop(Box::from_raw(next_raw_prunings.as_ptr())) }
                                 maybe_raw_prunings = curr_raw_prunings;
