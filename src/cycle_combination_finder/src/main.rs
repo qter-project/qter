@@ -9,8 +9,8 @@ use std::{
 
 use cycle_combination_finder::{
     finder::{
-        CycleCombinationFinderBuilder, CycleCombinationFinderValidationError, NumCores, Optimality,
-        RequiredRegisterOrder, SolutionExpansion,
+        CycleCombinationFinderBuilder, NumCores, Optimality, PuzzleAnalysis, RequiredRegisterOrder,
+        SolutionExpansion,
     },
     puzzle::{
         PuzzleDef,
@@ -31,21 +31,25 @@ fn main() {
         CycleCombinationFinderBuilder::default().with_time_limit(Some(Duration::from_hours(10)));
     if p == "minx3" {
         let minx3 = minxN::MINX3.clone();
-        ccf.with_puzzle_def(&minx3)
+        let analysis =
+            PuzzleAnalysis::new(&minx3, NumCores::AllCores).unwrap_or_else(|e| panic!("{e}"));
+        ccf.with_puzzle_analysis(&analysis)
             .with_register_count(3)
             .with_expected_solutions_count_assertion(Some(347))
-            .validate()
+            .build()
             .unwrap_or_else(|e| panic!("{e}"))
             .find()
             .unwrap_or_else(|e| panic!("{e}"));
     } else if p == "minx4 3" {
         let minx4 = minxN::MINX4.clone();
+        let analysis =
+            PuzzleAnalysis::new(&minx4, NumCores::AllCores).unwrap_or_else(|e| panic!("{e}"));
         let ret = CycleCombinationFinderBuilder::default()
-            .with_puzzle_def(&minx4)
+            .with_puzzle_analysis(&analysis)
             .with_register_count(3)
             .with_mss_batch_size(Some(1000))
             .with_expected_solutions_count_assertion(Some(296))
-            .validate()
+            .build()
             .unwrap_or_else(|e| panic!("{e}"))
             .find()
             .unwrap_or_else(|e| panic!("{e}"));
@@ -60,12 +64,14 @@ fn main() {
         }
     } else if p == "minx4 4" {
         let minx4 = minxN::MINX4.clone();
+        let analysis =
+            PuzzleAnalysis::new(&minx4, NumCores::AllCores).unwrap_or_else(|e| panic!("{e}"));
         let ret = CycleCombinationFinderBuilder::default()
-            .with_puzzle_def(&minx4)
+            .with_puzzle_analysis(&analysis)
             .with_register_count(4)
             .with_optimality(Optimality::MaxOrderRatio(10.0))
             .with_mss_batch_size(Some(1))
-            .validate()
+            .build()
             .unwrap_or_else(|e| panic!("{e}"))
             .find()
             .unwrap_or_else(|e| panic!("{e}"));
@@ -74,15 +80,17 @@ fn main() {
         }
     } else if p == "minx5" {
         let minx5 = minxN::MINX5.clone();
+        let analysis =
+            PuzzleAnalysis::new(&minx5, NumCores::AllCores).unwrap_or_else(|e| panic!("{e}"));
         let ret = CycleCombinationFinderBuilder::default()
-            .with_puzzle_def(&minx5)
+            .with_puzzle_analysis(&analysis)
             .with_register_count(3)
             .with_max_fitting_tries(Some(2500))
             .with_mss_batch_size(Some(10000))
             .with_time_limit(Some(Duration::from_mins(10)))
             .with_solution_expansion(SolutionExpansion::Limit(100))
             .with_optimality(Optimality::MaxOrderRatio(1.3))
-            .validate()
+            .build()
             .unwrap_or_else(|e| panic!("{e}"))
             .find()
             .unwrap_or_else(|e| panic!("{e}"));
@@ -97,10 +105,12 @@ fn main() {
         }
     } else if p == "cube3" {
         let cube3 = cubeN::CUBE3.clone();
+        let analysis =
+            PuzzleAnalysis::new(&cube3, NumCores::AllCores).unwrap_or_else(|e| panic!("{e}"));
         let ret = ccf
-            .with_puzzle_def(&cube3)
+            .with_puzzle_analysis(&analysis)
             .with_register_count(3)
-            .validate()
+            .build()
             .unwrap_or_else(|e| panic!("{e}"))
             .find()
             .unwrap_or_else(|e| panic!("{e}"));

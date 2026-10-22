@@ -1,7 +1,7 @@
 #![warn(clippy::pedantic)]
 
 use cycle_combination_finder::{
-    finder::{CycleCombinationFinderBuilder, Optimality},
+    finder::{CycleCombinationFinderBuilder, NumCores, Optimality, PuzzleAnalysis},
     puzzle::cubeN::CUBE3,
 };
 
@@ -12,10 +12,11 @@ mod common;
 #[test_log::test]
 fn optimal_2() {
     let cube3 = CUBE3.clone();
+    let analysis = PuzzleAnalysis::new(&cube3, NumCores::AllCores).unwrap();
     let cycle_combinations = CycleCombinationFinderBuilder::default()
-        .with_puzzle_def(&cube3)
+        .with_puzzle_analysis(&analysis)
         .with_register_count(2)
-        .validate()
+        .build()
         .unwrap()
         .find()
         .unwrap();
@@ -37,10 +38,11 @@ fn optimal_2() {
 #[test_log::test]
 fn optimal_3() {
     let cube3 = CUBE3.clone();
+    let analysis = PuzzleAnalysis::new(&cube3, NumCores::AllCores).unwrap();
     let cycle_combinations = CycleCombinationFinderBuilder::default()
-        .with_puzzle_def(&cube3)
+        .with_puzzle_analysis(&analysis)
         .with_register_count(3)
-        .validate()
+        .build()
         .unwrap()
         .find()
         .unwrap();
@@ -63,10 +65,11 @@ fn optimal_3() {
 #[test_log::test]
 fn optimal_4() {
     let cube3 = CUBE3.clone();
+    let analysis = PuzzleAnalysis::new(&cube3, NumCores::AllCores).unwrap();
     let cycle_combinations = CycleCombinationFinderBuilder::default()
-        .with_puzzle_def(&cube3)
+        .with_puzzle_analysis(&analysis)
         .with_register_count(4)
-        .validate()
+        .build()
         .unwrap()
         .find()
         .unwrap();
@@ -85,10 +88,11 @@ fn optimal_4() {
 #[test_log::test]
 fn optimal_5() {
     let cube3 = CUBE3.clone();
+    let analysis = PuzzleAnalysis::new(&cube3, NumCores::AllCores).unwrap();
     let cycle_combinations = CycleCombinationFinderBuilder::default()
-        .with_puzzle_def(&cube3)
+        .with_puzzle_analysis(&analysis)
         .with_register_count(5)
-        .validate()
+        .build()
         .unwrap()
         .find()
         .unwrap();
@@ -107,11 +111,12 @@ fn optimal_5() {
 #[test_log::test]
 fn equivalent_2() {
     let cube3 = CUBE3.clone();
+    let analysis = PuzzleAnalysis::new(&cube3, NumCores::AllCores).unwrap();
     let cycle_combinations = CycleCombinationFinderBuilder::default()
-        .with_puzzle_def(&cube3)
+        .with_puzzle_analysis(&analysis)
         .with_register_count(2)
         .with_optimality(Optimality::EQUIVALENT)
-        .validate()
+        .build()
         .unwrap()
         .find()
         .unwrap();
@@ -121,11 +126,12 @@ fn equivalent_2() {
 #[test_log::test]
 fn equivalent_3() {
     let cube3 = CUBE3.clone();
+    let analysis = PuzzleAnalysis::new(&cube3, NumCores::AllCores).unwrap();
     let cycle_combinations = CycleCombinationFinderBuilder::default()
-        .with_puzzle_def(&cube3)
+        .with_puzzle_analysis(&analysis)
         .with_register_count(3)
         .with_optimality(Optimality::EQUIVALENT)
-        .validate()
+        .build()
         .unwrap()
         .find()
         .unwrap();

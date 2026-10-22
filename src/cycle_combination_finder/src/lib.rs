@@ -6,7 +6,6 @@
     clippy::similar_names
 )]
 #![feature(
-    once_cell_try,
     atomic_ptr_null,
     ptr_as_uninit,
     nonpoison_mutex,

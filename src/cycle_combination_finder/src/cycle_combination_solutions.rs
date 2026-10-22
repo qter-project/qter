@@ -1172,7 +1172,8 @@ mod tests {
         cycle_combination_solutions::CycleCombinationSolutionsCalculator,
         cycle_combinations_tree::DisjointRegisters,
         finder::{
-            CycleCombination, CycleCombinationFinderBuilder, PossibleOrder, SolutionExpansion,
+            CycleCombination, CycleCombinationFinderBuilder, NumCores, PossibleOrder,
+            PuzzleAnalysis, SolutionExpansion,
         },
         nonemptyvec::NonemptySlice,
         orderexps::OrderExps,
@@ -1254,17 +1255,20 @@ mod tests {
         ))
         .unwrap();
 
-        let mut ccf = CycleCombinationFinderBuilder::default()
-            .with_puzzle_def(&crazy)
+        let analysis = PuzzleAnalysis {
+            puzzle_def: &crazy,
+            possible_orders_except_one: Arc::from(vec![PossibleOrder {
+                order: OrderExps::try_from(NonZeroU16::new(3).unwrap()).unwrap(),
+                min_piece_count: 1.try_into().unwrap(),
+                min_piece_count_naive: 1,
+            }]),
+        };
+        let ccf = CycleCombinationFinderBuilder::default()
+            .with_puzzle_analysis(&analysis)
             .with_register_count(1)
             .with_solution_expansion(SolutionExpansion::All)
-            .validate()
+            .build()
             .unwrap();
-        ccf.possible_orders_except_one = Arc::from(vec![PossibleOrder {
-            order: OrderExps::try_from(NonZeroU16::new(3).unwrap()).unwrap(),
-            min_piece_count: 1.try_into().unwrap(),
-            min_piece_count_naive: 1,
-        }]);
         let mut solutions_calculator = ccf.solutions_calculator();
         solutions_calculator.existence(DisjointRegisters::from(
             NonemptySlice::try_from(&[0][..]).unwrap(),
@@ -1274,11 +1278,12 @@ mod tests {
     #[test_log::test]
     fn minx3_optimal_3() {
         let minx3 = MINX3.clone();
+        let analysis = PuzzleAnalysis::new(&minx3, NumCores::AllCores).unwrap();
         let ccf = CycleCombinationFinderBuilder::default()
-            .with_puzzle_def(&minx3)
+            .with_puzzle_analysis(&analysis)
             .with_register_count(3)
             .with_solution_expansion(SolutionExpansion::FIRST)
-            .validate()
+            .build()
             .unwrap();
         let solutions_calculator = ccf.solutions_calculator();
         // 2520 630 420
@@ -1310,11 +1315,12 @@ mod tests {
     #[test_log::test]
     fn minx3_equivalent_3() {
         let minx3 = MINX3.clone();
+        let analysis = PuzzleAnalysis::new(&minx3, NumCores::AllCores).unwrap();
         let ccf = CycleCombinationFinderBuilder::default()
-            .with_puzzle_def(&minx3)
+            .with_puzzle_analysis(&analysis)
             .with_register_count(3)
             .with_solution_expansion(SolutionExpansion::All)
-            .validate()
+            .build()
             .unwrap();
         let solutions_calculator = ccf.solutions_calculator();
         // 840: 2 2 2 3 5 7
@@ -1364,7 +1370,12 @@ mod tests {
             EvenParityConstraints(vec![vec![]]),
         ))
         .unwrap();
-        let ccf = ccf_base.clone().with_puzzle_def(&crazy).validate().unwrap();
+        let analysis = PuzzleAnalysis::new(&crazy, NumCores::AllCores).unwrap();
+        let ccf = ccf_base
+            .clone()
+            .with_puzzle_analysis(&analysis)
+            .build()
+            .unwrap();
         let solutions_calculator = ccf.solutions_calculator();
         let register_orders = vec![6];
 
@@ -1388,7 +1399,8 @@ mod tests {
             EvenParityConstraints(vec![vec![]]),
         ))
         .unwrap();
-        let ccf = ccf_base.with_puzzle_def(&crazy).validate().unwrap();
+        let analysis = PuzzleAnalysis::new(&crazy, NumCores::AllCores).unwrap();
+        let ccf = ccf_base.with_puzzle_analysis(&analysis).build().unwrap();
         let solutions_calculator = ccf.solutions_calculator();
         let register_orders = vec![3];
 
@@ -1404,11 +1416,12 @@ mod tests {
     #[test_log::test]
     fn main1() {
         let minx5 = MINX5.clone();
+        let analysis = PuzzleAnalysis::new(&minx5, NumCores::AllCores).unwrap();
         let ccf = CycleCombinationFinderBuilder::default()
             .with_register_count(4)
             .with_solution_expansion(SolutionExpansion::FIRST)
-            .with_puzzle_def(&minx5)
-            .validate()
+            .with_puzzle_analysis(&analysis)
+            .build()
             .unwrap();
         let mut solutions_calculator = ccf.solutions_calculator();
         let register_orders = vec![959_310, 765_765, 765_765, 622_440];
@@ -1457,12 +1470,13 @@ mod tests {
     #[test_log::test]
     fn main2() {
         let minx5 = MINX3.clone();
+        let analysis = PuzzleAnalysis::new(&minx5, NumCores::AllCores).unwrap();
         let ccf = CycleCombinationFinderBuilder::default()
             .with_register_count(4)
             .with_solution_expansion(SolutionExpansion::All)
             .with_fast_assumptions(true)
-            .with_puzzle_def(&minx5)
-            .validate()
+            .with_puzzle_analysis(&analysis)
+            .build()
             .unwrap();
         let mut solutions_calculator = ccf.solutions_calculator();
         let register_orders = vec![15120, 180, 30, 12];

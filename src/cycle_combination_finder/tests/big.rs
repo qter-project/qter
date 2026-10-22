@@ -1,6 +1,9 @@
 #![warn(clippy::pedantic)]
 
-use cycle_combination_finder::{finder::CycleCombinationFinderBuilder, puzzle::misc::BIG1};
+use cycle_combination_finder::{
+    finder::{CycleCombinationFinderBuilder, NumCores, PuzzleAnalysis},
+    puzzle::misc::BIG1,
+};
 
 use crate::common::cycles;
 
@@ -9,10 +12,11 @@ mod common;
 #[test_log::test]
 fn optimal_2() {
     let big = BIG1.clone();
+    let analysis = PuzzleAnalysis::new(&big, NumCores::AllCores).unwrap();
     let cycle_combinations = CycleCombinationFinderBuilder::default()
-        .with_puzzle_def(&big)
+        .with_puzzle_analysis(&analysis)
         .with_register_count(2)
-        .validate()
+        .build()
         .unwrap()
         .find()
         .unwrap();
