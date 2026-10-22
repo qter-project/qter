@@ -47,7 +47,7 @@ pub struct CycleCombinationSolution {
 
 #[non_exhaustive]
 #[derive(Debug)]
-pub struct CycleCombinationSolutionsCalculator<'a, const N: usize> {
+pub struct CycleCombinationSolutionsCalculator<'a, 'b, const N: usize> {
     expansion: bool,
     register_index: u16,
 
@@ -65,7 +65,7 @@ pub struct CycleCombinationSolutionsCalculator<'a, const N: usize> {
     register_orbit_constraints: Box<[RegisterOrbitConstraint]>,
     /// Remaining piece count for every orbit
     orbit_remaining_pieces: Box<[OrbitRemainingPieces]>,
-    ccf: &'a CycleCombinationFinder<'a, N>,
+    ccf: &'b CycleCombinationFinder<'a, N>,
     immutable: CycleCombinationSolutionsCalculatorImmutable<N>,
 }
 
@@ -221,7 +221,7 @@ impl<const N: usize> OrbitTraversalState<'_, N> {
 
 impl<'a, const N: usize> CycleCombinationFinder<'a, N> {
     #[must_use]
-    pub(crate) fn solutions_calculator(&'a self) -> CycleCombinationSolutionsCalculator<'a, N> {
+    pub(crate) fn solutions_calculator(&self) -> CycleCombinationSolutionsCalculator<'a, '_, N> {
         let register_assignments = vec![
             RegisterCycleAssignments {
                 all_exponents_mask: 0,
@@ -292,7 +292,7 @@ impl<'a, const N: usize> CycleCombinationFinder<'a, N> {
     }
 }
 
-impl<const N: usize> CycleCombinationSolutionsCalculator<'_, N> {
+impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
     // TODO: inline this more for previous calls
     fn recursive_backtrack(&mut self, registers: DisjointRegisters) -> bool {
         if !self.expansion
