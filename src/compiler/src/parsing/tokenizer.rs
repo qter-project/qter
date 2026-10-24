@@ -28,6 +28,8 @@ pub enum Symbol {
     Colon,
     /// `%`
     Modulus,
+    /// `-`
+    Negative,
     /// `.`
     Dot,
 }
@@ -40,12 +42,13 @@ impl Symbol {
             Symbol::DefineArrow => "=>",
             Symbol::Colon => ":",
             Symbol::Modulus => "%",
+            Symbol::Negative => "-",
             Symbol::Dot => ".",
         }
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SpecialSym {
     Symbol(Symbol),
     Open(Encloser),
@@ -153,6 +156,7 @@ impl Tokenizer {
             (',', _) => (S::Symbol(Comma), 1),
             (':', _) => (S::Symbol(Colon), 1),
             ('%', _) => (S::Symbol(Modulus), 1),
+            ('-', _) => (S::Symbol(Negative), 1),
             ('.', _) => (S::Symbol(Dot), 1),
             ('←', _) => (S::Symbol(AssignArrow), 1),
             ('<', Some('-')) => (S::Symbol(AssignArrow), 2),
@@ -207,7 +211,7 @@ impl Iterator for Tokenizer {
         if self.done() {
             return None;
         }
-        
+
         let before = self.spot;
         if self.skip_whitespace() {
             return Some(
@@ -328,7 +332,7 @@ impl Iterator for Tokenizer {
                     TokenNLFlat::Whitespace
                 }
             };
-            
+
             return Some(self.mk_span(before, self.spot).with(found));
         }
 
@@ -337,7 +341,9 @@ impl Iterator for Tokenizer {
         let ident_start = self.spot;
 
         while let Some(c) = self.peek(0)
-            && self.special_sym().is_none()
+            && (self
+                .special_sym()
+                .is_none_or(|(s, _)| s == SpecialSym::Symbol(Symbol::Negative)))
             && ![' ', '\t', '\r'].contains(&c)
         {
             ident.push(c);

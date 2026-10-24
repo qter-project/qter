@@ -9,14 +9,10 @@
 
         return ();
     }
-
-    fn subtract_order_relative(r1, n) {
-        return [ "add", r1, (-n) % r1.order ];
-    }
 .end-rhai
 
 .macro sub {
-    ($R:reg $N:int) => rhai subtract_order_relative($R, $N)
+    ($R:reg $N:int) => add -$R $N
 }
 
 .macro inc {

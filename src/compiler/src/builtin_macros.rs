@@ -10,44 +10,34 @@ use crate::{
 use std::collections::HashMap;
 
 fn expect_reg(
-    reg_value: &WithSpan<Value>,
+    reg_value: WithSpan<Value>,
     block_id: BlockID,
     syntax: &ExpansionInfo,
     r: &Reporter,
 ) -> Option<RegisterReference> {
-    let span = reg_value.span();
+    let span = reg_value.span().clone();
 
-    match syntax.block_info.resolve_ref(block_id, reg_value) {
-        Some(value) => match value.as_reg(syntax) {
-            MaybeReg::Reg(reg, _) => Some(reg.clone()),
-            MaybeReg::RegNotFound(reg_name) => {
-                r.push(
-                    Report::build(ReportKind::Error, span.clone())
-                        .with_label(
-                            Label::new(span.clone())
-                                .with_message(format!("The register {reg_name} does not exist")),
-                        )
-                        .finish(),
-                );
-                None
-            }
-            MaybeReg::NotAReg(actually) => {
-                r.push(
-                    Report::build(ReportKind::Error, span.clone())
-                        .with_label(
-                            Label::new(span.clone())
-                                .with_message(format!("Expected a register, found {actually}")),
-                        )
-                        .finish(),
-                );
-                None
-            }
-        },
-        None => {
+    let value = syntax.block_info.resolve(block_id, reg_value)?;
+
+    match value.as_reg(syntax) {
+        MaybeReg::Reg(reg, _) => Some(reg.clone()),
+        MaybeReg::RegNotFound(reg_name) => {
             r.push(
                 Report::build(ReportKind::Error, span.clone())
                     .with_label(
-                        Label::new(span.clone()).with_message("Constant not found in this scope"),
+                        Label::new(span.clone())
+                            .with_message(format!("The register {reg_name} does not exist")),
+                    )
+                    .finish(),
+            );
+            None
+        }
+        MaybeReg::NotAReg(actually) => {
+            r.push(
+                Report::build(ReportKind::Error, span.clone())
+                    .with_label(
+                        Label::new(span.clone())
+                            .with_message(format!("Expected a register, found {actually}")),
                     )
                     .finish(),
             );
@@ -57,32 +47,25 @@ fn expect_reg(
 }
 
 fn expect_label(
-    label_value: &WithSpan<Value>,
+    label_value: WithSpan<Value>,
     block_id: BlockID,
     syntax: &ExpansionInfo,
     r: &Reporter,
 ) -> Option<WithSpan<LabelReference>> {
-    match syntax.block_info.resolve_ref(block_id, label_value) {
-        Some(ResolvedValue::Ident(ident)) => Some(WithSpan::new(
+    let span = label_value.span().clone();
+    match syntax.block_info.resolve(block_id, label_value)?.into_inner() {
+        ResolvedValue::Ident(name) => Some(WithSpan::new(
             LabelReference {
-                name: ArcIntern::clone(ident),
+                name: name.into_inner(),
                 block_id,
                 branch_key: None,
             },
-            label_value.span().to_owned(),
+            span,
         )),
-        Some(_) => {
+        _ => {
             r.push(
-                Report::build(ReportKind::Error, label_value.span().clone())
+                Report::build(ReportKind::Error, span)
                     .with_message("Expected a label")
-                    .finish(),
-            );
-            None
-        }
-        None => {
-            r.push(
-                Report::build(ReportKind::Error, label_value.span().clone())
-                    .with_message("Constant not found in this scope")
                     .finish(),
             );
             None
@@ -110,7 +93,7 @@ fn print_like(
 
     let maybe_reg = if args.len() == 2 {
         Some(expect_reg(
-            args.pop().as_ref().unwrap(),
+            args.pop().unwrap(),
             block_id,
             syntax,
             r,
@@ -121,20 +104,12 @@ fn print_like(
 
     let message = args.pop().unwrap();
     let span = message.span().to_owned();
-    let message = match syntax.block_info.resolve(block_id, message.into_inner()) {
-        Some(ResolvedValue::Ident(ident)) => WithSpan::new((**ident).to_owned(), span),
-        Some(_) => {
+    let message = match syntax.block_info.resolve(block_id, message)?.into_inner() {
+        ResolvedValue::Ident(ident) => WithSpan::new((**ident).to_owned(), span),
+        _ => {
             r.push(
                 Report::build(ReportKind::Error, span.clone())
                     .with_message("Expected a message")
-                    .finish(),
-            );
-            return None;
-        }
-        None => {
-            r.push(
-                Report::build(ReportKind::Error, span.clone())
-                    .with_message("Constant not found in this scope")
                     .finish(),
             );
             return None;
@@ -168,9 +143,13 @@ pub fn builtin_macros(prelude: &File) -> HashMap<(File, ArcIntern<str>), WithSpa
 
                 let second_arg = args.pop().unwrap();
                 let span = second_arg.span().clone();
-                let amt = match syntax.block_info.resolve(block_id, second_arg.into_inner()) {
-                    Some(ResolvedValue::Int(int)) => WithSpan::new(int, span),
-                    Some(_) => {
+                let amt = match syntax
+                    .block_info
+                    .resolve(block_id, second_arg)?
+                    .into_inner()
+                {
+                    ResolvedValue::Int(int) => WithSpan::new(int, span),
+                    _ => {
                         r.push(
                             Report::build(ReportKind::Error, span)
                                 .with_message("Expected a number")
@@ -178,17 +157,9 @@ pub fn builtin_macros(prelude: &File) -> HashMap<(File, ArcIntern<str>), WithSpa
                         );
                         return None;
                     }
-                    None => {
-                        r.push(
-                            Report::build(ReportKind::Error, span)
-                                .with_message("Constant not found in this scope")
-                                .finish(),
-                        );
-                        return None;
-                    }
                 };
 
-                let register = expect_reg(args.pop().as_ref().unwrap(), block_id, syntax, r)?;
+                let register = expect_reg(args.pop().unwrap(), block_id, syntax, r)?;
 
                 Some(Primitive::Add { amt, register })
             }),
@@ -209,7 +180,7 @@ pub fn builtin_macros(prelude: &File) -> HashMap<(File, ArcIntern<str>), WithSpa
                     return None;
                 }
 
-                let label = expect_label(args.pop().as_ref().unwrap(), block_id, syntax, r)?;
+                let label = expect_label(args.pop().unwrap(), block_id, syntax, r)?;
 
                 Some(Primitive::Goto { label })
             }),
@@ -230,8 +201,8 @@ pub fn builtin_macros(prelude: &File) -> HashMap<(File, ArcIntern<str>), WithSpa
                     return None;
                 }
 
-                let label = expect_label(args.pop().as_ref().unwrap(), block_id, syntax, r)?;
-                let register = expect_reg(args.pop().as_ref().unwrap(), block_id, syntax, r)?;
+                let label = expect_label(args.pop().unwrap(), block_id, syntax, r)?;
+                let register = expect_reg(args.pop().unwrap(), block_id, syntax, r)?;
 
                 Some(Primitive::SolvedGoto { register, label })
             }),
@@ -252,26 +223,22 @@ pub fn builtin_macros(prelude: &File) -> HashMap<(File, ArcIntern<str>), WithSpa
                     return None;
                 }
 
-                let register = expect_reg(args.pop().as_ref().unwrap(), block_id, syntax, r)?;
+                let register = expect_reg(args.pop().unwrap(), block_id, syntax, r)?;
 
                 let second_arg = args.pop().unwrap();
                 let span = second_arg.span().to_owned();
-                let message = match syntax.block_info.resolve(block_id, second_arg.into_inner()) {
-                    Some(ResolvedValue::Ident(ident)) => {
+                let message = match syntax
+                    .block_info
+                    .resolve(block_id, second_arg)?
+                    .into_inner()
+                {
+                    ResolvedValue::Ident(ident) => {
                         WithSpan::new(ident.trim_matches('"').to_owned(), span)
                     }
-                    Some(_) => {
+                    _ => {
                         r.push(
                             Report::build(ReportKind::Error, span)
                                 .with_message("Expected a message")
-                                .finish(),
-                        );
-                        return None;
-                    }
-                    None => {
-                        r.push(
-                            Report::build(ReportKind::Error, span)
-                                .with_message("Constant not found in this scope")
                                 .finish(),
                         );
                         return None;

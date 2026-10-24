@@ -17,7 +17,8 @@ Tokenization occurs at the same time that parsing does; the tokenizer is driven 
 <(>  ::= "("        // Open Paren
 <)>  ::= ")"        // Close Paren
 <:>  ::= ":"        // Colon
-<%>  ::= "%"        // Percent
+<%>  ::= "%"        // Modulus
+<->  ::= "-"        // Negative
 <.>  ::= "."        // Dot
 <">  ::= "\""       // Quote
 <\n> ::= "\n"       // New line
@@ -28,13 +29,13 @@ Tokenization occurs at the same time that parsing does; the tokenizer is driven 
 ```
 
 Special cases:
-- Whitespace does not produce tokens
 - All text between quotes is kept as-is and not split.
+- `<->` is only split off if there isn't utf8 directly before it. "-A" is split into `<-> "A"` whereas "solved-goto" is kept as one string.
 
 After splitting the text, we are left with a sequence of UTF-8 strings which are tokenized in the following way:
 
 ```
-$<const> ::= "$" <char>*     // Constant
+<const-name> ::= "$" <char>*     // Constant
 <num>    ::= <digit>*        // Number 
 <name>    ::= <capital-char>* // Register name (all caps)
 <ident>  ::= <char>*   // Ident
@@ -61,13 +62,16 @@ Special commands:
 This collects tokens into a syntax tree without doing a full parse. BNF:
 
 ```
-.("str")        ::= "." <char>*                        // Directive
-<register>      ::= <name> (<!ws> <%> <!ws> <number>)? // Register
-<( token* )>    ::= <(> token* <)>                     // Parenthesis enclosure
-<{ token* }>    ::= <(> token* <)>                     // Brace enclosure
+.("str")        ::= "." <char>*                 // Directive
+<register>      ::= <->? <!ws> <name>           // Register
+                    (<!ws> <%> <!ws> <number>)?
+$<const>        ::= <->? <!ws> <const-name>     // Constant
+                    (<!ws> <%> <!ws> <number>)?
+<( token* )>    ::= <(> token* <)>              // Parenthesis enclosure
+<{ token* }>    ::= <(> token* <)>              // Brace enclosure
 ```
 
-All other tokens are kept the same, however `<name>` is always converted into `<register>`
+All other tokens are kept the same, however `<name>` and `<const-name>` are removed from the token's type signature since they're always erased
 
 = Parser
 

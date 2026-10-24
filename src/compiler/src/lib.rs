@@ -52,6 +52,11 @@ impl Reporter {
     }
 
     #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.count() == 0
+    }
+
+    #[must_use]
     pub fn iter(&self) -> boxcar::vec::Iter<'_, Report<'static, Span>> {
         self.0.iter()
     }
@@ -142,7 +147,7 @@ fn tag_with_key(instr: &mut TaggedInstruction, key: Option<MacroBranchKey>) {
                             }
                         }
                     },
-                    Value::Constant(_) => {}
+                    Value::Constant { name: _, mods: _ } => {}
                 }
             }
         }
@@ -167,7 +172,7 @@ fn resolve_just_these_defines(
         Instruction::Code(Code::Macro(call)) => {
             call.arguments
                 .iter_mut()
-                .map(|arg| arg.resolve_just_these_defines(defines, r))
+                .map(|arg| value_resolve_just_these_defines(arg, defines, r))
                 .collect::<Option<Vec<_>>>()?;
             Some(())
         }
@@ -198,7 +203,7 @@ fn resolve_just_these_defines(
             rhai_call
                 .args
                 .iter_mut()
-                .map(|arg| arg.resolve_just_these_defines(defines, r))
+                .map(|arg| value_resolve_just_these_defines(arg, defines, r))
                 .collect::<Option<Vec<_>>>()?;
             Some(())
         }
@@ -218,30 +223,88 @@ struct Block {
     code: Vec<WithSpan<TaggedInstruction>>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct RegisterReference {
-    reg_name: WithSpan<ArcIntern<str>>,
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct RegisterModifiers {
     modulus: Option<Int<U>>,
     negative: bool,
 }
 
+impl RegisterModifiers {
+    fn is_plain(self) -> bool {
+        self.modulus.is_none() && !self.negative
+    }
+
+    fn found(self) -> &'static str {
+        match (self.modulus, self.negative) {
+            (None, true) => "negative alias",
+            (None, false) => unreachable!(),
+            (Some(_), true) => "negative alias and modulus value",
+            (Some(_), false) => "modulus value",
+        }
+    }
+
+    fn compose(
+        self,
+        new: RegisterModifiers,
+        old_span: &Span,
+        new_span: &Span,
+        r: &Reporter,
+    ) -> Option<RegisterModifiers> {
+        Some(RegisterModifiers {
+            modulus: match (self.modulus, new.modulus) {
+                (None, None) => None,
+                (None, Some(v)) | (Some(v), None) => Some(v),
+                (Some(a), Some(b)) => {
+                    if !(a % b).is_zero() {
+                        r.push(
+                            Report::build(ReportKind::Error, new_span.clone())
+                                .with_label(
+                                    ariadne::Label::new(new_span.clone())
+                                        .with_message(format!("{b} does not divide {a} so the modulus can't be refined to {b}")),
+                                )
+                                .with_label(
+                                    ariadne::Label::new(old_span.clone())
+                                        .with_message("Constant was defined here"),
+                                )
+                                .finish(),
+                        );
+                        return None;
+                    }
+
+                    Some(b)
+                }
+            },
+            negative: self.negative ^ new.negative,
+        })
+    }
+
+    fn format_with(self, other: &str) -> String {
+        format!(
+            "{}{other}{}",
+            if self.negative { "-" } else { "" },
+            match self.modulus {
+                Some(m) => format!("%{m}"),
+                None => String::new(),
+            }
+        )
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RegisterReference {
+    reg_name: WithSpan<ArcIntern<str>>,
+    mods: RegisterModifiers,
+}
+
 impl RegisterReference {
     fn is_plain(&self) -> bool {
-        self.modulus.is_none() && !self.negative
+        self.mods.is_plain()
     }
 }
 
 impl Display for RegisterReference {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        if self.negative {
-            f.write_str("-")?;
-        }
-        
-        f.write_str(&self.reg_name)?;
-
-        if let Some(modulus) = self.modulus {
-            f.write_fmt(format_args!("%{modulus}"))?;
-        }
+        f.write_str(&self.mods.format_with(&self.reg_name))?;
 
         Ok(())
     }
@@ -292,38 +355,74 @@ impl Primitive {
 #[derive(Clone, Debug)]
 enum Value {
     Resolved(ResolvedValue),
-    Constant(ArcIntern<str>),
+    Constant {
+        name: ArcIntern<str>,
+        mods: RegisterModifiers,
+    },
 }
 
-impl Value {
-    fn resolve_just_these_defines(
-        &mut self,
-        defines: &HashMap<ArcIntern<str>, Define<WithSpan<ResolvedValue>>>,
-        r: &Reporter,
-    ) -> Option<()> {
-        match self {
-            Value::Resolved(value) => match value {
-                ResolvedValue::Int(_) | ResolvedValue::Register(_) | ResolvedValue::Ident(_) => {
-                    Some(())
-                }
-                ResolvedValue::Block(block) => {
-                    block
-                        .code
-                        .iter_mut()
-                        .map(|instr| resolve_just_these_defines(instr, defines, r))
-                        .collect::<Option<Vec<_>>>()?;
-                    Some(())
-                }
-            },
-            Value::Constant(arc_intern) => match defines.get(arc_intern) {
-                None => Some(()),
-                Some(value) => {
-                    *self = Value::Resolved(value.value.value.clone());
-                    Some(())
-                }
-            },
-        }
+fn value_resolve_just_these_defines(
+    value: &mut WithSpan<Value>,
+    defines: &HashMap<ArcIntern<str>, Define<WithSpan<ResolvedValue>>>,
+    r: &Reporter,
+) -> Option<()> {
+    let span = value.span().clone();
+    match &mut **value {
+        Value::Resolved(value) => match value {
+            ResolvedValue::Int(_) | ResolvedValue::Register(_) | ResolvedValue::Ident(_) => {
+                Some(())
+            }
+            ResolvedValue::Block(block) => {
+                block
+                    .code
+                    .iter_mut()
+                    .map(|instr| resolve_just_these_defines(instr, defines, r))
+                    .collect::<Option<Vec<_>>>()?;
+                Some(())
+            }
+        },
+        Value::Constant {
+            name: arc_intern,
+            mods,
+        } => match defines.get(arc_intern) {
+            None => Some(()),
+            Some(define) => {
+                value.value =
+                    Value::Resolved(compose_mod(define.value.clone(), *mods, &span, r)?.value);
+                Some(())
+            }
+        },
     }
+}
+
+fn compose_mod(
+    value: WithSpan<ResolvedValue>,
+    mods: RegisterModifiers,
+    ref_span: &Span,
+    r: &Reporter,
+) -> Option<WithSpan<ResolvedValue>> {
+    if mods.is_plain() {
+        return Some(value);
+    }
+
+    let def_span = value.span().clone();
+
+    let ResolvedValue::Register(mut reg) = value.value else {
+        r.push(
+            Report::build(ReportKind::Error, ref_span.clone())
+                .with_label(ariadne::Label::new(ref_span.clone()).with_message(format!(
+                    "Register modifiers are not meaningful for non-register constants. Found a {}",
+                    mods.found()
+                )))
+                .with_label(ariadne::Label::new(def_span).with_message("Constant was defined here"))
+                .finish(),
+        );
+        return None;
+    };
+
+    reg.mods = reg.mods.compose(mods, &def_span, ref_span, r)?;
+
+    Some(def_span.with(ResolvedValue::Register(reg)))
 }
 
 type RegisterInfo = (RegisterReference, RhaiRegInfo);
@@ -593,7 +692,7 @@ impl RegistersDecl {
     fn register_exists(&self, reference: &RegisterReference) -> Option<RhaiRegInfo> {
         let reg_name = reference.reg_name.clone();
 
-        let modulus = reference.modulus;
+        let modulus = reference.mods.modulus;
 
         for puzzle in &self.puzzles {
             match puzzle {
@@ -652,6 +751,7 @@ struct BlockInfo {
 struct BlockInfoTracker {
     blocks: HashMap<BlockID, BlockInfo>,
     block_counter: usize,
+    reporter: Reporter,
 }
 
 impl BlockInfoTracker {
@@ -701,18 +801,30 @@ impl BlockInfoTracker {
         }
     }
 
-    fn resolve(&self, block_id: BlockID, value: Value) -> Option<ResolvedValue> {
-        Some(match value {
+    fn resolve(
+        &self,
+        block_id: BlockID,
+        value: WithSpan<Value>,
+    ) -> Option<WithSpan<ResolvedValue>> {
+        let span = value.span().clone();
+        Some(span.clone().with(match value.into_inner() {
             Value::Resolved(resolved) => resolved,
-            Value::Constant(arc_intern) => (*self.get_define(block_id, &arc_intern)?.value).clone(),
-        })
-    }
+            Value::Constant {
+                name: arc_intern,
+                mods,
+            } => {
+                let Some(v) = self.get_define(block_id, &arc_intern) else {
+                    self.reporter.push(
+                        Report::build(ReportKind::Error, span.clone())
+                            .with_message("Constant not found in this scope")
+                            .finish(),
+                    );
+                    return None;
+                };
 
-    fn resolve_ref<'a>(&'a self, block_id: BlockID, value: &'a Value) -> Option<&'a ResolvedValue> {
-        Some(match value {
-            Value::Resolved(resolved) => resolved,
-            Value::Constant(arc_intern) => &self.get_define(block_id, arc_intern)?.value,
-        })
+                compose_mod(v.value.clone(), mods, &span, &self.reporter)?.into_inner()
+            }
+        }))
     }
 
     fn new_block(&mut self, parent: BlockID) -> (BlockID, &mut BlockInfo) {
@@ -770,20 +882,7 @@ impl ExpansionInfo {
         r: &Reporter,
     ) -> Option<WithSpan<ResolvedValue>> {
         match value {
-            DefineValue::Value(v) => {
-                let span = v.span().clone();
-                let value = v.into_inner();
-                let Some(resolved) = self.block_info.resolve(block_id, value) else {
-                    r.push(
-                        Report::build(ReportKind::Error, span)
-                            .with_message("Constant not found in this scope")
-                            .finish(),
-                    );
-                    return None;
-                };
-
-                Some(span.with(resolved))
-            }
+            DefineValue::Value(v) => self.block_info.resolve(block_id, v),
             DefineValue::RhaiCall(call) => {
                 let span = call.span().clone();
                 call.into_inner().perform(span, self, block_id, r)

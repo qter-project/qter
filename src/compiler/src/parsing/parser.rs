@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     mem,
     rc::Rc,
-    sync::{atomic::AtomicUsize, Arc},
+    sync::{Arc, atomic::AtomicUsize},
 };
 
 use ariadne::{Color, Label, Report, ReportKind};
@@ -14,17 +14,18 @@ use puzzle_theory::{
     puzzle_geometry::PuzzleGeometry,
     span::{File, Span, WithSpan},
 };
-use qter_core::architectures::{with_presets, Architecture};
+use qter_core::architectures::{Architecture, with_presets};
 
 use crate::{
+    Block, BlockID, BlockInfo, BlockInfoTracker, Code, DefineUnresolved, DefineValue,
+    ExpansionInfo, Instruction, Macro, MacroArgTy, MacroBranch, MacroBranchKey, MacroPattern,
+    MacroPatternComponent, ParsedSyntax, Puzzle, RegistersDecl, ResolvedValue,
+    RhaiCall, Value,
     parsing::{
         level_two::{Attempt, Token, TokenIter},
         tokenizer::{Encloser, Symbol},
     },
     rhai::RhaiMacros,
-    Block, BlockID, BlockInfo, BlockInfoTracker, Code, DefineUnresolved, DefineValue,
-    ExpansionInfo, Instruction, Macro, MacroArgTy, MacroBranch, MacroBranchKey, MacroPattern,
-    MacroPatternComponent, ParsedSyntax, Puzzle, RegistersDecl, ResolvedValue, RhaiCall, Value,
 };
 
 pub fn parse(
@@ -42,6 +43,7 @@ pub fn parse(
         block_info: BlockInfoTracker {
             blocks: HashMap::new(),
             block_counter: 1,
+            reporter: iter.r(),
         },
         macros: HashMap::new(),
         available_macros: HashMap::new(),
@@ -530,7 +532,17 @@ fn instruction(t: &mut TokenIter) -> Attempt<Option<WithSpan<Instruction>>> {
                 }
             }
             Token::Directive(ident) if &*ident == "define" => Some(Instruction::Define(define(t)?)),
-            Token::Constant(ident) => Some(Instruction::Constant(ident)),
+            Token::Constant(ident, mods) => {
+                if !mods.is_plain() {
+                    t.report(Report::build(ReportKind::Error, span.clone()).with_label(
+                        Label::new(span).with_message(
+                            format!("A constant used as an instruction cannot have register modifiers. Found a {}", mods.found()),
+                        ),
+                    ).finish());
+                }
+
+                Some(Instruction::Constant(ident))
+            }
             Token::Enclosure(Encloser::Brace, enclosure) => Some(Instruction::Block(
                 enclosure.into_inner().parse(block)?.value.value,
             )),
@@ -575,7 +587,10 @@ fn value(t: &TokenIter, token: WithSpan<Token>) -> Option<WithSpan<Value>> {
             span.clone()
                 .with(Value::Resolved(ResolvedValue::Register(r.clone()))),
         ),
-        Token::Constant(constant) => Some(span.with(Value::Constant(constant.clone()))),
+        Token::Constant(constant, mods) => Some(span.with(Value::Constant {
+            name: constant.clone(),
+            mods: *mods,
+        })),
         Token::Number(num) => Some(span.with(Value::Resolved(ResolvedValue::Int(*num)))),
         Token::Enclosure(Encloser::Brace, enclosure) => {
             (**enclosure).clone().parse(block).map(|v| {
@@ -634,7 +649,20 @@ fn block(t: &mut TokenIter) -> Option<WithSpan<Block>> {
 fn define(t: &mut TokenIter) -> Option<DefineUnresolved> {
     // Expects the `.define` to already be consumed
 
-    let name = t.constant();
+    let token = t.constant()?;
+    let span = token.span().clone();
+    let (name, mods) = token.into_inner();
+
+    if !mods.is_plain() {
+        t.report(
+            Report::build(ReportKind::Error, span.clone())
+                .with_label(Label::new(span.clone()).with_message(format!(
+                    "Cannot use register modifiers in the name of a constant. Found a {}",
+                    mods.found()
+                )))
+                .finish(),
+        );
+    }
 
     Some(
         match t.attempt(|t, commit| {
@@ -647,14 +675,14 @@ fn define(t: &mut TokenIter) -> Option<DefineUnresolved> {
             }
         }) {
             Attempt::Taken(v) => DefineUnresolved {
-                name: name?,
+                name: span.with(name),
                 value: DefineValue::RhaiCall(v?),
             },
             Attempt::NotTaken(_) => {
                 let token = t.next()?;
 
                 return Some(DefineUnresolved {
-                    name: name?,
+                    name: span.with(name),
                     value: DefineValue::Value(value(t, token)?),
                 });
             }
@@ -779,8 +807,16 @@ fn macro_pattern_component(t: &mut TokenIter) -> Attempt<Option<WithSpan<MacroPa
                 *commit = true;
                 Some(span.with(MacroPatternComponent::Word(word)))
             }
-            Token::Constant(name) => {
+            Token::Constant(name, mods) => {
                 *commit = true;
+
+                if !mods.is_plain() {
+                    t.report(Report::build(ReportKind::Error, span.clone()).with_label(
+                        Label::new(span.clone()).with_message(
+                            format!("A macro argument name cannot have register modifiers. Found a {}", mods.found()),
+                        ),
+                    ).finish());
+                }
 
                 let marker = t.marker();
 

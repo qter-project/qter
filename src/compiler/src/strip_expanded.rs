@@ -46,10 +46,10 @@ impl GlobalRegs {
             .to_owned();
 
         if let ByPuzzleType::Puzzle((_, (_, _, _, neg))) = &mut reg {
-            *neg = reference.negative;
+            *neg = reference.mods.negative;
         }
 
-        if let Some(mod_) = reference.modulus {
+        if let Some(mod_) = reference.mods.modulus {
             match &mut reg {
                 ByPuzzleType::Theoretical(_) => todo!(),
                 ByPuzzleType::Puzzle((_, (_, _, modulus, _))) => *modulus = Some(mod_),

@@ -602,7 +602,7 @@ impl PeepholeRewriter for VectorizeRepeatUntil {
             .map(|v| (v, lcm(v, amt)))
             .min_by_key(|v| v.1)
         {
-            register.modulus = Some(cycle_order);
+            register.mods.modulus = Some(cycle_order);
 
             let mut next = window.front().unwrap().clone();
 
@@ -622,7 +622,7 @@ impl PeepholeRewriter for VectorizeRepeatUntil {
 
             let scale_amt = new_amt / amt;
 
-            register.modulus = Some(lcm_iter(
+            register.mods.modulus = Some(lcm_iter(
                 cycles
                     .iter()
                     .map(CycleGeneratorSubcycle::chromatic_order)

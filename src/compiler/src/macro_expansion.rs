@@ -30,8 +30,7 @@ pub fn expand(mut parsed: ParsedSyntax, r: &Reporter) -> Option<ExpandedCode> {
 
     let before = r.count();
 
-    while let Some(span) =
-        expand_block(BlockID(0), &mut parsed.expansion_info, &mut parsed.code, r)
+    while let Some(span) = expand_block(BlockID(0), &mut parsed.expansion_info, &mut parsed.code, r)
     {
         limit -= 1;
 
@@ -278,20 +277,7 @@ fn expand_code(
                 .arguments
                 .into_inner()
                 .into_iter()
-                .map(|v| {
-                    let span = v.span().clone();
-                    match expansion_info.block_info.resolve(block_id, v.into_inner()) {
-                        Some(v) => Some(span.with(v)),
-                        None => {
-                            r.push(
-                                Report::build(ReportKind::Error, macro_call.name.span().clone())
-                                    .with_message("Constant was not found in this scope")
-                                    .finish(),
-                            );
-                            None
-                        }
-                    }
-                })
+                .map(|v| expansion_info.block_info.resolve(block_id, v))
                 .collect::<Option<Vec<_>>>()
             else {
                 return vec![];
@@ -337,13 +323,11 @@ fn expand_code(
 
 #[cfg(test)]
 mod tests {
-
     use std::rc::Rc;
-    use std::sync::Arc;
 
     use internment::ArcIntern;
 
-use crate::Reporter;
+    use crate::Reporter;
     use crate::parsing::tests::file;
     use crate::{macro_expansion::expand, parsing::parse};
 
@@ -377,11 +361,14 @@ use crate::Reporter;
             &reporter,
         ) else {
             for report in reporter.iter() {
-                report.1.print(ariadne::sources(
-                    [("<static>", code)]
-                        .into_iter()
-                        .map(|(a, b)| (ArcIntern::from(a), ArcIntern::from(b))),
-                )).unwrap();
+                report
+                    .1
+                    .print(ariadne::sources(
+                        [("<static>", code)]
+                            .into_iter()
+                            .map(|(a, b)| (ArcIntern::from(a), ArcIntern::from(b))),
+                    ))
+                    .unwrap();
             }
             panic!();
         };

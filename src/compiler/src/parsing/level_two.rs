@@ -2,14 +2,14 @@ use std::{cell::Cell, mem, sync::Arc};
 
 use ariadne::{Label, Report, ReportKind, Span as _};
 use internment::ArcIntern;
-use itertools::Itertools;
+use itertools::{Itertools, MultiPeek};
 use puzzle_theory::{
     numbers::{Int, U},
     span::{File, Span, WithSpan},
 };
 
 use crate::{
-    RegisterReference, Reporter,
+    RegisterModifiers, RegisterReference, Reporter,
     parsing::tokenizer::{Encloser, Symbol, TokenFlat, TokenNLFlat, Tokenizer},
     rhai::RhaiCode,
 };
@@ -43,45 +43,34 @@ pub fn tokenize(qat: &File, reporter: Reporter) -> Option<TokenEnclosure> {
             TokenNLFlat::Token(token) => match token {
                 TokenFlat::Ident(v) => out.push(span.with(TokenNL::Token(Token::Ident(v)))),
                 TokenFlat::Name(name) => {
-                    let (neg, name) = if let Some(stripped) = name.strip_prefix("-") {
-                        (
-                            true,
-                            Span::new(qat.clone(), span.start() + 1, span.end())
-                                .with(ArcIntern::from(stripped)),
-                        )
-                    } else {
-                        (false, span.clone().with(name))
-                    };
-
                     let mut reg = RegisterReference {
-                        reg_name: name,
-                        modulus: None,
-                        negative: neg,
+                        reg_name: span.clone().with(name),
+                        mods: RegisterModifiers {
+                            modulus: None,
+                            negative: false,
+                        },
                     };
 
                     let mut end = span.end();
 
-                    if let Some(peek) = t.peek()
-                        && matches!(
-                            &**peek,
-                            TokenNLFlat::Token(TokenFlat::Symbol(Symbol::Modulus))
-                        )
-                        && let Some(maybe_num) = t.peek()
-                        && let TokenNLFlat::Token(TokenFlat::Number(num)) = &**maybe_num
-                    {
-                        reg.modulus = Some(*num);
-                        end = maybe_num.span().end();
-                        t.next()?;
-                        t.next()?;
-                    } else {
-                        t.reset_peek();
-                    }
-
-                    // TODO: Subscripting
+                    take_modifier_postfix(&mut reg.mods, &mut t, &mut end);
 
                     out.push(mk_span(span.start(), end).with(TokenNL::Token(Token::Register(reg))));
                 }
-                TokenFlat::Constant(v) => out.push(span.with(TokenNL::Token(Token::Constant(v)))),
+                TokenFlat::Constant(v) => {
+                    let mut mods = RegisterModifiers {
+                        modulus: None,
+                        negative: false,
+                    };
+
+                    let mut end = span.end();
+
+                    take_modifier_postfix(&mut mods, &mut t, &mut end);
+
+                    out.push(
+                        mk_span(span.start(), end).with(TokenNL::Token(Token::Constant(v, mods))),
+                    )
+                }
                 TokenFlat::Number(v) => out.push(span.with(TokenNL::Token(Token::Number(v)))),
                 TokenFlat::Symbol(v) => {
                     if v == Symbol::Dot
@@ -90,6 +79,37 @@ pub fn tokenize(qat: &File, reporter: Reporter) -> Option<TokenEnclosure> {
                     {
                         out.push(span.with(TokenNL::Token(Token::Directive(v.clone()))));
                         t.next()?;
+                    } else if v == Symbol::Negative
+                        && let Some(v) = t.peek()
+                        && matches!(
+                            &**v,
+                            TokenNLFlat::Token(TokenFlat::Name(_) | TokenFlat::Constant(_))
+                        )
+                    {
+                        let mut mods = RegisterModifiers {
+                            modulus: None,
+                            negative: true,
+                        };
+
+                        let token = t.next().unwrap();
+                        let name_span = token.span().clone();
+
+                        let mut end = token.span().end();
+
+                        take_modifier_postfix(&mut mods, &mut t, &mut end);
+
+                        out.push(mk_span(span.start(), end).with(match token.into_inner() {
+                            TokenNLFlat::Token(TokenFlat::Name(name)) => {
+                                TokenNL::Token(Token::Register(RegisterReference {
+                                    reg_name: name_span.with(name),
+                                    mods,
+                                }))
+                            }
+                            TokenNLFlat::Token(TokenFlat::Constant(const_name)) => {
+                                TokenNL::Token(Token::Constant(const_name, mods))
+                            }
+                            _ => unreachable!(),
+                        }));
                     } else {
                         out.push(span.with(TokenNL::Token(Token::Symbol(v))));
                     }
@@ -171,6 +191,30 @@ pub fn tokenize(qat: &File, reporter: Reporter) -> Option<TokenEnclosure> {
             file: qat.clone(),
         },
     })
+}
+
+fn take_modifier_postfix<I: Iterator<Item = WithSpan<TokenNLFlat>>>(
+    m: &mut RegisterModifiers,
+    t: &mut MultiPeek<I>,
+    span_end: &mut usize,
+) {
+    if let Some(peek) = t.peek()
+        && matches!(
+            &**peek,
+            TokenNLFlat::Token(TokenFlat::Symbol(Symbol::Modulus))
+        )
+        && let Some(maybe_num) = t.peek()
+        && let TokenNLFlat::Token(TokenFlat::Number(num)) = &**maybe_num
+    {
+        m.modulus = Some(*num);
+        *span_end = maybe_num.span().end();
+        t.next().unwrap();
+        t.next().unwrap();
+    } else {
+        t.reset_peek();
+    }
+
+    // TODO: Subscripting
 }
 
 #[derive(Clone, Debug)]
@@ -361,9 +405,9 @@ impl TokenIter {
         })
     }
 
-    pub fn constant(&mut self) -> Option<WithSpan<ArcIntern<str>>> {
+    pub fn constant(&mut self) -> Option<WithSpan<(ArcIntern<str>, RegisterModifiers)>> {
         self.filter("a constant", |t| match t {
-            Token::Constant(c) => Some(c.clone()),
+            Token::Constant(c, mods) => Some((c.clone(), *mods)),
             _ => None,
         })
     }
@@ -444,7 +488,10 @@ impl TokenIter {
             Token::Ident(ident) => (format!("`{ident}`"), span),
             Token::Register(reg) => (format!("a register `{reg}`"), span),
             Token::Directive(dir) => (format!("directive `.{dir}`"), span),
-            Token::Constant(ident) => (format!("`${ident}`"), span),
+            Token::Constant(ident, mods) => (
+                format!("`{}`", mods.format_with(&format!("${ident}"))),
+                span,
+            ),
             Token::Number(_) => ("a number".to_owned(), span),
             Token::Symbol(_) => ("a symbol".to_owned(), span),
             Token::Enclosure(encloser, enclosed) => (
@@ -546,7 +593,7 @@ pub enum Token {
     Ident(ArcIntern<str>),
     Register(RegisterReference),
     Directive(ArcIntern<str>),
-    Constant(ArcIntern<str>),
+    Constant(ArcIntern<str>, RegisterModifiers),
     Number(Int<U>),
     Symbol(Symbol),
     Enclosure(Encloser, WithSpan<TokenEnclosure>),
