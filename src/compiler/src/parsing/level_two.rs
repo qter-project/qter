@@ -10,7 +10,8 @@ use puzzle_theory::{
 
 use crate::{
     RegisterReference, Reporter,
-    parsing::tokenizer::{Encloser, Symbol, TokenFlat, TokenNLFlat, Tokenizer}, rhai::RhaiCode,
+    parsing::tokenizer::{Encloser, Symbol, TokenFlat, TokenNLFlat, Tokenizer},
+    rhai::RhaiCode,
 };
 
 pub fn tokenize(qat: &File, reporter: Reporter) -> Option<TokenEnclosure> {
@@ -42,9 +43,20 @@ pub fn tokenize(qat: &File, reporter: Reporter) -> Option<TokenEnclosure> {
             TokenNLFlat::Token(token) => match token {
                 TokenFlat::Ident(v) => out.push(span.with(TokenNL::Token(Token::Ident(v)))),
                 TokenFlat::Name(name) => {
+                    let (neg, name) = if let Some(stripped) = name.strip_prefix("-") {
+                        (
+                            true,
+                            Span::new(qat.clone(), span.start() + 1, span.end())
+                                .with(ArcIntern::from(stripped)),
+                        )
+                    } else {
+                        (false, span.clone().with(name))
+                    };
+
                     let mut reg = RegisterReference {
-                        reg_name: span.clone().with(name),
+                        reg_name: name,
                         modulus: None,
+                        negative: neg,
                     };
 
                     let mut end = span.end();

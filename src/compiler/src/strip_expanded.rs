@@ -4,7 +4,7 @@ use ariadne::{Report, ReportKind};
 use internment::ArcIntern;
 use itertools::Itertools;
 use puzzle_theory::{
-    numbers::{Int, U},
+    numbers::{I, Int, U},
     permutations::PermutationGroup,
     span::WithSpan,
 };
@@ -25,7 +25,7 @@ pub(super) struct RegisterIdx;
 impl SeparatesByPuzzleType for RegisterIdx {
     type Theoretical<'s> = ();
 
-    type Puzzle<'s> = (usize, Arc<Architecture>, Option<Int<U>>);
+    type Puzzle<'s> = (usize, Arc<Architecture>, Option<Int<U>>, bool);
 }
 
 pub struct GlobalRegs {
@@ -45,10 +45,14 @@ impl GlobalRegs {
             .unwrap()
             .to_owned();
 
+        if let ByPuzzleType::Puzzle((_, (_, _, _, neg))) = &mut reg {
+            *neg = reference.negative;
+        }
+
         if let Some(mod_) = reference.modulus {
             match &mut reg {
                 ByPuzzleType::Theoretical(_) => todo!(),
-                ByPuzzleType::Puzzle((_, (_, _, modulus))) => *modulus = Some(mod_),
+                ByPuzzleType::Puzzle((_, (_, _, modulus, _))) => *modulus = Some(mod_),
             }
         }
 
@@ -66,13 +70,18 @@ impl GlobalRegs {
             ByPuzzleType::Theoretical((theoretical, ())) => {
                 Some(ByPuzzleType::Theoretical((theoretical, ())))
             }
-            ByPuzzleType::Puzzle((puzzle_idx, (idx, arch, modulus))) => {
+            ByPuzzleType::Puzzle((puzzle_idx, (idx, arch, modulus, neg))) => {
+                let mut alg = new_from_effect(&arch, vec![(idx, Int::<U>::one())]);
+
+                if neg {
+                    println!("Negative! {alg:?}");
+                    alg.exponentiate(-Int::<I>::one());
+                    println!("After! {alg:?}");
+                }
+
                 Some(ByPuzzleType::Puzzle((
                     puzzle_idx,
-                    (
-                        new_from_effect(&arch, vec![(idx, Int::<U>::one())]),
-                        get_facelets(idx, &arch, modulus, register, r)?,
-                    ),
+                    (alg, get_facelets(idx, &arch, modulus, register, r)?),
                 )))
             }
         }
@@ -89,9 +98,9 @@ impl GlobalRegs {
             ByPuzzleType::Theoretical((theoretical_idx, ())) => {
                 Some(ByPuzzleType::Theoretical(theoretical_idx))
             }
-            ByPuzzleType::Puzzle((puzzle_idx, (idx, arch, modulus))) => Some(ByPuzzleType::Puzzle(
-                (puzzle_idx, get_facelets(idx, &arch, modulus, register, r)?),
-            )),
+            ByPuzzleType::Puzzle((puzzle_idx, (idx, arch, modulus, _))) => Some(
+                ByPuzzleType::Puzzle((puzzle_idx, get_facelets(idx, &arch, modulus, register, r)?)),
+            ),
         }
     }
 }
@@ -165,7 +174,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
                         ArcIntern::clone(name),
                         ByPuzzleType::Puzzle((
                             PuzzleIdx(global_regs.puzzles.len()),
-                            (i, Arc::clone(architecture), None),
+                            (i, Arc::clone(architecture), None, false),
                         )),
                     );
                 }
@@ -196,11 +205,21 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
                                     ByPuzzleType::Theoretical((theoretical, ())) => {
                                         OptimizingPrimitive::AddTheoretical { theoretical, amt }
                                     }
-                                    ByPuzzleType::Puzzle((puzzle, (reg_idx, arch, _))) => {
+                                    ByPuzzleType::Puzzle((puzzle, (reg_idx, arch, _, neg))) => {
                                         OptimizingPrimitive::AddPuzzle {
                                             puzzle,
+                                            amts: vec![(
+                                                reg_idx,
+                                                if neg {
+                                                    amt.span().clone().with(
+                                                        arch.registers()[reg_idx].order()
+                                                            - amt.into_inner(),
+                                                    )
+                                                } else {
+                                                    amt
+                                                },
+                                            )],
                                             arch,
-                                            amts: vec![(reg_idx, amt)],
                                         }
                                     }
                                 }

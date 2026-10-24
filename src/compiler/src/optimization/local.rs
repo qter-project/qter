@@ -578,7 +578,7 @@ impl PeepholeRewriter for VectorizeRepeatUntil {
             return;
         };
 
-        let ByPuzzleType::Puzzle((_, (reg_idx, arch, modulus))) = global_regs.get_reg(register)
+        let ByPuzzleType::Puzzle((_, (reg_idx, arch, modulus, _))) = global_regs.get_reg(register)
         else {
             return;
         };
@@ -696,7 +696,7 @@ impl Rewriter for TransformSolve {
 
         self.puzzle_idx = Some(*puzzle);
 
-        let ByPuzzleType::Puzzle((puzzle_idx, (reg_idx, arch, modulus))) =
+        let ByPuzzleType::Puzzle((puzzle_idx, (reg_idx, arch, modulus, _))) =
             global_regs.get_reg(register)
         else {
             dumped.extend(self.dump_with(component));

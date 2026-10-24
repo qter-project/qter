@@ -303,7 +303,8 @@ impl PuzzleState for SimulatedPuzzle {
         facelets: &[usize],
         generator: &Algorithm,
     ) -> Result<Option<Int<U>>, Infallible> {
-        Ok(decode(&self.state, facelets, generator))
+        let out = decode(&self.state, facelets, generator);
+        Ok(out)
     }
 
     async fn solve(&mut self) -> Result<(), Infallible> {

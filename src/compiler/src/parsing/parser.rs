@@ -15,7 +15,6 @@ use puzzle_theory::{
     span::{File, Span, WithSpan},
 };
 use qter_core::architectures::{with_presets, Architecture};
-use rhai::ParseError;
 
 use crate::{
     parsing::{
@@ -233,8 +232,10 @@ fn register_decl(t: &mut TokenIter) -> Attempt<Option<Puzzle>> {
         loop {
             let reg = t.reg()?;
 
-            if reg.modulus.is_some() {
-                t.report(Report::build(ReportKind::Error, reg.span().clone()).with_message("Register name should not have a modulus").finish());
+            if !reg.is_plain() {
+                t.report(Report::build(ReportKind::Error, reg.span().clone()).with_label(Label::new(reg.span().clone())
+                    .with_message("Expected register name")).finish()
+                );
             }
 
             names.push(reg.span().clone().with(reg.value.reg_name.value));
@@ -445,7 +446,7 @@ fn parse_alg(t: &mut TokenIter, group: &Arc<PermutationGroup>) -> Option<Algorit
             let ident = match token.into_inner() {
                 Token::Ident(v) => v,
                 Token::Register(v) => {
-                    if v.modulus.is_some() {
+                    if !v.is_plain() {
                         return None;
                     }
 

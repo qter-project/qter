@@ -222,10 +222,21 @@ struct Block {
 struct RegisterReference {
     reg_name: WithSpan<ArcIntern<str>>,
     modulus: Option<Int<U>>,
+    negative: bool,
+}
+
+impl RegisterReference {
+    fn is_plain(&self) -> bool {
+        self.modulus.is_none() && !self.negative
+    }
 }
 
 impl Display for RegisterReference {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        if self.negative {
+            f.write_str("-")?;
+        }
+        
         f.write_str(&self.reg_name)?;
 
         if let Some(modulus) = self.modulus {
