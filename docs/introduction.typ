@@ -1,3 +1,5 @@
+#import "@preview/shiroa:0.3.1": is-html-target
+
 #import "book.typ": book-page
 
 #show: book-page.with(title: "Introduction")
@@ -87,14 +89,22 @@ This book is intended to comprehensively describe Qter and how we created it. It
     columns: 3,
     [], [*Description*], [*Background required*],
     [*Overview*], [What Qter is and how you can play with it], [Basic programming],
-    [*Theory*], [Mathematics and algorithms behind encoding computations into move sequences], [Data structures & algorithms — discrete math],
-    [*Technical Documentation*], [Implementation details of our software including lots of cool optimizations], [Software engineering],
+    [*Theory*],
+    [Mathematics and algorithms behind encoding computations into move sequences],
+    [Data structures & algorithms — discrete math],
+
+    [*Technical Documentation*],
+    [Implementation details of our software including lots of cool optimizations],
+    [Software engineering],
+
     [*Blog*], [Stories from our journey creating this!], [None],
 )
 
 Note, most of the content in *Overview* and *Theory* was originally written for our #link("https://qter.dev/paper.pdf")[technical paper].
 
-#html.script("
+#if is-html-target() {
+    html.script(
+        "
 let params = new URLSearchParams(window.location.search)
 
 document.getElementById(\"sidebar-close\").addEventListener(\"click\", () => {
@@ -110,4 +120,6 @@ document.getElementById(\"sidebar-open\").addEventListener(\"click\", () => {
 if (!params.has(\"mobile-close-hamburger\")) {
     document.getElementById(\"sidebar-open\").click()
 }
-")
+",
+    )
+}

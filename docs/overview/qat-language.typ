@@ -6,11 +6,26 @@ Q would be very difficult to create programs in by hand, similarly to how it is 
 
 === Global variables
 
-Every QAT program begins with a `.registers` statement, used to declare global variables named registers. The statement in the above average program declares two global registers of size 90 to be stored on a Rubik's Cube. That is, additions operate modulo 90: incrementing a register of value 89 resets it back to 0, and decrementing a register of value 0 sets it to 89.
+Every QAT program begins with a `.registers` statement, used to declare global variables named registers. For example:
 
-The `builtin` keyword refers to the fact that valid register sizes are specified in a puzzle-specific preset. For the Rubik's Cube, all builtin register sizes are in [src/qter_core/puzzles/3x3.txt](src/qter_core/puzzles/3x3.txt). Unlike traditional computers, qter is only able to operate with small and irregular register sizes.
+```
+.registers {
+    A, B <- 3x3 builtin (90, 90)
+}
+```
 
-You can choose to use larger register sizes at the cost of requiring more puzzles. For example, 1260 is a valid builtin register size that needs an entire Rubik's Cube to declare. If your program wants access to more than one register, it would have to use multiple Rubik's Cubes for more memory.
+
+This declares two global registers named `A` and `B` each of size `90` to be stored on a standard `3x3` Rubik's Cube. That is, additions operate modulo 90: incrementing a register of value 89 resets it back to 0, and decrementing a register of value 0 sets it to 89.
+
+The `builtin` keyword tells the compiler that the register orders refer to a particular preset architecture built into the compiler. For the standard Rubik's Cube, the builtin architectures are
+
+- `(1260)`
+- `(90, 90)`
+- `(210, 24)`
+- `(30, 30, 30)`
+- `(30, 18, 10, 9)`
+
+The distribution reflects the fact that a Rubik's cube has only a small amount of space. If we want to fit more registers in to the same amount of space, each register must be smaller. If you want more memory, you can declare that your program requires more than one Rubik's cube:
 
 ```janet
 .registers {
@@ -20,8 +35,6 @@ You can choose to use larger register sizes at the cost of requiring more puzzle
 }
 ```
 
-To access the remainder of a register as explained in #link("/overview/what-is-qter.html#label-Multiple numbers")[What is Qter], you can write, for example, `A%3` to access the remainder after division by three.
-
 The `.registers` statement is also used to declare memory tapes, which help facilitate local variables, call stacks, and heap memory. This idea will be expanded upon in #link("/overview/memory-tapes.html")[Memory Tapes].
 
 === Basic instructions
@@ -30,7 +43,11 @@ The basic instructions of the QAT programming language mimic an assembly-like la
 
 - `add <variable> <number>`
 
-Add a constant number to a variable. This is the only way to change the value of a variable.
+Add a constant number to a variable.
+
+- `sub <variable> <number>`
+
+Subtract a constant number from a variable.
 
 - `goto <label>`
 
@@ -56,6 +73,53 @@ Output a message, optionally followed by a variable's value.
 - `halt <message> [<variable>]`
 
 Terminate the program with a message, optionally followed by a variable's value.
+
+==== Register modifiers
+
+===== Negative Alias
+
+QAT exposes some of the mathematical structure underlying individual registers, allowing you to write faster programs. First, it is possible to express the _negative alias_ of a register:
+
+```
+add -A 1
+```
+
+`-A` holds the _additive inverse_ of `A`. For example, if `A` was a register of order 90 and held the value 10, then `-A` would hold the value `80`. Those sum to 90, which is equal to zero since the register is order 90.
+
+Note that the negative alias is not doing any computation; it's showing the same register to you in a different way. Since `A` + `-A` is always a fixed constant, adding one to `-A` must have the effect of subtracting one from `A`, and subtracting one from `-A` must add one to `A`. Therefore, the statement `add -A 1` will be compiled to `sub A 1`, and likewise `sub -A 1` will compile to `add A 1`.
+
+===== Modulus
+
+In our section describing #link("/overview/what-is-qter.html#label-Multiple%20numbers")[multiple numbers], we claimed that doing `solved-goto` with only a subset of the pieces allows you to determine divisibility by particular numbers. In QAT, this is the syntax for it:
+
+```
+// Is A zero?
+solved-goto A label1
+
+// Is A divisible by 9?
+solved-goto A%9 label2
+```
+
+This might compile down to:
+
+```
+1 | solved-goto UBL UB 5
+2 | solved-goto UBL 7
+```
+
+If you ask to determine divisibility by a number that doesn't work, the compiler will tell you the list of numbers that do work:
+
+```
+Error:
+   ╭─[ /tmp/code.qat:8:13 ]
+   │
+ 8 │ solved-goto A%8 label1
+   │             ┬
+   │             ╰── Could not find a set of pieces for solved-goto that give divisibility by 8. The available moduli are the LCMs of all combinations of: 2, 9, 10
+───╯
+```
+
+Note that we can interpret `A%9` as holding the remainder after division by `9`. If we did `halt A%9`, the halt instruction would do repeated subtraction until `A` was divisible by `9`, giving you the remainder. This is why we call it the _modulus_, it gives you the register _modulo_ some constant.
 
 === Metaprogramming
 

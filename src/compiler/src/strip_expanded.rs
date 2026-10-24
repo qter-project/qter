@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use ariadne::{Report, ReportKind};
+use ariadne::{Label, Report, ReportKind};
 use internment::ArcIntern;
 use itertools::Itertools;
 use puzzle_theory::{
@@ -125,12 +125,16 @@ fn get_facelets(
                     .dedup()
                     .collect_vec();
 
+                let span = register.reg_name.span().clone();
+
                 r.push(
-                    Report::build(ReportKind::Error, register.reg_name.span().clone())
+                    Report::build(ReportKind::Error, span.clone())
+                        .with_label(Label::new(span)
                         .with_message(format!(
-                            "Could not find a set of pieces for solved-goto that encode the given modulus. The available moduli are the LCM of any combination of the following piece subcycles: {}",
+                            "Could not find a set of pieces for solved-goto that give divisibility by {modulus}. The available moduli are the LCMs of all combinations of: {}",
                             cycles.into_iter().join(", ")
                         ))
+                        )
                         .finish(),
                 );
                 None

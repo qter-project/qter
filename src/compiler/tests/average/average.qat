@@ -28,10 +28,7 @@ halt "The average is" B
 
 overflow:
 
-while not-solved B {
-    inc A
-    dec B
-}
+move B to A
 
 floor-div-2 A B
 add B 45
