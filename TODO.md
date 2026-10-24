@@ -109,7 +109,6 @@
 - Directory of testing programs instead of hardcoding into Rust
   - Inline testing in the QAT format
 - Syscall instruction
-- Alias register as negative
 - 😎Translate QAT comments into Q
 - 😎Write tree sitter grammar
 - 😎Architecture switching
@@ -142,7 +141,7 @@
 
 - Update syntax of `halt`
 - Support multiple puzzles
-- Make solved-goto pieces "optimal" in a meaningful sense of "optimal"
+- 😎Make solved-goto pieces "optimal" in a meaningful sense of "optimal"
 - Parse Q
 
 ## End user
