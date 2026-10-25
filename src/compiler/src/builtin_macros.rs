@@ -1,6 +1,6 @@
 use ariadne::{Label, Report, ReportKind};
 use internment::ArcIntern;
-use puzzle_theory::span::{File, Span, WithSpan};
+use qter_core::span::{File, Span, WithSpan};
 
 use crate::{
     BlockID, ExpansionInfo, LabelReference, Macro, MaybeReg, Primitive, RegisterReference,

@@ -5,8 +5,8 @@ use internment::ArcIntern;
 use itertools::Itertools;
 use puzzle_theory::{
     numbers::{I, Int, U},
-    span::{Span, WithSpan},
 };
+use qter_core::span::{Span, WithSpan};
 use rhai::{AST, Array, CustomType, Dynamic, Engine, ImmutableString, Position, Scope};
 
 use crate::{
@@ -384,8 +384,9 @@ fn try_decode_block(
 mod tests {
     use puzzle_theory::{
         numbers::{I, Int},
-        span::Span,
+        
     };
+    use qter_core::span::Span;
     use rhai::{Dynamic, Scope};
 
     use crate::{

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use internment::ArcIntern;
 use itertools::Itertools;
-use puzzle_theory::span::WithSpan;
+use qter_core::span::WithSpan;
 
 use crate::{
     LabelReference,

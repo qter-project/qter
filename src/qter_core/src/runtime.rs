@@ -5,7 +5,7 @@ use std::sync::Arc;
 use internment::ArcIntern;
 use puzzle_theory::numbers::{Int, U};
 use puzzle_theory::permutations::{Algorithm, PermutationGroup};
-use puzzle_theory::span::WithSpan;
+use crate::span::WithSpan;
 
 /// The facelets needed for `solved-goto`
 #[derive(Debug, Clone)]

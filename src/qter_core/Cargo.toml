@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 itertools.workspace = true
 internment.workspace = true
+ariadne.workspace = true
 pog_ans = { git = "https://github.com/qter-project/pog-ans" }
 puzzle_theory.workspace = true
 

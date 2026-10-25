@@ -3,7 +3,7 @@ use std::{cell::OnceCell, collections::HashMap, mem};
 use ariadne::{Report, ReportKind};
 use internment::ArcIntern;
 use itertools::Itertools;
-use puzzle_theory::span::{Span, WithSpan};
+use qter_core::span::{Span, WithSpan};
 
 use crate::{
     BlockID, Code, Define, ExpandedCode, ExpandedCodeComponent, ExpansionInfo, Instruction, Macro,

@@ -5,9 +5,9 @@ use internment::ArcIntern;
 use itertools::{Itertools, MultiPeek};
 use puzzle_theory::{
     numbers::{Int, U},
-    span::{File, Span, WithSpan},
 };
 
+use qter_core::span::{File, Span, WithSpan};
 use crate::{
     RegisterModifiers, RegisterReference, Reporter,
     parsing::tokenizer::{Encloser, Symbol, TokenFlat, TokenNLFlat, Tokenizer},

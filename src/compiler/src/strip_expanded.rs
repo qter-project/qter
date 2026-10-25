@@ -6,8 +6,8 @@ use itertools::Itertools;
 use puzzle_theory::{
     numbers::{I, Int, U},
     permutations::PermutationGroup,
-    span::WithSpan,
 };
+use qter_core::span::WithSpan;
 use qter_core::{
     ByPuzzleType, Facelets, Halt, Input, Instruction, Print, Program, PuzzleIdx, RegisterGenerator,
     RepeatUntil, SeparatesByPuzzleType, StateIdx, TheoreticalIdx,

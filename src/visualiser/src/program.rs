@@ -4,9 +4,9 @@ use ariadne::{Report as AriadneReport, ReportKind, Source as AriadneSource, Span
 use internment::ArcIntern;
 use puzzle_theory::{
     puzzle_geometry::{PuzzleGeometry, parsing::puzzle},
-    span::{File, Span},
 };
 use qter_core::architectures::Architecture;
+use qter_core::span::{File, Span};
 use serde::Serialize;
 use tsify::Tsify;
 use wasm_bindgen::prelude::*;
@@ -137,7 +137,7 @@ impl Program {
 
 #[wasm_bindgen]
 pub struct CompileError {
-    report: ariadne::Report<'static, puzzle_theory::span::Span>,
+    report: ariadne::Report<'static, qter_core::span::Span>,
     source: File,
 }
 

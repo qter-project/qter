@@ -2158,7 +2158,6 @@ dependencies = [
  "ariadne",
  "bnum",
  "boxcar",
- "chumsky",
  "internment",
  "itertools 0.14.0",
  "num-bigint",
@@ -2172,6 +2171,7 @@ dependencies = [
 name = "qter_core"
 version = "0.1.0"
 dependencies = [
+ "ariadne",
  "internment",
  "itertools 0.14.0",
  "pog_ans",

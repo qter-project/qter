@@ -3,7 +3,7 @@
 use compiler::{Reporter, compile, q_emitter::emit_q};
 use internment::ArcIntern;
 use libfuzzer_sys::fuzz_target;
-use puzzle_theory::span::File;
+use qter_core::span::File;
 
 fuzz_target!(|code: &str| {
     let reporter = Reporter::default();

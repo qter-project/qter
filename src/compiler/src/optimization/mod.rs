@@ -2,9 +2,9 @@ use std::{collections::VecDeque, ptr, sync::Arc};
 
 use puzzle_theory::{
     numbers::{Int, U},
-    span::WithSpan,
 };
 use qter_core::{ByPuzzleType, PuzzleIdx, StateIdx, TheoreticalIdx, architectures::Architecture};
+use qter_core::span::WithSpan;
 
 use crate::{
     BlockID, Label, LabelReference, RegisterReference,

@@ -26,9 +26,9 @@ use interpreter::{
     puzzle_states::{PuzzleState, SimulatedPuzzle},
 };
 use itertools::Itertools;
+use qter_core::span::File;
 use puzzle_theory::{
     numbers::{I, Int},
-    span::File,
 };
 use qter_core::{
     ByPuzzleType, Program,

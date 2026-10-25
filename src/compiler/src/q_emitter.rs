@@ -4,13 +4,13 @@ use itertools::Itertools;
 use puzzle_theory::{
     numbers::{Int, U},
     permutations::Algorithm,
-    span::{File, Span, WithSpan},
 };
 use qter_core::{
     Facelets, Halt, Input, Instruction, PerformAlgorithm, Print, Program, RepeatUntil,
     SeparatesByPuzzleType, Solve, SolvedGoto,
 };
 use std::fmt::Write;
+use qter_core::span::{File, Span, WithSpan};
 
 use crate::Reporter;
 

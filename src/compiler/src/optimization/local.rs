@@ -4,9 +4,9 @@ use std::{
 };
 
 use itertools::Itertools;
+use qter_core::span::WithSpan;
 use puzzle_theory::{
     numbers::{Int, U, lcm, lcm_iter},
-    span::WithSpan,
 };
 use qter_core::{
     ByPuzzleType, PuzzleIdx, TheoreticalIdx,

@@ -22,9 +22,8 @@ use internment::ArcIntern;
 use parsing::parse;
 use puzzle_theory::{
     numbers::{Int, U},
-    span::{File, Span, WithSpan},
 };
-use qter_core::{Program, architectures::Architecture};
+use qter_core::{Program, architectures::Architecture, span::{File, Span, WithSpan}};
 use rhai::RhaiMacros;
 use strip_expanded::strip_expanded;
 
@@ -922,7 +921,7 @@ struct ExpandedCode {
 #[cfg(test)]
 mod tests {
     use internment::ArcIntern;
-    use puzzle_theory::span::File;
+    use qter_core::span::File;
 
     use crate::{Reporter, compile, q_emitter::emit_q};
 

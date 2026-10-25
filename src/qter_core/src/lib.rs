@@ -8,6 +8,7 @@
 pub mod architectures;
 mod shared_facelet_detection;
 pub mod table_encoding;
+pub mod span;
 
 mod runtime;
 pub use runtime::*;

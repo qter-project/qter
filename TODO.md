@@ -147,7 +147,7 @@
 ## End user
 
 - ⭐Youtube videos
-- ⭐Animation of the robot doing a computation
+- 😎Animation of the robot doing a computation
 
 ## Robot
 

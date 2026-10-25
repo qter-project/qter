@@ -329,8 +329,9 @@ mod tests {
     use internment::ArcIntern;
     use itertools::Itertools;
     use pretty_assertions::{assert_eq, assert_str_eq};
-    use puzzle_theory::{permutations::Permutation, puzzle_geometry::parsing::puzzle, span::File};
+    use puzzle_theory::{permutations::Permutation, puzzle_geometry::parsing::puzzle};
     use qter_core::architectures::{new_from_effect, with_presets};
+    use qter_core::span::File;
     use std::sync::Arc;
 
     #[tokio::test]

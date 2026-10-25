@@ -12,9 +12,9 @@ use puzzle_theory::{
     numbers::{Int, U},
     permutations::{Algorithm, Permutation, PermutationGroup},
     puzzle_geometry::PuzzleGeometry,
-    span::{File, Span, WithSpan},
 };
 use qter_core::architectures::{Architecture, with_presets};
+use qter_core::span::{File, Span, WithSpan};
 
 use crate::{
     Block, BlockID, BlockInfo, BlockInfoTracker, Code, DefineUnresolved, DefineValue,

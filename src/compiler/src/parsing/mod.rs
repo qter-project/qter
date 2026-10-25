@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use ariadne::{Label, Report, ReportKind, Source};
 use internment::ArcIntern;
-use puzzle_theory::span::{File, Span, WithSpan};
+use qter_core::span::{File, Span, WithSpan};
 
 use crate::{BlockID, ParsedSyntax, Reporter, builtin_macros::builtin_macros, parsing::level_two::tokenize};
 
@@ -156,7 +156,7 @@ pub(crate) mod tests {
     use std::rc::Rc;
 
     use internment::ArcIntern;
-    use puzzle_theory::span::File;
+    use qter_core::span::File;
 
     use super::parse;
     use crate::Reporter;

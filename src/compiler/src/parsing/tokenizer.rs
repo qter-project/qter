@@ -2,9 +2,9 @@ use ariadne::{Label, Report, ReportKind};
 use internment::ArcIntern;
 use puzzle_theory::{
     numbers::{Int, U},
-    span::{File, Span, WithSpan},
 };
 
+use qter_core::span::{File, Span, WithSpan};
 use crate::Reporter;
 use crate::rhai::RhaiCode;
 
