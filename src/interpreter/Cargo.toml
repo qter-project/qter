@@ -5,19 +5,19 @@ edition = "2024"
 
 [dependencies]
 qter_core.workspace = true
-internment.workspace = true
+sarlacc.workspace = true
 compiler.workspace = true
 log.workspace = true
 puzzle_theory.workspace = true
 pretty_assertions = "1.4.1"
-tokio = { version = "1.49.0", features = ["macros"] }
-tokio-stream = "0.1.18"
-tokio-util = { version = "0.7.18", features = ["io"], optional = true }
-serde_json = { version = "1.0.149", optional = true, default-features = false, features = ["alloc"] }
-serde = { version = "1.0.228", features = ["derive"] }
+tokio = { version = "1.54.1", features = ["macros"] }
+tokio-stream = "0.1.19"
+tokio-util = { version = "0.7.20", features = ["io"], optional = true }
+serde_json = { version = "1.0.154", optional = true, default-features = false, features = ["alloc"] }
+serde = { version = "1.0.229", features = ["derive"] }
 
 [dev-dependencies]
-tokio = { version = "1.49.0", features = ["rt"] }
+tokio = { version = "1.54.1", features = ["rt"] }
 itertools.workspace = true
 
 [lints]

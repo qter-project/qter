@@ -7,22 +7,22 @@ use std::{
     thread::available_parallelism,
 };
 
-use internment::ArcIntern;
+use sarlacc::Intern;
 use itertools::Itertools;
 use log::{trace, warn};
 use puzzle_theory::permutations::{Algorithm, Permutation};
 
 use crate::CUBE3;
 
-static COLOR_MAPPING: LazyLock<HashMap<ArcIntern<str>, char>> = LazyLock::new(|| {
+static COLOR_MAPPING: LazyLock<HashMap<Intern<str>, char>> = LazyLock::new(|| {
     let mut v = HashMap::new();
 
-    v.insert(ArcIntern::from("white"), 'U');
-    v.insert(ArcIntern::from("green"), 'F');
-    v.insert(ArcIntern::from("yellow"), 'D');
-    v.insert(ArcIntern::from("red"), 'R');
-    v.insert(ArcIntern::from("blue"), 'B');
-    v.insert(ArcIntern::from("orange"), 'L');
+    v.insert(Intern::from_ref("white"), 'U');
+    v.insert(Intern::from_ref("green"), 'F');
+    v.insert(Intern::from_ref("yellow"), 'D');
+    v.insert(Intern::from_ref("red"), 'R');
+    v.insert(Intern::from_ref("blue"), 'B');
+    v.insert(Intern::from_ref("orange"), 'L');
 
     v
 });
@@ -175,7 +175,7 @@ pub fn solve_rob_twophase_string(rob_twophase_string: &str) -> Result<Algorithm,
         Arc::clone(&CUBE3),
         alg.split(' ')
             .filter(|v| v.chars().next().is_some_and(|v| !v.is_ascii_digit()))
-            .map(ArcIntern::from)
+            .map(Intern::from_ref)
             .collect(),
     )
     .unwrap())

@@ -18,7 +18,7 @@ use std::{
 };
 
 use ariadne::{Report, ReportKind};
-use internment::ArcIntern;
+use sarlacc::Intern;
 use parsing::parse;
 use puzzle_theory::{
     numbers::{Int, U},
@@ -77,8 +77,8 @@ impl Reporter {
 ///
 /// Returns an error if the QAT program is invalid or if the macro expansion fails
 pub fn compile(
-    qat: &File,
-    find_import: impl Fn(&str) -> Result<ArcIntern<str>, String> + 'static,
+    qat: File,
+    find_import: impl Fn(&str) -> Result<Intern<str>, String> + 'static,
     reporter: &Reporter,
 ) -> Option<(Program, Option<WithSpan<RegistersDecl>>)> {
     let parsed = parse(qat, &Rc::new(find_import), false, reporter)?;
@@ -90,18 +90,18 @@ pub fn compile(
     strip_expanded(expanded, reporter).map(|v| (v, arch))
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Label {
-    name: ArcIntern<str>,
+    name: Intern<str>,
     maybe_block_id: Option<BlockID>,
     /// This is only used during parsing. We can't set branch keys during parsing because of chumsky limitations :(
     public: bool,
     branch_key: Option<MacroBranchKey>,
 }
 
-#[derive(Hash, PartialEq, Eq, Clone, Debug)]
+#[derive(Hash, PartialEq, Eq, Clone, Copy, Debug)]
 struct LabelReference {
-    name: ArcIntern<str>,
+    name: Intern<str>,
     block_id: BlockID,
     branch_key: Option<MacroBranchKey>,
 }
@@ -161,7 +161,7 @@ fn tag_with_key(instr: &mut TaggedInstruction, key: Option<MacroBranchKey>) {
 /// Resolve all defines in this block of code that are found in the table. This is used to resolve macro arguments. Note that macro arguments can't be desugared to define statements because those don't support scoping to a particular macro branch and it would be the case that a constant in a block intended to refer to a macro argument would actually refer to a define statement inside the other macro that the block is an argument of.
 fn resolve_just_these_defines(
     this: &mut WithSpan<TaggedInstruction>,
-    defines: &HashMap<ArcIntern<str>, Define<WithSpan<ResolvedValue>>>,
+    defines: &HashMap<Intern<str>, Define<WithSpan<ResolvedValue>>>,
     r: &Reporter,
 ) -> Option<()> {
     match &mut this.0 {
@@ -180,7 +180,7 @@ fn resolve_just_these_defines(
             Some(value) => {
                 let whoops = |which| {
                     r.push(
-                        Report::build(ReportKind::Error, this.span().clone())
+                        Report::build(ReportKind::Error, this.span())
                             .with_message(format!("This constant cannot be expanded as source code because it defines {which}, not a code block"))
                             .finish(),
                     );
@@ -245,8 +245,8 @@ impl RegisterModifiers {
     fn compose(
         self,
         new: RegisterModifiers,
-        old_span: &Span,
-        new_span: &Span,
+        old_span: Span,
+        new_span: Span,
         r: &Reporter,
     ) -> Option<RegisterModifiers> {
         Some(RegisterModifiers {
@@ -256,13 +256,13 @@ impl RegisterModifiers {
                 (Some(a), Some(b)) => {
                     if !(a % b).is_zero() {
                         r.push(
-                            Report::build(ReportKind::Error, new_span.clone())
+                            Report::build(ReportKind::Error, new_span)
                                 .with_label(
-                                    ariadne::Label::new(new_span.clone())
+                                    ariadne::Label::new(new_span)
                                         .with_message(format!("{b} does not divide {a} so the modulus can't be refined to {b}")),
                                 )
                                 .with_label(
-                                    ariadne::Label::new(old_span.clone())
+                                    ariadne::Label::new(old_span)
                                         .with_message("Constant was defined here"),
                                 )
                                 .finish(),
@@ -289,9 +289,9 @@ impl RegisterModifiers {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct RegisterReference {
-    reg_name: WithSpan<ArcIntern<str>>,
+    reg_name: WithSpan<Intern<str>>,
     mods: RegisterModifiers,
 }
 
@@ -355,17 +355,17 @@ impl Primitive {
 enum Value {
     Resolved(ResolvedValue),
     Constant {
-        name: ArcIntern<str>,
+        name: Intern<str>,
         mods: RegisterModifiers,
     },
 }
 
 fn value_resolve_just_these_defines(
     value: &mut WithSpan<Value>,
-    defines: &HashMap<ArcIntern<str>, Define<WithSpan<ResolvedValue>>>,
+    defines: &HashMap<Intern<str>, Define<WithSpan<ResolvedValue>>>,
     r: &Reporter,
 ) -> Option<()> {
-    let span = value.span().clone();
+    let span = value.span();
     match &mut **value {
         Value::Resolved(value) => match value {
             ResolvedValue::Int(_) | ResolvedValue::Register(_) | ResolvedValue::Ident(_) => {
@@ -387,7 +387,7 @@ fn value_resolve_just_these_defines(
             None => Some(()),
             Some(define) => {
                 value.value =
-                    Value::Resolved(compose_mod(define.value.clone(), *mods, &span, r)?.value);
+                    Value::Resolved(compose_mod(define.value.clone(), *mods, span, r)?.value);
                 Some(())
             }
         },
@@ -397,19 +397,19 @@ fn value_resolve_just_these_defines(
 fn compose_mod(
     value: WithSpan<ResolvedValue>,
     mods: RegisterModifiers,
-    ref_span: &Span,
+    ref_span: Span,
     r: &Reporter,
 ) -> Option<WithSpan<ResolvedValue>> {
     if mods.is_plain() {
         return Some(value);
     }
 
-    let def_span = value.span().clone();
+    let def_span = value.span();
 
     let ResolvedValue::Register(mut reg) = value.value else {
         r.push(
-            Report::build(ReportKind::Error, ref_span.clone())
-                .with_label(ariadne::Label::new(ref_span.clone()).with_message(format!(
+            Report::build(ReportKind::Error, ref_span)
+                .with_label(ariadne::Label::new(ref_span).with_message(format!(
                     "Register modifiers are not meaningful for non-register constants. Found a {}",
                     mods.found()
                 )))
@@ -419,7 +419,7 @@ fn compose_mod(
         return None;
     };
 
-    reg.mods = reg.mods.compose(mods, &def_span, ref_span, r)?;
+    reg.mods = reg.mods.compose(mods, def_span, ref_span, r)?;
 
     Some(def_span.with(ResolvedValue::Register(reg)))
 }
@@ -429,24 +429,24 @@ type RegisterInfo = (RegisterReference, RhaiRegInfo);
 #[derive(Clone, Debug)]
 enum ResolvedValue {
     Int(Int<U>),
-    Ident(WithSpan<ArcIntern<str>>),
+    Ident(WithSpan<Intern<str>>),
     Register(RegisterReference),
     Block(Block),
 }
 
-enum MaybeReg<'a> {
-    Reg(&'a RegisterReference, RhaiRegInfo),
+enum MaybeReg {
+    Reg(RegisterReference, RhaiRegInfo),
     NotAReg(&'static str),
-    RegNotFound(&'a Span),
+    RegNotFound(Span),
 }
 
 impl ResolvedValue {
     /// If this value is not an identifier, returns `None`. If this value is an identifier that does not refer to a register, returns `Some(Err(_))`. Otherwise returns `Some(Ok(_))`
-    pub fn as_reg(&self, info: &ExpansionInfo) -> MaybeReg<'_> {
+    pub fn as_reg(&self, info: &ExpansionInfo) -> MaybeReg {
         match self {
             ResolvedValue::Register(reg) => {
-                match info.register_exists(&reg).map(|reg_info| (reg, reg_info)) {
-                    Some((reg, reg_info)) => MaybeReg::Reg(reg, reg_info),
+                match info.register_exists(*reg).map(|reg_info| (reg, reg_info)) {
+                    Some((reg, reg_info)) => MaybeReg::Reg(*reg, reg_info),
                     None => MaybeReg::RegNotFound(reg.reg_name.span()),
                 }
             }
@@ -459,7 +459,7 @@ impl ResolvedValue {
 
 #[derive(Clone, Debug)]
 struct MacroCall {
-    name: WithSpan<ArcIntern<str>>,
+    name: WithSpan<Intern<str>>,
     arguments: WithSpan<Vec<WithSpan<Value>>>,
 }
 
@@ -471,7 +471,7 @@ enum Code {
 
 #[derive(Clone, Debug)]
 struct RhaiCall {
-    function_name: WithSpan<ArcIntern<str>>,
+    function_name: WithSpan<Intern<str>>,
     args: Box<[WithSpan<Value>]>,
 }
 
@@ -491,7 +491,7 @@ impl RhaiCall {
 
         let rhai = info.rhai_macros.get(&span.source()).unwrap();
 
-        let result = rhai.do_rhai_call(&self.function_name, args, span.clone(), info, r)?;
+        let result = rhai.do_rhai_call(&self.function_name, args, span, info, r)?;
 
         Some(span.with(result))
     }
@@ -501,7 +501,7 @@ impl RhaiCall {
 enum Instruction {
     Label(Label),
     Code(Code),
-    Constant(ArcIntern<str>),
+    Constant(Intern<str>),
     RhaiCall(RhaiCall),
     Define(DefineUnresolved),
     Block(Block),
@@ -515,34 +515,34 @@ enum MacroArgTy {
     Ident,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 enum MacroPatternComponent {
     Argument {
-        name: WithSpan<ArcIntern<str>>,
+        name: WithSpan<Intern<str>>,
         ty: WithSpan<MacroArgTy>,
     },
-    Word(ArcIntern<str>),
+    Word(Intern<str>),
 }
 
 impl MacroPatternComponent {
     /// Returns `None` if the patterns do not conflict, otherwise returns a counterexample that would match both patterns.
-    fn conflicts_with(&self, other: &MacroPatternComponent) -> Option<ArcIntern<str>> {
+    fn conflicts_with(&self, other: &MacroPatternComponent) -> Option<Intern<str>> {
         use MacroArgTy as A;
         use MacroPatternComponent as P;
 
         match (self, other) {
             (P::Argument { name: _, ty: a }, P::Argument { name: _, ty: b }) => match (**a, **b) {
-                (A::Int, A::Int) => Some(ArcIntern::from("123")),
-                (A::Reg | A::Ident, A::Reg | A::Ident) => Some(ArcIntern::from("a")),
-                (A::Block, A::Block) => Some(ArcIntern::from("{ }")),
+                (A::Int, A::Int) => Some(Intern::from_ref("123")),
+                (A::Reg | A::Ident, A::Reg | A::Ident) => Some(Intern::from_ref("a")),
+                (A::Block, A::Block) => Some(Intern::from_ref("{ }")),
                 _ => None,
             },
             (P::Argument { name: _, ty }, P::Word(word))
             | (P::Word(word), P::Argument { name: _, ty }) => match **ty {
-                A::Ident | A::Reg => Some(ArcIntern::clone(word)),
+                A::Ident | A::Reg => Some(*word),
                 _ => None,
             },
-            (P::Word(a), P::Word(b)) => (a == b).then(|| ArcIntern::clone(a)),
+            (P::Word(a), P::Word(b)) => (a == b).then(|| *a),
         }
     }
 
@@ -565,12 +565,12 @@ impl MacroPatternComponent {
     fn mk_define(
         &self,
         value: WithSpan<ResolvedValue>,
-    ) -> Option<(ArcIntern<str>, DefineResolved)> {
+    ) -> Option<(Intern<str>, DefineResolved)> {
         match (self, &*value) {
             (MacroPatternComponent::Argument { name, ty: _ }, _) => Some((
-                ArcIntern::clone(name),
+                **name,
                 DefineResolved {
-                    name: name.clone(),
+                    name: *name,
                     value,
                 },
             )),
@@ -612,7 +612,7 @@ impl MacroPattern {
         &self,
         components: Vec<WithSpan<ResolvedValue>>,
         info: &ExpansionInfo,
-    ) -> Result<Vec<(ArcIntern<str>, DefineResolved)>, Vec<WithSpan<ResolvedValue>>> {
+    ) -> Result<Vec<(Intern<str>, DefineResolved)>, Vec<WithSpan<ResolvedValue>>> {
         if components.len() != self.0.len()
             || !self
                 .0
@@ -656,7 +656,7 @@ enum DefineValue {
 
 #[derive(Clone, Debug)]
 struct Define<V> {
-    name: WithSpan<ArcIntern<str>>,
+    name: WithSpan<Intern<str>>,
     value: V,
 }
 
@@ -666,13 +666,13 @@ type DefineResolved = Define<WithSpan<ResolvedValue>>;
 #[derive(Clone, Debug)]
 pub enum Puzzle {
     Theoretical {
-        name: WithSpan<ArcIntern<str>>,
+        name: WithSpan<Intern<str>>,
         order: WithSpan<Int<U>>,
     },
     Real {
         // The extra span is that of the puzzle definition itself
         architectures: Vec<(
-            Vec<WithSpan<ArcIntern<str>>>,
+            Vec<WithSpan<Intern<str>>>,
             WithSpan<Arc<Architecture>>,
             Span,
         )>,
@@ -688,8 +688,8 @@ pub struct RegistersDecl {
 }
 
 impl RegistersDecl {
-    fn register_exists(&self, reference: &RegisterReference) -> Option<RhaiRegInfo> {
-        let reg_name = reference.reg_name.clone();
+    fn register_exists(&self, reference: RegisterReference) -> Option<RhaiRegInfo> {
+        let reg_name = reference.reg_name;
 
         let modulus = reference.mods.modulus;
 
@@ -742,7 +742,7 @@ struct RhaiRegInfo {
 struct BlockInfo {
     parent_block: Option<BlockID>,
     child_blocks: Vec<BlockID>,
-    defines: HashMap<ArcIntern<str>, DefineResolved>,
+    defines: HashMap<Intern<str>, DefineResolved>,
     labels: Vec<Label>,
 }
 
@@ -769,14 +769,14 @@ impl BlockInfoTracker {
                 if let Some(branch_key) = &label.branch_key {
                     if Some(*branch_key) == reference.branch_key {
                         return Some(LabelReference {
-                            name: ArcIntern::clone(&reference.name),
+                            name: reference.name,
                             block_id: current,
                             branch_key: reference.branch_key,
                         });
                     }
                 } else {
                     return Some(LabelReference {
-                        name: ArcIntern::clone(&reference.name),
+                        name: reference.name,
                         block_id: current,
                         branch_key: None,
                     });
@@ -787,13 +787,13 @@ impl BlockInfoTracker {
         }
     }
 
-    fn get_define(&self, mut block_id: BlockID, name: &ArcIntern<str>) -> Option<&DefineResolved> {
+    fn get_define(&self, mut block_id: BlockID, name: Intern<str>) -> Option<&DefineResolved> {
         loop {
             let block = self
                 .blocks
                 .get(&block_id)
                 .expect("the block id to be valid");
-            match block.defines.get(name) {
+            match block.defines.get(&name) {
                 Some(v) => return Some(v),
                 None => block_id = block.parent_block?,
             }
@@ -805,23 +805,23 @@ impl BlockInfoTracker {
         block_id: BlockID,
         value: WithSpan<Value>,
     ) -> Option<WithSpan<ResolvedValue>> {
-        let span = value.span().clone();
-        Some(span.clone().with(match value.into_inner() {
+        let span = value.span();
+        Some(span.with(match value.into_inner() {
             Value::Resolved(resolved) => resolved,
             Value::Constant {
-                name: arc_intern,
+                name,
                 mods,
             } => {
-                let Some(v) = self.get_define(block_id, &arc_intern) else {
+                let Some(v) = self.get_define(block_id, name) else {
                     self.reporter.push(
-                        Report::build(ReportKind::Error, span.clone())
+                        Report::build(ReportKind::Error, span)
                             .with_message("Constant not found in this scope")
                             .finish(),
                     );
                     return None;
                 };
 
-                compose_mod(v.value.clone(), mods, &span, &self.reporter)?.into_inner()
+                compose_mod(v.value.clone(), mods, span, &self.reporter)?.into_inner()
             }
         }))
     }
@@ -857,9 +857,9 @@ struct ExpansionInfo {
     // The global scope is block zero and if the block/label hasn't been expanded its ID is None
     block_info: BlockInfoTracker,
     /// Map (file contents containing macro definition, macro name) to a macro
-    macros: HashMap<(File, ArcIntern<str>), WithSpan<Macro>>,
+    macros: HashMap<(File, Intern<str>), WithSpan<Macro>>,
     /// Map each (file contents containing macro call, macro name) to the file contents that the macro definition is in
-    available_macros: HashMap<(File, ArcIntern<str>), File>,
+    available_macros: HashMap<(File, Intern<str>), File>,
     /// Each file has its own `LuaMacros`; use the file contents as the key
     rhai_macros: HashMap<File, RhaiMacros>,
     /// Counter to give fresh instances of `MacroBranchKey`
@@ -867,7 +867,7 @@ struct ExpansionInfo {
 }
 
 impl ExpansionInfo {
-    fn register_exists(&self, reference: &RegisterReference) -> Option<RhaiRegInfo> {
+    fn register_exists(&self, reference: RegisterReference) -> Option<RhaiRegInfo> {
         match &self.registers {
             Some(regs) => regs.register_exists(reference),
             None => None,
@@ -883,7 +883,7 @@ impl ExpansionInfo {
         match value {
             DefineValue::Value(v) => self.block_info.resolve(block_id, v),
             DefineValue::RhaiCall(call) => {
-                let span = call.span().clone();
+                let span = call.span();
                 call.into_inner().perform(span, self, block_id, r)
             }
         }
@@ -920,7 +920,7 @@ struct ExpandedCode {
 
 #[cfg(test)]
 mod tests {
-    use internment::ArcIntern;
+    use sarlacc::Intern;
     use qter_core::span::File;
 
     use crate::{Reporter, compile, q_emitter::emit_q};
@@ -949,7 +949,7 @@ mod tests {
         let reporter = Reporter::default();
 
         let Some((program, _)) = compile(
-            &File::new(ArcIntern::from("code.qat"), ArcIntern::from(code)),
+            File::new(Intern::from_ref("code.qat"), Intern::from_ref(code)),
             |_| unreachable!(),
             &reporter,
         ) else {
@@ -959,17 +959,17 @@ mod tests {
                     .print(ariadne::sources(
                         [("code.qat", code)]
                             .into_iter()
-                            .map(|(a, b)| (ArcIntern::from(a), ArcIntern::from(b))),
+                            .map(|(a, b)| (Intern::from_ref(a), Intern::from_ref(b))),
                     ))
                     .unwrap();
             }
             panic!();
         };
 
-        let q_code = emit_q(&program, "code.q".into(), &reporter).unwrap().0;
+        let q_code = emit_q(&program, Intern::from_ref("code.q"), &reporter).unwrap().0;
 
         assert_eq!(
-            q_code.inner(),
+            &*q_code.inner(),
             r"Puzzles
 A: 3x3
 
@@ -995,7 +995,7 @@ A: 3x3
         let reporter = Reporter::default();
 
         match compile(
-            &File::new(ArcIntern::from("code.qat"), ArcIntern::from(code)),
+            File::new(Intern::from_ref("code.qat"), Intern::from_ref(code)),
             |_| unreachable!(),
             &reporter,
         ) {
@@ -1021,7 +1021,7 @@ A: 3x3
         let reporter = Reporter::default();
 
         match compile(
-            &File::new(ArcIntern::from("code.qat"), ArcIntern::from(code)),
+            File::new(Intern::from_ref("code.qat"), Intern::from_ref(code)),
             |_| unreachable!(),
             &reporter,
         ) {

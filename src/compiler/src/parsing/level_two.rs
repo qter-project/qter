@@ -1,7 +1,7 @@
 use std::{cell::Cell, mem, sync::Arc};
 
 use ariadne::{Label, Report, ReportKind, Span as _};
-use internment::ArcIntern;
+use sarlacc::Intern;
 use itertools::{Itertools, MultiPeek};
 use puzzle_theory::{
     numbers::{Int, U},
@@ -14,12 +14,12 @@ use crate::{
     rhai::RhaiCode,
 };
 
-pub fn tokenize(qat: &File, reporter: Reporter) -> Option<TokenEnclosure> {
-    let mut t = Tokenizer::new(qat.to_owned(), reporter.clone());
+pub fn tokenize(qat: File, reporter: Reporter) -> Option<TokenEnclosure> {
+    let mut t = Tokenizer::new(qat, reporter.clone());
 
     t.skip_shebang();
 
-    let mk_span = |start, end| Span::new(qat.clone(), start, end);
+    let mk_span = |start, end| Span::new(qat, start, end);
 
     let last = Cell::new(t.spot);
     let mut t = t
@@ -36,7 +36,7 @@ pub fn tokenize(qat: &File, reporter: Reporter) -> Option<TokenEnclosure> {
 
     while last.get() != num_chars {
         let token = t.next()?;
-        let span = token.span().clone();
+        let span = token.span();
         match token.into_inner() {
             TokenNLFlat::NewLine => out.push(span.with(TokenNL::NewLine)),
             TokenNLFlat::Whitespace => out.push(span.with(TokenNL::Whitespace)),
@@ -44,7 +44,7 @@ pub fn tokenize(qat: &File, reporter: Reporter) -> Option<TokenEnclosure> {
                 TokenFlat::Ident(v) => out.push(span.with(TokenNL::Token(Token::Ident(v)))),
                 TokenFlat::Name(name) => {
                     let mut reg = RegisterReference {
-                        reg_name: span.clone().with(name),
+                        reg_name: span.with(name),
                         mods: RegisterModifiers {
                             modulus: None,
                             negative: false,
@@ -69,7 +69,7 @@ pub fn tokenize(qat: &File, reporter: Reporter) -> Option<TokenEnclosure> {
 
                     out.push(
                         mk_span(span.start(), end).with(TokenNL::Token(Token::Constant(v, mods))),
-                    )
+                    );
                 }
                 TokenFlat::Number(v) => out.push(span.with(TokenNL::Token(Token::Number(v)))),
                 TokenFlat::Symbol(v) => {
@@ -77,7 +77,7 @@ pub fn tokenize(qat: &File, reporter: Reporter) -> Option<TokenEnclosure> {
                         && let Some(v) = t.peek()
                         && let TokenNLFlat::Token(TokenFlat::Ident(v)) = &**v
                     {
-                        out.push(span.with(TokenNL::Token(Token::Directive(v.clone()))));
+                        out.push(span.with(TokenNL::Token(Token::Directive(*v))));
                         t.next()?;
                     } else if v == Symbol::Negative
                         && let Some(v) = t.peek()
@@ -92,7 +92,7 @@ pub fn tokenize(qat: &File, reporter: Reporter) -> Option<TokenEnclosure> {
                         };
 
                         let token = t.next().unwrap();
-                        let name_span = token.span().clone();
+                        let name_span = token.span();
 
                         let mut end = token.span().end();
 
@@ -121,7 +121,7 @@ pub fn tokenize(qat: &File, reporter: Reporter) -> Option<TokenEnclosure> {
                 TokenFlat::CloseEncloser(e) => {
                     let Some((before_t, after_t, encloser, prev_out)) = stack.pop() else {
                         reporter.push(
-                            Report::build(ReportKind::Error, span.clone())
+                            Report::build(ReportKind::Error, span)
                                 .with_message("Unmatched closing delimiter")
                                 .finish(),
                         );
@@ -130,9 +130,9 @@ pub fn tokenize(qat: &File, reporter: Reporter) -> Option<TokenEnclosure> {
 
                     if e != encloser {
                         reporter.push(
-                            Report::build(ReportKind::Error, span.clone())
+                            Report::build(ReportKind::Error, span)
                                 .with_label(
-                                    ariadne::Label::new(span.clone())
+                                    ariadne::Label::new(span)
                                         .with_message("Mismatched delimiter"),
                                 )
                                 .with_label(
@@ -145,7 +145,7 @@ pub fn tokenize(qat: &File, reporter: Reporter) -> Option<TokenEnclosure> {
                     }
 
                     out.push(
-                        span.clone()
+                        span
                             .with(TokenNL::Token(Token::EndOfEnclosure(Some(e)))),
                     );
 
@@ -159,7 +159,7 @@ pub fn tokenize(qat: &File, reporter: Reporter) -> Option<TokenEnclosure> {
                                     tokens: contents.into(),
                                     reporter: reporter.clone(),
                                     spot: 0,
-                                    file: qat.clone(),
+                                    file: qat,
                                 },
                             }),
                         ))),
@@ -188,7 +188,7 @@ pub fn tokenize(qat: &File, reporter: Reporter) -> Option<TokenEnclosure> {
             tokens: out.into(),
             reporter,
             spot: 0,
-            file: qat.clone(),
+            file: qat,
         },
     })
 }
@@ -236,9 +236,9 @@ impl TokenEnclosure {
         if res.is_some() && self.iter.spot < self.iter.tokens.len() - 1 {
             let token = self.iter.next().unwrap();
             println!("{token:?}");
-            let span = token.span().clone();
+            let span = token.span();
             self.iter.report(
-                Report::build(ReportKind::Error, span.clone())
+                Report::build(ReportKind::Error, span)
                     .with_label(Label::new(span).with_message("Unexpected token"))
                     .finish(),
             );
@@ -265,8 +265,8 @@ impl TokenIter {
             None => {
                 let span = self.tokens.last().unwrap().span();
                 self.report(
-                    Report::build(ReportKind::Error, span.clone())
-                        .with_label(Label::new(span.clone()).with_message("Here"))
+                    Report::build(ReportKind::Error, span)
+                        .with_label(Label::new(span).with_message("Here"))
                         .with_message("Expected token, found end of enclosure")
                         .finish(),
                 );
@@ -280,7 +280,7 @@ impl TokenIter {
             let token = self.get(self.spot)?.clone();
             self.spot += 1;
 
-            let span = token.span().clone();
+            let span = token.span();
 
             match token.into_inner() {
                 TokenNL::NewLine | TokenNL::Whitespace => {}
@@ -333,18 +333,18 @@ impl TokenIter {
             Some(v) => v.span().start(),
             None => self.tokens.last().unwrap().span().end(),
         };
-        Span::new(self.file.clone(), marker.0, end)
+        Span::new(self.file, marker.0, end)
     }
 
-    pub fn file(&self) -> &File {
-        &self.file
+    pub fn file(&self) -> File {
+        self.file
     }
 
     pub fn on_whitespace(&self) -> Option<Span> {
         let token = self.get(self.spot)?;
 
         if let TokenNL::Whitespace | TokenNL::NewLine = &**token {
-            return Some(token.span().clone());
+            return Some(token.span());
         }
 
         None
@@ -353,7 +353,7 @@ impl TokenIter {
     pub fn nl(&mut self) -> Option<Span> {
         loop {
             let token = self.get(self.spot)?;
-            let span = token.span().clone();
+            let span = token.span();
             match &**token {
                 TokenNL::NewLine => {
                     self.spot += 1;
@@ -376,7 +376,7 @@ impl TokenIter {
         picker: impl FnOnce(&Token) -> Option<T>,
     ) -> Option<WithSpan<T>> {
         let t = self.next()?;
-        let span = t.span().clone();
+        let span = t.span();
 
         match picker(&t) {
             Some(v) => Some(span.with(v)),
@@ -384,16 +384,16 @@ impl TokenIter {
         }
     }
 
-    pub fn ident(&mut self) -> Option<WithSpan<ArcIntern<str>>> {
+    pub fn ident(&mut self) -> Option<WithSpan<Intern<str>>> {
         self.filter("an identifier", |t| match t {
-            Token::Ident(ident) => Some(ident.clone()),
+            Token::Ident(ident) => Some(*ident),
             _ => None,
         })
     }
 
     pub fn reg(&mut self) -> Option<WithSpan<RegisterReference>> {
         self.filter("a register", |t| match t {
-            Token::Register(reg) => Some(reg.clone()),
+            Token::Register(reg) => Some(*reg),
             _ => None,
         })
     }
@@ -405,9 +405,9 @@ impl TokenIter {
         })
     }
 
-    pub fn constant(&mut self) -> Option<WithSpan<(ArcIntern<str>, RegisterModifiers)>> {
+    pub fn constant(&mut self) -> Option<WithSpan<(Intern<str>, RegisterModifiers)>> {
         self.filter("a constant", |t| match t {
-            Token::Constant(c, mods) => Some((c.clone(), *mods)),
+            Token::Constant(c, mods) => Some((*c, *mods)),
             _ => None,
         })
     }
@@ -415,10 +415,10 @@ impl TokenIter {
     pub fn word(&mut self, word: &str) -> Option<WithSpan<()>> {
         self.filter(&format!("`{word}`"), |t| {
             if let Some(word) = word.strip_prefix(".") {
-                if matches!(t, Token::Directive(directive) if directive == word) {
+                if matches!(t, Token::Directive(directive) if directive.as_ref() == word) {
                     return Some(());
                 }
-            } else if matches!(t, Token::Ident(ident) if ident == word) {
+            } else if matches!(t, Token::Ident(ident) if ident.as_ref() == word) {
                 return Some(());
             }
 
@@ -469,7 +469,7 @@ impl TokenIter {
             |t| match t {
                 Token::Ident(ident) => {
                     for choice in choices {
-                        if ident == choice.0 {
+                        if ident.as_ref() == choice.0 {
                             return Some(choice.1);
                         }
                     }
@@ -482,7 +482,7 @@ impl TokenIter {
     }
 
     pub fn unexpected<T>(&self, t: WithSpan<Token>, expected: &str) -> Option<T> {
-        let span = t.span().clone();
+        let span = t.span();
 
         let (found, span) = match t.into_inner() {
             Token::Ident(ident) => (format!("`{ident}`"), span),
@@ -500,7 +500,7 @@ impl TokenIter {
                     Encloser::Brace => "a block",
                 }
                 .to_owned(),
-                enclosed.span().clone(),
+                enclosed.span(),
             ),
             Token::RhaiCode(_) => ("rhai code".to_owned(), span),
             Token::EndOfEnclosure(parent) => (
@@ -515,7 +515,7 @@ impl TokenIter {
         };
 
         self.r().push(
-            Report::build(ReportKind::Error, span.clone())
+            Report::build(ReportKind::Error, span)
                 .with_message(format!("Expected {expected} but found {found}."))
                 .with_label(Label::new(span).with_message("here"))
                 .finish(),
@@ -590,10 +590,10 @@ pub struct SpanMarker(usize);
 
 #[derive(Clone, Debug)]
 pub enum Token {
-    Ident(ArcIntern<str>),
+    Ident(Intern<str>),
     Register(RegisterReference),
-    Directive(ArcIntern<str>),
-    Constant(ArcIntern<str>, RegisterModifiers),
+    Directive(Intern<str>),
+    Constant(Intern<str>, RegisterModifiers),
     Number(Int<U>),
     Symbol(Symbol),
     Enclosure(Encloser, WithSpan<TokenEnclosure>),

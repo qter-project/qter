@@ -6,7 +6,7 @@ use std::{
 };
 
 use ariadne::{Color, Label, Report, ReportKind};
-use internment::ArcIntern;
+use sarlacc::Intern;
 use itertools::Itertools;
 use puzzle_theory::{
     numbers::{Int, U},
@@ -30,7 +30,7 @@ use crate::{
 
 pub fn parse(
     iter: &mut TokenIter,
-    find_import: &Rc<impl Fn(&str) -> Result<ArcIntern<str>, String> + 'static>,
+    find_import: &Rc<impl Fn(&str) -> Result<Intern<str>, String> + 'static>,
     is_prelude: bool,
 ) -> Option<ParsedSyntax> {
     let registers = match registers(iter) {
@@ -63,7 +63,7 @@ pub fn parse(
             &mut parsed_syntax,
             iter.file(),
             super::PRELUDE.with(|v| (*v).clone()),
-            Span::new(iter.file().clone(), 0, iter.file().inner().chars().count()),
+            Span::new(iter.file(), 0, iter.file().inner().chars().count()),
             &iter.r(),
         );
     }
@@ -87,7 +87,7 @@ pub fn parse(
 
         if let Attempt::Taken(instr) = instruction(iter) {
             let instr = instr?;
-            let span = instr.span().clone();
+            let span = instr.span();
             parsed_syntax
                 .code
                 .push(span.with((instr.into_inner(), None, None)));
@@ -100,17 +100,17 @@ pub fn parse(
 
         match &*token {
             Token::Directive(directive) => {
-                if directive == "macro" {
+                if directive.as_ref() == "macro" {
                     let (name, def) =
                         macro_def(iter, parsed_syntax.expansion_info.fresh_branch_key())?;
 
                     if parsed_syntax
                         .expansion_info
                         .macros
-                        .contains_key(&(iter.file().clone(), ArcIntern::clone(&name)))
+                        .contains_key(&(iter.file(), *name))
                     {
                         iter.report(
-                            Report::build(ReportKind::Error, name.span().clone())
+                            Report::build(ReportKind::Error, name.span())
                                 .with_message("This macro is already defined.")
                                 .finish(),
                         );
@@ -120,17 +120,17 @@ pub fn parse(
                     parsed_syntax
                         .expansion_info
                         .macros
-                        .insert((iter.file().clone(), ArcIntern::clone(&name)), def);
+                        .insert((iter.file(), *name), def);
                     parsed_syntax.expansion_info.available_macros.insert(
-                        (iter.file().clone(), name.into_inner()),
-                        iter.file().clone(),
+                        (iter.file(), name.into_inner()),
+                        iter.file(),
                     );
-                } else if directive == "import" {
+                } else if directive.as_ref() == "import" {
                     let filename = iter.ident()?;
 
                     if !filename.ends_with(".qat") {
                         iter.report(
-                            Report::build(ReportKind::Error, filename.span().clone())
+                            Report::build(ReportKind::Error, filename.span())
                                 .with_message("The file extension must be `.qat`")
                                 .finish(),
                         );
@@ -142,7 +142,7 @@ pub fn parse(
                         Ok(v) => v,
                         Err(e) => {
                             iter.report(
-                                Report::build(ReportKind::Error, filename.span().clone())
+                                Report::build(ReportKind::Error, filename.span())
                                     .with_message(format!("Unable to find import: {e}"))
                                     .finish(),
                             );
@@ -155,7 +155,7 @@ pub fn parse(
                     let find_import = Rc::clone(find_import);
 
                     let Some(importee) = super::parse(
-                        &File::new(filename.value, import),
+                        File::new(filename.value, import),
                         &find_import,
                         is_prelude,
                         &iter.r(),
@@ -172,7 +172,7 @@ pub fn parse(
                     );
                 } else {
                     iter.report(
-                        Report::build(ReportKind::Error, span.clone())
+                        Report::build(ReportKind::Error, span)
                             .with_message("Unknown directive; expected .macro or .import")
                             .finish(),
                     );
@@ -181,7 +181,7 @@ pub fn parse(
             }
             Token::RhaiCode(rhai_code) => {
                 // if the rhai code doesn't parse, that doesn't stop us from continuing to parse the qat code
-                let _ = rhai_macros.add_code(rhai_code.clone(), &iter.r());
+                let _ = rhai_macros.add_code(*rhai_code, &iter.r());
             }
             Token::EndOfEnclosure(encloser) => {
                 assert!(encloser.is_none());
@@ -189,7 +189,7 @@ pub fn parse(
                 parsed_syntax
                     .expansion_info
                     .rhai_macros
-                    .insert(iter.file().clone(), rhai_macros);
+                    .insert(iter.file(), rhai_macros);
 
                 return if ok { Some(parsed_syntax) } else { None };
             }
@@ -235,12 +235,12 @@ fn register_decl(t: &mut TokenIter) -> Attempt<Option<Puzzle>> {
             let reg = t.reg()?;
 
             if !reg.is_plain() {
-                t.report(Report::build(ReportKind::Error, reg.span().clone()).with_label(Label::new(reg.span().clone())
+                t.report(Report::build(ReportKind::Error, reg.span()).with_label(Label::new(reg.span())
                     .with_message("Expected register name")).finish()
                 );
             }
 
-            names.push(reg.span().clone().with(reg.value.reg_name.value));
+            names.push(reg.span().with(reg.value.reg_name.value));
 
             *commit = true;
 
@@ -278,7 +278,7 @@ fn register_decl(t: &mut TokenIter) -> Attempt<Option<Puzzle>> {
                 architecture,
                 def_span,
             } => {
-                let span = architecture.span().clone();
+                let span = architecture.span();
                 let (arch, swizzle) = architecture.into_inner();
 
                 if arch.registers().len() == names.len() {
@@ -331,11 +331,11 @@ fn register_architecture(t: &mut TokenIter) -> Option<PuzzleUnnamed> {
         Ok(v) => Some(v),
         Err(err) => {
             t.report(
-                Report::build(ReportKind::Error, puzzle_def.span().clone())
+                Report::build(ReportKind::Error, puzzle_def.span())
                     .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
                     .with_message(err.clone())
                     .with_label(
-                        Label::new(puzzle_def.span().clone())
+                        Label::new(puzzle_def.span())
                             .with_message(err)
                             .with_color(Color::Red),
                     )
@@ -345,7 +345,7 @@ fn register_architecture(t: &mut TokenIter) -> Option<PuzzleUnnamed> {
         }
     };
 
-    let def_span = puzzle_def.span().clone();
+    let def_span = puzzle_def.span();
 
     let group = puzzle?.permutation_group();
 
@@ -439,12 +439,12 @@ fn arch(
 }
 
 fn parse_alg(t: &mut TokenIter, group: &Arc<PermutationGroup>) -> Option<Algorithm> {
-    let mut spans = HashMap::<ArcIntern<str>, Vec<Span>>::new();
+    let mut spans = HashMap::<Intern<str>, Vec<Span>>::new();
 
     let move_seq = t.parse_list(
         |t, commit| {
             let token = t.next()?;
-            let span = token.span().clone();
+            let span = token.span();
             let ident = match token.into_inner() {
                 Token::Ident(v) => v,
                 Token::Register(v) => {
@@ -456,7 +456,7 @@ fn parse_alg(t: &mut TokenIter, group: &Arc<PermutationGroup>) -> Option<Algorit
                 }
                 _ => return None,
             };
-            spans.entry(ident.clone()).or_default().push(span);
+            spans.entry(ident).or_default().push(span);
             *commit = true;
             Some(ident)
         },
@@ -471,7 +471,7 @@ fn parse_alg(t: &mut TokenIter, group: &Arc<PermutationGroup>) -> Option<Algorit
         Err(k) => {
             for span in spans.get(&k).unwrap() {
                 t.report(
-                    Report::build(ReportKind::Error, span.clone())
+                    Report::build(ReportKind::Error, *span)
                         .with_message("Nonexistant move")
                         .with_help(format!(
                             "Valid options are {}",
@@ -493,7 +493,7 @@ fn instruction(t: &mut TokenIter) -> Attempt<Option<WithSpan<Instruction>>> {
     t.attempt(|t, commit| {
         *commit = true;
         let token = t.next()?;
-        let span = token.span().clone();
+        let span = token.span();
         match token.into_inner() {
             Token::Ident(name) => {
                 if let Attempt::Taken(v) = t.attempt(|t, commit| {
@@ -508,8 +508,8 @@ fn instruction(t: &mut TokenIter) -> Attempt<Option<WithSpan<Instruction>>> {
                     t.nl()?;
 
                     let (name, public) = match name.strip_prefix("!") {
-                        Some(stripped) => (ArcIntern::from(stripped), true),
-                        None => (name.clone(), false),
+                        Some(stripped) => (Intern::from_ref(stripped), true),
+                        None => (name, false),
                     };
 
                     Some(Instruction::Label(crate::Label {
@@ -521,7 +521,7 @@ fn instruction(t: &mut TokenIter) -> Attempt<Option<WithSpan<Instruction>>> {
                 }) {
                     v
                 } else {
-                    Some(if name == "rhai" {
+                    Some(if name.as_ref() == "rhai" {
                         Instruction::RhaiCall(rhai_call(t)?)
                     } else {
                         Instruction::Code(Code::Macro(crate::MacroCall {
@@ -534,7 +534,7 @@ fn instruction(t: &mut TokenIter) -> Attempt<Option<WithSpan<Instruction>>> {
             Token::Directive(ident) if &*ident == "define" => Some(Instruction::Define(define(t)?)),
             Token::Constant(ident, mods) => {
                 if !mods.is_plain() {
-                    t.report(Report::build(ReportKind::Error, span.clone()).with_label(
+                    t.report(Report::build(ReportKind::Error, span).with_label(
                         Label::new(span).with_message(
                             format!("A constant used as an instruction cannot have register modifiers. Found a {}", mods.found()),
                         ),
@@ -578,17 +578,17 @@ fn args(t: &mut TokenIter) -> Option<WithSpan<Vec<WithSpan<Value>>>> {
 }
 
 fn value(t: &TokenIter, token: WithSpan<Token>) -> Option<WithSpan<Value>> {
-    let span = token.span().clone();
+    let span = token.span();
     match &*token {
-        Token::Ident(ident) => Some(span.clone().with(Value::Resolved(ResolvedValue::Ident(
-            span.with(ident.clone()),
+        Token::Ident(ident) => Some(span.with(Value::Resolved(ResolvedValue::Ident(
+            span.with(*ident),
         )))),
         Token::Register(r) => Some(
-            span.clone()
-                .with(Value::Resolved(ResolvedValue::Register(r.clone()))),
+            span
+                .with(Value::Resolved(ResolvedValue::Register(*r))),
         ),
         Token::Constant(constant, mods) => Some(span.with(Value::Constant {
-            name: constant.clone(),
+            name: *constant,
             mods: *mods,
         })),
         Token::Number(num) => Some(span.with(Value::Resolved(ResolvedValue::Int(*num)))),
@@ -598,7 +598,6 @@ fn value(t: &TokenIter, token: WithSpan<Token>) -> Option<WithSpan<Value>> {
 
                 block
                     .span()
-                    .clone()
                     .with(Value::Resolved(ResolvedValue::Block(block.value)))
             })
         }
@@ -615,7 +614,7 @@ fn block(t: &mut TokenIter) -> Option<WithSpan<Block>> {
     loop {
         if let Attempt::Taken(v) = t.attempt(|t, commit| {
             let token = t.next()?;
-            let span = token.span().clone();
+            let span = token.span();
             match token.into_inner() {
                 Token::EndOfEnclosure(_) => {
                     *commit = true;
@@ -640,7 +639,7 @@ fn block(t: &mut TokenIter) -> Option<WithSpan<Block>> {
             }
             Attempt::Taken(v) => {
                 let v = v?;
-                v.span().clone().with((v.into_inner(), None, None))
+                v.span().with((v.into_inner(), None, None))
             }
         });
     }
@@ -650,13 +649,13 @@ fn define(t: &mut TokenIter) -> Option<DefineUnresolved> {
     // Expects the `.define` to already be consumed
 
     let token = t.constant()?;
-    let span = token.span().clone();
+    let span = token.span();
     let (name, mods) = token.into_inner();
 
     if !mods.is_plain() {
         t.report(
-            Report::build(ReportKind::Error, span.clone())
-                .with_label(Label::new(span.clone()).with_message(format!(
+            Report::build(ReportKind::Error, span)
+                .with_label(Label::new(span).with_message(format!(
                     "Cannot use register modifiers in the name of a constant. Found a {}",
                     mods.found()
                 )))
@@ -731,7 +730,7 @@ fn rhai_call(t: &mut TokenIter) -> Option<RhaiCall> {
 fn macro_def(
     t: &mut TokenIter,
     fresh_branch_key: impl Fn() -> MacroBranchKey,
-) -> Option<(WithSpan<ArcIntern<str>>, WithSpan<Macro>)> {
+) -> Option<(WithSpan<Intern<str>>, WithSpan<Macro>)> {
     let name = t.ident()?;
 
     let macro_def = t.enclosure(Encloser::Brace)?.into_inner().parse(|t| {
@@ -788,7 +787,7 @@ fn macro_branch(
         Some(t.cash_in(start).with(
             MacroBranch {
                 pattern,
-                code: subst.span().clone().with((
+                code: subst.span().with((
                     subst.into_inner(),
                     None,
                     Some(fresh_branch_key()),
@@ -801,7 +800,7 @@ fn macro_branch(
 fn macro_pattern_component(t: &mut TokenIter) -> Attempt<Option<WithSpan<MacroPatternComponent>>> {
     t.attempt(|t, commit| {
         let token = t.next()?;
-        let span = token.span().clone();
+        let span = token.span();
         match token.into_inner() {
             Token::Ident(word) => {
                 *commit = true;
@@ -811,8 +810,8 @@ fn macro_pattern_component(t: &mut TokenIter) -> Attempt<Option<WithSpan<MacroPa
                 *commit = true;
 
                 if !mods.is_plain() {
-                    t.report(Report::build(ReportKind::Error, span.clone()).with_label(
-                        Label::new(span.clone()).with_message(
+                    t.report(Report::build(ReportKind::Error, span).with_label(
+                        Label::new(span).with_message(
                             format!("A macro argument name cannot have register modifiers. Found a {}", mods.found()),
                         ),
                     ).finish());

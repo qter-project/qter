@@ -2,7 +2,7 @@ use std::convert::Infallible;
 use std::fmt::Debug;
 use std::sync::Arc;
 
-use internment::ArcIntern;
+use sarlacc::Intern;
 use puzzle_theory::numbers::{Int, U};
 use puzzle_theory::permutations::{Algorithm, PermutationGroup};
 use crate::span::WithSpan;
@@ -11,12 +11,13 @@ use crate::span::WithSpan;
 #[derive(Debug, Clone)]
 pub struct Facelets {
     facelets: Vec<usize>,
-    pieces: Vec<ArcIntern<str>>,
+    pieces: Vec<Intern<str>>,
     order: Int<U>,
 }
 
 impl Facelets {
-    pub fn new(facelets: Vec<usize>, pieces: Vec<ArcIntern<str>>, order: Int<U>) -> Self {
+    #[must_use]
+    pub fn new(facelets: Vec<usize>, pieces: Vec<Intern<str>>, order: Int<U>) -> Self {
         Self {
             facelets,
             pieces,
@@ -24,14 +25,17 @@ impl Facelets {
         }
     }
 
+    #[must_use]
     pub fn facelets(&self) -> &[usize] {
         &self.facelets
     }
 
-    pub fn pieces(&self) -> &[ArcIntern<str>] {
+    #[must_use]
+    pub fn pieces(&self) -> &[Intern<str>] {
         &self.pieces
     }
 
+    #[must_use]
     pub fn order(&self) -> Int<U> {
         self.order
     }

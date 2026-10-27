@@ -9,21 +9,21 @@ bumpalo = { version = "3.20.3", features = ["allocator_api"] }
 core_affinity = "0.8.3"
 cpu-time = "1.0.0"
 dashmap = { version = "6.2.1", features = ["rayon"] }
-env_logger = "0.11.10"
+env_logger = "0.11.11"
 fxhash = "0.2.1"
 humanize-duration.workspace = true
 log.workspace = true
-num-integer = "0.1.46"
+num-integer = "0.1.47"
 num_cpus = "1.17.0"
 puzzle_theory.workspace = true
 rayon = "1.12.0"
 thiserror.workspace = true
-tokio = { version = "1.52.3", features = ["sync"] }
+tokio = { version = "1.54.1", features = ["sync"] }
 union-find = { git = "https://github.com/qter-project/union-find-rs" }
 
 [dev-dependencies]
 criterion = "0.8.2"
-fastrand = "2.4.1"
+fastrand = "2.5.0"
 test-log.workspace = true
 
 [[bench]]

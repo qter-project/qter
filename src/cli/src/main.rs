@@ -19,8 +19,8 @@ use color_eyre::{
     owo_colors::OwoColorize,
 };
 use compiler::{Reporter, compile, q_emitter::emit_q};
-use crashlog::{ProgramMetadata, cargo_metadata};
-use internment::ArcIntern;
+use crashlog::cargo_metadata;
+use sarlacc::Intern;
 use interpreter::{
     ActionPerformed, ExecutionState, InputRet, Interpreter, PausedState,
     puzzle_states::{PuzzleState, SimulatedPuzzle},
@@ -80,11 +80,11 @@ enum Commands {
     },
 }
 
-fn print_reports(reporter: &Reporter, sources: &HashMap<ArcIntern<str>, ArcIntern<str>>) {
+fn print_reports(reporter: &Reporter, sources: &HashMap<Intern<str>, Intern<str>>) {
     let mut cache = ariadne::sources(
         sources
             .iter()
-            .map(|(name, contents)| (name.clone(), contents.clone())),
+            .map(|(name, contents)| (*name, *contents)),
     );
 
     for (_, report) in reporter.iter() {
@@ -95,22 +95,22 @@ fn print_reports(reporter: &Reporter, sources: &HashMap<ArcIntern<str>, ArcInter
 }
 
 fn compile_qat(file: &Path) -> color_eyre::Result<(Program, File)> {
-    let path: ArcIntern<str> = ArcIntern::from(format!("{}", file.display()));
-    let contents: ArcIntern<str> = ArcIntern::from(fs::read_to_string(file)?);
-    let qat = File::new(path.clone(), contents.clone());
+    let path: Intern<str> = Intern::from_owned(format!("{}", file.display()));
+    let contents: Intern<str> = Intern::from_owned(fs::read_to_string(file)?);
+    let qat = File::new(path, contents);
 
-    let sources: Rc<RefCell<HashMap<ArcIntern<str>, ArcIntern<str>>>> =
+    let sources: Rc<RefCell<HashMap<Intern<str>, Intern<str>>>> =
         Rc::new(RefCell::new(HashMap::new()));
-    sources.borrow_mut().insert(path.clone(), contents.clone());
+    sources.borrow_mut().insert(path, contents);
     sources.borrow_mut().insert(
-        "prelude.qat".into(),
-        include_str!("../../qter_core/prelude.qat").into(),
+        Intern::from_ref("prelude.qat"),
+        Intern::from_ref(include_str!("../../qter_core/prelude.qat")),
     );
 
     let reporter = Reporter::default();
 
     if let Some((v, _)) = compile(
-        &qat,
+        qat,
         {
             let sources = Rc::clone(&sources);
             move |name| {
@@ -123,10 +123,10 @@ fn compile_qat(file: &Path) -> color_eyre::Result<(Program, File)> {
 
                 match fs::read_to_string(path) {
                     Ok(s) => {
-                        let contents: ArcIntern<str> = ArcIntern::from(s);
+                        let contents: Intern<str> = Intern::from_owned(s);
                         sources
                             .borrow_mut()
-                            .insert(ArcIntern::from(name), ArcIntern::clone(&contents));
+                            .insert(Intern::from_ref(name), contents);
                         Ok(contents)
                     }
                     Err(e) => Err(e.to_string()),
@@ -167,17 +167,14 @@ async fn main() -> color_eyre::Result<()> {
 
             let reporter = Reporter::default();
 
-            let q_code = match emit_q(&program, path.display().to_string().into(), &reporter) {
-                Some(v) => v.0,
-                None => {
-                    let sources = std::iter::once((qat.name(), qat.inner())).collect();
-                    print_reports(&reporter, &sources);
-                    return Err(eyre!(
-                        "Could not compile {} due to {} errors.",
-                        file.display(),
-                        reporter.iter().count()
-                    ));
-                }
+            let q_code = if let Some(v) = emit_q(&program, Intern::from_owned(path.display().to_string()), &reporter) { v.0 } else {
+                let sources = std::iter::once((qat.name(), qat.inner())).collect();
+                print_reports(&reporter, &sources);
+                return Err(eyre!(
+                    "Could not compile {} due to {} errors.",
+                    file.display(),
+                    reporter.iter().count()
+                ));
             };
 
             fs::write(path, &*q_code.inner())?;
@@ -212,7 +209,7 @@ async fn main() -> color_eyre::Result<()> {
                 .map(|alg| {
                     alg.split_whitespace()
                         .filter(|v| !v.is_empty())
-                        .map(ArcIntern::from)
+                        .map(Intern::from_ref)
                         .collect_vec()
                 })
                 .collect_vec();

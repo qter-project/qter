@@ -1,7 +1,6 @@
 use std::{cell::OnceCell, collections::HashMap, mem};
 
 use ariadne::{Report, ReportKind};
-use internment::ArcIntern;
 use itertools::Itertools;
 use qter_core::span::{Span, WithSpan};
 
@@ -60,7 +59,7 @@ pub fn expand(mut parsed: ParsedSyntax, r: &Reporter) -> Option<ExpandedCode> {
             .code
             .into_iter()
             .map(|tagged_instruction| {
-                let span = tagged_instruction.span().to_owned();
+                let span = tagged_instruction.span();
                 // We can ignore branch keys since expansion should have inserted them into label references
                 let (instruction, maybe_block_id, _) = tagged_instruction.into_inner();
 
@@ -97,13 +96,13 @@ fn expand_block(
             let maybe_block_id = &mut tagged_instruction.1;
             if maybe_block_id.is_none() {
                 *maybe_block_id = Some(block_id);
-                let _ = changed.set(tagged_instruction.span().clone());
+                let _ = changed.set(tagged_instruction.span());
             }
 
             tagged_instruction
         })
         .flat_map(|tagged_instruction| {
-            let span = tagged_instruction.span().to_owned();
+            let span = tagged_instruction.span();
 
             let (instruction, maybe_block_id, maybe_branch_key) = tagged_instruction.into_inner();
             let block_id = maybe_block_id.unwrap();
@@ -114,10 +113,10 @@ fn expand_block(
                 Instruction::Label(mut label) => {
                     if label.maybe_block_id.is_none() {
                         label.maybe_block_id = Some(block_id);
-                        let _ = changed.set(span.clone());
+                        let _ = changed.set(span);
                     }
 
-                    block_info.labels.push(label.clone());
+                    block_info.labels.push(label);
 
                     vec![WithSpan::new(
                         (Instruction::Label(label), maybe_block_id, maybe_branch_key),
@@ -145,7 +144,7 @@ fn expand_block(
                         .get_mut(&block_id)
                         .unwrap()
                         .defines
-                        .insert(ArcIntern::clone(&new_define.name), new_define);
+                        .insert(*new_define.name, new_define);
                     let _ = changed.set(span);
 
                     vec![]
@@ -155,11 +154,11 @@ fn expand_block(
                 }
                 Instruction::Constant(name) => {
                     let whoops = |actually| {
-                            r.push(Report::build(ReportKind::Error, span.clone()).with_message(format!("Expected a code block, found {actually}")).finish());
+                            r.push(Report::build(ReportKind::Error, span).with_message(format!("Expected a code block, found {actually}")).finish());
                             vec![]
                     };
 
-                    match expansion_info.block_info.get_define(block_id, &name) {
+                    match expansion_info.block_info.get_define(block_id, name) {
                         Some(define) => match &*define.value {
                             ResolvedValue::Int(_) => whoops("an integer"),
                             ResolvedValue::Ident(_) => whoops("an identifier"),
@@ -188,13 +187,13 @@ fn expand_block(
                     }
                 }
                 Instruction::RhaiCall(call) => {
-                    let Some(value) = call.perform(span.clone(), expansion_info, block_id, r) else {
+                    let Some(value) = call.perform(span, expansion_info, block_id, r) else {
                         return vec![]
                     };
-                    let _ = changed.set(span.clone());
+                    let _ = changed.set(span);
 
                     let whoops = |actually| {
-                            r.push(Report::build(ReportKind::Error, span.clone()).with_message(format!("Expected the macro to return a code block; actually returned {actually}")).finish());
+                            r.push(Report::build(ReportKind::Error, span).with_message(format!("Expected the macro to return a code block; actually returned {actually}")).finish());
                             vec![]
                     };
 
@@ -205,7 +204,7 @@ fn expand_block(
                         ResolvedValue::Block(block) => {
                             let _ = changed.set(span);
 
-                            block.code.clone()
+                            block.code
                         },
                     }
                 }
@@ -251,14 +250,14 @@ fn expand_code(
         Code::Macro(mac) => mac,
     };
 
-    let _ = changed.set(span.clone());
+    let _ = changed.set(span);
 
     let Some(macro_access) = expansion_info.available_macros.get(&(
-        macro_call.name.span().source().clone(),
-        ArcIntern::clone(&*macro_call.name),
+        macro_call.name.span().source(),
+        *macro_call.name,
     )) else {
         r.push(
-            Report::build(ReportKind::Error, macro_call.name.span().clone())
+            Report::build(ReportKind::Error, macro_call.name.span())
                 .with_message("Macro was not found in this scope")
                 .finish(),
         );
@@ -267,12 +266,12 @@ fn expand_code(
 
     let macro_def = expansion_info
         .macros
-        .get(&(macro_access.clone(), ArcIntern::clone(&macro_call.name)))
+        .get(&(*macro_access, *macro_call.name))
         .unwrap();
 
     match &**macro_def {
         Macro::UserDefined { branches } => {
-            let args_span = macro_call.arguments.span().clone();
+            let args_span = macro_call.arguments.span();
             let Some(mut args) = macro_call
                 .arguments
                 .into_inner()
@@ -325,7 +324,7 @@ fn expand_code(
 mod tests {
     use std::rc::Rc;
 
-    use internment::ArcIntern;
+    use sarlacc::Intern;
 
     use crate::Reporter;
     use crate::parsing::tests::file;
@@ -355,7 +354,7 @@ mod tests {
         let reporter = Reporter::default();
 
         let Some(parsed) = parse(
-            &file(code),
+            file(code),
             &Rc::new(|_: &str| unreachable!()),
             false,
             &reporter,
@@ -366,7 +365,7 @@ mod tests {
                     .print(ariadne::sources(
                         [("<static>", code)]
                             .into_iter()
-                            .map(|(a, b)| (ArcIntern::from(a), ArcIntern::from(b))),
+                            .map(|(a, b)| (Intern::from_ref(a), Intern::from_ref(b))),
                     ))
                     .unwrap();
             }

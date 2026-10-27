@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, LazyLock, OnceLock},
 };
 
-use internment::ArcIntern;
+use sarlacc::Intern;
 use itertools::Itertools;
 use puzzle_theory::{
     numbers::{I, Int, U, chinese_remainder_theorem, lcm, lcm_iter},
@@ -255,7 +255,7 @@ impl CycleGenerator {
 
         while let Some((sticker, _)) = facelet_cycle_membership.first_key_value() {
             let piece = &group.piece_assignments()[**sticker];
-            pieces.push(ArcIntern::clone(piece));
+            pieces.push(*piece);
 
             // Include all other stickers on the same piece
             let rest_to_include = group
@@ -286,7 +286,7 @@ impl CycleGenerator {
 #[derive(Debug, Clone)]
 pub struct DecodingTable {
     orders: Vec<Int<U>>,
-    table: BTreeMap<Vec<Int<U>>, Vec<ArcIntern<str>>>,
+    table: BTreeMap<Vec<Int<U>>, Vec<Intern<str>>>,
 }
 
 impl DecodingTable {
@@ -295,12 +295,12 @@ impl DecodingTable {
     pub fn closest_alg<'s, 't>(
         &'s self,
         target: &'t [Int<U>],
-    ) -> (&'s [Int<U>], &'s [ArcIntern<str>]) {
+    ) -> (&'s [Int<U>], &'s [Intern<str>]) {
         // println!("{:?}", target);
 
-        let mut closest: Option<(Int<U>, &'s [Int<U>], &'s [ArcIntern<str>])> = None;
+        let mut closest: Option<(Int<U>, &'s [Int<U>], &'s [Intern<str>])> = None;
 
-        let mut update_closest = |achieves: &'s [Int<U>], alg: &'s [ArcIntern<str>]| {
+        let mut update_closest = |achieves: &'s [Int<U>], alg: &'s [Intern<str>]| {
             let dist = achieves
                 .iter()
                 .copied()
@@ -437,7 +437,7 @@ impl Architecture {
 
             let mut data = BTreeMap::new();
 
-            let mut add_permutation = |alg: Vec<ArcIntern<str>>| {
+            let mut add_permutation = |alg: Vec<Intern<str>>| {
                 let permutation =
                     Algorithm::new_from_move_seq(self.group_arc(), alg.clone()).unwrap();
 
@@ -457,8 +457,8 @@ impl Architecture {
                 let mut inverse = register.algorithm.clone();
                 inverse.exponentiate(-Int::<I>::one());
                 [
-                    register.algorithm.move_seq_iter().cloned().collect_vec(),
-                    inverse.move_seq_iter().cloned().collect_vec(),
+                    register.algorithm.move_seq_iter().collect_vec(),
+                    inverse.move_seq_iter().collect_vec(),
                 ]
             }) {
                 add_permutation(item);
@@ -641,7 +641,7 @@ mod tests {
 
     use std::sync::Arc;
 
-    use internment::ArcIntern;
+    use sarlacc::Intern;
 
     use puzzle_theory::{
         numbers::{Int, U},
@@ -738,7 +738,7 @@ mod tests {
         let mut cube = Permutation::identity();
 
         let permutation =
-            Algorithm::new_from_move_seq(Arc::clone(&cube_def), vec![ArcIntern::from("U")])
+            Algorithm::new_from_move_seq(Arc::clone(&cube_def), vec![Intern::from_ref("U")])
                 .unwrap();
 
         assert_eq!(decode(&cube, &[8], &permutation).unwrap(), Int::<U>::zero());

@@ -7,21 +7,21 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-wasm-bindgen = "0.2.108"
+wasm-bindgen = "0.2.129"
 qter_core.workspace = true
 chumsky.workspace = true
 ariadne.workspace = true
-internment.workspace = true
-tokio = "1.49.0"
+sarlacc.workspace = true
+tokio = "1.54.1"
 puzzle_theory.workspace = true
 compiler.workspace = true
 interpreter = { workspace = true, features = ["remote_robot"] }
-web-sys = { version = "0.3.85", features = ["console"] }
-wasm-streams = "0.5.0"
-tokio-util = { version = "0.7.18", features = ["compat"] }
-wasm-bindgen-futures = "0.4.58"
-tsify = { version = "0.5.6", features = ["js"] }
-serde = { version = "1.0.228", features = ["derive"] }
+web-sys = { version = "0.3.106", features = ["console"] }
+wasm-streams = "0.7.0"
+tokio-util = { version = "0.7.20", features = ["compat"] }
+wasm-bindgen-futures = "0.4.79"
+tsify = { version = "0.5.8", features = ["js"] }
+serde = { version = "1.0.229", features = ["derive"] }
 serde-wasm-bindgen = "0.6.5"
 console_error_panic_hook = "0.1.7"
 

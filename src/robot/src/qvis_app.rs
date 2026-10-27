@@ -129,9 +129,9 @@ pub async fn calibrate(
     }
 
     for move_str in CALIBRATION_ALGORITHM.move_seq_iter() {
-        let move_perm = CUBE3.get_generator(move_str).unwrap();
+        let move_perm = CUBE3.get_generator(&move_str).unwrap();
         let move_alg =
-            Algorithm::new_from_move_seq(Arc::clone(&CUBE3), vec![move_str.clone()]).unwrap();
+            Algorithm::new_from_move_seq(Arc::clone(&CUBE3), vec![move_str]).unwrap();
         acc.compose_into(move_perm);
         robot.queue_move_seq(&move_alg).await?;
         robot.await_moves()?.await?;

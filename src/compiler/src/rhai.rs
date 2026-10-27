@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
 use ariadne::{Color, Label, Report, ReportKind, Span as _};
-use internment::ArcIntern;
+use sarlacc::Intern;
 use itertools::Itertools;
 use puzzle_theory::{
     numbers::{I, Int, U},
@@ -86,7 +86,7 @@ impl CustomType for WRegisterInfo {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct RhaiCode(Span);
 
 impl RhaiCode {
@@ -94,8 +94,8 @@ impl RhaiCode {
         RhaiCode(span)
     }
 
-    pub fn span(&self) -> &Span {
-        &self.0
+    pub fn span(&self) -> Span {
+        self.0
     }
 
     pub fn pos_to_span(&self, pos: Position) -> Option<Span> {
@@ -139,10 +139,10 @@ impl RhaiMacros {
                 let pos = err.position();
                 let (span, default) = match rhai_code.pos_to_span(pos) {
                     Some(span) => (span, false),
-                    None => (rhai_code.span().clone(), true),
+                    None => (rhai_code.span(), true),
                 };
 
-                let mut report = Report::build(ReportKind::Error, span.clone()).with_label(
+                let mut report = Report::build(ReportKind::Error, span).with_label(
                     Label::new(span)
                         .with_color(Color::Red)
                         .with_message(err.to_string()),
@@ -205,7 +205,7 @@ impl RhaiMacros {
             Some((code, Err(e))) => {
                 let rhai_span = code.pos_to_span(e.position()).unwrap();
                 r.push(
-                    Report::build(ReportKind::Error, rhai_span.clone())
+                    Report::build(ReportKind::Error, rhai_span)
                         .with_label(Label::new(rhai_span).with_message(e.to_string()))
                         .with_label(Label::new(span).with_message("Rhai function invoked here"))
                         .finish(),
@@ -213,7 +213,7 @@ impl RhaiMacros {
                 return None;
             }
             None => {
-                let mut report = Report::build(ReportKind::Error, span.clone()).with_label(
+                let mut report = Report::build(ReportKind::Error, span).with_label(
                     Label::new(span).with_message("Function not declared in any Rhai block"),
                 );
 
@@ -230,7 +230,7 @@ impl RhaiMacros {
 
         let branch_key = info.fresh_branch_key()();
 
-        from_rhai(value, span.clone(), branch_key, r)
+        from_rhai(value, span, branch_key, r)
     }
 }
 
@@ -239,11 +239,11 @@ fn into_rhai(arg: ResolvedValue, info: &ExpansionInfo, r: &Reporter) -> Option<D
         ResolvedValue::Int(int) => Dynamic::from(WInt(int.into())),
         ResolvedValue::Register(_) => match arg.as_reg(info) {
             crate::MaybeReg::Reg(register_reference, rhai_reg_info) => {
-                Dynamic::from(WRegisterInfo((register_reference.clone(), rhai_reg_info)))
+                Dynamic::from(WRegisterInfo((register_reference, rhai_reg_info)))
             }
             crate::MaybeReg::RegNotFound(span) => {
                 r.push(
-                    Report::build(ReportKind::Error, span.clone())
+                    Report::build(ReportKind::Error, span)
                         .with_message("Register does not exist")
                         .finish(),
                 );
@@ -298,7 +298,7 @@ fn from_rhai(
 
     let value = match value.try_cast_result::<ImmutableString>() {
         Ok(str) => {
-            return Some(ResolvedValue::Ident(span.with(ArcIntern::from(&*str))));
+            return Some(ResolvedValue::Ident(span.with(Intern::from_ref(&*str))));
         }
         Err(v) => v,
     };
@@ -310,7 +310,7 @@ fn from_rhai(
         Err(v) => v,
     };
 
-    try_decode_block(value, &span, branch_key, r).map(|v| {
+    try_decode_block(value, span, branch_key, r).map(|v| {
         ResolvedValue::Block(Block {
             code: v
                 .into_iter()
@@ -323,7 +323,7 @@ fn from_rhai(
 /// Returns `None` if there are no instructions in the block (an empty array)
 fn try_decode_block(
     value: Dynamic,
-    span: &Span,
+    span: Span,
     branch_key: MacroBranchKey,
     r: &Reporter,
 ) -> Option<Option<WithSpan<Instruction>>> {
@@ -331,7 +331,7 @@ fn try_decode_block(
         Ok(v) => v,
         Err(value) => {
             r.push(
-                Report::build(ReportKind::Error, span.clone())
+                Report::build(ReportKind::Error, span)
                     .with_message(format!(
                         "Unable to interpret `{value}` as a positive integer, identifier, register, or code block."
                     ))
@@ -352,21 +352,21 @@ fn try_decode_block(
 
         let args = values
             .map(|v| {
-                from_rhai(v, span.clone(), branch_key, r)
-                    .map(|v| span.clone().with(Value::Resolved(v)))
+                from_rhai(v, span, branch_key, r)
+                    .map(|v| span.with(Value::Resolved(v)))
             })
             .collect::<Option<Vec<_>>>()?;
 
-        Some(Some(span.clone().with(Instruction::Code(Code::Macro(
+        Some(Some(span.with(Instruction::Code(Code::Macro(
             MacroCall {
-                name: span.clone().with(ArcIntern::from(name)),
-                arguments: span.clone().with(args),
+                name: span.with(Intern::from_owned(name)),
+                arguments: span.with(args),
             },
         )))))
     } else {
         // This is a code block
         Some(Some(
-            span.clone().with(Instruction::Block(Block {
+            span.with(Instruction::Block(Block {
                 code: value
                     .into_iter()
                     .map(|v| try_decode_block(v, span, branch_key, r))

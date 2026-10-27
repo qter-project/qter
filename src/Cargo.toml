@@ -14,15 +14,15 @@ compiler.path = "compiler"
 g4g_program.path = "g4g_program"
 # puzzle_theory.git = "https://github.com/qter-project/puzzle-theory"
 puzzle_theory.path = "../../puzzle-theory"
-internment = { version = "0.8", features = [ "arc" ] }
 humanize-duration = "0.0.7"
-itertools = "0.14.0"
-chumsky = "0.12.0"
+itertools = "0.15.0"
+chumsky = "0.13.0"
 ariadne = "0.6.0"
-log = "0.4.28"
+log = "0.4.34"
 pretty_env_logger = "0.5.0"
-test-log = "0.2.18"
-thiserror = "2.0.11"
+test-log = "0.2.21"
+thiserror = "2.0.21"
+sarlacc = { version = "0.2.1", features = ["serde"] }
 
 [profile.bench]
 debug = true

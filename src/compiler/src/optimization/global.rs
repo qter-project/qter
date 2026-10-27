@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use internment::ArcIntern;
 use itertools::Itertools;
 use qter_core::span::WithSpan;
 
@@ -29,7 +28,7 @@ impl GlobalRewriter for DeadLabelRemover {
                 if let OptimizingCodeComponent::Label(label) = &**component {
                     label_locations.insert(
                         LabelReference {
-                            name: ArcIntern::clone(&label.name),
+                            name: label.name,
                             block_id: label.maybe_block_id.unwrap(),
                             branch_key: label.branch_key,
                         },
@@ -45,7 +44,7 @@ impl GlobalRewriter for DeadLabelRemover {
             primitive_match!((OptimizingPrimitive::Goto { label } | OptimizingPrimitive::SolvedGoto { label, .. }) = Some(instruction); else { continue; });
 
             let Some(is_seen) = label_locations.get_mut(&LabelReference {
-                name: ArcIntern::clone(&label.name),
+                name: label.name,
                 block_id: label.block_id,
                 branch_key: label.branch_key,
             }) else {
@@ -64,7 +63,7 @@ impl GlobalRewriter for DeadLabelRemover {
 
                 *label_locations
                     .get(&LabelReference {
-                        name: ArcIntern::clone(&label.name),
+                        name: label.name,
                         block_id: label.maybe_block_id.unwrap(),
                         branch_key: label.branch_key,
                     })

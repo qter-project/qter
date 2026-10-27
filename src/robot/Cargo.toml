@@ -4,32 +4,32 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bitflags = "2.10.0"
-clap = { version = "4.5.51", features = ["derive"] }
-env_logger = "0.11.8"
+bitflags = "2.13.2"
+clap = { version = "4.6.7", features = ["derive"] }
+env_logger = "0.11.11"
 log.workspace = true
 rppal = "0.22.1"
-serde = { version = "1.0.228", features = ["derive"] }
-toml = "0.9.8"
+serde = { version = "1.0.229", features = ["derive"] }
+toml = "1.1.8"
 interpreter = { workspace = true, features = ["remote_robot"] }
 qter_core.workspace = true
-internment.workspace = true
-dirs = "6.0.0"
+sarlacc.workspace = true
+dirs = "7.0.0"
 itertools.workspace = true
-thread-priority = "3.0.0"
+thread-priority = "3.1.1"
 paste = "1.0.15"
-serde_repr = "0.1.20"
+serde_repr = "0.1.21"
 puzzle_theory = { workspace = true, features = ["serde"] }
 color-eyre = "0.6.5"
-wtransport = "0.7.0"
+wtransport = "0.7.2"
 tiny_http = "0.12.0"
 g4g_program.workspace = true
-chrono = { version = "0.4.43", default-features = false, features = ["now"] }
-oneshot = "0.1.13"
+chrono = { version = "0.4.45", default-features = false, features = ["now"] }
+oneshot = { version = "0.2.1", features = ["std"] }
 
 # TODO: Enable io_uring once it's stable in tokio?
 [dependencies.tokio]
-version = "1.49.0"
+version = "1.54.1"
 default-features = false
 features = ["net", "rt-multi-thread", "tracing", "macros", "process"]
 

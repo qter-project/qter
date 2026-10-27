@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use ariadne::{Label, Report, ReportKind};
-use internment::ArcIntern;
+use sarlacc::Intern;
 use itertools::Itertools;
 use puzzle_theory::{
     numbers::{I, Int, U},
@@ -29,7 +29,7 @@ impl SeparatesByPuzzleType for RegisterIdx {
 }
 
 pub struct GlobalRegs {
-    register_table: HashMap<ArcIntern<str>, ByPuzzleType<'static, (StateIdx, RegisterIdx)>>,
+    register_table: HashMap<Intern<str>, ByPuzzleType<'static, (StateIdx, RegisterIdx)>>,
     theoretical: Vec<WithSpan<Int<U>>>,
     puzzles: Vec<WithSpan<Arc<PermutationGroup>>>,
 }
@@ -37,7 +37,7 @@ pub struct GlobalRegs {
 impl GlobalRegs {
     pub(super) fn get_reg(
         &self,
-        reference: &RegisterReference,
+        reference: RegisterReference,
     ) -> ByPuzzleType<'static, (StateIdx, RegisterIdx)> {
         let mut reg = self
             .register_table
@@ -61,7 +61,7 @@ impl GlobalRegs {
 
     fn generator(
         &self,
-        register: &RegisterReference,
+        register: RegisterReference,
         r: &Reporter,
     ) -> Option<ByPuzzleType<'static, (StateIdx, RegisterGenerator)>> {
         let reg_info = self.get_reg(register);
@@ -89,7 +89,7 @@ impl GlobalRegs {
 
     fn facelets(
         &self,
-        register: &RegisterReference,
+        register: RegisterReference,
         r: &Reporter,
     ) -> Option<ByPuzzleType<'_, FaceletsInfo>> {
         let reg_info = self.get_reg(register);
@@ -109,7 +109,7 @@ fn get_facelets(
     idx: usize,
     arch: &Architecture,
     modulus: Option<Int<U>>,
-    register: &RegisterReference,
+    register: RegisterReference,
     r: &Reporter,
 ) -> Option<Facelets> {
     match modulus {
@@ -125,10 +125,10 @@ fn get_facelets(
                     .dedup()
                     .collect_vec();
 
-                let span = register.reg_name.span().clone();
+                let span = register.reg_name.span();
 
                 r.push(
-                    Report::build(ReportKind::Error, span.clone())
+                    Report::build(ReportKind::Error, span)
                         .with_label(Label::new(span)
                         .with_message(format!(
                             "Could not find a set of pieces for solved-goto that give divisibility by {modulus}. The available moduli are the LCMs of all combinations of: {}",
@@ -163,7 +163,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
         match puzzle {
             Puzzle::Theoretical { name, order } => {
                 global_regs.register_table.insert(
-                    ArcIntern::clone(name),
+                    **name,
                     ByPuzzleType::Theoretical((TheoreticalIdx(global_regs.theoretical.len()), ())),
                 );
 
@@ -175,7 +175,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
                 let (names, architecture, puzzle_span) = &architectures[0];
                 for (i, name) in names.iter().enumerate() {
                     global_regs.register_table.insert(
-                        ArcIntern::clone(name),
+                        **name,
                         ByPuzzleType::Puzzle((
                             PuzzleIdx(global_regs.puzzles.len()),
                             (i, Arc::clone(architecture), None, false),
@@ -185,7 +185,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
 
                 global_regs
                     .puzzles
-                    .push(WithSpan::new(architecture.group_arc(), puzzle_span.clone()));
+                    .push(WithSpan::new(architecture.group_arc(), *puzzle_span));
             }
         }
     }
@@ -199,13 +199,13 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
         .expanded_code_components
         .into_iter()
         .filter_map(move |v| {
-            let span = v.span().clone();
+            let span = v.span();
             let instr = match v.into_inner() {
                 ExpandedCodeComponent::Instruction(primitive, block_id) => {
                     OptimizingCodeComponent::Instruction(
                         Box::new(match *primitive {
                             Primitive::Add { amt, register } => {
-                                match global_regs_for_iter.get_reg(&register) {
+                                match global_regs_for_iter.get_reg(register) {
                                     ByPuzzleType::Theoretical((theoretical, ())) => {
                                         OptimizingPrimitive::AddTheoretical { theoretical, amt }
                                     }
@@ -215,7 +215,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
                                             amts: vec![(
                                                 reg_idx,
                                                 if neg {
-                                                    amt.span().clone().with(
+                                                    amt.span().with(
                                                         arch.registers()[reg_idx].order()
                                                             - amt.into_inner(),
                                                     )
@@ -229,10 +229,10 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
                                 }
                             }
                             Primitive::Goto { label } => {
-                                let span = label.span().clone();
+                                let span = label.span();
                                 let Some(label) = expanded.block_info.label_scope(&label) else {
                                     r.push(
-                                        Report::build(ReportKind::Error, label.span().clone())
+                                        Report::build(ReportKind::Error, label.span())
                                             .with_message("Could not find label in scope")
                                             .finish(),
                                     );
@@ -244,10 +244,10 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
                                 }
                             }
                             Primitive::SolvedGoto { label, register } => {
-                                let span = label.span().clone();
+                                let span = label.span();
                                 let Some(label) = expanded.block_info.label_scope(&label) else {
                                     r.push(
-                                        Report::build(ReportKind::Error, label.span().clone())
+                                        Report::build(ReportKind::Error, label.span())
                                             .with_message("Could not find label in scope")
                                             .finish(),
                                     );
@@ -292,7 +292,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
     let instructions = optimized
         .into_iter()
         .filter_map(|component| {
-            let span = component.span().to_owned();
+            let span = component.span();
 
             match component.into_inner() {
                 OptimizingCodeComponent::Instruction(primitive, _) => {
@@ -320,7 +320,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
     let instructions = instructions
         .into_iter()
         .filter_map(|fully_simplified| {
-            let span = fully_simplified.span().to_owned();
+            let span = fully_simplified.span();
 
             let instruction = match *fully_simplified.into_inner() {
                 OptimizingPrimitive::AddPuzzle { puzzle, arch, amts } => {
@@ -341,7 +341,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
                     instruction_idx: *label_locations.get(&label).unwrap(),
                 },
                 OptimizingPrimitive::SolvedGoto { register, label } => {
-                    let facelets = global_regs.facelets(&register, r)?;
+                    let facelets = global_regs.facelets(register, r)?;
 
                     let solved_goto = qter_core::SolvedGoto {
                         instruction_idx: *label_locations.get(&label).unwrap(),
@@ -363,7 +363,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
                     register,
                 } => Instruction::RepeatUntil(ByPuzzleType::Puzzle(RepeatUntil {
                     puzzle_idx: puzzle,
-                    facelets: match global_regs.facelets(&register, r)? {
+                    facelets: match global_regs.facelets(register, r)? {
                         ByPuzzleType::Theoretical(_) => unreachable!(),
                         ByPuzzleType::Puzzle((idx, facelets)) => {
                             assert_eq!(idx, puzzle);
@@ -386,7 +386,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
                         message: message.into_inner(),
                     };
 
-                    Instruction::Input(match global_regs.generator(&register, r)? {
+                    Instruction::Input(match global_regs.generator(register, r)? {
                         ByPuzzleType::Theoretical((theoretical, ())) => {
                             ByPuzzleType::Theoretical((input, theoretical))
                         }
@@ -405,7 +405,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
                         message: message.into_inner(),
                     };
                     Instruction::Halt(match register {
-                        Some(register) => match global_regs.generator(&register, r)? {
+                        Some(register) => match global_regs.generator(register, r)? {
                             ByPuzzleType::Theoretical((theoretical_idx, ())) => {
                                 ByPuzzleType::Theoretical((halt, Some(theoretical_idx)))
                             }
@@ -425,7 +425,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
                         message: message.into_inner(),
                     };
                     Instruction::Print(match register {
-                        Some(register) => match global_regs.generator(&register, r)? {
+                        Some(register) => match global_regs.generator(register, r)? {
                             ByPuzzleType::Theoretical((theoretical_idx, ())) => {
                                 ByPuzzleType::Theoretical((print, Some(theoretical_idx)))
                             }

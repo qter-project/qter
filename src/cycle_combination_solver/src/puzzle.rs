@@ -111,6 +111,7 @@ pub enum KSolveConversionError {
     TooManyMoveClasses,
     #[error("Invalid transformation while processing the KSolve definition: {0}")]
     TransformsMetaError(#[from] TransformationsMetaError),
+    #[error("Orientation count is not a prime power")]
     NonPrimePowerOrientation,
 }
 
@@ -634,7 +635,7 @@ impl<'id, P: PuzzleState<'id>> PuzzleDef<'id, P> {
 
         let mut graph = VecVecGraph::new(move_class_groups.len());
         let mut result_1 = move_iter;
-        let mut result_2 = solved.clone();
+        let mut result_2 = solved;
         for (i, move_class_group_1) in move_class_groups.iter().enumerate() {
             for (j, move_class_group_2) in move_class_groups.iter().enumerate().take(i) {
                 if !move_class_group_1[0].commutes_with(

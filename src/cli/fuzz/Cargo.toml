@@ -14,7 +14,7 @@ compiler.workspace = true
 interpreter.workspace = true
 ariadne.workspace = true
 log.workspace = true
-internment.workspace = true
+sarlacc.workspace = true
 puzzle_theory.workspace = true
 
 [dependencies.cli]

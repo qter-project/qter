@@ -644,7 +644,7 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
         }
         let real_time = Instant::now();
         let cpu_time = ThreadTime::now();
-        let (maybe_min_order_ratio, maybe_max_order_ratio) =
+        let (_maybe_min_order_ratio, maybe_max_order_ratio) =
             self.optimality.maybe_min_max_order_ratio();
 
         let mut candidate_count = 0;

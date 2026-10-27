@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Guidance for OpenCode agents working in this repo. Verified against current config; where docs conflict with code, code wins.
+Guidance for agents working in this repo. Verified against current config; where docs conflict with code, code wins.
 
 ## Environment
 

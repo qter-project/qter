@@ -1,43 +1,39 @@
-use std::{
-    ops::{Deref, DerefMut},
-    sync::OnceLock,
-};
+use std::ops::{Deref, DerefMut};
 
 use ariadne::Span as _;
-use internment::ArcIntern;
+use sarlacc::Intern;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct File {
-    name: ArcIntern<str>,
-    contents: ArcIntern<str>,
+    name: Intern<str>,
+    contents: Intern<str>,
 }
 
 impl File {
     #[must_use]
-    pub fn new(name: ArcIntern<str>, contents: ArcIntern<str>) -> File {
+    pub fn new(name: Intern<str>, contents: Intern<str>) -> File {
         File { name, contents }
     }
 
     #[must_use]
-    pub fn inner(&self) -> ArcIntern<str> {
-        ArcIntern::clone(&self.contents)
+    pub fn inner(&self) -> Intern<str> {
+        self.contents
     }
 
     #[must_use]
-    pub fn name(&self) -> ArcIntern<str> {
-        ArcIntern::clone(&self.name)
+    pub fn name(&self) -> Intern<str> {
+        self.name
     }
 }
 
 /// A slice of the original source code; to be attached to pieces of data for error reporting
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct Span {
     source: File,
     start: usize,
     end: usize,
     start_idx: usize,
     end_idx: usize,
-    line_and_col: OnceLock<(usize, usize)>,
 }
 
 impl PartialEq for Span {
@@ -79,7 +75,6 @@ impl Span {
             source,
             start,
             end,
-            line_and_col: OnceLock::new(),
         }
     }
 
@@ -87,44 +82,15 @@ impl Span {
     #[must_use]
     pub fn from_static(str: &'static str) -> Span {
         Span::new(
-            File::new(ArcIntern::from("<static>"), ArcIntern::from(str)),
+            File::new(Intern::from_ref("<static>"), Intern::from_ref(str)),
             0,
             str.len(),
         )
     }
 
+    #[must_use]
     pub fn slice(&self) -> &str {
         &self.source.contents[self.start_idx..self.end_idx]
-    }
-
-    pub fn line_and_col(&self) -> (usize, usize) {
-        *self.line_and_col.get_or_init(|| {
-            let mut current_line = 1;
-            let mut current_col = 1;
-
-            for (taken, c) in self.source.contents.chars().enumerate() {
-                if taken > self.start() {
-                    break;
-                }
-
-                if c == '\n' {
-                    current_line += 1;
-                    current_col = 1;
-                } else {
-                    current_col += 1;
-                }
-            }
-
-            (current_line, current_col)
-        })
-    }
-
-    pub fn line(&self) -> usize {
-        self.line_and_col().0
-    }
-
-    pub fn col(&self) -> usize {
-        self.line_and_col().1
     }
 
     #[must_use]
@@ -133,8 +99,9 @@ impl Span {
         self
     }
 
+    #[must_use]
     pub fn source(&self) -> File {
-        self.source.clone()
+        self.source
     }
 
     /// Merges two spans into one, keeping the earliest start and latest end
@@ -145,7 +112,7 @@ impl Span {
     ///
     /// Panics if the two spans are from different sources
     #[must_use]
-    pub fn merge(self, other: &Span) -> Span {
+    pub fn merge(self, other: Span) -> Span {
         if self.source == other.source {
             Span {
                 source: self.source,
@@ -153,7 +120,6 @@ impl Span {
                 start_idx: self.start_idx.min(other.start_idx),
                 end: self.end.max(other.end),
                 end_idx: self.end_idx.max(other.end_idx),
-                line_and_col: OnceLock::new(),
             }
         } else {
             // This is really stupid but there isn't really a great way to deal with this. The proper way would be for spans to have "children" but we don't have that implemented
@@ -173,7 +139,7 @@ impl AsRef<str> for Span {
 }
 
 impl ariadne::Span for Span {
-    type SourceId = ArcIntern<str>;
+    type SourceId = Intern<str>;
 
     fn source(&self) -> &Self::SourceId {
         &self.source.name
@@ -201,7 +167,7 @@ impl core::fmt::Display for Span {
 }
 
 /// A value attached to a `Span`
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct WithSpan<T> {
     pub value: T,
     span: Span,
@@ -243,12 +209,8 @@ impl<T> WithSpan<T> {
         }
     }
 
-    pub fn span(&self) -> &Span {
-        &self.span
-    }
-
-    pub fn line(&self) -> usize {
-        self.span().line()
+    pub fn span(&self) -> Span {
+        self.span
     }
 }
 

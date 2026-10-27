@@ -108,7 +108,7 @@ impl RobotHandle {
         let mut oneshots = Vec::new();
 
         for move_ in alg.move_seq_iter() {
-            let mut move_ = &**move_;
+            let mut move_ = move_.into_ref();
             let dir = if let Some(rest) = move_.strip_suffix('\'') {
                 move_ = rest;
                 TurnDir::Prime

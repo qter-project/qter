@@ -110,7 +110,7 @@ pub fn algorithms_to_cycle_generators(
 mod tests {
     use std::{collections::HashMap, sync::Arc};
 
-    use internment::ArcIntern;
+    use sarlacc::Intern;
     use puzzle_theory::{
         numbers::Int,
         permutations::{Algorithm, Permutation, PermutationGroup},
@@ -123,60 +123,60 @@ mod tests {
         let mut generators = HashMap::new();
 
         generators.insert(
-            ArcIntern::from("A"),
+            Intern::from_ref("A"),
             Permutation::from_cycles(vec![vec![0, 1, 2]]),
         );
         generators.insert(
-            ArcIntern::from("B"),
+            Intern::from_ref("B"),
             Permutation::from_cycles(vec![vec![3, 4, 5]]),
         );
         generators.insert(
-            ArcIntern::from("C"),
+            Intern::from_ref("C"),
             Permutation::from_cycles(vec![vec![5, 6, 7]]),
         );
         generators.insert(
-            ArcIntern::from("D"),
+            Intern::from_ref("D"),
             Permutation::from_cycles(vec![vec![8, 9]]),
         );
         generators.insert(
-            ArcIntern::from("E"),
+            Intern::from_ref("E"),
             Permutation::from_cycles(vec![vec![10, 11, 12, 13]]),
         );
         generators.insert(
-            ArcIntern::from("A'"),
+            Intern::from_ref("A'"),
             Permutation::from_cycles(vec![vec![2, 1, 0]]),
         );
         generators.insert(
-            ArcIntern::from("B'"),
+            Intern::from_ref("B'"),
             Permutation::from_cycles(vec![vec![5, 4, 3]]),
         );
         generators.insert(
-            ArcIntern::from("C'"),
+            Intern::from_ref("C'"),
             Permutation::from_cycles(vec![vec![7, 6, 5]]),
         );
         generators.insert(
-            ArcIntern::from("E'"),
+            Intern::from_ref("E'"),
             Permutation::from_cycles(vec![vec![13, 12, 11, 10]]),
         );
 
         let perm_group = Arc::new(PermutationGroup::new(
             vec![
-                ArcIntern::from("A"),
-                ArcIntern::from("B"),
-                ArcIntern::from("C"),
-                ArcIntern::from("D"),
-                ArcIntern::from("E"),
-                ArcIntern::from("F"),
-                ArcIntern::from("G"),
-                ArcIntern::from("H"),
-                ArcIntern::from("I"),
-                ArcIntern::from("J"),
-                ArcIntern::from("K"),
-                ArcIntern::from("L"),
-                ArcIntern::from("K"),
-                ArcIntern::from("L"),
+                Intern::from_ref("A"),
+                Intern::from_ref("B"),
+                Intern::from_ref("C"),
+                Intern::from_ref("D"),
+                Intern::from_ref("E"),
+                Intern::from_ref("F"),
+                Intern::from_ref("G"),
+                Intern::from_ref("H"),
+                Intern::from_ref("I"),
+                Intern::from_ref("J"),
+                Intern::from_ref("K"),
+                Intern::from_ref("L"),
+                Intern::from_ref("K"),
+                Intern::from_ref("L"),
             ],
-            vec![ArcIntern::from("A"); 14],
+            vec![Intern::from_ref("A"); 14],
             generators,
         ));
 

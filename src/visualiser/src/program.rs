@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use ariadne::{Report as AriadneReport, ReportKind, Source as AriadneSource, Span as _};
-use internment::ArcIntern;
+use sarlacc::Intern;
 use puzzle_theory::{
     puzzle_geometry::{PuzzleGeometry, parsing::puzzle},
 };
@@ -27,28 +27,28 @@ pub struct Program {
 impl Program {
     #[wasm_bindgen(constructor)]
     pub fn new(s: &str) -> Result<Self, Vec<CompileError>> {
-        let s = File::new("<inner>".into(), s.into());
+        let s = File::new(Intern::from_ref("<inner>"), Intern::from_ref(s));
         let mk_error = |msg: &str, span: Option<Span>| {
-            let span = span.unwrap_or_else(|| Span::new(s.clone(), 0, s.inner().len()));
+            let span = span.unwrap_or_else(|| Span::new(s, 0, s.inner().len()));
             vec![CompileError {
                 report: AriadneReport::build(ReportKind::Error, span)
                     .with_message(msg)
                     .finish(),
-                source: s.clone(),
+                source: s,
             }]
         };
 
         let reporter = compiler::Reporter::default();
 
         let (program, regs) =
-            match compiler::compile(&s, |_| Err("Imports are not allowed".to_owned()), &reporter) {
+            match compiler::compile(s, |_| Err("Imports are not allowed".to_owned()), &reporter) {
                 Some(v) => v,
                 None => {
                     let reports = reporter.drain().into_iter();
                     return Err(reports
                         .map(|report| CompileError {
                             report,
-                            source: s.clone(),
+                            source: s,
                         })
                         .collect::<Vec<_>>());
                 }
@@ -63,13 +63,13 @@ impl Program {
         let [compiler::Puzzle::Real { architectures }] = regs.puzzles() else {
             return Err(mk_error(
                 "You must supply exactly one puzzle",
-                Some(regs.span().clone()),
+                Some(regs.span()),
             ));
         };
         let [(names, arch, _)] = &**architectures else {
             return Err(mk_error(
                 "Unexpected error: architecture switching",
-                Some(regs.span().clone()),
+                Some(regs.span()),
             ));
         };
 
@@ -78,7 +78,7 @@ impl Program {
             .iter()
             .enumerate()
             .map(|(i, reg)| Register {
-                label: names[i].clone().into_inner(),
+                label: names[i].into_inner(),
                 order: BigInt::from(reg.order()),
                 cycles: reg
                     .unshared_cycles()
@@ -92,14 +92,14 @@ impl Program {
             .collect();
 
         let (q_text, instr_spans) =
-            match compiler::q_emitter::emit_q(&program, "<output>".into(), &reporter) {
+            match compiler::q_emitter::emit_q(&program, Intern::from_ref("<output>"), &reporter) {
                 Some(v) => v,
                 None => {
                     let reports = reporter.drain().into_iter();
                     return Err(reports
                         .map(|report| CompileError {
                             report,
-                            source: s.clone(),
+                            source: s,
                         })
                         .collect::<Vec<_>>());
                 }
@@ -159,10 +159,10 @@ impl CompileError {
     }
 }
 
-declare_ts_alias!(type ArcInternStr = ArcIntern<str> = "string");
+declare_ts_alias!(type InternStr = Intern<str> = "string");
 
 fn serialize_arc_intern_str<S: serde::Serializer>(
-    s: &ArcIntern<str>,
+    s: &Intern<str>,
     serializer: S,
 ) -> Result<S::Ok, S::Error> {
     (**s).serialize(serializer)
@@ -171,7 +171,7 @@ fn serialize_arc_intern_str<S: serde::Serializer>(
 #[derive(Tsify, Serialize)]
 pub struct Register {
     #[serde(serialize_with = "serialize_arc_intern_str")]
-    label: ArcInternStr,
+    label: InternStr,
     order: BigInt,
     cycles: Vec<RegisterCycle>,
 }

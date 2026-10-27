@@ -1,15 +1,15 @@
 #![no_main]
 
 use compiler::{Reporter, compile, q_emitter::emit_q};
-use internment::ArcIntern;
+use sarlacc::Intern;
 use libfuzzer_sys::fuzz_target;
 use qter_core::span::File;
 
 fuzz_target!(|code: &str| {
     let reporter = Reporter::default();
-    let compiled = compile(&File::new(ArcIntern::from("<fuzzing>"), ArcIntern::from(code)), |n| {
+    let compiled = compile(File::new(Intern::from_ref("<fuzzing>"), Intern::from_ref(code)), |n| {
         if n.len() % 2 == 0 {
-            Ok(ArcIntern::from("add A 1"))
+            Ok(Intern::from_ref("add A 1"))
         } else {
             Err("File not found".to_owned())
         }
@@ -24,7 +24,7 @@ fuzz_target!(|code: &str| {
                 let mut cache = ariadne::sources(
                     [("<static>", code)]
                         .into_iter()
-                        .map(|(a, b)| (ArcIntern::from(a), ArcIntern::from(b))),
+                        .map(|(a, b)| (Intern::from_ref(a), Intern::from_ref(b))),
                 );
 
                 for report in reporter.iter() {
@@ -42,7 +42,7 @@ fuzz_target!(|code: &str| {
     };
 
     let reporter = Reporter::default();
-    let q_code = emit_q(&program, ArcIntern::from("<compiled-q>"), &reporter);
+    let q_code = emit_q(&program, Intern::from_ref("<compiled-q>"), &reporter);
 
     match q_code {
         Some((_, _)) => assert!(reporter.is_empty()),

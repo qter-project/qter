@@ -4,7 +4,7 @@ use std::{
     rc::Rc,
 };
 
-use internment::ArcIntern;
+use sarlacc::Intern;
 use itertools::Itertools;
 use pog_ans::{Cache, CodingFSM, TakeFrom, ans_decode, ans_encode};
 
@@ -19,7 +19,7 @@ struct TableStats {
 ///
 /// Also returns the compressed size of the data with the header size subtracted out.
 #[must_use]
-pub fn encode_table(algs: &[Vec<ArcIntern<str>>]) -> Option<(Vec<u8>, usize)> {
+pub fn encode_table(algs: &[Vec<Intern<str>>]) -> Option<(Vec<u8>, usize)> {
     // Statistical modelling of twisty puzzle algs:
     //
     // First, we're going to keep track of frequencies of different generators. I technically don't know but I highly doubt that generators for optimal solutions will be completely uniform. Also, if Arhan decides to pick algs with better finger tricks, this will take advantage of the distribution.
@@ -45,7 +45,7 @@ pub fn encode_table(algs: &[Vec<ArcIntern<str>>]) -> Option<(Vec<u8>, usize)> {
                 let idx = match symbol_indices.get(generator) {
                     None => {
                         let idx = symbol_indices.len();
-                        symbol_indices.insert(ArcIntern::clone(generator), idx);
+                        symbol_indices.insert(*generator, idx);
                         stats.frequencies.push(0);
                         idx
                     }
@@ -226,7 +226,7 @@ fn rest_weighted(ranges: &mut [u16], mut range_left: usize, distribution: &[u32]
 }
 
 /// Decodes a table and returns None if it can't be decoded
-pub fn decode_table(data: &mut impl Iterator<Item = u8>) -> Option<Vec<Vec<ArcIntern<str>>>> {
+pub fn decode_table(data: &mut impl Iterator<Item = u8>) -> Option<Vec<Vec<Intern<str>>>> {
     let symbol_count = u32::take_from(data)?;
 
     let mut symbols = Vec::new();
@@ -236,8 +236,8 @@ pub fn decode_table(data: &mut impl Iterator<Item = u8>) -> Option<Vec<Vec<ArcIn
         let symbol_len = u32::take_from(data)?;
         let generator = data.take(symbol_len as usize).collect_vec();
 
-        let generator = ArcIntern::<str>::from(String::from_utf8(generator).ok()?);
-        symbols.push(ArcIntern::clone(&generator));
+        let generator = Intern::<str>::from_owned(String::from_utf8(generator).ok()?);
+        symbols.push(generator);
 
         frequencies.push(u32::take_from(data)?);
     }
@@ -292,7 +292,7 @@ pub fn decode_table(data: &mut impl Iterator<Item = u8>) -> Option<Vec<Vec<ArcIn
         .split(|s| *s == end_of_alg_symbol)
         .map(|alg| {
             alg.iter()
-                .map(|s| ArcIntern::clone(&symbols[*s]))
+                .map(|s| symbols[*s])
                 .collect_vec()
         })
         .collect_vec();
@@ -503,14 +503,14 @@ impl CodingFSM<u16> for DistributionFSM {
 
 #[cfg(test)]
 mod tests {
-    use internment::ArcIntern;
+    use sarlacc::Intern;
     use itertools::Itertools;
 
     use crate::table_encoding::decode_table;
 
     use super::encode_table;
 
-    fn mk_algs_datastructure(spec: &str) -> Vec<Vec<ArcIntern<str>>> {
+    fn mk_algs_datastructure(spec: &str) -> Vec<Vec<Intern<str>>> {
         spec.split('\n')
             .map(str::trim)
             .filter(|v| !v.is_empty())
@@ -518,7 +518,7 @@ mod tests {
                 alg.split(' ')
                     .map(str::trim)
                     .filter(|v| !v.is_empty())
-                    .map(ArcIntern::from)
+                    .map(Intern::from_ref)
                     .collect_vec()
             })
             .collect_vec()

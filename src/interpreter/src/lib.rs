@@ -326,7 +326,7 @@ mod tests {
     use super::*;
     use crate::{Interpreter, PausedState, puzzle_states::SimulatedPuzzle};
     use compiler::{Reporter, compile, q_emitter::emit_q};
-    use internment::ArcIntern;
+    use sarlacc::Intern;
     use itertools::Itertools;
     use pretty_assertions::{assert_eq, assert_str_eq};
     use puzzle_theory::{permutations::Permutation, puzzle_geometry::parsing::puzzle};
@@ -348,7 +348,7 @@ mod tests {
 
         perm_group
             .perm_group
-            .compose_generators_into(&mut cube.state, [ArcIntern::from("U")].iter())
+            .compose_generators_into(&mut cube.state, [Intern::from_ref("U")].iter())
             .unwrap();
 
         assert!(cube.facelets_solved(&[0, 12, 15, 7, 40]).await.unwrap());
@@ -425,7 +425,7 @@ mod tests {
     }
 
     pub(crate) fn file(str: &'static str) -> File {
-        File::new(ArcIntern::from("<static>"), ArcIntern::from(str))
+        File::new(Intern::from_ref("<static>"), Intern::from_ref(str))
     }
 
     #[tokio::test]
@@ -456,7 +456,7 @@ mod tests {
         ";
 
         let reporter = Reporter::default();
-        let (program, _) = match compile(&file(code), |_| unreachable!(), &reporter) {
+        let (program, _) = match compile(file(code), |_| unreachable!(), &reporter) {
             Some(v) => v,
             None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
@@ -540,7 +540,7 @@ mod tests {
         ";
 
         let reporter = Reporter::default();
-        let (program, _) = match compile(&file(code), |_| unreachable!(), &reporter) {
+        let (program, _) = match compile(file(code), |_| unreachable!(), &reporter) {
             Some(v) => v,
             None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
@@ -620,7 +620,7 @@ mod tests {
         "#;
 
         let reporter = Reporter::default();
-        let (program, _) = match compile(&file(code), |_| unreachable!(), &reporter) {
+        let (program, _) = match compile(file(code), |_| unreachable!(), &reporter) {
             Some(v) => v,
             None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
@@ -687,14 +687,14 @@ mod tests {
         cases: impl Iterator<Item = ([usize; N], String)>,
     ) {
         let reporter = Reporter::default();
-        let (program, _) = match compile(&file(code), |_| unreachable!(), &reporter) {
+        let (program, _) = match compile(file(code), |_| unreachable!(), &reporter) {
             Some(v) => v,
             None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
 
         let program = Arc::new(program);
 
-        let q = emit_q(&program, "program.q".into(), &reporter).unwrap();
+        let q = emit_q(&program, Intern::from_ref("program.q"), &reporter).unwrap();
 
         let expected_count = maxima.iter().map(|v| v + 1).product::<usize>();
         let mut real_count = 0;
@@ -737,7 +737,7 @@ mod tests {
             );
         }
 
-        assert_str_eq!(q_code, q.0.inner());
+        assert_str_eq!(q_code, &*q.0.inner());
 
         assert!(!code.contains('\t'), "Program contains tabs!");
 
@@ -852,7 +852,7 @@ mod tests {
         ";
 
         let reporter = Reporter::default();
-        let (program, _) = match compile(&file(code), |_| unreachable!(), &reporter) {
+        let (program, _) = match compile(file(code), |_| unreachable!(), &reporter) {
             Some(v) => v,
             None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
@@ -954,18 +954,18 @@ mod tests {
         ";
 
         let reporter = Reporter::default();
-        let (program, _) = match compile(&file(code), |_| unreachable!(), &reporter) {
+        let (program, _) = match compile(file(code), |_| unreachable!(), &reporter) {
             Some(v) => v,
             None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
 
-        let q = emit_q(&program, "code.q".into(), &reporter)
+        let q = emit_q(&program, Intern::from_ref("code.q"), &reporter)
             .unwrap()
             .0
             .inner();
 
         assert_str_eq!(
-            q,
+            &*q,
             r#"Puzzles
 A: 3x3
 
@@ -1056,7 +1056,7 @@ A: 3x3
         ";
 
         let reporter = Reporter::default();
-        let (program, _) = match compile(&file(code), |_| unreachable!(), &reporter) {
+        let (program, _) = match compile(file(code), |_| unreachable!(), &reporter) {
             Some(v) => v,
             None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
@@ -1119,18 +1119,18 @@ A: 3x3
         ";
 
         let reporter = Reporter::default();
-        let (program, _) = match compile(&file(code), |_| unreachable!(), &reporter) {
+        let (program, _) = match compile(file(code), |_| unreachable!(), &reporter) {
             Some(v) => v,
             None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
 
-        let q_code = emit_q(&program, "code.q".into(), &reporter)
+        let q_code = emit_q(&program, Intern::from_ref("code.q"), &reporter)
             .unwrap()
             .0
             .inner();
 
         assert_eq!(
-            q_code,
+            &*q_code,
             r#"Puzzles
 A: 3x3
 
@@ -1205,18 +1205,18 @@ A: 3x3
         ";
 
         let reporter = Reporter::default();
-        let (program, _) = match compile(&file(code), |_| unreachable!(), &reporter) {
+        let (program, _) = match compile(file(code), |_| unreachable!(), &reporter) {
             Some(v) => v,
             None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
 
-        let q_code = emit_q(&program, "code.q".into(), &reporter)
+        let q_code = emit_q(&program, Intern::from_ref("code.q"), &reporter)
             .unwrap()
             .0
             .inner();
 
         assert_str_eq!(
-            q_code,
+            &*q_code,
             r#"Puzzles
 A: 3x3
 

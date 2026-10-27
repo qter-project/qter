@@ -1,5 +1,5 @@
 use ariadne::{Label, Report, ReportKind};
-use internment::ArcIntern;
+use sarlacc::Intern;
 use puzzle_theory::{
     numbers::{Int, U},
 };
@@ -63,9 +63,9 @@ enum SpecialSym {
 
 #[derive(Debug)]
 pub enum TokenFlat {
-    Ident(ArcIntern<str>),
-    Name(ArcIntern<str>),
-    Constant(ArcIntern<str>),
+    Ident(Intern<str>),
+    Name(Intern<str>),
+    Constant(Intern<str>),
     Number(Int<U>),
     Symbol(Symbol),
     RhaiCode(RhaiCode),
@@ -83,7 +83,7 @@ pub enum TokenNLFlat {
 #[derive(Clone)]
 pub(crate) struct Tokenizer {
     file: File,
-    qat: ArcIntern<str>,
+    qat: Intern<str>,
     pub spot: usize,
     spot_byte: usize,
     reporter: Reporter,
@@ -143,7 +143,7 @@ impl Tokenizer {
     }
 
     pub fn mk_span(&self, start: usize, end: usize) -> Span {
-        Span::new(self.file.clone(), start, end)
+        Span::new(self.file, start, end)
     }
 
     /// If the next input contains a special character or symbol, return the character and how many actual characters should be advanced to skip over it.
@@ -184,7 +184,7 @@ impl Tokenizer {
         if self.qat().is_empty() {
             let span = self.mk_span(spot - ".start-rhai".len(), spot);
             self.reporter.push(
-                Report::build(ReportKind::Error, span.clone())
+                Report::build(ReportKind::Error, span)
                     .with_message("Unterminated Rhai block")
                     .with_label(Label::new(span))
                     .finish(),
@@ -264,7 +264,7 @@ impl Iterator for Tokenizer {
                             }
                             Some('"') => {
                                 self.advance(1);
-                                break TokenNLFlat::Token(TokenFlat::Ident(ArcIntern::from(text)));
+                                break TokenNLFlat::Token(TokenFlat::Ident(Intern::from_owned(text)));
                             }
                             Some('\\') => {
                                 match self.peek(1) {
@@ -352,15 +352,15 @@ impl Iterator for Tokenizer {
 
         let span = self.mk_span(ident_start, self.spot);
 
-        Some(span.clone().with(TokenNLFlat::Token(
+        Some(span.with(TokenNLFlat::Token(
             if let Some(constant) = ident.strip_prefix('$') {
-                TokenFlat::Constant(ArcIntern::from(constant))
+                TokenFlat::Constant(Intern::from_ref(constant))
             } else if let Ok(num) = ident.parse::<Int<U>>() {
                 TokenFlat::Number(num)
             } else if ident.chars().any(char::is_uppercase) {
-                TokenFlat::Name(ArcIntern::from(ident))
+                TokenFlat::Name(Intern::from_owned(ident))
             } else {
-                TokenFlat::Ident(ArcIntern::from(ident))
+                TokenFlat::Ident(Intern::from_owned(ident))
             },
         )))
     }

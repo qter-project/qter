@@ -1,5 +1,5 @@
 use ariadne::{Report, ReportKind};
-use internment::ArcIntern;
+use sarlacc::Intern;
 use itertools::Itertools;
 use puzzle_theory::{
     numbers::{Int, U},
@@ -36,14 +36,14 @@ enum QInstruction {
 #[must_use]
 pub fn emit_q(
     program: &Program,
-    file_name: ArcIntern<str>,
+    file_name: Intern<str>,
     r: &Reporter,
 ) -> Option<(File, Box<[Span]>)> {
     let before = r.count();
 
     for theoretical in &program.theoretical {
         r.push(
-            Report::build(ReportKind::Error, theoretical.span().clone())
+            Report::build(ReportKind::Error, theoretical.span())
                 .with_message("Cannot compile a QAT program with theoretical registers")
                 .finish(),
         );
@@ -51,7 +51,7 @@ pub fn emit_q(
 
     if program.puzzles.len() > 1 {
         r.push(
-            Report::build(ReportKind::Error, program.puzzles[1].span().clone())
+            Report::build(ReportKind::Error, program.puzzles[1].span())
                 .with_message("Compiling with multiple puzzles is unsupported (for now)")
                 .finish(),
         );
@@ -151,11 +151,11 @@ pub fn emit_q(
 
     assert_eq!(spans.len(), program.instructions.len());
 
-    let file = File::new(file_name, ArcIntern::from(out));
+    let file = File::new(file_name, Intern::from_owned(out));
 
     let spans = spans
         .into_iter()
-        .map(|(start, end)| Span::new(file.clone(), start, end))
+        .map(|(start, end)| Span::new(file, start, end))
         .collect();
 
     Some((file, spans))
@@ -165,7 +165,6 @@ fn stringify_alg(alg: &Algorithm, padding: usize, pad_first: bool) -> String {
     let padding_str = " ".repeat(padding);
     split_strings(
         &alg.move_seq_iter()
-            .map(ArcIntern::clone)
             .collect::<Vec<_>>(),
         ALG_MAX_CHARS_WIDTH - padding,
     )
@@ -186,7 +185,7 @@ fn stringify_alg(alg: &Algorithm, padding: usize, pad_first: bool) -> String {
 ///     - When impossible, the string that is longer than the line width is on its own line
 /// 2. Minimize line count
 /// 3. Make the lines as close to equal length as possible
-fn split_strings(mut strings: &[ArcIntern<str>], line_width: usize) -> Vec<String> {
+fn split_strings(mut strings: &[Intern<str>], line_width: usize) -> Vec<String> {
     let mut out = Vec::new();
 
     while let Some((i, s)) = strings.iter().find_position(|v| v.len() >= line_width) {
@@ -202,7 +201,7 @@ fn split_strings(mut strings: &[ArcIntern<str>], line_width: usize) -> Vec<Strin
     out
 }
 
-fn split_all_short_enough(strings: &[ArcIntern<str>], max_line_width: usize) -> Vec<String> {
+fn split_all_short_enough(strings: &[Intern<str>], max_line_width: usize) -> Vec<String> {
     if strings.is_empty() {
         return Vec::new();
     }
@@ -291,7 +290,7 @@ fn convert_instructions(instructions: &[WithSpan<Instruction>]) -> Vec<WithSpan<
     let mut out = Vec::new();
 
     for instr in instructions {
-        let span = instr.span().clone();
+        let span = instr.span();
         out.push(span.with(match &**instr {
             Instruction::Goto { instruction_idx } => QInstruction::Goto {
                 instruction_idx: *instruction_idx,
@@ -313,24 +312,24 @@ fn convert_instructions(instructions: &[WithSpan<Instruction>]) -> Vec<WithSpan<
 
 #[cfg(test)]
 mod tests {
-    use internment::ArcIntern;
+    use sarlacc::Intern;
 
     use crate::q_emitter::split_strings;
 
     #[test]
     fn test_split_strings() {
         assert_eq!(
-            split_strings(&["A", "B", "C", "D"].map(ArcIntern::from), 5),
+            split_strings(&["A", "B", "C", "D"].map(Intern::from_ref), 5),
             vec!["A B", "C D"]
         );
 
         assert_eq!(
-            split_strings(&["A", "B", "C", "D"].map(ArcIntern::from), 2),
+            split_strings(&["A", "B", "C", "D"].map(Intern::from_ref), 2),
             vec!["A", "B", "C", "D"]
         );
 
         assert_eq!(
-            split_strings(&["A", "BRUH", "C", "D"].map(ArcIntern::from), 3),
+            split_strings(&["A", "BRUH", "C", "D"].map(Intern::from_ref), 3),
             vec!["A", "BRUH", "C D"]
         );
     }

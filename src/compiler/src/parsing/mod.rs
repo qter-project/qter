@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use ariadne::{Label, Report, ReportKind, Source};
-use internment::ArcIntern;
+use sarlacc::Intern;
 use qter_core::span::{File, Span, WithSpan};
 
 use crate::{BlockID, ParsedSyntax, Reporter, builtin_macros::builtin_macros, parsing::level_two::tokenize};
@@ -12,12 +12,12 @@ mod tokenizer;
 
 thread_local! {
     static PRELUDE: ParsedSyntax = {
-        let prelude = File::new(ArcIntern::from("prelude.qat"), ArcIntern::from(include_str!("../../../qter_core/prelude.qat")));
+        let prelude = File::new(Intern::from_ref("prelude.qat"), Intern::from_ref(include_str!("../../../qter_core/prelude.qat")));
 
         let reporter = Reporter::default();
 
         let Some(mut parsed_prelude) = parse(
-            &prelude,
+            prelude,
             &Rc::new(|_: &str| {
                 panic!(
                     "Prelude should not import files (because it's easier not to implement; message henry if you need this feature)"
@@ -27,20 +27,20 @@ thread_local! {
             &reporter,
         ) else {
             for report in reporter.iter() {
-                report.1.eprint((ArcIntern::from("prelude.qat"), Source::from(prelude.inner()))).unwrap();
+                report.1.eprint((Intern::from_ref("prelude.qat"), Source::from(prelude.inner()))).unwrap();
             }
 
             panic!("Failed building the prelude with {} errors", reporter.count())
         };
 
-        let builtin_macros = builtin_macros(&prelude);
+        let builtin_macros = builtin_macros(prelude);
         parsed_prelude
             .expansion_info
             .available_macros
             .extend(builtin_macros.keys().map(|source_and_macro_name| {
                 (
-                    source_and_macro_name.to_owned(),
-                    source_and_macro_name.0.clone(),
+                    *source_and_macro_name,
+                    source_and_macro_name.0,
                 )
             }));
         parsed_prelude.expansion_info.macros.extend(builtin_macros);
@@ -50,8 +50,8 @@ thread_local! {
 }
 
 pub fn parse(
-    qat: &File,
-    find_import: &Rc<impl Fn(&str) -> Result<ArcIntern<str>, String> + 'static>,
+    qat: File,
+    find_import: &Rc<impl Fn(&str) -> Result<Intern<str>, String> + 'static>,
     is_prelude: bool,
     reporter: &Reporter,
 ) -> Option<WithSpan<ParsedSyntax>> {
@@ -71,7 +71,7 @@ pub fn parse(
 
 fn merge_files(
     importer: &mut ParsedSyntax,
-    importer_contents: &File,
+    importer_contents: File,
     mut importee: ParsedSyntax,
     span: Span,
     reporter: &Reporter,
@@ -87,11 +87,11 @@ fn merge_files(
                     .with_message("Importing this file introduces a second registers declaration")
                     .with_note("A QAT program may only contain one registers declaration")
                     .with_label(
-                        Label::new(regs1.span().clone())
+                        Label::new(regs1.span())
                             .with_message("Current registers declaration"),
                     )
                     .with_label(
-                        Label::new(regs2.span().clone())
+                        Label::new(regs2.span())
                             .with_message("Introduced registers declaration"),
                     )
                     .finish(),
@@ -126,10 +126,10 @@ fn merge_files(
             .expansion_info
             .available_macros
             .entry((
-                importer_contents.clone(),
-                ArcIntern::clone(&source_and_macro_name.1),
+                importer_contents,
+                source_and_macro_name.1,
             ))
-            .or_insert_with(|| macro_file.clone());
+            .or_insert_with(|| macro_file);
 
         importer
             .expansion_info
@@ -155,14 +155,14 @@ fn merge_files(
 pub(crate) mod tests {
     use std::rc::Rc;
 
-    use internment::ArcIntern;
+    use sarlacc::Intern;
     use qter_core::span::File;
 
     use super::parse;
     use crate::Reporter;
 
     pub(crate) fn file(str: &'static str) -> File {
-        File::new(ArcIntern::from("<static>"), ArcIntern::from(str))
+        File::new(Intern::from_ref("<static>"), Intern::from_ref(str))
     }
 
     #[test]
@@ -209,10 +209,10 @@ pub(crate) mod tests {
         let reporter = Reporter::default();
 
         match parse(
-            &file(code),
+            file(code),
             &Rc::new(|name: &str| {
                 assert_eq!(name, "pog.qat");
-                Ok(ArcIntern::from("add 1 a"))
+                Ok(Intern::from_ref("add 1 a"))
             }),
             false,
             &reporter,
@@ -222,7 +222,7 @@ pub(crate) mod tests {
                 let mut cache = ariadne::sources(
                     [("pog.qat", "add 1 a"), ("<static>", code)]
                         .into_iter()
-                        .map(|(a, b)| (ArcIntern::from(a), ArcIntern::from(b))),
+                        .map(|(a, b)| (Intern::from_ref(a), Intern::from_ref(b))),
                 );
 
                 for (_, report) in reporter.iter() {

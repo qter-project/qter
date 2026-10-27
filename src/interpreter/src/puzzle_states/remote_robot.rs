@@ -2,6 +2,7 @@ use std::{fmt::Display, io::Error, sync::Arc};
 
 use log::trace;
 use puzzle_theory::permutations::{Algorithm, Permutation, PermutationGroup};
+use sarlacc::Intern;
 use tokio::io::{
     AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader,
 };
@@ -105,7 +106,7 @@ impl<C: Connection> RobotLike for RemoteRobot<C> {
         writer
             .write_all(
                 alg.move_seq_iter()
-                    .map(|v| &**v)
+                    .map(Intern::into_ref)
                     .collect::<Vec<_>>()
                     .join(" ")
                     .as_bytes(),

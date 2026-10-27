@@ -153,7 +153,7 @@ impl Rewriter for CoalesceAdds {
         component: WithSpan<OptimizingCodeComponent>,
         _: &GlobalRegs,
     ) -> Vec<WithSpan<OptimizingCodeComponent>> {
-        let span = component.span().clone();
+        let span = component.span();
 
         match component.into_inner() {
             OptimizingCodeComponent::Instruction(instr, block_id) => match *instr {
@@ -255,7 +255,7 @@ impl PeepholeRewriter for RepeatUntil1 {
 
         primitive_match!(OptimizingPrimitive::AddPuzzle { puzzle, arch, amts } = window.get(2));
 
-        if match global_regs.get_reg(register) {
+        if match global_regs.get_reg(*register) {
             qter_core::ByPuzzleType::Theoretical(_) => true,
             qter_core::ByPuzzleType::Puzzle((idx, _)) => idx != *puzzle,
         } {
@@ -273,7 +273,7 @@ impl PeepholeRewriter for RepeatUntil1 {
                 puzzle: *puzzle,
                 arch: Arc::clone(arch),
                 amts: amts.to_owned(),
-                register: register.to_owned(),
+                register: *register,
             }),
             spot2.block_id,
         );
@@ -290,11 +290,11 @@ impl PeepholeRewriter for RepeatUntil1 {
 
         let span = window
             .drain(0..3)
-            .map(|v| v.span().clone())
-            .reduce(|a, v| a.merge(&v))
+            .map(|v| v.span())
+            .reduce(qter_core::span::Span::merge)
             .unwrap();
 
-        values.push(span.clone().with(repeat_until));
+        values.push(span.with(repeat_until));
         values.push(span.with(goto));
 
         extend_from_start(window, values);
@@ -349,7 +349,7 @@ impl PeepholeRewriter for RepeatUntil2 {
             } = window.get(2 + optional_label)
         );
 
-        if match global_regs.get_reg(register) {
+        if match global_regs.get_reg(*register) {
             qter_core::ByPuzzleType::Theoretical(_) => true,
             qter_core::ByPuzzleType::Puzzle((idx, _)) => idx != *puzzle,
         } {
@@ -369,14 +369,14 @@ impl PeepholeRewriter for RepeatUntil2 {
                 puzzle: *puzzle,
                 arch: Arc::clone(arch),
                 amts: amts.to_owned(),
-                register: register.to_owned(),
+                register: *register,
             }),
             spot3.block_id,
         );
 
         let goto = OptimizingCodeComponent::Instruction(
             Box::new(OptimizingPrimitive::Goto {
-                label: spot3.clone(),
+                label: *spot3,
             }),
             spot3.block_id,
         );
@@ -387,11 +387,11 @@ impl PeepholeRewriter for RepeatUntil2 {
 
         let span = window
             .drain(0..2)
-            .map(|v| v.span().clone())
-            .reduce(|a, v| a.merge(&v))
+            .map(|v| v.span())
+            .reduce(qter_core::span::Span::merge)
             .unwrap();
 
-        out.push(span.clone().with(repeat_until));
+        out.push(span.with(repeat_until));
         out.push(span.with(goto));
 
         extend_from_start(window, out);
@@ -447,7 +447,7 @@ impl PeepholeRewriter for RepeatUntil3 {
             } = window.get(2 + optional_label)
         );
 
-        if match global_regs.get_reg(register) {
+        if match global_regs.get_reg(*register) {
             qter_core::ByPuzzleType::Theoretical(_) => true,
             qter_core::ByPuzzleType::Puzzle((idx, _)) => idx != *puzzle,
         } {
@@ -497,14 +497,14 @@ impl PeepholeRewriter for RepeatUntil3 {
                 puzzle: *puzzle,
                 arch: Arc::clone(arch),
                 amts,
-                register: register.to_owned(),
+                register: *register,
             }),
             maybe_spot1.block_id,
         );
 
         let goto = OptimizingCodeComponent::Instruction(
             Box::new(OptimizingPrimitive::Goto {
-                label: spot2.clone(),
+                label: *spot2,
             }),
             maybe_spot1.block_id,
         );
@@ -515,11 +515,11 @@ impl PeepholeRewriter for RepeatUntil3 {
 
         let span = window
             .drain(0..2 + is_alg)
-            .map(|v| v.span().clone())
-            .reduce(|a, v| a.merge(&v))
+            .map(|v| v.span())
+            .reduce(qter_core::span::Span::merge)
             .unwrap();
 
-        out.push(span.clone().with(repeat_until));
+        out.push(span.with(repeat_until));
         out.push(span.with(goto));
 
         extend_from_start(window, out);
@@ -578,7 +578,7 @@ impl PeepholeRewriter for VectorizeRepeatUntil {
             return;
         };
 
-        let ByPuzzleType::Puzzle((_, (reg_idx, arch, modulus, _))) = global_regs.get_reg(register)
+        let ByPuzzleType::Puzzle((_, (reg_idx, arch, modulus, _))) = global_regs.get_reg(*register)
         else {
             return;
         };
@@ -697,7 +697,7 @@ impl Rewriter for TransformSolve {
         self.puzzle_idx = Some(*puzzle);
 
         let ByPuzzleType::Puzzle((puzzle_idx, (reg_idx, arch, modulus, _))) =
-            global_regs.get_reg(register)
+            global_regs.get_reg(*register)
         else {
             dumped.extend(self.dump_with(component));
             return dumped;
@@ -742,8 +742,8 @@ impl Rewriter for TransformSolve {
             let span = self
                 .instrs
                 .drain(..)
-                .map(|v| v.0.span().clone())
-                .reduce(|a, v| a.merge(&v))
+                .map(|v| v.0.span())
+                .reduce(qter_core::span::Span::merge)
                 .unwrap();
 
             self.guaranteed_zeroed = HashMap::new();

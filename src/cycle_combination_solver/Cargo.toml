@@ -5,7 +5,7 @@ version = "0.1.0"
 
 [dependencies]
 enum_dispatch = "0.3.13"
-fastrand = "2.4.1"
+fastrand = "2.5.0"
 fxhash = "0.2.1"
 generativity = "1.2.1"
 heuristic-graph-coloring = "0.1.0"
@@ -23,7 +23,7 @@ pretty_env_logger.workspace = true
 test-log.workspace = true
 
 [build-dependencies]
-cfg_aliases = "0.2.1"
+cfg_aliases = "0.2.2"
 
 [lints]
 workspace = true
