@@ -74,9 +74,7 @@ impl GlobalRegs {
                 let mut alg = new_from_effect(&arch, vec![(idx, Int::<U>::one())]);
 
                 if neg {
-                    println!("Negative! {alg:?}");
                     alg.exponentiate(-Int::<I>::one());
-                    println!("After! {alg:?}");
                 }
 
                 Some(ByPuzzleType::Puzzle((
