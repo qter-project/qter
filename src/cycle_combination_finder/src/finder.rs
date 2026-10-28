@@ -156,7 +156,7 @@ pub struct CycleCombinations<const N: usize> {
 
 #[derive(Error, Debug)]
 pub enum CycleCombinationFinderError<const N: usize> {
-    #[error("Expected {expected} solutions, found {actual}.")]
+    #[error("Expected {expected} solutions, found {actual}")]
     MismatchedSolutionCount { expected: usize, actual: usize },
 }
 
@@ -164,7 +164,7 @@ pub enum CycleCombinationFinderError<const N: usize> {
 pub enum PuzzleAnalysisError {
     #[error(
         "This puzzle has too many orders. This is a hint that your puzzle is anyways too large \
-         for the CCF to finish computing in a reasonable amount of time."
+         for the CCF to finish computing in a reasonable amount of time"
     )]
     PuzzleTooManyOrders,
     #[error(
@@ -177,20 +177,20 @@ pub enum PuzzleAnalysisError {
 #[derive(Error, Debug)]
 pub enum CycleCombinationFinderBuildError {
     #[error("Register order {required_register_order_bigint} does not exist; try one of: {try_}")]
-    RequiredRegisterOrderDoesNotExist {
+    OrderValueConstraintDoesNotExist {
         required_register_order_bigint: Int<U>,
         try_: PossibleOrdersDisplayList,
     },
-    #[error("Register count must be non-zero.")]
+    #[error("Register count must be non-zero")]
     InvalidRegisterCount,
     #[error(
         "Number of cores must be non-zero and less than or equal to the number of cores on this \
-         machine."
+         machine"
     )]
     InvalidNumCores,
-    #[error("MSS batch size must be non-zero.")]
+    #[error("MSS batch size must be non-zero")]
     InvalidMssBatchSize,
-    #[error("Solution expansion limit must be non-zero.")]
+    #[error("Solution expansion limit must be non-zero")]
     InvalidSolutionExpansion,
     #[error(
         "Optimality order ratios must be finite and >= 1.0, and a clamp's min must not exceed its \
@@ -219,13 +219,6 @@ impl fmt::Display for PossibleOrdersDisplayList {
 pub struct Register {
     order_value_constraint: OrderValueConstraint,
     custom_constraint: Option<fn()>,
-}
-
-impl Register {
-    #[must_use]
-    pub fn default_count(c: u16) -> Vec<Self> {
-        vec![Self::default(); usize::from(c)]
-    }
 }
 
 /// The possible orders of a puzzle, computed once and shared by every
@@ -426,6 +419,28 @@ impl Default for CycleCombinationFinderBuilder<NeedsRegisters, NeedsPuzzleAnalys
     }
 }
 
+impl Register {
+    #[must_use]
+    pub fn default_count(c: u16) -> Vec<Self> {
+        vec![Self::default(); usize::from(c)]
+    }
+
+    #[must_use]
+    pub fn with_order_value_constraint(
+        mut self,
+        order_value_constraint: OrderValueConstraint,
+    ) -> Self {
+        self.order_value_constraint = order_value_constraint;
+        self
+    }
+
+    #[must_use]
+    pub fn with_custom_constraint(mut self, custom_constraint: Option<fn()>) -> Self {
+        self.custom_constraint = custom_constraint;
+        self
+    }
+}
+
 impl ValidatedNumCores {
     fn maybe_pool(self) -> Option<ThreadPool> {
         match self {
@@ -558,15 +573,6 @@ impl<R, P> CycleCombinationFinderBuilder<R, P> {
     }
 
     #[must_use]
-    pub fn with_required_register_orders(
-        mut self,
-        required_register_orders: Vec<OrderValueConstraint>,
-    ) -> Self {
-        self.required_register_orders = required_register_orders;
-        self
-    }
-
-    #[must_use]
     pub fn with_registers(
         self,
         registers: Vec<Register>,
@@ -660,21 +666,21 @@ impl<'a, const N: usize> CycleCombinationFinderBuilder<HasRegisters, HasPuzzleAn
                                 .or_insert_with_key(OrderExps::as_bigint);
                             possible_order_bigint <= required_register_order_bigint
                         });
-                        ValidatedOrderValueConstraint::AtLeast(possible_orders_len_cast(
-                            i,
-                        ))
+                        ValidatedOrderValueConstraint::AtLeast(possible_orders_len_cast(i))
                     }
                     OrderValueConstraint::Exactly(required_register_order_bigint) => {
-                        let i = possible_orders_except_one
-                            .binary_search_by(|possible_order| {
+                        let maybe_i =
+                            possible_orders_except_one.binary_search_by(|possible_order| {
                                 let possible_order_bigint = possible_order_to_bigint
                                     .entry(possible_order.order.clone())
                                     .or_insert_with_key(OrderExps::as_bigint);
                                 (*possible_order_bigint).cmp(&required_register_order_bigint)
-                            })
-                            .map_err(|right| {
+                            });
+                        match maybe_i {
+                            Ok(i) => ValidatedOrderValueConstraint::Exactly(possible_orders_len_cast(i)),
+                            Err(right_i) => {
                                 let mut try_ = vec![];
-                                if let Some(left) = right.checked_sub(1)
+                                if let Some(left) = right_i.checked_sub(1)
                                     && let Some(left_possible_order) =
                                         possible_orders_except_one.get(left)
                                 {
@@ -684,22 +690,19 @@ impl<'a, const N: usize> CycleCombinationFinderBuilder<HasRegisters, HasPuzzleAn
                                     try_.push(*possible_order_bigint);
                                 }
                                 if let Some(right_possible_order) =
-                                    possible_orders_except_one.get(right)
+                                    possible_orders_except_one.get(right_i)
                                 {
                                     let possible_order_bigint = possible_order_to_bigint
                                         .entry(right_possible_order.order.clone())
                                         .or_insert_with_key(OrderExps::as_bigint);
                                     try_.push(*possible_order_bigint);
                                 }
-                                CycleCombinationFinderBuildError::RequiredRegisterOrderDoesNotExist {
+                                return Some(Err(CycleCombinationFinderBuildError::OrderValueConstraintDoesNotExist {
                                     required_register_order_bigint,
                                     try_: PossibleOrdersDisplayList(try_),
-                                }
-                            });
-                        ValidatedOrderValueConstraint::Exactly(possible_orders_len_cast(match i {
-                            Ok(i) => i,
-                            Err(x) => return Some(Err(x)),
-                        }))
+                                }));
+                            }
+                        }
                     }
                 }))
             })

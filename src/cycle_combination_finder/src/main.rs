@@ -33,13 +33,27 @@ fn main() {
         let minx3 = minxN::MINX3.clone();
         let analysis =
             PuzzleAnalysis::new(&minx3, NumCores::AllCores).unwrap_or_else(|e| panic!("{e}"));
-        ccf.with_puzzle_analysis(&analysis)
-            .with_registers(Register::default_count(3))
+        let ret = ccf
+            .with_puzzle_analysis(&analysis)
+            .with_registers(vec![
+                Register::default().with_order_value_constraint(OrderValueConstraint::Exactly(
+                    Int::<U>::from(180u64),
+                )),
+                Register::default().with_order_value_constraint(OrderValueConstraint::Exactly(
+                    Int::<U>::from(15u64),
+                )),
+                Register::default(),
+                Register::default(),
+            ])
+            // .with_optimality(Optimality::MaxOrderRatio(20.0))
             .with_expected_solutions_count_assertion(Some(347))
             .build()
             .unwrap_or_else(|e| panic!("{e}"))
             .find()
             .unwrap_or_else(|e| panic!("{e}"));
+        for x in ret.cycle_combinations {
+            println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
+        }
     } else if p == "minx4 3" {
         let minx4 = minxN::MINX4.clone();
         let analysis =
@@ -109,7 +123,13 @@ fn main() {
             PuzzleAnalysis::new(&cube3, NumCores::AllCores).unwrap_or_else(|e| panic!("{e}"));
         let ret = ccf
             .with_puzzle_analysis(&analysis)
-            .with_registers(Register::default_count(3))
+            .with_registers(vec![
+                Register::default().with_order_value_constraint(OrderValueConstraint::Exactly(
+                    Int::<U>::from(30u64),
+                )),
+                Register::default(),
+                Register::default(),
+            ])
             .build()
             .unwrap_or_else(|e| panic!("{e}"))
             .find()

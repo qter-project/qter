@@ -381,9 +381,7 @@ impl CycleCombinationsTreeShard<'_> {
         }
         self.curr_batch_len = 0;
         self.batch_packed_queue.truncate(self.batch_size.get());
-        for candidate_count in &mut self.batch_packed_queue {
-            *candidate_count = 0;
-        }
+        self.batch_packed_queue.fill(0);
     }
 
     /// # Safety
