@@ -585,6 +585,8 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                 self.orbit_remaining_pieces[orbit_index2].unused = next_orbit_unused_piece_count;
                 self.register_assignments[register_index2].unassigned_exponents_mask ^=
                     1 << prime_index;
+                // Do not announce the cycle assignment if the orbit orients but the `exp` factor
+                // is 0.
                 if orient_state != CycleOrientState::Canonical || exp != 0 {
                     self.register_assignments[register_index2].cycle_assignments[prime_index] =
                         PrimePowerCycleAssignment::Orbit(orbit_index, orient_state);
