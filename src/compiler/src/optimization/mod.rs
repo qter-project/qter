@@ -3,7 +3,7 @@ use std::{collections::VecDeque, ptr, sync::Arc};
 use puzzle_theory::{
     numbers::{Int, U},
 };
-use qter_core::{ByPuzzleType, PuzzleIdx, StateIdx, TheoreticalIdx, architectures::Architecture};
+use qter_core::{PuzzleIdx, architectures::Architecture};
 use qter_core::span::WithSpan;
 
 use crate::{
@@ -53,10 +53,6 @@ pub enum OptimizingPrimitive {
         // register idx, amt to add
         amts: Vec<(usize, WithSpan<Int<U>>)>,
     },
-    AddTheoretical {
-        theoretical: TheoreticalIdx,
-        amt: WithSpan<Int<U>>,
-    },
     Goto {
         label: WithSpan<LabelReference>,
     },
@@ -71,7 +67,7 @@ pub enum OptimizingPrimitive {
         register: RegisterReference,
     },
     Solve {
-        puzzle: ByPuzzleType<'static, StateIdx>,
+        puzzle: PuzzleIdx,
     },
     Input {
         message: WithSpan<String>,
@@ -107,16 +103,6 @@ impl PartialEq for OptimizingPrimitive {
                     && ptr::eq::<Architecture>(&raw const **l_arch, &raw const **r_arch)
                     && l_amts == r_amts
             }
-            (
-                Self::AddTheoretical {
-                    theoretical: l_theoretical,
-                    amt: l_amt,
-                },
-                Self::AddTheoretical {
-                    theoretical: r_theoretical,
-                    amt: r_amt,
-                },
-            ) => l_theoretical == r_theoretical && l_amt == r_amt,
             (Self::Goto { label: l_label }, Self::Goto { label: r_label }) => l_label == r_label,
             (
                 Self::SolvedGoto {

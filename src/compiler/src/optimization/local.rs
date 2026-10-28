@@ -4,12 +4,10 @@ use std::{
 };
 
 use itertools::Itertools;
+use puzzle_theory::numbers::{Int, U, lcm, lcm_iter};
 use qter_core::span::WithSpan;
-use puzzle_theory::{
-    numbers::{Int, U, lcm, lcm_iter},
-};
 use qter_core::{
-    ByPuzzleType, PuzzleIdx, TheoreticalIdx,
+    PuzzleIdx,
     architectures::{Architecture, CycleGeneratorSubcycle},
 };
 
@@ -21,7 +19,7 @@ use crate::{
         extend_from_start,
     },
     primitive_match,
-    strip_expanded::GlobalRegs,
+    strip_expanded::{GlobalRegs, RegisterIdx},
 };
 
 use super::OptimizingCodeComponent;
@@ -100,30 +98,21 @@ impl PeepholeRewriter for RemoveUselessJumps {
 #[derive(Default)]
 pub struct CoalesceAdds {
     block_id: Option<BlockID>,
-    theoreticals: Vec<WithSpan<(TheoreticalIdx, WithSpan<Int<U>>)>>,
     puzzles: Vec<WithSpan<(PuzzleIdx, Arc<Architecture>, Vec<(usize, WithSpan<Int<U>>)>)>>,
 }
 
 impl CoalesceAdds {
     fn dump_state(&mut self) -> Vec<WithSpan<OptimizingCodeComponent>> {
-        self.theoreticals
+        self.puzzles
             .drain(..)
             .map(|v| {
-                v.map(|(theoretical, amt)| {
-                    OptimizingCodeComponent::Instruction(
-                        Box::new(OptimizingPrimitive::AddTheoretical { theoretical, amt }),
-                        self.block_id.unwrap(),
-                    )
-                })
-            })
-            .chain(self.puzzles.drain(..).map(|v| {
                 v.map(|(puzzle, arch, amts)| {
                     OptimizingCodeComponent::Instruction(
                         Box::new(OptimizingPrimitive::AddPuzzle { puzzle, arch, amts }),
                         self.block_id.unwrap(),
                     )
                 })
-            }))
+            })
             .collect()
     }
 
@@ -157,23 +146,6 @@ impl Rewriter for CoalesceAdds {
 
         match component.into_inner() {
             OptimizingCodeComponent::Instruction(instr, block_id) => match *instr {
-                OptimizingPrimitive::AddTheoretical {
-                    theoretical: theoretical_idx,
-                    amt,
-                } => {
-                    self.block_id = Some(block_id);
-
-                    for theoretical in &mut self.theoreticals {
-                        if theoretical.0 == theoretical_idx {
-                            *theoretical.1 += *amt;
-                            return Vec::new();
-                        }
-                    }
-
-                    self.theoreticals.push(span.with((theoretical_idx, amt)));
-
-                    Vec::new()
-                }
                 OptimizingPrimitive::AddPuzzle {
                     puzzle: puzzle_idx,
                     arch,
@@ -255,10 +227,7 @@ impl PeepholeRewriter for RepeatUntil1 {
 
         primitive_match!(OptimizingPrimitive::AddPuzzle { puzzle, arch, amts } = window.get(2));
 
-        if match global_regs.get_reg(*register) {
-            qter_core::ByPuzzleType::Theoretical(_) => true,
-            qter_core::ByPuzzleType::Puzzle((idx, _)) => idx != *puzzle,
-        } {
+        if global_regs.get_reg(*register).puzzle_idx != *puzzle {
             return;
         }
 
@@ -349,10 +318,7 @@ impl PeepholeRewriter for RepeatUntil2 {
             } = window.get(2 + optional_label)
         );
 
-        if match global_regs.get_reg(*register) {
-            qter_core::ByPuzzleType::Theoretical(_) => true,
-            qter_core::ByPuzzleType::Puzzle((idx, _)) => idx != *puzzle,
-        } {
+        if global_regs.get_reg(*register).puzzle_idx != *puzzle {
             return;
         }
 
@@ -375,9 +341,7 @@ impl PeepholeRewriter for RepeatUntil2 {
         );
 
         let goto = OptimizingCodeComponent::Instruction(
-            Box::new(OptimizingPrimitive::Goto {
-                label: *spot3,
-            }),
+            Box::new(OptimizingPrimitive::Goto { label: *spot3 }),
             spot3.block_id,
         );
 
@@ -447,10 +411,7 @@ impl PeepholeRewriter for RepeatUntil3 {
             } = window.get(2 + optional_label)
         );
 
-        if match global_regs.get_reg(*register) {
-            qter_core::ByPuzzleType::Theoretical(_) => true,
-            qter_core::ByPuzzleType::Puzzle((idx, _)) => idx != *puzzle,
-        } {
+        if global_regs.get_reg(*register).puzzle_idx != *puzzle {
             return;
         }
 
@@ -503,9 +464,7 @@ impl PeepholeRewriter for RepeatUntil3 {
         );
 
         let goto = OptimizingCodeComponent::Instruction(
-            Box::new(OptimizingPrimitive::Goto {
-                label: *spot2,
-            }),
+            Box::new(OptimizingPrimitive::Goto { label: *spot2 }),
             maybe_spot1.block_id,
         );
 
@@ -578,10 +537,12 @@ impl PeepholeRewriter for VectorizeRepeatUntil {
             return;
         };
 
-        let ByPuzzleType::Puzzle((_, (reg_idx, arch, modulus, _))) = global_regs.get_reg(*register)
-        else {
-            return;
-        };
+        let RegisterIdx {
+            puzzle_idx: _,
+            reg_idx,
+            arch,
+            mods,
+        } = global_regs.get_reg(*register);
 
         let Some(amt) = amts
             .iter()
@@ -591,7 +552,7 @@ impl PeepholeRewriter for VectorizeRepeatUntil {
         };
 
         let reg_order = arch.registers()[reg_idx].order();
-        let modulus = modulus.unwrap_or(reg_order);
+        let modulus = mods.modulus.unwrap_or(reg_order);
 
         let cycles = arch.registers()[reg_idx].unshared_cycles();
 
@@ -696,12 +657,12 @@ impl Rewriter for TransformSolve {
 
         self.puzzle_idx = Some(*puzzle);
 
-        let ByPuzzleType::Puzzle((puzzle_idx, (reg_idx, arch, modulus, _))) =
-            global_regs.get_reg(*register)
-        else {
-            dumped.extend(self.dump_with(component));
-            return dumped;
-        };
+        let RegisterIdx {
+            puzzle_idx,
+            reg_idx,
+            arch,
+            mods,
+        } = global_regs.get_reg(*register);
 
         assert_eq!(*puzzle, puzzle_idx);
 
@@ -728,7 +689,9 @@ impl Rewriter for TransformSolve {
         }
 
         // If we have a modulus, then it is possible for the whole register not to be zeroed in the end
-        let modulus = modulus.unwrap_or_else(|| arch.registers()[reg_idx].order());
+        let modulus = mods
+            .modulus
+            .unwrap_or_else(|| arch.registers()[reg_idx].order());
 
         let zeroed_mod = self.guaranteed_zeroed.entry(reg_idx).or_insert(modulus);
         *zeroed_mod = lcm(*zeroed_mod, modulus);
@@ -749,7 +712,7 @@ impl Rewriter for TransformSolve {
             self.guaranteed_zeroed = HashMap::new();
             dumped.push(span.with(OptimizingCodeComponent::Instruction(
                 Box::new(OptimizingPrimitive::Solve {
-                    puzzle: ByPuzzleType::Puzzle(self.puzzle_idx.unwrap()),
+                    puzzle: self.puzzle_idx.unwrap(),
                 }),
                 *block_id,
             )));

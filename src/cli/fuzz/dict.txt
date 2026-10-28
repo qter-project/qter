@@ -1,7 +1,6 @@
 "<-"
 "=>"
 ".registers"
-"theoretical"
 ".macro"
 ".import"
 "builtin"

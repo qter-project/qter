@@ -60,25 +60,20 @@ impl Program {
                 None,
             ));
         };
-        let [compiler::Puzzle::Real { architectures }] = regs.puzzles() else {
+        let [ puzz ] = regs.puzzles() else {
             return Err(mk_error(
                 "You must supply exactly one puzzle",
                 Some(regs.span()),
             ));
         };
-        let [(names, arch, _)] = &**architectures else {
-            return Err(mk_error(
-                "Unexpected error: architecture switching",
-                Some(regs.span()),
-            ));
-        };
 
-        let registers = arch
+        let registers = puzz
+            .arch
             .registers()
             .iter()
             .enumerate()
             .map(|(i, reg)| Register {
-                label: names[i].into_inner(),
+                label: puzz.reg_names[i].into_inner(),
                 order: BigInt::from(reg.order()),
                 cycles: reg
                     .unshared_cycles()
@@ -108,7 +103,7 @@ impl Program {
         Ok(Self {
             inner: Arc::new(program),
             registers,
-            arch: arch.clone().into_inner(),
+            arch: puzz.arch.clone().into_inner(),
             puzzle: puzzle("3x3"),
             q_text,
             instr_spans,

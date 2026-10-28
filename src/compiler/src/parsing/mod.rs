@@ -1,10 +1,12 @@
 use std::rc::Rc;
 
 use ariadne::{Label, Report, ReportKind, Source};
-use sarlacc::Intern;
 use qter_core::span::{File, Span, WithSpan};
+use sarlacc::Intern;
 
-use crate::{BlockID, ParsedSyntax, Reporter, builtin_macros::builtin_macros, parsing::level_two::tokenize};
+use crate::{
+    BlockID, ParsedSyntax, Reporter, builtin_macros::builtin_macros, parsing::level_two::tokenize,
+};
 
 mod level_two;
 mod parser;
@@ -62,11 +64,7 @@ pub fn parse(
         parser::parse(iter, find_import, is_prelude)
     });
 
-    if reporter.count() != 0 {
-        None
-    } else {
-        v
-    }
+    if reporter.count() != 0 { None } else { v }
 }
 
 fn merge_files(
@@ -87,12 +85,10 @@ fn merge_files(
                     .with_message("Importing this file introduces a second registers declaration")
                     .with_note("A QAT program may only contain one registers declaration")
                     .with_label(
-                        Label::new(regs1.span())
-                            .with_message("Current registers declaration"),
+                        Label::new(regs1.span()).with_message("Current registers declaration"),
                     )
                     .with_label(
-                        Label::new(regs2.span())
-                            .with_message("Introduced registers declaration"),
+                        Label::new(regs2.span()).with_message("Introduced registers declaration"),
                     )
                     .finish(),
             );
@@ -125,10 +121,7 @@ fn merge_files(
         importer
             .expansion_info
             .available_macros
-            .entry((
-                importer_contents,
-                source_and_macro_name.1,
-            ))
+            .entry((importer_contents, source_and_macro_name.1))
             .or_insert_with(|| macro_file);
 
         importer
@@ -155,8 +148,8 @@ fn merge_files(
 pub(crate) mod tests {
     use std::rc::Rc;
 
-    use sarlacc::Intern;
     use qter_core::span::File;
+    use sarlacc::Intern;
 
     use super::parse;
     use crate::Reporter;
@@ -174,7 +167,6 @@ pub(crate) mod tests {
                     c, d ← 3x3 builtin (210, 24)
                     d, e, f ← 3x3 builtin (30, 30, 30)
                 )*/
-                F ← theoretical 90
                 G, H ← 3x3 (U , D    )
             }
 
@@ -230,6 +222,96 @@ pub(crate) mod tests {
                 }
 
                 panic!();
+            }
+        }
+    }
+
+    #[test]
+    fn conflicting_macro_branches() {
+        let options = [
+            (
+                "
+                    .macro six_seven {
+                        (six) => six
+                        ($seven:ident) => {}
+                    }
+                ",
+                Some("six_seven six"),
+            ),
+            (
+                "
+                    .macro six_seven {
+                        (six) => six
+                        ($seven:reg) => {}
+                    }
+                ",
+                None,
+            ),
+            (
+                "
+                    .macro easy {
+                        (six $a:int) => six
+                        (six $b:int) => {}
+                    }
+                ",
+                Some("easy six 123"),
+            ),
+            (
+                "
+                    .macro easy {
+                        (seven $a:ident) => six
+                        (seven $b:ident) => {}
+                    }
+                ",
+                Some("easy seven skibidi"),
+            ),
+            (
+                "
+                    .macro easy {
+                        ($a:reg) => six
+                        ($b:reg) => {}
+                    }
+                ",
+                Some("easy A"),
+            ),
+            (
+                "
+                    .macro easy {
+                        ($a:block $q:reg) => six
+                        ($b:block $q:reg) => {}
+                    }
+                ",
+                Some("easy { } A"),
+            ),
+        ];
+
+        for (code, counterexample) in options {
+            let reporter = Reporter::default();
+
+            match parse(file(code), &Rc::new(|_: &str| panic!()), false, &reporter) {
+                Some(_) => {
+                    assert!(counterexample.is_none());
+                }
+                None => {
+                    let Some(counterexample) = counterexample else {
+                        panic!()
+                    };
+
+                    let mut cache = ariadne::sources(
+                        [("<static>", code)]
+                            .into_iter()
+                            .map(|(a, b)| (Intern::from_ref(a), Intern::from_ref(b))),
+                    );
+
+                    assert_eq!(reporter.count(), 1);
+
+                    for (_, report) in reporter.iter() {
+                        let mut data = Vec::<u8>::new();
+                        report.write(&mut cache, &mut data).unwrap();
+                        let st = str::from_utf8(&data).unwrap();
+                        assert!(st.contains(counterexample), "{st}");
+                    }
+                }
             }
         }
     }

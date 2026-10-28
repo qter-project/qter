@@ -18,13 +18,15 @@ use std::{
 };
 
 use ariadne::{Report, ReportKind};
-use sarlacc::Intern;
 use parsing::parse;
-use puzzle_theory::{
-    numbers::{Int, U},
+use puzzle_theory::numbers::{Int, U};
+use qter_core::{
+    Program,
+    architectures::Architecture,
+    span::{File, Span, WithSpan},
 };
-use qter_core::{Program, architectures::Architecture, span::{File, Span, WithSpan}};
 use rhai::RhaiMacros;
+use sarlacc::Intern;
 use strip_expanded::strip_expanded;
 
 use crate::macro_expansion::expand;
@@ -257,10 +259,9 @@ impl RegisterModifiers {
                     if !(a % b).is_zero() {
                         r.push(
                             Report::build(ReportKind::Error, new_span)
-                                .with_label(
-                                    ariadne::Label::new(new_span)
-                                        .with_message(format!("{b} does not divide {a} so the modulus can't be refined to {b}")),
-                                )
+                                .with_label(ariadne::Label::new(new_span).with_message(format!(
+                                    "{b} does not divide {a} so the modulus can't be refined to {b}"
+                                )))
                                 .with_label(
                                     ariadne::Label::new(old_span)
                                         .with_message("Constant was defined here"),
@@ -533,16 +534,18 @@ impl MacroPatternComponent {
         match (self, other) {
             (P::Argument { name: _, ty: a }, P::Argument { name: _, ty: b }) => match (**a, **b) {
                 (A::Int, A::Int) => Some(Intern::from_ref("123")),
-                (A::Reg | A::Ident, A::Reg | A::Ident) => Some(Intern::from_ref("a")),
+                (A::Ident, A::Ident) => Some(Intern::from_ref("skibidi")),
+                (A::Reg, A::Reg) => Some(Intern::from_ref("A")),
                 (A::Block, A::Block) => Some(Intern::from_ref("{ }")),
                 _ => None,
             },
             (P::Argument { name: _, ty }, P::Word(word))
             | (P::Word(word), P::Argument { name: _, ty }) => match **ty {
-                A::Ident | A::Reg => Some(*word),
+                // A word that would conflict with a register gets rejected by the parser
+                A::Ident => Some(*word),
                 _ => None,
             },
-            (P::Word(a), P::Word(b)) => (a == b).then(|| *a),
+            (P::Word(a), P::Word(b)) => (a == b).then_some(*a),
         }
     }
 
@@ -562,18 +565,11 @@ impl MacroPatternComponent {
         }
     }
 
-    fn mk_define(
-        &self,
-        value: WithSpan<ResolvedValue>,
-    ) -> Option<(Intern<str>, DefineResolved)> {
+    fn mk_define(&self, value: WithSpan<ResolvedValue>) -> Option<(Intern<str>, DefineResolved)> {
         match (self, &*value) {
-            (MacroPatternComponent::Argument { name, ty: _ }, _) => Some((
-                **name,
-                DefineResolved {
-                    name: *name,
-                    value,
-                },
-            )),
+            (MacroPatternComponent::Argument { name, ty: _ }, _) => {
+                Some((**name, DefineResolved { name: *name, value }))
+            }
             (MacroPatternComponent::Word(word), ResolvedValue::Ident(ident)) => {
                 assert_eq!(word, &**ident);
                 None
@@ -664,19 +660,10 @@ type DefineUnresolved = Define<DefineValue>;
 type DefineResolved = Define<WithSpan<ResolvedValue>>;
 
 #[derive(Clone, Debug)]
-pub enum Puzzle {
-    Theoretical {
-        name: WithSpan<Intern<str>>,
-        order: WithSpan<Int<U>>,
-    },
-    Real {
-        // The extra span is that of the puzzle definition itself
-        architectures: Vec<(
-            Vec<WithSpan<Intern<str>>>,
-            WithSpan<Arc<Architecture>>,
-            Span,
-        )>,
-    },
+pub struct Puzzle {
+    pub reg_names: Vec<WithSpan<Intern<str>>>,
+    pub arch: WithSpan<Arc<Architecture>>,
+    pub puzzle_def: Span,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -693,32 +680,20 @@ impl RegistersDecl {
 
         let modulus = reference.mods.modulus;
 
-        for puzzle in &self.puzzles {
-            match puzzle {
-                Puzzle::Theoretical {
-                    name: found_name,
-                    order,
-                } => {
-                    if *reg_name == **found_name {
-                        return Some(RhaiRegInfo {
-                            modulus: modulus.unwrap_or(**order),
-                            order: **order,
-                        });
-                    }
-                }
-                Puzzle::Real { architectures } => {
-                    for (names, arch, _) in architectures {
-                        for (i, found_name) in names.iter().enumerate() {
-                            if *reg_name == **found_name {
-                                let reg = &arch.value.registers()[i];
+        for Puzzle {
+            reg_names,
+            arch,
+            puzzle_def: _,
+        } in &self.puzzles
+        {
+            for (i, found_name) in reg_names.iter().enumerate() {
+                if *reg_name == **found_name {
+                    let reg = &arch.value.registers()[i];
 
-                                return Some(RhaiRegInfo {
-                                    modulus: modulus.unwrap_or(reg.order()),
-                                    order: reg.order(),
-                                });
-                            }
-                        }
-                    }
+                    return Some(RhaiRegInfo {
+                        modulus: modulus.unwrap_or(reg.order()),
+                        order: reg.order(),
+                    });
                 }
             }
         }
@@ -808,10 +783,7 @@ impl BlockInfoTracker {
         let span = value.span();
         Some(span.with(match value.into_inner() {
             Value::Resolved(resolved) => resolved,
-            Value::Constant {
-                name,
-                mods,
-            } => {
+            Value::Constant { name, mods } => {
                 let Some(v) = self.get_define(block_id, name) else {
                     self.reporter.push(
                         Report::build(ReportKind::Error, span)
@@ -920,8 +892,8 @@ struct ExpandedCode {
 
 #[cfg(test)]
 mod tests {
-    use sarlacc::Intern;
     use qter_core::span::File;
+    use sarlacc::Intern;
 
     use crate::{Reporter, compile, q_emitter::emit_q};
 
@@ -966,7 +938,9 @@ mod tests {
             panic!();
         };
 
-        let q_code = emit_q(&program, Intern::from_ref("code.q"), &reporter).unwrap().0;
+        let q_code = emit_q(&program, Intern::from_ref("code.q"), &reporter)
+            .unwrap()
+            .0;
 
         assert_eq!(
             &*q_code.inner(),

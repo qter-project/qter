@@ -20,20 +20,21 @@ use color_eyre::{
 };
 use compiler::{Reporter, compile, q_emitter::emit_q};
 use crashlog::cargo_metadata;
-use sarlacc::Intern;
 use interpreter::{
-    ActionPerformed, ExecutionState, InputRet, Interpreter, PausedState,
+    ActionPerformed, ExecutionState, Interpreter, PausedState,
     puzzle_states::{PuzzleState, SimulatedPuzzle},
 };
 use itertools::Itertools;
-use qter_core::span::File;
 use puzzle_theory::{
     numbers::{I, Int},
+    permutations::Algorithm,
 };
 use qter_core::{
-    ByPuzzleType, Program,
+    Program,
     table_encoding::{decode_table, encode_table},
 };
+use qter_core::{PuzzleIdx, span::File};
+use sarlacc::Intern;
 
 /// Compiles and interprets qter programs
 #[derive(Parser)]
@@ -81,11 +82,7 @@ enum Commands {
 }
 
 fn print_reports(reporter: &Reporter, sources: &HashMap<Intern<str>, Intern<str>>) {
-    let mut cache = ariadne::sources(
-        sources
-            .iter()
-            .map(|(name, contents)| (*name, *contents)),
-    );
+    let mut cache = ariadne::sources(sources.iter().map(|(name, contents)| (*name, *contents)));
 
     for (_, report) in reporter.iter() {
         report
@@ -167,7 +164,13 @@ async fn main() -> color_eyre::Result<()> {
 
             let reporter = Reporter::default();
 
-            let q_code = if let Some(v) = emit_q(&program, Intern::from_owned(path.display().to_string()), &reporter) { v.0 } else {
+            let q_code = if let Some(v) = emit_q(
+                &program,
+                Intern::from_owned(path.display().to_string()),
+                &reporter,
+            ) {
+                v.0
+            } else {
                 let sources = std::iter::once((qat.name(), qat.inner())).collect();
                 print_reports(&reporter, &sources);
                 return Err(eyre!(
@@ -274,7 +277,7 @@ where
 
 async fn give_number_input<P: PuzzleState>(
     interpreter: &mut Interpreter<P>,
-) -> color_eyre::Result<ByPuzzleType<'static, InputRet>>
+) -> color_eyre::Result<(PuzzleIdx, Algorithm)>
 where
     P::Error: Error + Send + Sync + 'static,
 {
@@ -346,31 +349,25 @@ where
                     eprintln!("Jumping");
                 }
             }
-            ActionPerformed::FailedSolvedGoto(ByPuzzleType::Theoretical(idx)) => {
+            ActionPerformed::FailedSolvedGoto {
+                puzzle,
+                facelets: _,
+            } => {
                 if trace_level >= 2 {
-                    eprintln!("Inspect theoretical {} - {}", idx.0, "NOT TAKEN".red());
+                    eprintln!("Inspect puzzle {} - {}", puzzle.0, "NOT TAKEN".red());
                 }
             }
-            ActionPerformed::FailedSolvedGoto(ByPuzzleType::Puzzle((idx, _))) => {
+            ActionPerformed::SucceededSolvedGoto {
+                jumped_to: _,
+                puzzle,
+                facelets: _,
+            } => {
                 if trace_level >= 2 {
-                    eprintln!("Inspect puzzle {} - {}", idx.0, "NOT TAKEN".red());
+                    eprintln!("Inspect puzzle {} - {}", puzzle.0, "TAKEN".green());
                 }
             }
-            ActionPerformed::SucceededSolvedGoto(ByPuzzleType::Theoretical((_, idx))) => {
-                if trace_level >= 2 {
-                    eprintln!("Inspect theoretical {} - {}", idx.0, "TAKEN".green());
-                }
-            }
-            ActionPerformed::SucceededSolvedGoto(ByPuzzleType::Puzzle((_, idx, _))) => {
-                if trace_level >= 2 {
-                    eprintln!("Inspect puzzle {} - {}", idx.0, "TAKEN".green());
-                }
-            }
-            ActionPerformed::Added(ByPuzzleType::Theoretical((idx, amt))) => {
-                eprintln!("Theoretical {} += {amt}", idx.0);
-            }
-            ActionPerformed::Added(ByPuzzleType::Puzzle((idx, alg))) => {
-                eprint!("Puzzle {}:", idx.0);
+            ActionPerformed::Added { puzzle, alg } => {
+                eprint!("Puzzle {}:", puzzle.0);
 
                 for move_ in alg.move_seq_iter() {
                     eprint!(" {move_}");
@@ -383,13 +380,7 @@ where
                 halted = true;
             }
             ActionPerformed::Solved(idx) => {
-                eprintln!(
-                    "Solved {}",
-                    match idx {
-                        ByPuzzleType::Theoretical(idx) => idx.0,
-                        ByPuzzleType::Puzzle(idx) => idx.0,
-                    }
-                );
+                eprintln!("Solved {}", idx.0);
             }
             ActionPerformed::RepeatedUntil {
                 puzzle_idx,
@@ -413,20 +404,15 @@ where
         }
 
         if should_give_input {
-            let input_ret = give_number_input(&mut interpreter).await?;
+            let (idx, alg) = give_number_input(&mut interpreter).await?;
 
-            match input_ret {
-                ByPuzzleType::Theoretical(_) => {}
-                ByPuzzleType::Puzzle((idx, alg)) => {
-                    eprint!("Puzzle {}:", idx.0);
+            eprint!("Puzzle {}:", idx.0);
 
-                    for move_ in alg.move_seq_iter() {
-                        eprint!(" {move_}");
-                    }
-
-                    eprintln!();
-                }
+            for move_ in alg.move_seq_iter() {
+                eprint!(" {move_}");
             }
+
+            eprintln!();
         }
     }
 }

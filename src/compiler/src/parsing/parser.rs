@@ -6,21 +6,19 @@ use std::{
 };
 
 use ariadne::{Color, Label, Report, ReportKind};
-use sarlacc::Intern;
 use itertools::Itertools;
 use puzzle_theory::{
-    numbers::{Int, U},
     permutations::{Algorithm, Permutation, PermutationGroup},
     puzzle_geometry::PuzzleGeometry,
 };
 use qter_core::architectures::{Architecture, with_presets};
 use qter_core::span::{File, Span, WithSpan};
+use sarlacc::Intern;
 
 use crate::{
     Block, BlockID, BlockInfo, BlockInfoTracker, Code, DefineUnresolved, DefineValue,
     ExpansionInfo, Instruction, Macro, MacroArgTy, MacroBranch, MacroBranchKey, MacroPattern,
-    MacroPatternComponent, ParsedSyntax, Puzzle, RegistersDecl, ResolvedValue,
-    RhaiCall, Value,
+    MacroPatternComponent, ParsedSyntax, Puzzle, RegistersDecl, ResolvedValue, RhaiCall, Value,
     parsing::{
         level_two::{Attempt, Token, TokenIter},
         tokenizer::{Encloser, Symbol},
@@ -121,10 +119,10 @@ pub fn parse(
                         .expansion_info
                         .macros
                         .insert((iter.file(), *name), def);
-                    parsed_syntax.expansion_info.available_macros.insert(
-                        (iter.file(), name.into_inner()),
-                        iter.file(),
-                    );
+                    parsed_syntax
+                        .expansion_info
+                        .available_macros
+                        .insert((iter.file(), name.into_inner()), iter.file());
                 } else if directive.as_ref() == "import" {
                     let filename = iter.ident()?;
 
@@ -254,78 +252,48 @@ fn register_decl(t: &mut TokenIter) -> Attempt<Option<Puzzle>> {
 
         let arch = register_architecture(t)?;
 
-        match arch {
-            PuzzleUnnamed::Theoretical { order } => {
-                if names.len() == 1 {
-                    Some(Puzzle::Theoretical {
-                        name: names.pop().unwrap(),
-                        order,
-                    })
-                } else {
-                    t.report(
-                        Report::build(ReportKind::Error, t.cash_in(start))
-                            .with_message(format!(
-                                "Expected one register name whereas {} were provided.",
-                                names.len()
-                            ))
-                            .finish(),
-                    );
+        let PuzzleUnnamed {
+            architecture,
+            def_span,
+        } = arch;
 
-                    None
-                }
-            }
-            PuzzleUnnamed::Real {
-                architecture,
-                def_span,
-            } => {
-                let span = architecture.span();
-                let (arch, swizzle) = architecture.into_inner();
+        let span = architecture.span();
+        let (arch, swizzle) = architecture.into_inner();
 
-                if arch.registers().len() == names.len() {
-                    swizzle.apply(&mut names);
+        if arch.registers().len() == names.len() {
+            swizzle.apply(&mut names);
 
-                    Some(Puzzle::Real {
-                        architectures: vec![(names, span.with(arch), def_span)],
-                    })
-                } else {
-                    t.report(
-                        Report::build(ReportKind::Error, t.cash_in(start))
-                            .with_message(format!(
-                                "Expected {} names whereas {} were provided.",
-                                arch.registers().len(),
-                                names.len()
-                            ))
-                            .finish(),
-                    );
+            Some(Puzzle {
+                reg_names: names,
+                arch: span.with(arch),
+                puzzle_def: def_span
+            })
+        } else {
+            t.report(
+                Report::build(ReportKind::Error, t.cash_in(start))
+                    .with_message(format!(
+                        "Expected {} names whereas {} were provided.",
+                        arch.registers().len(),
+                        names.len()
+                    ))
+                    .finish(),
+            );
 
-                    None
-                }
-            }
+            None
         }
     })
 }
 
 #[derive(Clone, Debug)]
-enum PuzzleUnnamed {
-    Theoretical {
-        order: WithSpan<Int<U>>,
-    },
-    Real {
-        architecture: WithSpan<(Arc<Architecture>, Permutation)>,
-        def_span: Span,
-    },
+struct PuzzleUnnamed {
+    architecture: WithSpan<(Arc<Architecture>, Permutation)>,
+    def_span: Span,
 }
 
 fn register_architecture(t: &mut TokenIter) -> Option<PuzzleUnnamed> {
     let start = t.marker();
 
     let puzzle_def = t.ident()?;
-
-    if &**puzzle_def == "theoretical" {
-        let order = t.number()?;
-
-        return Some(PuzzleUnnamed::Theoretical { order });
-    }
 
     let puzzle = match puzzle_def.parse::<PuzzleGeometry>() {
         Ok(v) => Some(v),
@@ -349,7 +317,7 @@ fn register_architecture(t: &mut TokenIter) -> Option<PuzzleUnnamed> {
 
     let group = puzzle?.permutation_group();
 
-    arch(t, &group).map(|v| PuzzleUnnamed::Real {
+    arch(t, &group).map(|v| PuzzleUnnamed {
         architecture: t.cash_in(start).with(v),
         def_span,
     })
@@ -580,13 +548,10 @@ fn args(t: &mut TokenIter) -> Option<WithSpan<Vec<WithSpan<Value>>>> {
 fn value(t: &TokenIter, token: WithSpan<Token>) -> Option<WithSpan<Value>> {
     let span = token.span();
     match &*token {
-        Token::Ident(ident) => Some(span.with(Value::Resolved(ResolvedValue::Ident(
-            span.with(*ident),
-        )))),
-        Token::Register(r) => Some(
-            span
-                .with(Value::Resolved(ResolvedValue::Register(*r))),
-        ),
+        Token::Ident(ident) => {
+            Some(span.with(Value::Resolved(ResolvedValue::Ident(span.with(*ident)))))
+        }
+        Token::Register(r) => Some(span.with(Value::Resolved(ResolvedValue::Register(*r)))),
         Token::Constant(constant, mods) => Some(span.with(Value::Constant {
             name: *constant,
             mods: *mods,
@@ -734,10 +699,26 @@ fn macro_def(
     let name = t.ident()?;
 
     let macro_def = t.enclosure(Encloser::Brace)?.into_inner().parse(|t| {
-        let mut branches = Vec::new();
+        let mut branches = Vec::<WithSpan<MacroBranch>>::new();
 
         while let Attempt::Taken(branch) = macro_branch(t, &fresh_branch_key) {
-            branches.push(branch?);
+            let branch = branch?;
+
+            for old_branch in &branches {
+                if let Some(ce) = branch.pattern.conflicts_with(&name, &old_branch.pattern) {
+                    t.report(
+                        Report::build(ReportKind::Error, branch.span())
+                            .with_message(format!(
+                                "Macro branches are conflicting. `{ce}` would match both of them."
+                            ))
+                            .with_label(Label::new(old_branch.pattern.span()).with_message("First branch"))
+                            .with_label(Label::new(branch.pattern.span()).with_message("Second branch"))
+                            .finish(),
+                    );
+                }
+            }
+
+            branches.push(branch);
         }
 
         t.end_of_enclosure()?;
@@ -784,16 +765,14 @@ fn macro_branch(
             Attempt::Taken(v) => v?,
         };
 
-        Some(t.cash_in(start).with(
-            MacroBranch {
+        Some(
+            t.cash_in(start).with(MacroBranch {
                 pattern,
-                code: subst.span().with((
-                    subst.into_inner(),
-                    None,
-                    Some(fresh_branch_key()),
-                )),
-            },
-        ))
+                code: subst
+                    .span()
+                    .with((subst.into_inner(), None, Some(fresh_branch_key()))),
+            }),
+        )
     })
 }
 
@@ -810,11 +789,14 @@ fn macro_pattern_component(t: &mut TokenIter) -> Attempt<Option<WithSpan<MacroPa
                 *commit = true;
 
                 if !mods.is_plain() {
-                    t.report(Report::build(ReportKind::Error, span).with_label(
-                        Label::new(span).with_message(
-                            format!("A macro argument name cannot have register modifiers. Found a {}", mods.found()),
-                        ),
-                    ).finish());
+                    t.report(
+                        Report::build(ReportKind::Error, span)
+                            .with_label(Label::new(span).with_message(format!(
+                                "A macro argument name cannot have register modifiers. Found a {}",
+                                mods.found()
+                            )))
+                            .finish(),
+                    );
                 }
 
                 let marker = t.marker();

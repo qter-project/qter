@@ -1,105 +1,83 @@
 use std::{collections::HashMap, sync::Arc};
 
 use ariadne::{Label, Report, ReportKind};
-use sarlacc::Intern;
 use itertools::Itertools;
 use puzzle_theory::{
     numbers::{I, Int, U},
     permutations::PermutationGroup,
 };
-use qter_core::span::WithSpan;
+use qter_core::{Decoding, span::WithSpan};
 use qter_core::{
-    ByPuzzleType, Facelets, Halt, Input, Instruction, Print, Program, PuzzleIdx, RegisterGenerator,
-    RepeatUntil, SeparatesByPuzzleType, StateIdx, TheoreticalIdx,
+    Facelets, Instruction, Program, PuzzleIdx,
     architectures::{Architecture, CycleGeneratorSubcycle, new_from_effect},
 };
+use sarlacc::Intern;
 
 use crate::{
-    ExpandedCode, ExpandedCodeComponent, LabelReference, Primitive, Puzzle, RegisterReference,
-    Reporter,
+    ExpandedCode, ExpandedCodeComponent, LabelReference, Primitive, Puzzle, RegisterModifiers,
+    RegisterReference, Reporter,
     optimization::{OptimizingCodeComponent, OptimizingPrimitive, do_optimization},
 };
 
-pub(super) struct RegisterIdx;
-
-impl SeparatesByPuzzleType for RegisterIdx {
-    type Theoretical<'s> = ();
-
-    type Puzzle<'s> = (usize, Arc<Architecture>, Option<Int<U>>, bool);
+#[derive(Clone)]
+pub(super) struct RegisterIdx {
+    pub puzzle_idx: PuzzleIdx,
+    pub reg_idx: usize,
+    pub arch: Arc<Architecture>,
+    pub mods: RegisterModifiers,
 }
 
 pub struct GlobalRegs {
-    register_table: HashMap<Intern<str>, ByPuzzleType<'static, (StateIdx, RegisterIdx)>>,
-    theoretical: Vec<WithSpan<Int<U>>>,
+    register_table: HashMap<Intern<str>, RegisterIdx>,
     puzzles: Vec<WithSpan<Arc<PermutationGroup>>>,
 }
 
 impl GlobalRegs {
-    pub(super) fn get_reg(
-        &self,
-        reference: RegisterReference,
-    ) -> ByPuzzleType<'static, (StateIdx, RegisterIdx)> {
+    pub(super) fn get_reg(&self, reference: RegisterReference) -> RegisterIdx {
         let mut reg = self
             .register_table
             .get(&reference.reg_name)
             .unwrap()
             .to_owned();
 
-        if let ByPuzzleType::Puzzle((_, (_, _, _, neg))) = &mut reg {
-            *neg = reference.mods.negative;
-        }
-
-        if let Some(mod_) = reference.mods.modulus {
-            match &mut reg {
-                ByPuzzleType::Theoretical(_) => todo!(),
-                ByPuzzleType::Puzzle((_, (_, _, modulus, _))) => *modulus = Some(mod_),
-            }
-        }
+        reg.mods = reference.mods;
 
         reg
     }
 
-    fn generator(
-        &self,
-        register: RegisterReference,
-        r: &Reporter,
-    ) -> Option<ByPuzzleType<'static, (StateIdx, RegisterGenerator)>> {
-        let reg_info = self.get_reg(register);
+    fn decoding(&self, register: RegisterReference, r: &Reporter) -> Option<Decoding> {
+        let RegisterIdx {
+            puzzle_idx,
+            reg_idx,
+            arch,
+            mods,
+        } = self.get_reg(register);
 
-        match reg_info {
-            ByPuzzleType::Theoretical((theoretical, ())) => {
-                Some(ByPuzzleType::Theoretical((theoretical, ())))
-            }
-            ByPuzzleType::Puzzle((puzzle_idx, (idx, arch, modulus, neg))) => {
-                let mut alg = new_from_effect(&arch, vec![(idx, Int::<U>::one())]);
+        let mut alg = new_from_effect(&arch, vec![(reg_idx, Int::<U>::one())]);
 
-                if neg {
-                    alg.exponentiate(-Int::<I>::one());
-                }
-
-                Some(ByPuzzleType::Puzzle((
-                    puzzle_idx,
-                    (alg, get_facelets(idx, &arch, modulus, register, r)?),
-                )))
-            }
+        if mods.negative {
+            alg.exponentiate(-Int::<I>::one());
         }
+
+        Some(Decoding {
+            puzzle_idx,
+            algorithm: alg,
+            facelets: get_facelets(reg_idx, &arch, mods.modulus, register, r)?,
+        })
     }
 
-    fn facelets(
-        &self,
-        register: RegisterReference,
-        r: &Reporter,
-    ) -> Option<ByPuzzleType<'_, FaceletsInfo>> {
-        let reg_info = self.get_reg(register);
+    fn facelets(&self, register: RegisterReference, r: &Reporter) -> Option<(PuzzleIdx, Facelets)> {
+        let RegisterIdx {
+            puzzle_idx,
+            reg_idx,
+            arch,
+            mods,
+        } = self.get_reg(register);
 
-        match reg_info {
-            ByPuzzleType::Theoretical((theoretical_idx, ())) => {
-                Some(ByPuzzleType::Theoretical(theoretical_idx))
-            }
-            ByPuzzleType::Puzzle((puzzle_idx, (idx, arch, modulus, _))) => Some(
-                ByPuzzleType::Puzzle((puzzle_idx, get_facelets(idx, &arch, modulus, register, r)?)),
-            ),
-        }
+        Some((
+            puzzle_idx,
+            get_facelets(reg_idx, &arch, mods.modulus, register, r)?,
+        ))
     }
 }
 
@@ -142,50 +120,36 @@ fn get_facelets(
     }
 }
 
-struct FaceletsInfo;
-
-impl SeparatesByPuzzleType for FaceletsInfo {
-    type Theoretical<'s> = TheoreticalIdx;
-
-    type Puzzle<'s> = (PuzzleIdx, Facelets);
-}
-
 pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
     let mut global_regs = GlobalRegs {
         register_table: HashMap::new(),
-        theoretical: vec![],
         puzzles: vec![],
     };
 
-    for puzzle in &expanded.registers.puzzles {
-        match puzzle {
-            Puzzle::Theoretical { name, order } => {
-                global_regs.register_table.insert(
-                    **name,
-                    ByPuzzleType::Theoretical((TheoreticalIdx(global_regs.theoretical.len()), ())),
-                );
-
-                global_regs.theoretical.push(order.to_owned());
-            }
-            Puzzle::Real { architectures } => {
-                // TODO: Support for architecture switching
-                // Just take the first architecture
-                let (names, architecture, puzzle_span) = &architectures[0];
-                for (i, name) in names.iter().enumerate() {
-                    global_regs.register_table.insert(
-                        **name,
-                        ByPuzzleType::Puzzle((
-                            PuzzleIdx(global_regs.puzzles.len()),
-                            (i, Arc::clone(architecture), None, false),
-                        )),
-                    );
-                }
-
-                global_regs
-                    .puzzles
-                    .push(WithSpan::new(architecture.group_arc(), *puzzle_span));
-            }
+    for Puzzle {
+        reg_names,
+        arch,
+        puzzle_def,
+    } in &expanded.registers.puzzles
+    {
+        for (i, name) in reg_names.iter().enumerate() {
+            global_regs.register_table.insert(
+                **name,
+                RegisterIdx {
+                    puzzle_idx: PuzzleIdx(global_regs.puzzles.len()),
+                    reg_idx: i,
+                    arch: Arc::clone(arch),
+                    mods: RegisterModifiers {
+                        modulus: None,
+                        negative: false,
+                    },
+                },
+            );
         }
+
+        global_regs
+            .puzzles
+            .push(WithSpan::new(arch.group_arc(), *puzzle_def));
     }
 
     let global_regs = Arc::new(global_regs);
@@ -203,27 +167,27 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
                     OptimizingCodeComponent::Instruction(
                         Box::new(match *primitive {
                             Primitive::Add { amt, register } => {
-                                match global_regs_for_iter.get_reg(register) {
-                                    ByPuzzleType::Theoretical((theoretical, ())) => {
-                                        OptimizingPrimitive::AddTheoretical { theoretical, amt }
-                                    }
-                                    ByPuzzleType::Puzzle((puzzle, (reg_idx, arch, _, neg))) => {
-                                        OptimizingPrimitive::AddPuzzle {
-                                            puzzle,
-                                            amts: vec![(
-                                                reg_idx,
-                                                if neg {
-                                                    amt.span().with(
-                                                        arch.registers()[reg_idx].order()
-                                                            - amt.into_inner(),
-                                                    )
-                                                } else {
-                                                    amt
-                                                },
-                                            )],
-                                            arch,
-                                        }
-                                    }
+                                let RegisterIdx {
+                                    puzzle_idx,
+                                    reg_idx,
+                                    arch,
+                                    mods,
+                                } = global_regs_for_iter.get_reg(register);
+
+                                OptimizingPrimitive::AddPuzzle {
+                                    puzzle: puzzle_idx,
+                                    amts: vec![(
+                                        reg_idx,
+                                        if mods.negative {
+                                            amt.span().with(
+                                                arch.registers()[reg_idx].order()
+                                                    - amt.into_inner(),
+                                            )
+                                        } else {
+                                            amt
+                                        },
+                                    )],
+                                    arch,
                                 }
                             }
                             Primitive::Goto { label } => {
@@ -322,51 +286,39 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
 
             let instruction = match *fully_simplified.into_inner() {
                 OptimizingPrimitive::AddPuzzle { puzzle, arch, amts } => {
-                    Instruction::PerformAlgorithm(ByPuzzleType::Puzzle((
+                    Instruction::PerformAlgorithm {
                         puzzle,
-                        new_from_effect(
+                        alg: new_from_effect(
                             &arch,
                             amts.into_iter()
                                 .map(|(idx, amt)| (idx, amt.into_inner()))
                                 .collect(),
                         ),
-                    )))
-                }
-                OptimizingPrimitive::AddTheoretical { theoretical, amt } => {
-                    Instruction::PerformAlgorithm(ByPuzzleType::Theoretical((theoretical, *amt)))
+                    }
                 }
                 OptimizingPrimitive::Goto { label } => Instruction::Goto {
                     instruction_idx: *label_locations.get(&label).unwrap(),
                 },
                 OptimizingPrimitive::SolvedGoto { register, label } => {
-                    let facelets = global_regs.facelets(register, r)?;
+                    let (puzzle_idx, facelets) = global_regs.facelets(register, r)?;
 
-                    let solved_goto = qter_core::SolvedGoto {
+                    Instruction::SolvedGoto {
                         instruction_idx: *label_locations.get(&label).unwrap(),
-                    };
-
-                    Instruction::SolvedGoto(match facelets {
-                        ByPuzzleType::Theoretical(theoretical_idx) => {
-                            ByPuzzleType::Theoretical((solved_goto, theoretical_idx))
-                        }
-                        ByPuzzleType::Puzzle((puzzle_idx, facelets)) => {
-                            ByPuzzleType::Puzzle((solved_goto, puzzle_idx, facelets))
-                        }
-                    })
+                        puzzle_idx,
+                        facelets,
+                    }
                 }
                 OptimizingPrimitive::RepeatUntil {
                     puzzle,
                     arch,
                     amts,
                     register,
-                } => Instruction::RepeatUntil(ByPuzzleType::Puzzle(RepeatUntil {
+                } => Instruction::RepeatUntil {
                     puzzle_idx: puzzle,
-                    facelets: match global_regs.facelets(register, r)? {
-                        ByPuzzleType::Theoretical(_) => unreachable!(),
-                        ByPuzzleType::Puzzle((idx, facelets)) => {
-                            assert_eq!(idx, puzzle);
-                            facelets
-                        }
+                    facelets: {
+                        let (idx, facelets) = global_regs.facelets(register, r)?;
+                        assert_eq!(idx, puzzle);
+                        facelets
                     },
                     alg: new_from_effect(
                         &arch,
@@ -374,69 +326,37 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
                             .map(|(idx, amt)| (idx, amt.into_inner()))
                             .collect(),
                     ),
-                })),
-                OptimizingPrimitive::Solve { puzzle } => Instruction::Solve(match puzzle {
-                    ByPuzzleType::Theoretical(idx) => ByPuzzleType::Theoretical(idx),
-                    ByPuzzleType::Puzzle(idx) => ByPuzzleType::Puzzle(idx),
-                }),
+                },
+                OptimizingPrimitive::Solve { puzzle } => Instruction::Solve(puzzle),
                 OptimizingPrimitive::Input { message, register } => {
-                    let input = Input {
-                        message: message.into_inner(),
-                    };
+                    let decoding = global_regs.decoding(register, r)?;
 
-                    Instruction::Input(match global_regs.generator(register, r)? {
-                        ByPuzzleType::Theoretical((theoretical, ())) => {
-                            ByPuzzleType::Theoretical((input, theoretical))
-                        }
-                        ByPuzzleType::Puzzle((puzzle_idx, (generator, solved_goto_facelets))) => {
-                            ByPuzzleType::Puzzle((
-                                input,
-                                puzzle_idx,
-                                generator,
-                                solved_goto_facelets,
-                            ))
-                        }
-                    })
+                    Instruction::Input {
+                        message: message.into_inner(),
+                        decoding,
+                    }
                 }
                 OptimizingPrimitive::Halt { message, register } => {
-                    let halt = Halt {
-                        message: message.into_inner(),
+                    let decoding = match register {
+                        Some(v) => Some(global_regs.decoding(v, r)?),
+                        None => None,
                     };
-                    Instruction::Halt(match register {
-                        Some(register) => match global_regs.generator(register, r)? {
-                            ByPuzzleType::Theoretical((theoretical_idx, ())) => {
-                                ByPuzzleType::Theoretical((halt, Some(theoretical_idx)))
-                            }
-                            ByPuzzleType::Puzzle((
-                                puzzle_idx,
-                                (generator, solved_goto_facelets),
-                            )) => ByPuzzleType::Puzzle((
-                                halt,
-                                Some((puzzle_idx, generator, solved_goto_facelets)),
-                            )),
-                        },
-                        None => ByPuzzleType::Puzzle((halt, None)),
-                    })
-                }
+
+                    Instruction::Halt {
+                        message: message.into_inner(),
+                        maybe_reg: decoding,
+                    }
+                },
                 OptimizingPrimitive::Print { message, register } => {
-                    let print = Print {
-                        message: message.into_inner(),
+                    let decoding = match register {
+                        Some(v) => Some(global_regs.decoding(v, r)?),
+                        None => None,
                     };
-                    Instruction::Print(match register {
-                        Some(register) => match global_regs.generator(register, r)? {
-                            ByPuzzleType::Theoretical((theoretical_idx, ())) => {
-                                ByPuzzleType::Theoretical((print, Some(theoretical_idx)))
-                            }
-                            ByPuzzleType::Puzzle((
-                                puzzle_idx,
-                                (generator, solved_goto_facelets),
-                            )) => ByPuzzleType::Puzzle((
-                                print,
-                                Some((puzzle_idx, generator, solved_goto_facelets)),
-                            )),
-                        },
-                        None => ByPuzzleType::Puzzle((print, None)),
-                    })
+
+                    Instruction::Print {
+                        message: message.into_inner(),
+                        maybe_reg: decoding,
+                    }
                 }
             };
 
@@ -451,7 +371,6 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
     let global_regs = Arc::into_inner(global_regs).unwrap();
 
     Some(Program {
-        theoretical: global_regs.theoretical,
         puzzles: global_regs.puzzles,
         instructions,
     })

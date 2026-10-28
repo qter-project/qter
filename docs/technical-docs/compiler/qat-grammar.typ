@@ -85,12 +85,7 @@ Also, the grammar will generally treat `<\n>` as whitespace, so I'll add a fake 
 <registers>     ::= .("registers") <{ <register-decl>+ }>
 <register-decl> ::= (<register> <,>)* <ident> <←> <architecture> <\n>
 
-<architecture>  ::= <theoretical>
-                  | <real>
-
-<theoretical>   ::= "theoretical" <num>
-
-<real>          ::= <inline>
+<architecture>          ::= <inline>
                   | <builtin>
 <inline>        ::= <ident> <algorithm!nl>
                   | <ident> <( (<algorithm> <,>)* <algorithm> <,>? )> 

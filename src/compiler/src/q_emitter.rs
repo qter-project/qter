@@ -1,37 +1,23 @@
 use ariadne::{Report, ReportKind};
-use sarlacc::Intern;
 use itertools::Itertools;
 use puzzle_theory::{
     numbers::{Int, U},
     permutations::Algorithm,
 };
-use qter_core::{
-    Facelets, Halt, Input, Instruction, PerformAlgorithm, Print, Program, RepeatUntil,
-    SeparatesByPuzzleType, Solve, SolvedGoto,
-};
+use qter_core::span::{File, Span};
+use qter_core::{Decoding, Facelets, Instruction, Program};
+use sarlacc::Intern;
 use std::fmt::Write;
-use qter_core::span::{File, Span, WithSpan};
 
 use crate::Reporter;
 
 const ALG_MAX_CHARS_WIDTH: usize = 50;
 
-enum QInstruction {
-    Goto { instruction_idx: usize },
-    SolvedGoto(<SolvedGoto as SeparatesByPuzzleType>::Puzzle<'static>),
-    Input(<Input as SeparatesByPuzzleType>::Puzzle<'static>),
-    Halt(<Halt as SeparatesByPuzzleType>::Puzzle<'static>),
-    Print(<Print as SeparatesByPuzzleType>::Puzzle<'static>),
-    PerformAlgorithm(<PerformAlgorithm as SeparatesByPuzzleType>::Puzzle<'static>),
-    Solve(<Solve as SeparatesByPuzzleType>::Puzzle<'static>),
-    RepeatUntil(<RepeatUntil as SeparatesByPuzzleType>::Puzzle<'static>),
-}
-
 /// Convert a `Program` into Q code. The file name will be inserted into all of the spans. Also returns a list of spans for each instruction in the program.
 ///
 /// # Errors
 ///
-/// Returns `None` and pushes errors to the reporter if `theoretical` registers are present or if there are multiple puzzles.
+/// Returns `None` and pushes errors to the reporter if there are multiple puzzles.
 #[allow(clippy::missing_panics_doc)]
 #[must_use]
 pub fn emit_q(
@@ -40,14 +26,6 @@ pub fn emit_q(
     r: &Reporter,
 ) -> Option<(File, Box<[Span]>)> {
     let before = r.count();
-
-    for theoretical in &program.theoretical {
-        r.push(
-            Report::build(ReportKind::Error, theoretical.span())
-                .with_message("Cannot compile a QAT program with theoretical registers")
-                .finish(),
-        );
-    }
 
     if program.puzzles.len() > 1 {
         r.push(
@@ -69,7 +47,7 @@ pub fn emit_q(
     }
     out.push('\n');
 
-    let instrs = convert_instructions(&program.instructions);
+    let instrs = &program.instructions;
 
     let digits = (instrs.len().max(2) - 1).ilog10() as usize + 1;
 
@@ -85,55 +63,77 @@ pub fn emit_q(
         }
 
         let instr = match &**instr {
-            QInstruction::Goto { instruction_idx } => format!("goto {instruction_idx}"),
-            QInstruction::SolvedGoto((solved_goto, _, facelets)) => {
+            Instruction::Goto { instruction_idx } => format!("goto {instruction_idx}"),
+            Instruction::SolvedGoto {
+                instruction_idx,
+                puzzle_idx: _,
+                facelets,
+            } => {
                 format!(
                     "solved-goto {} {}",
                     facelets.pieces().iter().map(|v| &**v).join(" "),
-                    solved_goto.instruction_idx
+                    instruction_idx
                 )
             }
-            QInstruction::Input((input, _, algorithm, facelets)) => {
+            Instruction::Input { message, decoding: encoding } => {
                 format!(
                     "input \"{}\"\n{}\n{padding}      max-input {}",
-                    input.message,
-                    stringify_alg(algorithm, padding.len() + 6, true),
-                    facelets.order() - Int::<U>::one(),
+                    message,
+                    stringify_alg(&encoding.algorithm, padding.len() + 6, true),
+                    encoding.facelets.order() - Int::<U>::one(),
                 )
             }
-            QInstruction::Halt((halt, None)) => {
-                format!("halt \"{}\"", halt.message)
+            Instruction::Halt {
+                message,
+                maybe_reg: None,
+            } => {
+                format!("halt \"{message}\"")
             }
-            QInstruction::Halt((halt, Some((_, alg, facelets)))) => {
-                let mut inverse_alg = alg.clone();
+            Instruction::Halt {
+                message,
+                maybe_reg:
+                    Some(Decoding {
+                        puzzle_idx: _,
+                        facelets,
+                        algorithm,
+                    }),
+            } => {
+                let mut inverse_alg = algorithm.clone();
                 inverse_alg.exponentiate(-Int::<U>::one());
                 format!(
                     "halt \"{}\"\n{}\n{padding}     counting-until {}",
-                    halt.message,
+                    message,
                     stringify_alg(&inverse_alg, padding.len() + 5, true),
                     stringify_facelets(facelets),
                 )
             }
-            QInstruction::Print((halt, None)) => {
-                format!("print \"{}\"", halt.message)
+            Instruction::Print {
+                message,
+                maybe_reg: None,
+            } => {
+                format!("print \"{message}\"")
             }
-            QInstruction::Print((halt, Some((_, alg, facelets)))) => {
-                let mut inverse_alg = alg.clone();
+            Instruction::Print {
+                message,
+                maybe_reg:
+                    Some(Decoding {
+                        puzzle_idx: _,
+                        facelets,
+                        algorithm,
+                    }),
+            } => {
+                let mut inverse_alg = algorithm.clone();
                 inverse_alg.exponentiate(-Int::<U>::one());
                 format!(
                     "print \"{}\"\n{}\n{padding}      counting-until {}",
-                    halt.message,
+                    message,
                     stringify_alg(&inverse_alg, padding.len() + 6, true),
                     stringify_facelets(facelets),
                 )
             }
-            QInstruction::PerformAlgorithm((_, alg)) => stringify_alg(alg, padding.len(), false),
-            QInstruction::Solve(_) => "solve".to_string(),
-            QInstruction::RepeatUntil(RepeatUntil {
-                puzzle_idx: _,
-                facelets,
-                alg,
-            }) => {
+            Instruction::PerformAlgorithm{ puzzle: _, alg } => stringify_alg(alg, padding.len(), false),
+            Instruction::Solve(_) => "solve".to_string(),
+            Instruction::RepeatUntil { puzzle_idx: _, facelets, alg } => {
                 format!(
                     "repeat until {} solved\n{}",
                     stringify_facelets(facelets),
@@ -164,8 +164,7 @@ pub fn emit_q(
 fn stringify_alg(alg: &Algorithm, padding: usize, pad_first: bool) -> String {
     let padding_str = " ".repeat(padding);
     split_strings(
-        &alg.move_seq_iter()
-            .collect::<Vec<_>>(),
+        &alg.move_seq_iter().collect::<Vec<_>>(),
         ALG_MAX_CHARS_WIDTH - padding,
     )
     .into_iter()
@@ -284,30 +283,6 @@ fn split_all_short_enough(strings: &[Intern<str>], max_line_width: usize) -> Vec
 
 fn stringify_facelets(facelets: &Facelets) -> String {
     facelets.pieces().iter().map(|v| &**v).join(" ")
-}
-
-fn convert_instructions(instructions: &[WithSpan<Instruction>]) -> Vec<WithSpan<QInstruction>> {
-    let mut out = Vec::new();
-
-    for instr in instructions {
-        let span = instr.span();
-        out.push(span.with(match &**instr {
-            Instruction::Goto { instruction_idx } => QInstruction::Goto {
-                instruction_idx: *instruction_idx,
-            },
-            Instruction::SolvedGoto(v) => QInstruction::SolvedGoto(v.unwrap_puzzle().clone()),
-            Instruction::Input(v) => QInstruction::Input(v.unwrap_puzzle().clone()),
-            Instruction::Halt(v) => QInstruction::Halt(v.unwrap_puzzle().clone()),
-            Instruction::Print(v) => QInstruction::Print(v.unwrap_puzzle().clone()),
-            Instruction::PerformAlgorithm(v) => {
-                QInstruction::PerformAlgorithm(v.unwrap_puzzle().clone())
-            }
-            Instruction::Solve(v) => QInstruction::Solve(*v.unwrap_puzzle()),
-            Instruction::RepeatUntil(v) => QInstruction::RepeatUntil(v.unwrap_puzzle().clone()),
-        }));
-    }
-
-    out
 }
 
 #[cfg(test)]

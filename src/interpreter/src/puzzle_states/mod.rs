@@ -16,44 +16,10 @@ use puzzle_theory::{
     permutations::{Algorithm, Permutation, PermutationGroup},
 };
 use qter_core::{
-    Program, PuzzleIdx, TheoreticalIdx,
+    Program, PuzzleIdx, 
     architectures::{chromatic_orders_by_facelets, decode},
 };
 use tokio_stream::StreamExt;
-
-/// An instance of a theoretical register. Analagous to the `Puzzle` structure.
-pub struct TheoreticalState {
-    value: Int<U>,
-    order: Int<U>,
-}
-
-impl TheoreticalState {
-    pub fn add_to_i(&mut self, amt: Int<I>) {
-        self.add_to(amt % self.order);
-    }
-
-    pub fn add_to(&mut self, amt: Int<U>) {
-        self.value += amt % self.order;
-
-        if self.value >= self.order {
-            self.value -= self.order;
-        }
-    }
-
-    pub fn zero_out(&mut self) {
-        self.value = Int::zero();
-    }
-
-    #[must_use]
-    pub fn order(&self) -> Int<U> {
-        self.order
-    }
-
-    #[must_use]
-    pub fn value(&self) -> Int<U> {
-        self.value
-    }
-}
 
 pub trait PuzzleState {
     type InitializationArg;
@@ -498,9 +464,8 @@ impl<R: RobotLike> RobotLike for WrapSimulatedPuzzle<R> {
     }
 }
 
-/// A collection of the states of every puzzle and theoretical register
+/// A collection of the states of every puzzle
 pub(crate) struct PuzzleStates<P: PuzzleState> {
-    theoretical_states: Vec<TheoreticalState>,
     puzzle_states: Vec<P>,
 }
 
@@ -512,22 +477,12 @@ where
         program: &Program,
         args: P::InitializationArg,
     ) -> Result<Self, P::Error> {
-        let theoretical_states = program
-            .theoretical
-            .iter()
-            .map(|order| TheoreticalState {
-                value: Int::zero(),
-                order: **order,
-            })
-            .collect();
-
         let puzzle_states = tokio_stream::iter(program.puzzles.iter())
             .then(|perm_group| P::initialize(Arc::clone(perm_group), args.clone()))
             .collect::<Result<Vec<_>, _>>()
             .await?;
 
         Ok(PuzzleStates {
-            theoretical_states,
             puzzle_states,
         })
     }
@@ -538,15 +493,6 @@ impl<P: PuzzleState> PuzzleStates<P> {
         program: &Program,
         args: P::InitializationArg,
     ) -> Result<Self, P::Error> {
-        let theoretical_states = program
-            .theoretical
-            .iter()
-            .map(|order| TheoreticalState {
-                value: Int::zero(),
-                order: **order,
-            })
-            .collect();
-
         let puzzle_states = if program.puzzles.is_empty() {
             Vec::new()
         } else if program.puzzles.len() == 1 {
@@ -556,18 +502,8 @@ impl<P: PuzzleState> PuzzleStates<P> {
         };
 
         Ok(PuzzleStates {
-            theoretical_states,
             puzzle_states,
         })
-    }
-
-    #[must_use]
-    pub fn theoretical_state(&self, idx: TheoreticalIdx) -> &TheoreticalState {
-        &self.theoretical_states[idx.0]
-    }
-
-    pub fn theoretical_state_mut(&mut self, idx: TheoreticalIdx) -> &mut TheoreticalState {
-        &mut self.theoretical_states[idx.0]
     }
 
     pub fn puzzle_state_mut(&mut self, idx: PuzzleIdx) -> &mut P {
