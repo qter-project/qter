@@ -9,8 +9,8 @@ use std::{
 
 use cycle_combination_finder::{
     finder::{
-        CycleCombinationFinderBuilder, NumCores, Optimality, PuzzleAnalysis, RequiredRegisterOrder,
-        SolutionExpansion,
+        CycleCombinationFinderBuilder, NumCores, Optimality, OrderValueConstraint, PuzzleAnalysis,
+        Register, SolutionExpansion,
     },
     puzzle::{
         PuzzleDef,
@@ -34,7 +34,7 @@ fn main() {
         let analysis =
             PuzzleAnalysis::new(&minx3, NumCores::AllCores).unwrap_or_else(|e| panic!("{e}"));
         ccf.with_puzzle_analysis(&analysis)
-            .with_register_count(3)
+            .with_registers(Register::default_count(3))
             .with_expected_solutions_count_assertion(Some(347))
             .build()
             .unwrap_or_else(|e| panic!("{e}"))
@@ -46,7 +46,7 @@ fn main() {
             PuzzleAnalysis::new(&minx4, NumCores::AllCores).unwrap_or_else(|e| panic!("{e}"));
         let ret = CycleCombinationFinderBuilder::default()
             .with_puzzle_analysis(&analysis)
-            .with_register_count(3)
+            .with_registers(Register::default_count(3))
             .with_mss_batch_size(Some(1000))
             .with_expected_solutions_count_assertion(Some(296))
             .build()
@@ -68,7 +68,7 @@ fn main() {
             PuzzleAnalysis::new(&minx4, NumCores::AllCores).unwrap_or_else(|e| panic!("{e}"));
         let ret = CycleCombinationFinderBuilder::default()
             .with_puzzle_analysis(&analysis)
-            .with_register_count(4)
+            .with_registers(Register::default_count(4))
             .with_optimality(Optimality::MaxOrderRatio(10.0))
             .with_mss_batch_size(Some(1))
             .build()
@@ -84,7 +84,7 @@ fn main() {
             PuzzleAnalysis::new(&minx5, NumCores::AllCores).unwrap_or_else(|e| panic!("{e}"));
         let ret = CycleCombinationFinderBuilder::default()
             .with_puzzle_analysis(&analysis)
-            .with_register_count(3)
+            .with_registers(Register::default_count(3))
             .with_max_fitting_tries(Some(2500))
             .with_mss_batch_size(Some(10000))
             .with_time_limit(Some(Duration::from_mins(10)))
@@ -109,7 +109,7 @@ fn main() {
             PuzzleAnalysis::new(&cube3, NumCores::AllCores).unwrap_or_else(|e| panic!("{e}"));
         let ret = ccf
             .with_puzzle_analysis(&analysis)
-            .with_register_count(3)
+            .with_registers(Register::default_count(3))
             .build()
             .unwrap_or_else(|e| panic!("{e}"))
             .find()

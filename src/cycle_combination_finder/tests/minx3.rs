@@ -1,7 +1,7 @@
 #![warn(clippy::pedantic)]
 
 use cycle_combination_finder::{
-    finder::{CycleCombinationFinderBuilder, NumCores, Optimality, PuzzleAnalysis},
+    finder::{CycleCombinationFinderBuilder, NumCores, Optimality, PuzzleAnalysis, Register},
     puzzle::minxN::MINX3,
 };
 
@@ -15,7 +15,7 @@ fn optimal_2() {
     let analysis = PuzzleAnalysis::new(&minx3, NumCores::AllCores).unwrap();
     let cycle_combinations = CycleCombinationFinderBuilder::default()
         .with_puzzle_analysis(&analysis)
-        .with_register_count(2)
+        .with_registers(Register::default_count(2))
         .build()
         .unwrap()
         .find()
@@ -47,7 +47,7 @@ fn optimal_3() {
     let analysis = PuzzleAnalysis::new(&minx3, NumCores::AllCores).unwrap();
     let cycle_combinations = CycleCombinationFinderBuilder::default()
         .with_puzzle_analysis(&analysis)
-        .with_register_count(3)
+        .with_registers(Register::default_count(3))
         .build()
         .unwrap()
         .find()
@@ -80,7 +80,7 @@ fn equivalent_2() {
     let analysis = PuzzleAnalysis::new(&minx3, NumCores::AllCores).unwrap();
     let cycle_combinations = CycleCombinationFinderBuilder::default()
         .with_puzzle_analysis(&analysis)
-        .with_register_count(2)
+        .with_registers(Register::default_count(2))
         .with_optimality(Optimality::EQUIVALENT)
         .build()
         .unwrap()
@@ -95,7 +95,7 @@ fn equivalent_3() {
     let analysis = PuzzleAnalysis::new(&minx3, NumCores::AllCores).unwrap();
     let cycle_combinations = CycleCombinationFinderBuilder::default()
         .with_puzzle_analysis(&analysis)
-        .with_register_count(3)
+        .with_registers(Register::default_count(3))
         .with_optimality(Optimality::EQUIVALENT)
         .build()
         .unwrap()

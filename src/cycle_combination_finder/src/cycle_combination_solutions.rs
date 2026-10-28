@@ -585,8 +585,8 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                 self.orbit_remaining_pieces[orbit_index2].unused = next_orbit_unused_piece_count;
                 self.register_assignments[register_index2].unassigned_exponents_mask ^=
                     1 << prime_index;
-                // Do not announce the cycle assignment if the orbit orients but the `exp` factor
-                // is 0.
+                // Do not announce the cycle assignment if the orbit orients but the `exp`
+                // factor is 0.
                 if orient_state != CycleOrientState::Canonical || exp != 0 {
                     self.register_assignments[register_index2].cycle_assignments[prime_index] =
                         PrimePowerCycleAssignment::Orbit(orbit_index, orient_state);
@@ -1175,7 +1175,7 @@ mod tests {
         cycle_combinations_tree::DisjointRegisters,
         finder::{
             CycleCombination, CycleCombinationFinderBuilder, NumCores, PossibleOrder,
-            PuzzleAnalysis, SolutionExpansion,
+            PuzzleAnalysis, Register, SolutionExpansion,
         },
         nonemptyvec::NonemptySlice,
         orderexps::OrderExps,
@@ -1267,7 +1267,7 @@ mod tests {
         };
         let ccf = CycleCombinationFinderBuilder::default()
             .with_puzzle_analysis(&analysis)
-            .with_register_count(1)
+            .with_registers(Register::default_count(1))
             .with_solution_expansion(SolutionExpansion::All)
             .build()
             .unwrap();
@@ -1283,7 +1283,7 @@ mod tests {
         let analysis = PuzzleAnalysis::new(&minx3, NumCores::AllCores).unwrap();
         let ccf = CycleCombinationFinderBuilder::default()
             .with_puzzle_analysis(&analysis)
-            .with_register_count(3)
+            .with_registers(Register::default_count(3))
             .with_solution_expansion(SolutionExpansion::FIRST)
             .build()
             .unwrap();
@@ -1320,7 +1320,7 @@ mod tests {
         let analysis = PuzzleAnalysis::new(&minx3, NumCores::AllCores).unwrap();
         let ccf = CycleCombinationFinderBuilder::default()
             .with_puzzle_analysis(&analysis)
-            .with_register_count(3)
+            .with_registers(Register::default_count(3))
             .with_solution_expansion(SolutionExpansion::All)
             .build()
             .unwrap();
@@ -1357,7 +1357,7 @@ mod tests {
     #[test_log::test]
     fn orienting_3_cycle() {
         let ccf_base = CycleCombinationFinderBuilder::default()
-            .with_register_count(1)
+            .with_registers(Register::default_count(1))
             .with_solution_expansion(SolutionExpansion::All);
 
         let crazy = PuzzleDef::<64>::new((
@@ -1420,7 +1420,7 @@ mod tests {
         let minx5 = MINX5.clone();
         let analysis = PuzzleAnalysis::new(&minx5, NumCores::AllCores).unwrap();
         let ccf = CycleCombinationFinderBuilder::default()
-            .with_register_count(4)
+            .with_registers(Register::default_count(4))
             .with_solution_expansion(SolutionExpansion::FIRST)
             .with_puzzle_analysis(&analysis)
             .build()
@@ -1474,7 +1474,7 @@ mod tests {
         let minx5 = MINX3.clone();
         let analysis = PuzzleAnalysis::new(&minx5, NumCores::AllCores).unwrap();
         let ccf = CycleCombinationFinderBuilder::default()
-            .with_register_count(4)
+            .with_registers(Register::default_count(4))
             .with_solution_expansion(SolutionExpansion::All)
             .with_fast_assumptions(true)
             .with_puzzle_analysis(&analysis)
