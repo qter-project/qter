@@ -1,10 +1,10 @@
 .start-rhai
-    fn validate_equals_order(r1, r2, r3) {
+    fn validate_order_r3_ge_r2_or_r3_ge_r1(r1, r2, r3) {
         let o1 = r1.order;
         let o2 = r2.order;
         let o3 = r3.order;
-        if o1 != o2 || o1 != o3 {
-            throw `Expected the orders of ${r1}, ${r2}, and ${r3} to be equal. Got orders of ${o1}, ${o2}, {o3}.`;
+        if o3 < o2 && o3 < o1 {
+            throw `Expected the violated constraint: ${r3} (order ${o3}) >= ${r2} (${o2}) or ${r3} (${o3}) >= ${r1} (${o1}).`;
         }
 
         return ();
@@ -94,7 +94,7 @@
         }
     }
     ($R1:reg equals $R2:reg using $R3:reg $code:block) => {
-            rhai validate_equals_order($R1, $R2, $R3)
+            rhai validate_order_r3_ge_r2_or_r3_ge_r1($R1, $R2, $R3)
             set $R3 to 0
         equals_loop:
             solved-goto $R1 first_zero
@@ -122,7 +122,7 @@
         fail:
     }
     ($R1:reg not-equals $R2:reg using $R3:reg $code:block) => {
-            rhai validate_equals_order($R1, $R2, $R3)
+            rhai validate_order_r3_ge_r2_or_r3_ge_r1($R1, $R2, $R3)
             set $R3 to 0
         equals_loop:
             solved-goto $R1 first_zero

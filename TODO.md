@@ -16,6 +16,7 @@
     - if the remaining pieces is less than a prime number, then fit it there last
 
   - parity; look in stash!
+  - do the at least constraint l8r
   - minorderratio and maxorderrratio isn't entirely type safe; you can have exactly 2 and 5 with a max ratio of 5 or 2 2 with min 2
   - maybe_min_order_ratio
   - generate less possible orders with optimality equivalent: find max # 
