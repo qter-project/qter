@@ -8,17 +8,20 @@
 ## CCF
 
 - important
+  - fix claude's bugs
+  - exact constraints are broken rn lol
   - sort the order value constraints if i dont already
-  - "maybe this can be fixed with my algorithm being a little smarter and not assigning the 4 to edges in this case"
   - make sure its still fast with two orbits with the same ori
   - optimize orbit traversal algorithm: dont loop twice to change states
   - fit equal fitting cycles first into orbits
     - if the remaining pieces is less than a prime number, then fit it there last
+  - put "equal to" registers first; one less dof
   - make the number of max fitting tries for expansion significantly greater
 
   - parity; look in stash!
 
   - https://discord.com/channels/1528552221695021096/1528556519602389062/1545246171142955130
+  - "maybe this can be fixed with my algorithm being a little smarter and not assigning the 4 to edges in this case"
   - do the at least constraint l8r
   - minorderratio and maxorderrratio isn't entirely type safe; you can have exactly 2 and 5 with a max ratio of 5 or 2 2 with min 2
   - maybe_min_order_ratio
