@@ -118,32 +118,31 @@
 - Multiple halt instruction
 - Directory of testing programs instead of hardcoding into Rust
   - Inline testing in the QAT format
+- Finish Rhai macros and the unimplemented macros in the prelude
+- Replace `halt` and `print` with `debug` `display` and `halt`
+- Testcase for ident arguments in macros
+- Allow parsing a constant as the name of a macro
 - Syscall instruction
-- 😎Translate QAT comments into Q
-- 😎Write tree sitter grammar
-- 😎Architecture switching
-- 😎Instruction to copy solving moves to other puzzle
-- 😎Architecture that avoids sharing a piece by always having two additions simultaneously which avoids parity
+- Error handling; keep track of the entire "expansion stack" for spans
 - 😎force conditional blocks that end with "halt" to codegen at the end of the instruction memory, optimizing a goto
 - 😎Test with https://github.com/dtolnay/trybuild
 - 😎Write a tree-sitter grammer for QAT
 - 😎Syntax for declaring what moduli you want from the registers
 - Evaluate repeat instruction for examinx
-- 😎Optimizations
-  - Convert QAT to Sea of Variables
-    - Make the repeat-until vectorization optimization work with multiple puzzles
-    - Unreachable removal with real control flow analysis
-    - Dead code removal?
-    - Coalesce adjacent labels
-    - Strength reduction of `solved-goto` after a `repeat until` or `solve` that guarantees whether or not it succeeds
-    - If there's a goto immediately after a label, move the label to where the goto goes to
-    - Be able to actually shuffle code around to minimize branching
-  - Asher's repeated move post process optimization: R U R repeated = R then U R2 repeated then R'
+- Convert QAT to a CFG
+  - Make the repeat-until vectorization optimization work with multiple puzzles
+  - Unreachable removal with real control flow analysis
+  - Dead code removal?
+  - Coalesce adjacent labels
+  - Strength reduction of `solved-goto` after a `repeat until` or `solve` that guarantees whether or not it succeeds
+  - If there's a goto immediately after a label, move the label to where the goto goes to
+  - Be able to actually shuffle code around to minimize branching
+- 😎Asher's repeated move post process optimization: R U R repeated = R then U R2 repeated then R'
 
 ## Interpreter/CLI
 
 - Implement tapes
-- Multithreading
+- 😎Multithreading
 - 😎Debugging tool
 - 😎Implementing the fancy CRT/loop-repetition-calculating thingy
 

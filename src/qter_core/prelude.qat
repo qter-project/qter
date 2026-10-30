@@ -1,11 +1,4 @@
 .start-rhai
-    fn validate_order_boolean(r1) {
-        if r1.order != 2 {
-            throw "The register must be a boolean register to use this macro (it must have exactly two states).";
-        }
-        
-        return ();
-    }
     fn validate_order_r3_ge_r2_or_r3_ge_r1(r1, r2, r3) {
         let o1 = r1.order;
         let o2 = r2.order;
@@ -58,18 +51,7 @@
 }
 
 .macro if {
-    ($R:reg $code:block) => {
-        rhai validate_order_boolean($R)
-        if not-solved $R {
-            $code
-        }
-    }
-    (not $R:reg $code:block) => {
-        rhai validate_order_boolean($R)
-        if solved $R {
-            $code
-        }
-    }
+    (not $R:reg $code:block) => if solved $R $code
     (solved $R:reg $code:block) => {
             solved-goto $R do_if
             goto after_if
@@ -77,14 +59,17 @@
             $code
         after_if:
     }
+    ($R:reg $code:block) => if not-solved $R $code
     (not-solved $R:reg $code:block) => {
             solved-goto $R after_if
             $code
         after_if:
     }
+    (not $R:reg $code1:block else $code2:block) => if solved $R $code1 else $code2
     (solved $R:reg $code1:block else $code2:block) => {
         if not-solved $R $code2 else $code1
     }
+    ($R:reg $code1:block else $code2:block) => if not-solved $R $code1 else $code2
     (not-solved $R:reg $code1:block else $code2:block) => {
             if not-solved $R {
                 $code1
@@ -192,6 +177,7 @@
 }
 
 .macro while {
+    (not $R:reg $code:block) => while solved $R $code
     (solved $R:reg $code:block) => {
             goto continue
         do_iteration:
@@ -200,6 +186,7 @@
             solved-goto $R do_iteration
         !break:
     }
+    ($R:reg $code:block) => while not-solved $R $code
     (not-solved $R:reg $code:block) => {
         !continue:
             solved-goto $R break

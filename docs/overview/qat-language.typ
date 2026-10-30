@@ -35,6 +35,14 @@ The distribution reflects the fact that a Rubik's cube has only a small amount o
 }
 ```
 
+If you want to define custom non-built-in registers, you can type algs directly into the declaration. The compiler will figure out how big each register is.
+
+```
+.registers {
+    A, B <- 3x3 (U, D)
+}
+```
+
 The `.registers` statement is also used to declare memory tapes, which help facilitate local variables, call stacks, and heap memory. This idea will be expanded upon in #link("/overview/memory-tapes.html")[Memory Tapes].
 
 === Basic instructions

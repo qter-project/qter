@@ -36,11 +36,13 @@ Set the contents of the first register to the number specified
 
 ```janet
 if solved <register> <{}> [else <{}>]
+if not <register> <{}> [else <{}>]
 ```
 Execute the code block if the register is zero, otherwise execute the `else` block if supplied
 
 ```janet
 if not-solved <register> <{}> [else <{}>]
+if <register> <{}> [else <{}>]
 ```
 Execute the code block if the register is _not_ zero, otherwise execute the `else` block if supplied
 
