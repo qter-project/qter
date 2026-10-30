@@ -1,0 +1,77 @@
+// multiplication of complex numbers. (R1 + I1*i)*(R2 + I2*i) = (R3 + I3*i)
+
+.registers {
+    R1 <- 3x3 builtin (1260)
+    I1 <- 3x3 builtin (1260)
+    R2 <- 3x3 builtin (1260)
+    I2 <- 3x3 builtin (1260)
+    R3 <- 3x3 builtin (1260)
+    I1 <- 3x3 builtin (1260)
+    SCRATCH <- 3x3 builtin (1260)
+}
+
+.macro add_tracked {
+    ($FROM:reg $TO:reg,$TRACK:reg,$B:reg) => {
+        while not-solved $FROM {
+            inc $TO
+            inc $TRACK
+            dec $FROM
+        }
+        dec $B
+    }
+}
+
+.macro mult_pair {
+    ($A:reg, $B:reg, $AB:reg, $DUMMY:reg) => {
+        loop {
+            if solved $B {
+                goto break
+            }
+            add_tracked $A $AB $DUMMY $B
+
+            if solved $B {
+                goto break
+            }
+            add_tracked $DUMMY $AB $A $B
+        }
+    }
+}
+
+.macro mult_pair_tracked {
+    ($A:reg, $B:reg, $AB:reg, $DUMMY:reg, $TRACK:reg) => {
+        loop {
+            if solved $B {
+                goto break
+            }
+            add_tracked $A $AB $DUMMY $B
+            inc $TRACK
+
+            if solved $B {
+                move $DUMMY to $A
+                goto break
+            }
+            add_tracked $DUMMY $AB $A $B
+            inc $TRACK
+        }
+        move $TRACK to $B
+    }
+}
+
+
+input "Enter real part of first value" R1
+input "Enter imaginary part of first value" I1
+input "Enter real part of second value" R2
+input "Enter imaginary part of second value" I2
+
+
+mult_pair_tracked R1 I2 I3 SCRATCH R3
+
+mult_pair_tracked R2 I1 I3 SCRATCH R3
+
+mult_pair R1 R2 R3 SCRATCH
+
+mult_pair I1 I2 -R3 R2
+
+
+print "The product has real value " R3
+halt "The product has imaginary value " I3
