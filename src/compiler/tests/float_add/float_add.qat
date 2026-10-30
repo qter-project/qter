@@ -1,0 +1,272 @@
+
+.registers {
+    M1 <- 3x3 builtin (1260)
+    M2 <- 3x3 builtin (1260)
+    M3 <- 3x3 builtin (1260)
+    E1,E2,E3 <- 3x3 builtin (30,30,30)
+    S1,S2,LEAD,SUB <- 3x3 builtin (6,6,6,6)
+}
+
+
+.macro halt_if_nan {
+    ($E:reg) => { 
+        inc $E
+        if solved $E {
+            halt "NaN"
+        }
+        dec $E
+    }
+}
+
+// this is a hacky way to use 6 cycles as bool since we don't have some built in (2,2,2,2,2,2,2)
+.macro flip_sign {  
+    ($S1:reg) => {
+        add $S1 3
+    }
+}
+
+// give a register the value of the implicit leading digit
+.macro give_lead {  
+    ($M:reg) => {
+        add $M 1024
+    }
+}
+
+// give a register half of the implicit leading digit
+.macro give_half_lead {  
+    ($M:reg) => {
+        add $M 512
+    }
+}
+
+
+// cut a value in half. we assume that M3 starts at 0, so KEEP IT CLEAN
+.macro halve {
+    ($M:reg) => {
+        solved-goto $M halved
+
+        dec $M
+        while not-solved $M {
+            dec $M
+            inc M3
+            if solved $M {
+                goto break
+            }
+            dec $M
+        }
+        set $M to M3
+
+        halved:
+    }
+}
+
+.macro add_ordered {
+    ($S1:reg,$E1:reg,$M1:reg,$S2:reg,$E2:reg,$M2:reg) => { 
+        
+        solved-goto LEAD end_lead_adjust
+        solved-goto SUB lead_adjust
+        solved-goto $E1 sub_equal_sizes
+
+        dec $E1
+        if not-solved $E1{
+            inc $E1
+            goto lead_adjust
+        }
+        inc $E1
+
+        // if we're subtracting normal numbers with almost equal exp, cancel leading 1 before halving
+        give_half_lead M3
+        while not-solved $E1 {
+            dec M3
+            dec $E1
+            // if the mantissa is larger than half the max, cancel that half with the negative leading 1
+            solved-goto M3 skip_doubling
+        }
+
+        // if the mantissa is smaller than half the max, double it and drop a power
+        give_half_lead -M3
+        while not-solved M3 {
+            inc M3
+            add $M1 2
+        }
+        dec $E1
+
+        skip_doubling:
+
+        goto end_lead_adjust
+
+        
+        // if we're subtracting normal numbers with equal exp, dump both leading 1s to prevent loss of significance by halving
+        sub_equal_sizes:
+
+        flip_sign LEAD
+        goto end_lead_adjust
+
+
+        // if both values have an implicit leading 1, dump at least one of them and increase exponent
+        lead_adjust:
+
+        halve $M2
+        give_half_lead $M2
+        inc E3
+        if solved $E1 {
+            halt_if_nan E3
+            halve $M1
+            give_half_lead $M1
+            flip_sign LEAD
+        } else {
+            dec $E1
+        }
+
+
+        end_lead_adjust:
+
+        // halve the smaller number until the exponents match
+        while not-solved $E1 {
+            if not-solved LEAD {
+                halve $M2
+            } else {
+                flip_sign LEAD
+            }
+            dec $E1
+            inc E3
+        }
+
+
+        // DO THE ADDITION FINALLY
+        while not-solved $M2 {
+            dec $M2
+            
+            if not-solved SUB {
+                if solved $M1 {
+                    if not-solved LEAD {
+                        give_lead $M1
+                        flip_sign LEAD
+                    } else {
+                        inc $M1
+                        flip_sign SUB
+                        flip_sign $S1
+                    }
+                }
+                dec $M1
+            }
+
+            if solved SUB {
+                inc $M1
+                if solved $M1 {
+                    if not-solved LEAD {
+                        inc E3
+                        halt_if_nan E3
+
+                        give_lead -$M1
+                        halve $M1
+                        halve $M2
+
+                    } else {
+                        flip_sign LEAD
+                        give_lead -$M1
+                    }
+                }
+            }
+        }
+
+        // if the mantissa is larger than the leading value, adjust down
+        give_lead M3
+        while not-solved $M1 {
+            dec M3
+            dec $M1
+            if solved M3 {
+                if not-solved LEAD {
+                    inc E3
+                    halt_if_nan E3
+                    halve $M1
+
+                } else {
+                    flip_sign LEAD
+                }
+                goto skip_reset
+            }
+        }
+
+        // mantissa was not larger, reset value
+        give_lead -M3
+        while not-solved M3 {
+            inc M3
+            inc $M1
+        }
+
+        skip_reset:
+
+
+        // if there is no implicit leading digit, double until it is so
+        while solved LEAD {
+            solved-goto E3 break
+            dec E3
+            solved-goto E3 break
+
+            give_lead -M3
+            while not-solved $M1 {
+                dec $M1
+                add M3 2
+                if solved M3 {
+                    flip_sign LEAD
+                }
+            }
+            if solved LEAD {
+               give_lead M3 
+            }
+            move M3 to $M1
+
+        }
+
+        // if subnormals gained a lead, make normal
+        if not-solved LEAD {
+            if solved E3 {
+                inc E3
+            }
+        }
+
+        print "The sign of the sum is " $S1
+        print "The exponent of the sum is " E3
+        halt "The mantissa of the sum is " $M1
+
+    }
+}
+
+
+
+input "Enter the sign of first value" S1
+input "Enter the exponent of first value" E1
+halt_if_nan E1
+input "Enter the mantissa of first value" M1
+input "Enter the sign of second value" S2
+input "Enter the exponent of second value" E2
+halt_if_nan E2
+input "Enter the mantissa of second value" M2
+
+
+// dump exp value into E3 to find which input is larger
+while not-solved E1 {
+    solved-goto E2 break
+    dec E1
+    dec E2
+    inc E3
+    if solved LEAD {
+        flip_sign LEAD
+    }
+}
+
+// check whether this is secretly a subtraction problem
+if not-solved S1 {
+    flip_sign SUB
+}
+if not-solved S2 {
+    flip_sign SUB
+}
+
+if solved E1 {
+    add_ordered S2 E2 M2 S1 E1 M1
+} 
+add_ordered S1 E1 M1 S2 E2 M2
+
+
