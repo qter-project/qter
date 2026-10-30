@@ -14,8 +14,11 @@
   - optimize orbit traversal algorithm: dont loop twice to change states
   - fit equal fitting cycles first into orbits
     - if the remaining pieces is less than a prime number, then fit it there last
+  - make the number of max fitting tries for expansion significantly greater
 
   - parity; look in stash!
+
+  - https://discord.com/channels/1528552221695021096/1528556519602389062/1545246171142955130
   - do the at least constraint l8r
   - minorderratio and maxorderrratio isn't entirely type safe; you can have exactly 2 and 5 with a max ratio of 5 or 2 2 with min 2
   - maybe_min_order_ratio

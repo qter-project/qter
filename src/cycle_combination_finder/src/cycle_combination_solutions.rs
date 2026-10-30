@@ -410,9 +410,12 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                             [register_index2 * self.ccf.puzzle_def.orbit_defs().len().get()
                                 + orbit_index2];
                         // fast check to make sure the nonorienting prime fits into this orbit
+                        // we cannot use logarithms because it misbehaves when the orbit size
+                        // exactly fits the prime power
                         if !traverse_orients
-                            && f64::from(register_order_exp) * f64::from(prime).ln()
-                                > f64::from(orbit_remaining_pieces.unused).ln()
+                            && prime
+                                .checked_pow(u32::from(register_order_exp))
+                                .is_none_or(|pp| pp > orbit_remaining_pieces.unused)
                         {
                             return acc;
                         }
