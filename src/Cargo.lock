@@ -25,6 +25,7 @@ checksum = "5a15f179cd60c4584b8a8c596927aadc462e27f2ca70c04e0071964a73ba7a75"
 dependencies = [
  "cfg-if",
  "const-random",
+ "getrandom 0.3.4",
  "once_cell",
  "version_check",
  "zerocopy",
@@ -281,9 +282,9 @@ dependencies = [
 
 [[package]]
 name = "bnum"
-version = "0.14.4"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1b08cb4ecbb540b940016b0a0f35b7e48ab0cc372ab88150c351de4cc469959"
+checksum = "119771309b95163ec7aaf79810da82f7cd0599c19722d48b9c03894dca833966"
 
 [[package]]
 name = "boxcar"
@@ -371,12 +372,26 @@ dependencies = [
 
 [[package]]
 name = "chumsky"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ba4a05c9ce83b07de31b31c874e87c069881ac4355db9e752e3a55c11ec75a6"
+dependencies = [
+ "hashbrown 0.15.5",
+ "regex-automata 0.3.9",
+ "serde",
+ "stacker",
+ "unicode-ident",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "chumsky"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e0d2bfadce76f963d776feff99db6dc33783829539258314776383b33e2a00f8"
 dependencies = [
  "hashbrown 0.15.5",
- "regex-automata",
+ "regex-automata 0.4.18",
  "serde",
  "stacker",
  "unicode-ident",
@@ -461,7 +476,7 @@ name = "cli"
 version = "0.1.0"
 dependencies = [
  "ariadne",
- "chumsky",
+ "chumsky 0.13.0",
  "clap",
  "color-eyre",
  "compiler",
@@ -530,7 +545,7 @@ version = "0.1.0"
 dependencies = [
  "ariadne",
  "boxcar",
- "chumsky",
+ "chumsky 0.13.0",
  "itertools 0.15.0",
  "puzzle_theory",
  "qter_core",
@@ -714,7 +729,7 @@ dependencies = [
  "core_affinity",
  "cpu-time",
  "criterion",
- "dashmap",
+ "dashmap 6.2.1",
  "env_logger 0.11.11",
  "fastrand",
  "fxhash",
@@ -749,6 +764,19 @@ dependencies = [
  "qter_core",
  "test-log",
  "thiserror",
+]
+
+[[package]]
+name = "dashmap"
+version = "5.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "978747c1d849a7d2ee5e8adc0159961c48fb7e5db2f06af6723b80123bb53856"
+dependencies = [
+ "cfg-if",
+ "hashbrown 0.14.5",
+ "lock_api",
+ "once_cell",
+ "parking_lot_core",
 ]
 
 [[package]]
@@ -1339,6 +1367,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0426629a21b65da94fdbb6d104900da8af7b3572c82f023813fb2f4f08de1a18"
 
 [[package]]
+name = "internment"
+version = "0.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "636d4b0f6a39fd684effe2a73f5310df16a3fa7954c26d36833e98f44d1977a2"
+dependencies = [
+ "ahash",
+ "dashmap 5.5.3",
+ "hashbrown 0.15.5",
+ "once_cell",
+ "serde",
+]
+
+[[package]]
 name = "interpreter"
 version = "0.1.0"
 dependencies = [
@@ -1378,6 +1419,15 @@ name = "itertools"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
+dependencies = [
+ "either",
+]
+
+[[package]]
+name = "itertools"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
 dependencies = [
  "either",
 ]
@@ -1519,7 +1569,7 @@ version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d1525a2a28c7f4fa0fc98bb91ae755d1e2d1505079e05539e35bc876b5d65ae9"
 dependencies = [
- "regex-automata",
+ "regex-automata 0.4.18",
 ]
 
 [[package]]
@@ -1943,6 +1993,16 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
 name = "phf"
+version = "0.11.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fd6780a80ae0c52cc120a26a1a42c1ae51b247a253e4e06113d23d2c2edd078"
+dependencies = [
+ "phf_macros",
+ "phf_shared 0.11.3",
+]
+
+[[package]]
+name = "phf"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "913273894cec178f401a31ec4b656318d95473527be05c0752cc41cdc32be8b7"
@@ -1951,34 +2011,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "phf"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "010378780309880b08997fae13be7834dba947d36393bd372f2b1556deb2a2f6"
-dependencies = [
- "phf_macros",
- "phf_shared 0.14.0",
- "serde",
-]
-
-[[package]]
 name = "phf_generator"
-version = "0.14.0"
+version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aeb62e0959d5a1bebc965f4d15d9e2b7cea002b6b0f5ba8cde6cc26738467100"
+checksum = "3c80231409c20246a13fddb31776fb942c38553c51e871f8cbd687a4cfb5843d"
 dependencies = [
- "fastrand",
- "phf_shared 0.14.0",
+ "phf_shared 0.11.3",
+ "rand 0.8.8",
 ]
 
 [[package]]
 name = "phf_macros"
-version = "0.14.0"
+version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5fa8d0ca26d424d27630da600c6624696e7dec8bf7b3b492b383c5dc49e5e085"
+checksum = "f84ac04429c13a7ff43785d75ad27569f2951ce0ffd30a3321230db2fc727216"
 dependencies = [
  "phf_generator",
- "phf_shared 0.14.0",
+ "phf_shared 0.11.3",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -1986,18 +2035,18 @@ dependencies = [
 
 [[package]]
 name = "phf_shared"
-version = "0.12.1"
+version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06005508882fb681fd97892ecff4b7fd0fee13ef1aa569f8695dae7ab9099981"
+checksum = "67eabc2ef2a60eb7faa00097bd1ffdb5bd28e62bf39990626a582201b7a754e5"
 dependencies = [
  "siphasher",
 ]
 
 [[package]]
 name = "phf_shared"
-version = "0.14.0"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6fd9027e2d9319be6349febd1db4e8d02aa544921200c9b777720ac34a3aa89"
+checksum = "06005508882fb681fd97892ecff4b7fd0fee13ef1aa569f8695dae7ab9099981"
 dependencies = [
  "siphasher",
 ]
@@ -2130,12 +2179,12 @@ dependencies = [
  "ariadne",
  "bnum",
  "boxcar",
- "itertools 0.15.0",
+ "chumsky 0.12.0",
+ "internment",
+ "itertools 0.14.0",
  "num-bigint",
  "num-rational",
- "num-traits",
- "phf 0.14.0",
- "sarlacc",
+ "phf 0.11.3",
  "serde",
  "thiserror",
 ]
@@ -2230,6 +2279,15 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
 name = "rand"
+version = "0.8.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e058c7de0b26af77780c769414d6257830bb240f3c38477dbc2c16e5f54d6d4c"
+dependencies = [
+ "rand_core 0.6.4",
+]
+
+[[package]]
+name = "rand"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9ef1d0d795eb7d84685bca4f72f3649f064e6641543d3a8c415898726a57b41"
@@ -2258,6 +2316,12 @@ dependencies = [
  "ppv-lite86",
  "rand_core 0.9.5",
 ]
+
+[[package]]
+name = "rand_core"
+version = "0.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 
 [[package]]
 name = "rand_core"
@@ -2372,8 +2436,19 @@ checksum = "f020237b6c8eed93db2e2cb53c00c60a8e1bc73da7d073199a1180401450218d"
 dependencies = [
  "aho-corasick",
  "memchr",
- "regex-automata",
- "regex-syntax",
+ "regex-automata 0.4.18",
+ "regex-syntax 0.8.11",
+]
+
+[[package]]
+name = "regex-automata"
+version = "0.3.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59b23e92ee4318893fa3fe3e6fb365258efbfe6ac6ab30f090cdcbb7aa37efa9"
+dependencies = [
+ "aho-corasick",
+ "memchr",
+ "regex-syntax 0.7.5",
 ]
 
 [[package]]
@@ -2384,8 +2459,14 @@ checksum = "ad8553b9b26413251cbf30e620595c7a41b3887f03da04579c0e6b0d6a06b4b2"
 dependencies = [
  "aho-corasick",
  "memchr",
- "regex-syntax",
+ "regex-syntax 0.8.11",
 ]
+
+[[package]]
+name = "regex-syntax"
+version = "0.7.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dbb5fb1acd8a1a18b3dd5be62d25485eb770e05afb408a9627d14d451bae12da"
 
 [[package]]
 name = "regex-syntax"
@@ -3176,7 +3257,7 @@ dependencies = [
  "matchers",
  "nu-ansi-term",
  "once_cell",
- "regex-automata",
+ "regex-automata 0.4.18",
  "sharded-slab",
  "thread_local",
  "tracing",
@@ -3286,7 +3367,7 @@ name = "visualiser"
 version = "0.1.0"
 dependencies = [
  "ariadne",
- "chumsky",
+ "chumsky 0.13.0",
  "compiler",
  "console_error_panic_hook",
  "getrandom 0.2.17",

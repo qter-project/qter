@@ -20,7 +20,9 @@ use log::{Level, debug, info, log_enabled, trace};
 use tokio::sync::broadcast::error::TryRecvError as TokioTryRecvError;
 
 use crate::{
-    finder::{CycleCombinationFinder, PossibleOrder, ValidatedNumCores},
+    finder::{
+        CycleCombinationFinder, PossibleOrder, ValidatedNumCores, ValidatedOrderValueConstraint,
+    },
     nonemptyvec::{NonemptySlice, NonemptyVec},
     pareto_front::CCParetoFront,
     puzzle::possible_orders_len_cast,
@@ -43,6 +45,14 @@ struct CycleCombinationsTreeShard<'a> {
     candidates_sender_capacity: usize,
     batch_size: NonZeroUsize,
     pareto_efficient_prunings: &'a AtomicPtr<u32>,
+    // We must separate these two fields because we cannot guarantee that "at least" and "exact"
+    // orders will be satisfied in the same order. For example, consider [Exactly(30),
+    // AtLeast(20), AtLeast(10)]. We could satisfy the constraints in the stated order: 30 25 20
+    // but also in a different order: 40 35 30 or 35 30 25. Therefore, it does not suffice to use a
+    // singular index, and we must track the satisfaction of both requirements separately
+    exact_order_value_constraints: Vec<u32>,
+    // TODO
+    at_least_order_value_constraints: Vec<u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -326,7 +336,7 @@ unsafe fn try_next_pareto_efficient_prunings(
 }
 
 impl CycleCombinationsTreeShard<'_> {
-    fn exact_register_count(&self) -> NonZeroU16 {
+    fn register_count(&self) -> NonZeroU16 {
         // Cast truncation is fine because `self.registers` is the length of the number
         // of registers, which is a `NonZeroU16`
         #[allow(clippy::cast_possible_truncation)]
@@ -391,17 +401,32 @@ impl CycleCombinationsTreeShard<'_> {
         &mut self,
         possible_orders_except_one: NonemptySlice<'_, PossibleOrder<N>>,
         register_index: NonZeroU16,
+        mut exact_order_value_constraints_index: usize,
         remaining_piece_count: NonZeroU32,
     ) {
         let mut curr_possible_orders_except_one = possible_orders_except_one;
         // It should never overflow, and I don't want a panic path, so use saturating
         // logic
         let next_register_index = register_index.saturating_add(1);
+        let leaf = next_register_index == self.register_count();
         let mut candidate_count = 0;
+        let maybe_curr_exact_order_value_constraint = self
+            .exact_order_value_constraints
+            .get(exact_order_value_constraints_index)
+            .copied();
         loop {
             let (possible_order, next_possible_orders_except_one) =
                 curr_possible_orders_except_one.split_last();
             let i = possible_orders_len_cast(next_possible_orders_except_one.len());
+            if let Some(j) = maybe_curr_exact_order_value_constraint {
+                // Ensure the `i == j` is the last iteration
+                if i < j {
+                    break;
+                }
+                if i == j {
+                    exact_order_value_constraints_index += 1;
+                }
+            }
             // TODO: inline this in previous call
             if i < self.lower_index_cutoff {
                 break;
@@ -440,8 +465,16 @@ impl CycleCombinationsTreeShard<'_> {
             if let Some(next_remaining_piece_count) = remaining_piece_count
                 .get()
                 .checked_sub(u32::from(possible_order.min_piece_count.get()))
+                // rearranged version of
+                // register_count - next_register_index >= exact_order_value_constraints - exact_order_value_constraints_index
+                // which ensures the number of unsatisfied constraints left can be fulfilled
+                // by the number of remaining registers
+                && NonZeroUsize::from(self.register_count()).get()
+                    + exact_order_value_constraints_index
+                    >= NonZeroUsize::from(next_register_index).get()
+                        + self.exact_order_value_constraints.len()
             {
-                if next_register_index == self.exact_register_count() {
+                if leaf {
                     if candidate_count == 0 {
                         self.batch_packed_queue
                             .extend(self.registers.split_last().1.iter().copied());
@@ -466,6 +499,7 @@ impl CycleCombinationsTreeShard<'_> {
                         self.search_dfs_recur(
                             curr_possible_orders_except_one,
                             next_register_index,
+                            exact_order_value_constraints_index,
                             next_remaining_piece_count,
                         );
                     }
@@ -487,7 +521,7 @@ impl CycleCombinationsTreeShard<'_> {
                 }
             }
         }
-        if next_register_index == self.exact_register_count() {
+        if leaf {
             if candidate_count != 0 {
                 self.batch_packed_queue[self.curr_batch_len] = candidate_count;
                 self.maybe_send_queue(false);
@@ -710,7 +744,7 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                 continue;
             };
 
-            if shard.exact_register_count().get() == 1 {
+            if shard.register_count().get() == 1 {
                 if candidate_count == 0 {
                     shard
                         .batch_packed_queue
@@ -738,13 +772,14 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                     shard.search_dfs_recur(
                         next_possible_orders_except_one,
                         NonZeroU16::new(1).unwrap(),
+                        0,
                         next_remaining_piece_count,
                     );
                 }
             }
         }
 
-        if shard.exact_register_count().get() == 1 && candidate_count != 0 {
+        if shard.register_count().get() == 1 && candidate_count != 0 {
             shard.batch_packed_queue[shard.curr_batch_len] = candidate_count;
         }
         shard.maybe_send_queue(true);
@@ -781,6 +816,18 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
             tokio::sync::broadcast::channel(num_cores * self.mss_batch_size.get());
 
         let pareto_efficient_prunings = AtomicPtr::default();
+        let mut exact_order_value_constraints = vec![];
+        let mut at_least_order_value_constraints = vec![];
+        for order_value_constraint in &self.order_value_constraints {
+            match *order_value_constraint {
+                ValidatedOrderValueConstraint::AtLeast(c) => {
+                    at_least_order_value_constraints.push(c);
+                }
+                ValidatedOrderValueConstraint::Exactly(c) => {
+                    exact_order_value_constraints.push(c);
+                }
+            }
+        }
 
         // We can unwrap because `exact_register_count` is NonZero.
         #[allow(clippy::missing_panics_doc)]
@@ -801,6 +848,8 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
             candidates_sender_capacity,
             batch_size: self.mss_batch_size,
             pareto_efficient_prunings: &AtomicPtr::null(),
+            exact_order_value_constraints,
+            at_least_order_value_constraints,
         };
 
         let mut candidate_count = 0;

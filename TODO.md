@@ -12,7 +12,7 @@
   - "maybe this can be fixed with my algorithm being a little smarter and not assigning the 4 to edges in this case"
   - make sure its still fast with two orbits with the same ori
   - optimize orbit traversal algorithm: dont loop twice to change states
-  - fit equal fitting cycles first into orbis
+  - fit equal fitting cycles first into orbits
     - if the remaining pieces is less than a prime number, then fit it there last
 
   - parity; look in stash!
