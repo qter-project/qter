@@ -820,6 +820,9 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
         let mut at_least_order_value_constraints = vec![];
         for order_value_constraint in &self.order_value_constraints {
             match *order_value_constraint {
+                ValidatedOrderValueConstraint::Custom(c) => {
+                    todo!();
+                }
                 ValidatedOrderValueConstraint::AtLeast(c) => {
                     at_least_order_value_constraints.push(c);
                 }

@@ -9,7 +9,6 @@
 
 - important
   - fix claude's bugs
-  - exact constraints are broken rn lol
   - sort the order value constraints if i dont already
   - make sure its still fast with two orbits with the same ori
   - optimize orbit traversal algorithm: dont loop twice to change states

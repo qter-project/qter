@@ -1360,7 +1360,6 @@ mod tests {
     #[test_log::test]
     fn orienting_3_cycle() {
         let ccf_base = CycleCombinationFinderBuilder::default()
-            .with_registers(Register::default_count(1))
             .with_solution_expansion(SolutionExpansion::All);
 
         let crazy = PuzzleDef::<64>::new((
@@ -1379,6 +1378,7 @@ mod tests {
         let ccf = ccf_base
             .clone()
             .with_puzzle_analysis(&analysis)
+            .with_registers(Register::default_count(1))
             .build()
             .unwrap();
         let solutions_calculator = ccf.solutions_calculator();
@@ -1405,7 +1405,11 @@ mod tests {
         ))
         .unwrap();
         let analysis = PuzzleAnalysis::new(&crazy, NumCores::AllCores).unwrap();
-        let ccf = ccf_base.with_puzzle_analysis(&analysis).build().unwrap();
+        let ccf = ccf_base
+            .with_puzzle_analysis(&analysis)
+            .with_registers(Register::default_count(1))
+            .build()
+            .unwrap();
         let solutions_calculator = ccf.solutions_calculator();
         let register_orders = vec![3];
 
@@ -1423,9 +1427,9 @@ mod tests {
         let minx5 = MINX5.clone();
         let analysis = PuzzleAnalysis::new(&minx5, NumCores::AllCores).unwrap();
         let ccf = CycleCombinationFinderBuilder::default()
-            .with_registers(Register::default_count(4))
             .with_solution_expansion(SolutionExpansion::FIRST)
             .with_puzzle_analysis(&analysis)
+            .with_registers(Register::default_count(4))
             .build()
             .unwrap();
         let mut solutions_calculator = ccf.solutions_calculator();
@@ -1477,10 +1481,9 @@ mod tests {
         let minx5 = MINX3.clone();
         let analysis = PuzzleAnalysis::new(&minx5, NumCores::AllCores).unwrap();
         let ccf = CycleCombinationFinderBuilder::default()
+            .with_puzzle_analysis(&analysis)
             .with_registers(Register::default_count(4))
             .with_solution_expansion(SolutionExpansion::All)
-            .with_fast_assumptions(true)
-            .with_puzzle_analysis(&analysis)
             .build()
             .unwrap();
         let mut solutions_calculator = ccf.solutions_calculator();

@@ -122,24 +122,26 @@ impl SolutionExpansion {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
-pub enum OrderValueConstraint {
+pub enum OrderValueConstraint<const N: usize> {
     #[default]
     None,
     AtLeast(Int<U>),
     Exactly(Int<U>),
+    Custom(fn(&OrderExps<N>) -> bool),
 }
 
 #[derive(Clone, Debug)]
-pub enum ValidatedOrderValueConstraint {
+pub enum ValidatedOrderValueConstraint<const N: usize> {
     AtLeast(u32),
     Exactly(u32),
+    Custom(fn(&OrderExps<N>) -> bool),
 }
 
 #[derive(Debug, Clone)]
 pub struct PossibleOrder<const N: usize> {
-    pub(crate) order: OrderExps<N>,
-    pub(crate) min_piece_count: NonZeroU16,
-    pub(crate) min_piece_count_naive: u16,
+    pub order: OrderExps<N>,
+    pub min_piece_count: NonZeroU16,
+    pub min_piece_count_naive: u16,
 }
 
 #[derive(Debug)]
@@ -216,9 +218,8 @@ impl fmt::Display for PossibleOrdersDisplayList {
 }
 
 #[derive(Clone, Copy, Default)]
-pub struct Register {
-    order_value_constraint: OrderValueConstraint,
-    custom_constraint: Option<fn()>,
+pub struct Register<const N: usize> {
+    order_value_constraint: OrderValueConstraint<N>,
 }
 
 /// The possible orders of a puzzle, computed once and shared by every
@@ -233,7 +234,7 @@ pub struct PuzzleAnalysis<'pd, const N: usize> {
 pub struct NeedsRegisters;
 
 #[derive(Clone)]
-pub struct HasRegisters(Vec<Register>);
+pub struct HasRegisters<const N: usize>(Vec<Register<N>>);
 
 #[derive(Clone)]
 pub struct NeedsPuzzleAnalysis;
@@ -254,7 +255,6 @@ pub struct CycleCombinationFinderBuilder<R, P> {
     maybe_mss_batch_size: Option<usize>,
     maybe_time_limit: Option<Duration>,
     fast_assumptions: bool,
-    order_value_constraints: Vec<OrderValueConstraint>,
 }
 
 #[derive(Clone, Debug)]
@@ -271,7 +271,7 @@ pub struct CycleCombinationFinder<'a, const N: usize> {
     pub(crate) mss_batch_size: NonZeroUsize,
     pub(crate) maybe_time_limit: Option<Duration>,
     pub(crate) fast_assumptions: bool,
-    pub(crate) order_value_constraints: Box<[ValidatedOrderValueConstraint]>,
+    pub(crate) order_value_constraints: Box<[ValidatedOrderValueConstraint<N>]>,
 }
 
 impl CycleCombination {
@@ -414,12 +414,11 @@ impl Default for CycleCombinationFinderBuilder<NeedsRegisters, NeedsPuzzleAnalys
             maybe_mss_batch_size: None,
             maybe_time_limit: None,
             fast_assumptions: true,
-            order_value_constraints: vec![],
         }
     }
 }
 
-impl Register {
+impl<const N: usize> Register<N> {
     #[must_use]
     pub fn default_count(c: u16) -> Vec<Self> {
         vec![Self::default(); usize::from(c)]
@@ -428,15 +427,9 @@ impl Register {
     #[must_use]
     pub fn with_order_value_constraint(
         mut self,
-        order_value_constraint: OrderValueConstraint,
+        order_value_constraint: OrderValueConstraint<N>,
     ) -> Self {
         self.order_value_constraint = order_value_constraint;
-        self
-    }
-
-    #[must_use]
-    pub fn with_custom_constraint(mut self, custom_constraint: Option<fn()>) -> Self {
-        self.custom_constraint = custom_constraint;
         self
     }
 }
@@ -573,27 +566,6 @@ impl<R, P> CycleCombinationFinderBuilder<R, P> {
     }
 
     #[must_use]
-    pub fn with_registers(
-        self,
-        registers: Vec<Register>,
-    ) -> CycleCombinationFinderBuilder<HasRegisters, P> {
-        CycleCombinationFinderBuilder {
-            registers: HasRegisters(registers),
-            puzzle_analysis: self.puzzle_analysis,
-            optimality: self.optimality,
-            num_cores: self.num_cores,
-            sorted: self.sorted,
-            maybe_expected_solution_count: self.maybe_expected_solution_count,
-            maybe_max_fitting_tries: self.maybe_max_fitting_tries,
-            solution_expansion: self.solution_expansion,
-            maybe_mss_batch_size: self.maybe_mss_batch_size,
-            maybe_time_limit: self.maybe_time_limit,
-            fast_assumptions: self.fast_assumptions,
-            order_value_constraints: self.order_value_constraints,
-        }
-    }
-
-    #[must_use]
     pub fn with_puzzle_analysis<'pd, 'a, const N: usize>(
         self,
         puzzle_analysis: &'a PuzzleAnalysis<'pd, N>,
@@ -610,12 +582,35 @@ impl<R, P> CycleCombinationFinderBuilder<R, P> {
             maybe_mss_batch_size: self.maybe_mss_batch_size,
             maybe_time_limit: self.maybe_time_limit,
             fast_assumptions: self.fast_assumptions,
-            order_value_constraints: self.order_value_constraints,
         }
     }
 }
 
-impl<'a, const N: usize> CycleCombinationFinderBuilder<HasRegisters, HasPuzzleAnalysis<'a, '_, N>> {
+impl<'a, 'pd, R, const N: usize> CycleCombinationFinderBuilder<R, HasPuzzleAnalysis<'a, 'pd, N>> {
+    #[must_use]
+    pub fn with_registers(
+        self,
+        registers: Vec<Register<N>>,
+    ) -> CycleCombinationFinderBuilder<HasRegisters<N>, HasPuzzleAnalysis<'a, 'pd, N>> {
+        CycleCombinationFinderBuilder {
+            registers: HasRegisters(registers),
+            puzzle_analysis: self.puzzle_analysis,
+            optimality: self.optimality,
+            num_cores: self.num_cores,
+            sorted: self.sorted,
+            maybe_expected_solution_count: self.maybe_expected_solution_count,
+            maybe_max_fitting_tries: self.maybe_max_fitting_tries,
+            solution_expansion: self.solution_expansion,
+            maybe_mss_batch_size: self.maybe_mss_batch_size,
+            maybe_time_limit: self.maybe_time_limit,
+            fast_assumptions: self.fast_assumptions,
+        }
+    }
+}
+
+impl<'a, const N: usize>
+    CycleCombinationFinderBuilder<HasRegisters<N>, HasPuzzleAnalysis<'a, '_, N>>
+{
     /// Validate the builder.
     ///
     /// # Errors
@@ -634,13 +629,22 @@ impl<'a, const N: usize> CycleCombinationFinderBuilder<HasRegisters, HasPuzzleAn
             maybe_mss_batch_size,
             maybe_time_limit,
             fast_assumptions,
-            order_value_constraints,
         } = self;
-        let register_count = NonZeroU16::new(register_index_cast(registers.len()))
-            .ok_or(CycleCombinationFinderBuildError::InvalidRegisterCount)?;
         if !optimality.is_valid() {
             return Err(CycleCombinationFinderBuildError::InvalidOptimality);
         }
+        let register_count = NonZeroU16::new(register_index_cast(registers.len()))
+            .ok_or(CycleCombinationFinderBuildError::InvalidRegisterCount)?;
+        let order_value_constraints = registers
+            .into_iter()
+            .filter_map(|register| {
+                if matches!(register.order_value_constraint, OrderValueConstraint::None) {
+                    None
+                } else {
+                    Some(register.order_value_constraint)
+                }
+            })
+            .collect::<Vec<_>>();
         let num_cores = num_cores
             .validate()
             .ok_or(CycleCombinationFinderBuildError::InvalidNumCores)?;
@@ -654,57 +658,59 @@ impl<'a, const N: usize> CycleCombinationFinderBuilder<HasRegisters, HasPuzzleAn
         let mut possible_order_to_bigint = FxHashMap::default();
         let order_value_constraints = order_value_constraints
             .into_iter()
-            .filter_map(|order_value_constraint| {
-                Some(Ok(match order_value_constraint {
-                    OrderValueConstraint::None => {
-                        return None;
-                    }
-                    OrderValueConstraint::AtLeast(order_value_bigint) => {
-                        let i = possible_orders_except_one.partition_point(|possible_order| {
-                            let possible_order_bigint = *possible_order_to_bigint
-                                .entry(possible_order.order.clone())
-                                .or_insert_with_key(OrderExps::as_bigint);
-                            possible_order_bigint <= order_value_bigint
-                        });
-                        ValidatedOrderValueConstraint::AtLeast(possible_orders_len_cast(i))
-                    }
-                    OrderValueConstraint::Exactly(order_value_bigint) => {
-                        let maybe_i =
-                            possible_orders_except_one.binary_search_by(|possible_order| {
+            .filter_map(|order_value_constraint| match order_value_constraint {
+                OrderValueConstraint::None => None,
+                OrderValueConstraint::Custom(f) => Some(Ok(ValidatedOrderValueConstraint::Custom(f))),
+                OrderValueConstraint::AtLeast(order_value_bigint) => {
+                    let i = possible_orders_except_one.partition_point(|possible_order| {
+                        let possible_order_bigint = *possible_order_to_bigint
+                            .entry(possible_order.order.clone())
+                            .or_insert_with_key(OrderExps::as_bigint);
+                        possible_order_bigint <= order_value_bigint
+                    });
+                    Some(Ok(ValidatedOrderValueConstraint::AtLeast(
+                        possible_orders_len_cast(i),
+                    )))
+                }
+                OrderValueConstraint::Exactly(order_value_bigint) => {
+                    let maybe_i = possible_orders_except_one.binary_search_by(|possible_order| {
+                        let possible_order_bigint = possible_order_to_bigint
+                            .entry(possible_order.order.clone())
+                            .or_insert_with_key(OrderExps::as_bigint);
+                        (*possible_order_bigint).cmp(&order_value_bigint)
+                    });
+                    match maybe_i {
+                        Ok(i) => Some(Ok(ValidatedOrderValueConstraint::Exactly(
+                            possible_orders_len_cast(i),
+                        ))),
+                        Err(right_i) => {
+                            let mut try_ = vec![];
+                            if let Some(left) = right_i.checked_sub(1)
+                                && let Some(left_possible_order) =
+                                    possible_orders_except_one.get(left)
+                            {
                                 let possible_order_bigint = possible_order_to_bigint
-                                    .entry(possible_order.order.clone())
+                                    .entry(left_possible_order.order.clone())
                                     .or_insert_with_key(OrderExps::as_bigint);
-                                (*possible_order_bigint).cmp(&order_value_bigint)
-                            });
-                        match maybe_i {
-                            Ok(i) => ValidatedOrderValueConstraint::Exactly(possible_orders_len_cast(i)),
-                            Err(right_i) => {
-                                let mut try_ = vec![];
-                                if let Some(left) = right_i.checked_sub(1)
-                                    && let Some(left_possible_order) =
-                                        possible_orders_except_one.get(left)
-                                {
-                                    let possible_order_bigint = possible_order_to_bigint
-                                        .entry(left_possible_order.order.clone())
-                                        .or_insert_with_key(OrderExps::as_bigint);
-                                    try_.push(*possible_order_bigint);
-                                }
-                                if let Some(right_possible_order) =
-                                    possible_orders_except_one.get(right_i)
-                                {
-                                    let possible_order_bigint = possible_order_to_bigint
-                                        .entry(right_possible_order.order.clone())
-                                        .or_insert_with_key(OrderExps::as_bigint);
-                                    try_.push(*possible_order_bigint);
-                                }
-                                return Some(Err(CycleCombinationFinderBuildError::OrderValueDoesNotExist {
+                                try_.push(*possible_order_bigint);
+                            }
+                            if let Some(right_possible_order) =
+                                possible_orders_except_one.get(right_i)
+                            {
+                                let possible_order_bigint = possible_order_to_bigint
+                                    .entry(right_possible_order.order.clone())
+                                    .or_insert_with_key(OrderExps::as_bigint);
+                                try_.push(*possible_order_bigint);
+                            }
+                            Some(Err(
+                                CycleCombinationFinderBuildError::OrderValueDoesNotExist {
                                     order_value: order_value_bigint,
                                     try_: PossibleOrdersDisplayList(try_),
-                                }));
-                            }
+                                },
+                            ))
                         }
                     }
-                }))
+                }
             })
             .collect::<Result<Box<[_]>, _>>()?;
         Ok(CycleCombinationFinder {
@@ -739,9 +745,10 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
     /// Panics if the optimality is [`Optimality::EQUIVALENT`], which is
     /// unimplemented.
     pub fn find(self) -> Result<CycleCombinations<N>, CycleCombinationFinderError<N>> {
-        // Make it such that every index corresponds to a valid possible order so we can make this
-        // assumption (an AtLeast constraint will be `self.possible_orders_except_one.len()` when
-        // set to a number larger than the maximum order).
+        // Make it such that every index corresponds to a valid possible order so we can
+        // make this assumption (an AtLeast constraint will be
+        // `self.possible_orders_except_one.len()` when set to a number larger
+        // than the maximum order).
         for order_value_constraint in &self.order_value_constraints {
             if let &ValidatedOrderValueConstraint::AtLeast(c) = order_value_constraint
                 && c == possible_orders_len_cast(self.possible_orders_except_one.len())

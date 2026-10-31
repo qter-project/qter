@@ -1,16 +1,18 @@
 #![allow(unused)]
+#![feature(portable_simd)]
 
 use std::{
     fs::File,
     io::{BufWriter, Write},
     num::{NonZeroU16, NonZeroUsize},
+    simd::{Simd, cmp::SimdPartialEq},
     time::Duration,
 };
 
 use cycle_combination_finder::{
     finder::{
-        CycleCombinationFinderBuilder, NumCores, Optimality, OrderValueConstraint, PuzzleAnalysis,
-        Register, SolutionExpansion,
+        CycleCombinationFinderBuilder, NumCores, Optimality, OrderValueConstraint, PossibleOrder,
+        PuzzleAnalysis, Register, SolutionExpansion,
     },
     puzzle::{
         PuzzleDef,
@@ -18,7 +20,10 @@ use cycle_combination_finder::{
         minxN,
     },
 };
-use puzzle_theory::numbers::{Int, U};
+use puzzle_theory::{
+    numbers::{Int, U},
+    puzzle_geometry::Point,
+};
 
 fn main() {
     let Some(p) = std::env::args().nth(1) else {
@@ -117,16 +122,21 @@ fn main() {
             );
             println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
         }
-    } else if p == "cube3" {
-        let cube3 = cubeN::CUBE3.clone();
+    } else if p == "cube5" {
+        let cube3 = cubeN::CUBE5.clone();
         let analysis =
             PuzzleAnalysis::new(&cube3, NumCores::AllCores).unwrap_or_else(|e| panic!("{e}"));
         let ret = ccf
+            .with_solution_expansion(SolutionExpansion::All)
+            // .with_fast_assumptions(false)
             .with_puzzle_analysis(&analysis)
             .with_registers(vec![
                 Register::default().with_order_value_constraint(OrderValueConstraint::Exactly(
-                    Int::<U>::from(30u64),
+                    Int::<U>::from(2u64),
                 )),
+                // Register::default().with_order_value_constraint(OrderValueConstraint::Custom(
+                //     |order| order.0.simd_ne(Simd::splat(0)).to_bitmask() == 1,
+                // )),
                 Register::default(),
                 Register::default(),
             ])
@@ -134,7 +144,16 @@ fn main() {
             .unwrap_or_else(|e| panic!("{e}"))
             .find()
             .unwrap_or_else(|e| panic!("{e}"));
+        // for x in ret.cycle_combinations {
+        //     println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
+        // }
+        let mut f = BufWriter::new(File::create("results.txt").unwrap());
         for x in ret.cycle_combinations {
+            writeln!(
+                f,
+                "{}",
+                x.solutions_fmt(&ret.possible_orders_except_one, &cube3)
+            );
             println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
         }
     }
