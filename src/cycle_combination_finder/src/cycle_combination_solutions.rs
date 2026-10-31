@@ -958,7 +958,8 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
 
                 // Try to fit a register's prime power cycle into an orbit such that it would
                 // benefit the most from a share
-                for (register_index, register_order_exp) in self.register_exponent_sorter.drain(..)
+                'next_reg: for (register_index, register_order_exp) in
+                    self.register_exponent_sorter.drain(..)
                 {
                     let register_index2 = usize::from(register_index);
                     let mut try_assign_pp_to_orbit = |orbit_index: u16,
@@ -1073,8 +1074,19 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                                 saturated_orbit_found =
                                     SaturatingOrbit::Orbit(orbit_index, orientation_exp);
                             }
-                        } else if try_assign_pp_to_orbit(orbit_index, orientation_exp) {
+                        // If we have one saturating orbit and we reach this
+                        // branch, we will
+                        // no longer have any saturating orbits since we
+                        // traverse exps in descending
+                        // order. We want to saturate the cycle instead of not
+                        // saturating it because it saves the most pieces.
+                        } else if let SaturatingOrbit::Orbit(..) = saturated_orbit_found {
                             break;
+                        // If nothing was saturated at all then preassign the
+                        // orienting cycle
+                        // into the orbit
+                        } else if try_assign_pp_to_orbit(orbit_index, orientation_exp) {
+                            continue 'next_reg;
                         }
                     }
                     if let SaturatingOrbit::Orbit(orbit_index, orientation_exp) =
