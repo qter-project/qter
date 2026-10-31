@@ -1,23 +1,28 @@
-use std::fmt::Debug;
+use std::{
+    any::Any,
+    fmt::{Debug, Display},
+};
 
 use ariadne::{Color, Label, Report, ReportKind, Span as _};
 use itertools::Itertools;
-use puzzle_theory::numbers::{I, Int, U};
+use puzzle_theory::numbers::{Int, I, U};
 use qter_core::span::{Span, WithSpan};
-use rhai::{AST, Array, CustomType, Dynamic, Engine, ImmutableString, Position, Scope};
+use rhai::{Array, CustomType, Dynamic, Engine, ImmutableString, Position, Scope, AST};
 use sarlacc::Intern;
 
 use crate::{
-    Block, Code, ExpansionInfo, Instruction, MacroBranchKey, MacroCall, RegisterInfo, Reporter,
-    ResolvedValue, Value,
+    Block, ExpansionInfo, MacroBranchKey, RegisterInfo, RegisterModifiers, Reporter, ResolvedValue, Value, rhai::{decode::from_rhai, encode::into_rhai},
 };
+
+mod encode;
+mod decode;
 
 thread_local! {
     static ENGINE: Engine = {
         let mut engine = Engine::new();
 
         register_int(&mut engine);
-        engine.register_type_with_name::<WRegisterInfo>("register");
+        engine.build_type::<WRegisterInfo>();
 
         engine.register_fn("big", |v: i64| WInt(Int::<I>::from(v)));
         engine.set_max_expr_depths(256, 256);
@@ -71,17 +76,32 @@ impl CustomType for WRegisterInfo {
     fn build(mut builder: rhai::TypeBuilder<Self>) {
         builder
             .with_name("Register")
-            .on_print(|v| v.0.0.to_string())
-            .with_get("modulus", |v: &mut WRegisterInfo| {
-                WInt(Int::<I>::from(v.0.1.modulus))
+            .on_print(|v| v.0 .0.to_string())
+            .with_get("mods", |v: &mut WRegisterInfo| {
+                Some(register_mods(v.0 .0.mods))
             })
             .with_get("order", |v: &mut WRegisterInfo| {
-                WInt(Int::<I>::from(v.0.1.order))
+                WInt(Int::<I>::from(v.0 .0.mods.modulus.unwrap_or(v.0 .1.order)))
+            })
+            .with_get("full_order", |v: &mut WRegisterInfo| {
+                WInt(Int::<I>::from(v.0 .1.order))
             })
             .with_get("name", |v: &mut WRegisterInfo| {
-                ImmutableString::from(&**v.0.0.reg_name)
+                ImmutableString::from(&**v.0 .0.reg_name)
             });
     }
+}
+
+fn register_mods(RegisterModifiers { modulus, negative }: RegisterModifiers) -> Dynamic {
+    let mut map = rhai::Map::new();
+
+    map.insert(
+        "modulus".into(),
+        Dynamic::from(modulus.map(|v| WInt(v.into()))),
+    );
+    map.insert("negative".into(), negative.into());
+
+    Dynamic::from_map(map)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -169,7 +189,7 @@ impl RhaiMacros {
         info: &ExpansionInfo,
         branch_key: MacroBranchKey,
         r: &Reporter,
-    ) -> Option<ResolvedValue> {
+    ) -> Option<Value> {
         let args = args
             .into_iter()
             .map(|v| into_rhai(v.into_inner(), info, branch_key, r))
@@ -231,188 +251,43 @@ impl RhaiMacros {
     }
 }
 
-fn into_rhai(arg: ResolvedValue, info: &ExpansionInfo, surrounding_branch_key: MacroBranchKey, r: &Reporter) -> Option<Dynamic> {
-    Some(match arg {
-        ResolvedValue::Int(int) => Dynamic::from(WInt(int.into())),
-        ResolvedValue::Register(_) => match arg.as_reg(info) {
-            crate::MaybeReg::Reg(register_reference, rhai_reg_info) => {
-                Dynamic::from(WRegisterInfo((register_reference, rhai_reg_info)))
-            }
-            crate::MaybeReg::RegNotFound(span) => {
-                r.push(
-                    Report::build(ReportKind::Error, span)
-                        .with_message("Register does not exist")
-                        .finish(),
-                );
-                return None;
-            }
-            crate::MaybeReg::NotAReg(_) => unreachable!(),
-        },
-        ResolvedValue::Ident(ident) => {
-            let str = ImmutableString::from(&**ident);
-            Dynamic::from(str)
-        }
-        ResolvedValue::Block(block) => Dynamic::from_array(
-            block
-                .code
-                .into_iter()
-                .map(|v| {
-                    assert!(v.1.is_none());
-
-                    let mut map = rhai::Map::new();
-
-                    match v.into_inner().0 {
-                        Instruction::Label(label) => {
-                            let crate::Label {
-                                name,
-                                maybe_block_id,
-                                public,
-                                branch_key,
-                            } = label;
-                            assert!(maybe_block_id.is_none());
-                            assert_eq!(branch_key, surrounding_branch_key);
-                            map.insert("ty".into(), "label".into());
-                            map.insert("name".into(), (&*name).into());
-                            map.insert("public".into(), public.into());
-                        }
-                        Instruction::Code(code) => todo!(),
-                        Instruction::Constant(intern) => todo!(),
-                        Instruction::RhaiCall(rhai_call) => todo!(),
-                        Instruction::Define(define) => todo!(),
-                        Instruction::Block(block) => todo!(),
-                    }
-
-                    Dynamic::from_map(map)
-                })
-                .collect_vec(),
-        ),
-    })
+#[derive(PartialEq, Eq, Clone, Copy)]
+enum Ty {
+    Label,
+    Call,
+    Const,
+    Define,
+    RhaiCall,
 }
 
-fn from_rhai(
-    value: Dynamic,
-    span: Span,
-    branch_key: MacroBranchKey,
-    r: &Reporter,
-) -> Option<ResolvedValue> {
-    if let Ok(int) = value.as_int() {
-        let Ok(v) = u64::try_from(int) else {
-            r.push(
-                Report::build(ReportKind::Error, span)
-                    .with_message(format!("Integer values must be positive. Found {int}"))
-                    .finish(),
-            );
-            return None;
-        };
-
-        return Some(ResolvedValue::Int(Int::<U>::from(v)));
-    }
-
-    let value = match value.try_cast_result::<WInt>() {
-        Ok(WInt(int)) => {
-            if int < Int::<I>::zero() {
-                r.push(
-                    Report::build(ReportKind::Error, span)
-                        .with_message(format!("Integer values must be positive. Found {int}"))
-                        .finish(),
-                );
-                return None;
-            }
-
-            return Some(ResolvedValue::Int(int.abs()));
-        }
-        Err(v) => v,
-    };
-
-    let value = match value.try_cast_result::<ImmutableString>() {
-        Ok(str) => {
-            return Some(ResolvedValue::Ident(span.with(Intern::from_ref(&*str))));
-        }
-        Err(v) => v,
-    };
-
-    let value = match value.try_cast_result::<WRegisterInfo>() {
-        Ok(WRegisterInfo(str)) => {
-            return Some(ResolvedValue::Register(str.0));
-        }
-        Err(v) => v,
-    };
-
-    try_decode_block(value, span, branch_key, r).map(|v| {
-        ResolvedValue::Block(Block {
-            code: v
-                .into_iter()
-                .map(|v| v.map(|v| (v, None, branch_key)))
-                .collect_vec(),
+impl Display for Ty {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Ty::Label => "label",
+            Ty::Call => "call",
+            Ty::Const => "const",
+            Ty::Define => "define",
+            Ty::RhaiCall => "rhai call",
         })
-    })
+    }
 }
 
-/// Returns `None` if there are no instructions in the block (an empty array)
-fn try_decode_block(
-    value: Dynamic,
-    span: Span,
-    branch_key: MacroBranchKey,
-    r: &Reporter,
-) -> Option<Option<WithSpan<Instruction>>> {
-    let value = match value.try_cast_result::<Array>() {
-        Ok(v) => v,
-        Err(value) => {
-            r.push(
-                Report::build(ReportKind::Error, span)
-                    .with_message(format!(
-                        "Unable to interpret `{value}` as a positive integer, identifier, register, or code block."
-                    ))
-                    .finish(),
-            );
-            return None;
-        }
-    };
-
-    if value.is_empty() {
-        return Some(None);
-    }
-
-    if value[0].is_string() {
-        // This is an instruction
-        let mut values = value.into_iter();
-        let name = values.next().unwrap().into_string().unwrap();
-
-        let args = values
-            .map(|v| from_rhai(v, span, branch_key, r).map(|v| span.with(Value::Resolved(v))))
-            .collect::<Option<Vec<_>>>()?;
-
-        Some(Some(span.with(Instruction::Code(Code::Macro(MacroCall {
-            name: span.with(Intern::from_owned(name)),
-            arguments: span.with(args),
-        })))))
-    } else {
-        // This is a code block
-        Some(Some(
-            span.with(Instruction::Block(Block {
-                code: value
-                    .into_iter()
-                    .map(|v| try_decode_block(v, span, branch_key, r))
-                    .collect::<Option<Vec<Option<WithSpan<Instruction>>>>>()?
-                    .into_iter()
-                    .flatten()
-                    .map(|v| v.map(|v| (v, None, branch_key)))
-                    .collect_vec(),
-            })),
-        ))
+impl From<Ty> for Dynamic {
+    fn from(value: Ty) -> Self {
+        value.to_string().into()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use puzzle_theory::numbers::{I, Int};
+    use puzzle_theory::numbers::{Int, I};
     use qter_core::span::Span;
     use rhai::{Dynamic, Scope};
 
     use crate::{
-        Reporter,
         parsing::tests::file,
-        rhai::{ENGINE, RhaiCode, WInt},
+        rhai::{RhaiCode, WInt, ENGINE},
+        Reporter,
     };
 
     use super::RhaiMacros;
@@ -456,10 +331,9 @@ mod tests {
 
         ENGINE.with(|v| {
             let mut scope = Scope::new();
-            assert!(
-                v.call_fn::<Dynamic>(&mut scope, &rhai_vm.rhai_asts[0].1, "fail", ())
-                    .is_err()
-            );
+            assert!(v
+                .call_fn::<Dynamic>(&mut scope, &rhai_vm.rhai_asts[0].1, "fail", ())
+                .is_err());
         });
 
         let too_big0 = Int::<I>::from(u64::MAX - 5);

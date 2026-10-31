@@ -173,7 +173,7 @@ fn expand_block(
                     }
                 }
                 Instruction::RhaiCall(call) => {
-                    let Some(value) = call.perform(span, expansion_info, block_id, branch_key, r) else {
+                    let Some(value) = call.perform(span, expansion_info, block_id, branch_key, r).and_then(|value| expansion_info.block_info.resolve(block_id, value)) else {
                         return vec![]
                     };
                     let _ = changed.set(span);

@@ -7,12 +7,7 @@
     clippy::question_mark
 )]
 
-use std::{
-    collections::HashMap,
-    fmt::Display,
-    rc::Rc,
-    sync::Arc,
-};
+use std::{collections::HashMap, fmt::Display, rc::Rc, sync::Arc};
 
 use ariadne::{Report, ReportKind};
 use parsing::parse;
@@ -241,6 +236,15 @@ impl RegisterModifiers {
     }
 }
 
+impl Default for RegisterModifiers {
+    fn default() -> Self {
+        Self {
+            modulus: None,
+            negative: false,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct RegisterReference {
     reg_name: WithSpan<Intern<str>>,
@@ -420,7 +424,7 @@ impl RhaiCall {
         block_id: BlockID,
         branch_key: MacroBranchKey,
         r: &Reporter,
-    ) -> Option<WithSpan<ResolvedValue>> {
+    ) -> Option<WithSpan<Value>> {
         let args = self
             .args
             .into_iter()
@@ -577,7 +581,13 @@ enum Macro {
         branches: Vec<WithSpan<MacroBranch>>,
     },
     Builtin(
-        fn(&ExpansionInfo, WithSpan<Vec<WithSpan<Value>>>, BlockID, MacroBranchKey, &Reporter) -> Option<Primitive>,
+        fn(
+            &ExpansionInfo,
+            WithSpan<Vec<WithSpan<Value>>>,
+            BlockID,
+            MacroBranchKey,
+            &Reporter,
+        ) -> Option<Primitive>,
     ),
 }
 
@@ -673,13 +683,10 @@ impl BlockInfoTracker {
         loop {
             let info = self.blocks.get(&current)?;
 
-            if let Some(label) = info
-                .labels
-                .iter()
-                .find(|label| {
-                    label.name == reference.name && (label.branch_key == reference.branch_key || label.public)
-                })
-            {
+            if let Some(label) = info.labels.iter().find(|label| {
+                label.name == reference.name
+                    && (label.branch_key == reference.branch_key || label.public)
+            }) {
                 return Some(LabelReference {
                     name: reference.name,
                     block_id: current,
@@ -784,7 +791,9 @@ impl ExpansionInfo {
             DefineValue::Value(v) => self.block_info.resolve(block_id, v),
             DefineValue::RhaiCall(call) => {
                 let span = call.span();
-                call.into_inner().perform(span, self, block_id, branch_key, r)
+                let value = call.into_inner()
+                    .perform(span, self, block_id, branch_key, r)?;
+                self.block_info.resolve(block_id, value)
             }
         }
     }
@@ -812,7 +821,7 @@ struct ExpandedCode {
 #[cfg(test)]
 mod tests {
     use ariadne::Report;
-use qter_core::span::{File, Span};
+    use qter_core::span::{File, Span};
     use sarlacc::Intern;
 
     use crate::{Reporter, compile, q_emitter::emit_q};
