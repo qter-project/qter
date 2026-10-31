@@ -23,6 +23,7 @@
   - "maybe this can be fixed with my algorithm being a little smarter and not assigning the 4 to edges in this case"
   - do the at least constraint l8r
   - minorderratio and maxorderrratio isn't entirely type safe; you can have exactly 2 and 5 with a max ratio of 5 or 2 2 with min 2
+  - expansion should redup orbits
   - maybe_min_order_ratio
   - generate less possible orders with optimality equivalent: find max # 
   - min piece count doesnt work with orientation constraint none

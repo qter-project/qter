@@ -871,7 +871,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
         self.orbit_remaining_pieces
             .clone_from_slice(&self.immutable.initial_orbit_remaining_piece_counts);
 
-        // Every prime used by the register orders
+        // Mask of every prime used by all register orders
         let mut orienting_registers_prime_mask = Mask::splat(false);
 
         for (register_index, possible_order) in registers
@@ -890,20 +890,25 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
             // TODO: if an orbit has at least the first highest cycle + second highest cycle
             // number of pieces, we will never not satisfy an orientation constraint
 
-            // Iterate through every prime in register. The order does not matter because we
-            // guarantee every orbit has only a single prime number of orientations.
+            // Iterate through the set of all primes that divide any register order. The
+            // iteration order does not matter because we guarantee every orbit has only
+            // a single prime number of orientations.
             let mut orienting_registers_prime_mask2 = orienting_registers_prime_mask;
             while orienting_registers_prime_mask2 != 0 {
                 let prime_index = orienting_registers_prime_mask2.trailing_zeros() as usize;
                 let prime = FIRST_65_PRIMES[prime_index];
+                // We first reset `self.best_orientations_queue`
                 self.best_orientations_queue
                     .fill(BestOrientation::Unassigned);
                 for (orbit_index, orientation_exps) in
                     self.ccf.puzzle_def.orientations_exps().iter().enumerate()
                 {
                     let orbit_index = orbit_index_cast(orbit_index);
-                    // counterexample:
-                    // o1: 5 pieces 48 ori
+                    // Keep orbits that have an orientation of a power of the prime. Note that
+                    // this becomes problematic when we remove the constraint that every
+                    // orientation count must be a prime power:
+                    //
+                    // given an orbit of: 5 pieces 48 ori
                     //
                     // fit 576: 3 3 2 2 2 2 2 2
                     //
@@ -917,20 +922,32 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                     }
                     let orientation_exp = orientation_exps.prime_exponent(prime_index);
 
-                    // If there is an ambiguity among an exponent between two exponents,
-                    // we can assign a register to either; this violates the guarantee
+                    // Use the power of the orientation as a hash. We then want to iterate
+                    // through the orbits which would provide the best orientation power for
+                    // this prime.
                     let slot = &mut self.best_orientations_queue[usize::from(orientation_exp)];
                     match slot {
+                        // The slot is occupied; we have another orbit with this power.
+                        // If there is an ambiguity among an exponent between two exponents,
+                        // we can assign a register to either; this violates the preassignment
+                        // guarantee.
                         BestOrientation::Orbit(..) => *slot = BestOrientation::Ambiguous,
+                        // First time populate
                         BestOrientation::Unassigned => {
                             *slot = BestOrientation::Orbit(orbit_index);
                         }
+                        // Already ambiguous; no work needed
                         BestOrientation::Ambiguous => (),
                     }
                 }
 
+                // At this point `self.best_orientations_queue` contains a list of orbit
+                // indicies indexed by that orbit's orientation's prime's power.
+                // If p=3 o10=3 o11=9, then we would have [Unassigned,
+                // Orbit(10), Orbit(11), ...]
+
                 // For the current prime index, iterate through every register and figure out
-                // which registers have the largest power of this prime.
+                // which register orders have the largest power of this prime.
                 self.register_exponent_sorter.extend(
                     registers
                         .iter_orders(&self.ccf.possible_orders_except_one)
@@ -940,7 +957,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                             let register_order_exp =
                                 possible_order.order.prime_exponent(prime_index);
                             // - 2^1 is not always best
-                            // at register_order_exp==0, we no longer have primes in this register
+                            // - at register_order_exp==0, we no longer have primes in this register
                             // order, so there is nothing to assign
                             if prime_index == 0 && register_order_exp == 1
                                 || register_order_exp == 0
@@ -951,13 +968,15 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                             }
                         }),
                 );
+                // And sort them descending
                 self.register_exponent_sorter
                     .sort_unstable_by_key(|&(_, register_order_exp)| {
                         std::cmp::Reverse(register_order_exp)
                     });
 
-                // Try to fit a register's prime power cycle into an orbit such that it would
-                // benefit the most from a share
+                // At this point it iterates `register_order_exp` in descending order. We now
+                // try to match registers to orienting orbits such that it would
+                // benefit the most from the orienting cycle
                 'next_reg: for (register_index, register_order_exp) in
                     self.register_exponent_sorter.drain(..)
                 {
@@ -1044,7 +1063,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
 
                         true
                     };
-                    // Descending exp order of available orientation-sharing cycles
+                    // Descending exp order of available orienting cycles
                     let mut saturated_orbit_found = SaturatingOrbit::None;
                     for (orbit_index, orientation_exp) in self
                         .best_orientations_queue
@@ -1052,7 +1071,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                         .enumerate()
                         .filter_map(|(orientation_exp, &slot)| {
                             if let BestOrientation::Orbit(orbit_index) = slot {
-                                // array is 9 elements long
+                                // array is 8 elements long
                                 #[allow(clippy::cast_possible_truncation)]
                                 Some((orbit_index, orientation_exp as u8))
                             } else {
@@ -1061,8 +1080,9 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                         })
                         .rev()
                     {
-                        // Orbit provides more orientation than needed for this register order. We
-                        // may still have the ambiguous case
+                        // Orbit provides more orientation than needed for this register order.
+                        // If this happens twice, we have the ambiguous case
+                        // i.e: o1=27 o2=81 r1=9
                         if orientation_exp >= register_order_exp {
                             trace!(
                                 "prime={prime}; reg={register_index}; {orientation_exp:?} >= \
@@ -1074,21 +1094,19 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                                 saturated_orbit_found =
                                     SaturatingOrbit::Orbit(orbit_index, orientation_exp);
                             }
-                        // If we have one saturating orbit and we reach this
-                        // branch, we will
-                        // no longer have any saturating orbits since we
-                        // traverse exps in descending
-                        // order. We want to saturate the cycle instead of not
+                        // If we have one saturating orbit and we reach this branch, we will
+                        // no longer have any saturating orbits since we traverse exps in
+                        // descending order. We want to saturate the cycle instead of not
                         // saturating it because it saves the most pieces.
                         } else if let SaturatingOrbit::Orbit(..) = saturated_orbit_found {
                             break;
-                        // If nothing was saturated at all then preassign the
-                        // orienting cycle
+                        // If nothing was saturated at all then preassign the orienting cycle
                         // into the orbit
                         } else if try_assign_pp_to_orbit(orbit_index, orientation_exp) {
                             continue 'next_reg;
                         }
                     }
+                    // If this only happens once, then it's not technically ambiguous
                     if let SaturatingOrbit::Orbit(orbit_index, orientation_exp) =
                         saturated_orbit_found
                     {
@@ -1293,13 +1311,76 @@ mod tests {
     }
 
     #[test_log::test]
+    fn preassignment_single_saturating_orbit() {
+        let crazy = PuzzleDef::<64>::new((
+            vec![
+                PartialOrbitDef {
+                    name: None,
+                    piece_count: 4.try_into().unwrap(),
+                    orientation: OrientationStatus::CanOrient {
+                        count: 9,
+                        sum_constraint: OrientationSumConstraint::Zero,
+                    },
+                },
+                PartialOrbitDef {
+                    name: None,
+                    piece_count: 4.try_into().unwrap(),
+                    orientation: OrientationStatus::CanOrient {
+                        count: 3,
+                        sum_constraint: OrientationSumConstraint::Zero,
+                    },
+                },
+            ],
+            EvenParityConstraints(vec![vec![]]),
+        ))
+        .unwrap();
+        let analysis = PuzzleAnalysis::new(&crazy, NumCores::AllCores).unwrap();
+        let ccf_base = CycleCombinationFinderBuilder::default()
+            .with_puzzle_analysis(&analysis)
+            .with_registers(Register::default_count(1))
+            .with_solution_expansion(SolutionExpansion::All);
+        let register_orders = vec![9];
+
+        let ccf = ccf_base
+            .clone()
+            .with_fast_assumptions(false)
+            .build()
+            .unwrap();
+        let expected = "
+            9: 0: () 1: (3+)
+
+            0: 0 ignored, 4 unused
+            1: 1 ignored, 0 unused
+
+            9: 0: (1+) 1: ()
+
+            0: 1 ignored, 2 unused
+            1: 0 ignored, 4 unused
+        ";
+        do_test(
+            ccf.solutions_calculator(),
+            register_orders.clone(),
+            expected,
+        );
+
+        let ccf = ccf_base.with_fast_assumptions(true).build().unwrap();
+        let expected = "
+            9: 0: (1+) 1: ()
+
+            0: 1 ignored, 2 unused
+            1: 0 ignored, 4 unused
+        ";
+        do_test(ccf.solutions_calculator(), register_orders, expected);
+    }
+
+    #[test_log::test]
     fn minx3_optimal_3() {
         let minx3 = MINX3.clone();
         let analysis = PuzzleAnalysis::new(&minx3, NumCores::AllCores).unwrap();
         let ccf = CycleCombinationFinderBuilder::default()
             .with_puzzle_analysis(&analysis)
             .with_registers(Register::default_count(3))
-            .with_solution_expansion(SolutionExpansion::FIRST)
+            .with_solution_expansion(SolutionExpansion::All)
             .build()
             .unwrap();
         let solutions_calculator = ccf.solutions_calculator();

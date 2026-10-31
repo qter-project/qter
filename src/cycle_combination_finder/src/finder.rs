@@ -660,7 +660,9 @@ impl<'a, const N: usize>
             .into_iter()
             .filter_map(|order_value_constraint| match order_value_constraint {
                 OrderValueConstraint::None => None,
-                OrderValueConstraint::Custom(f) => Some(Ok(ValidatedOrderValueConstraint::Custom(f))),
+                OrderValueConstraint::Custom(f) => {
+                    Some(Ok(ValidatedOrderValueConstraint::Custom(f)))
+                }
                 OrderValueConstraint::AtLeast(order_value_bigint) => {
                     let i = possible_orders_except_one.partition_point(|possible_order| {
                         let possible_order_bigint = *possible_order_to_bigint
