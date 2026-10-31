@@ -14,17 +14,15 @@ use std::{
 };
 
 use clap::{ArgAction, Parser};
-use color_eyre::{
-    eyre::{OptionExt, eyre},
-    owo_colors::OwoColorize,
-};
 use compiler::{Reporter, compile, q_emitter::emit_q};
 use crashlog::cargo_metadata;
+use eyre::{OptionExt, eyre};
 use interpreter::{
     ActionPerformed, ExecutionState, Interpreter, PausedState,
     puzzle_states::{PuzzleState, SimulatedPuzzle},
 };
 use itertools::Itertools;
+use owo_colors::OwoColorize;
 use puzzle_theory::{
     numbers::{I, Int},
     permutations::Algorithm,
@@ -91,7 +89,7 @@ fn print_reports(reporter: &Reporter, sources: &HashMap<Intern<str>, Intern<str>
     }
 }
 
-fn compile_qat(file: &Path) -> color_eyre::Result<(Program, File)> {
+fn compile_qat(file: &Path) -> eyre::Result<(Program, File)> {
     let path: Intern<str> = Intern::from_owned(format!("{}", file.display()));
     let contents: Intern<str> = Intern::from_owned(fs::read_to_string(file)?);
     let qat = File::new(path, contents);
@@ -144,7 +142,7 @@ fn compile_qat(file: &Path) -> color_eyre::Result<(Program, File)> {
 }
 
 #[tokio::main]
-async fn main() -> color_eyre::Result<()> {
+async fn main() -> eyre::Result<()> {
     crashlog::setup!(cargo_metadata!(), false);
 
     let args = Commands::parse();
@@ -245,7 +243,7 @@ async fn main() -> color_eyre::Result<()> {
 async fn interpret<P: PuzzleState>(
     mut interpreter: Interpreter<P>,
     trace_level: u8,
-) -> color_eyre::Result<()>
+) -> eyre::Result<()>
 where
     P::Error: Error + Send + Sync + 'static,
 {
@@ -277,7 +275,7 @@ where
 
 async fn give_number_input<P: PuzzleState>(
     interpreter: &mut Interpreter<P>,
-) -> color_eyre::Result<(PuzzleIdx, Algorithm)>
+) -> eyre::Result<(PuzzleIdx, Algorithm)>
 where
     P::Error: Error + Send + Sync + 'static,
 {
@@ -299,7 +297,7 @@ where
 async fn interpret_traced<P: PuzzleState>(
     mut interpreter: Interpreter<P>,
     trace_level: u8,
-) -> color_eyre::Result<()>
+) -> eyre::Result<()>
 where
     P::Error: Error + Send + Sync + 'static,
 {

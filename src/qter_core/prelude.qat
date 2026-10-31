@@ -236,11 +236,17 @@
     fn repeat(code, start, end, name) {
         let output = [];
 
-        for i in range(start, end) {
+        for i in range(start.to_int(), end.to_int()) {
+            let new_block = [];
             if name != () {
-                output.push([ ".define", `\$${name}`, i ]);
+                new_block.push(#{
+                    ty: "define",
+                    name: name,
+                    value: i,
+                });
             }
-            output.extend(code);
+            new_block.append(code);
+            output.push(new_block);
         }
 
         return output;
@@ -248,9 +254,9 @@
 .end-rhai
 
 .macro repeat {
-    ($times:int $code:block) => rhai repeat($code, 1, $times)
+    ($times:int $code:block) => rhai repeat($code, 0, $times)
 
-    ($times:int $var:ident $code:block) => rhai repeat($code, 1, $times, $var)
+    ($times:int $var:ident $code:block) => rhai repeat($code, 0, $times, $var)
 
     // should parse nested for loops such as `repeat j from $i to 10 { ... }`
     // because the outer $i should be evaluated first

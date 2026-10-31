@@ -1,0 +1,9 @@
+.registers {
+    A <- 3x3 builtin (1260)
+}
+
+repeat 10 q {
+    add A $q
+}
+
+halt "The number is" A

@@ -104,10 +104,10 @@ fn get_const(mut map: rhai::Map, span: Span, r: &Reporter) -> Option<Value> {
 
     done(map, span, r)?;
 
-    return Some(Value::Constant {
+    Some(Value::Constant {
         name: Intern::from_ref(&name),
         mods,
-    });
+    })
 }
 
 fn int_from_rhai(value: Dynamic, span: Span, r: &Reporter) -> Option<Result<Int<U>, Dynamic>> {
@@ -274,9 +274,7 @@ fn try_decode_block_from_array(
             r.push(
                 Report::build(ReportKind::Error, span)
                     .with_label(
-                        Label::new(span).with_message(format!(
-                            "All elements of a block should be maps or arrays"
-                        )),
+                        Label::new(span).with_message("All elements of a block should be maps or arrays".to_string()),
                     )
                     .finish(),
             );
@@ -340,7 +338,7 @@ fn try_decode_block_from_array(
             Ty::RhaiCall => Instruction::RhaiCall(decode_rhai_call(map, span, branch_key, r)?),
         };
 
-        code.push(span.with((instr, None, branch_key)))
+        code.push(span.with((instr, None, branch_key)));
     }
 
     Some(Block { code })

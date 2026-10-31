@@ -5,10 +5,10 @@
 .macro floor-div-2 {
    ($IN:reg $OUT:reg) => {
         loop {
-            solved-goto $IN break
-            dec $IN
-            solved-goto $IN break
-            dec $IN
+            repeat 2 {
+                solved-goto $IN break
+                dec $IN
+            }
             inc $OUT
         }
     }

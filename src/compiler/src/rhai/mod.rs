@@ -5,17 +5,22 @@ use std::{
 
 use ariadne::{Color, Label, Report, ReportKind, Span as _};
 use itertools::Itertools;
-use puzzle_theory::numbers::{Int, I, U};
+use puzzle_theory::numbers::{I, Int, U};
 use qter_core::span::{Span, WithSpan};
-use rhai::{Array, CustomType, Dynamic, Engine, ImmutableString, Position, Scope, AST};
+use rhai::{
+    AST, Array, CustomType, Dynamic, Engine, EvalAltResult, ImmutableString, NativeCallContext,
+    Position, Scope,
+};
 use sarlacc::Intern;
 
 use crate::{
-    Block, ExpansionInfo, MacroBranchKey, RegisterInfo, RegisterModifiers, Reporter, ResolvedValue, Value, rhai::{decode::from_rhai, encode::into_rhai},
+    Block, ExpansionInfo, MacroBranchKey, RegisterInfo, RegisterModifiers, Reporter, ResolvedValue,
+    Value,
+    rhai::{decode::from_rhai, encode::into_rhai},
 };
 
-mod encode;
 mod decode;
+mod encode;
 
 thread_local! {
     static ENGINE: Engine = {
@@ -36,7 +41,19 @@ struct WInt(Int<I>);
 
 impl CustomType for WInt {
     fn build(mut builder: rhai::TypeBuilder<Self>) {
-        builder.with_name("BigInt").on_print(|v| v.0.to_string());
+        builder
+            .with_name("BigInt")
+            .on_print(|v| v.0.to_string())
+            .with_fn(
+                "to_int",
+                |ctx: NativeCallContext, v: WInt| match i64::try_from(v.0) {
+                    Ok(v) => Ok(v),
+                    Err(e) => Err(Box::new(EvalAltResult::ErrorDataTooLarge(
+                        format!("Cannot convert bigint to integer: {e}"),
+                        ctx.call_position(),
+                    ))),
+                },
+            );
     }
 }
 
@@ -76,18 +93,18 @@ impl CustomType for WRegisterInfo {
     fn build(mut builder: rhai::TypeBuilder<Self>) {
         builder
             .with_name("Register")
-            .on_print(|v| v.0 .0.to_string())
+            .on_print(|v| v.0.0.to_string())
             .with_get("mods", |v: &mut WRegisterInfo| {
-                Some(register_mods(v.0 .0.mods))
+                Some(register_mods(v.0.0.mods))
             })
             .with_get("order", |v: &mut WRegisterInfo| {
-                WInt(Int::<I>::from(v.0 .0.mods.modulus.unwrap_or(v.0 .1.order)))
+                WInt(Int::<I>::from(v.0.0.mods.modulus.unwrap_or(v.0.1.order)))
             })
             .with_get("full_order", |v: &mut WRegisterInfo| {
-                WInt(Int::<I>::from(v.0 .1.order))
+                WInt(Int::<I>::from(v.0.1.order))
             })
             .with_get("name", |v: &mut WRegisterInfo| {
-                ImmutableString::from(&**v.0 .0.reg_name)
+                ImmutableString::from(&**v.0.0.reg_name)
             });
     }
 }
@@ -95,10 +112,12 @@ impl CustomType for WRegisterInfo {
 fn register_mods(RegisterModifiers { modulus, negative }: RegisterModifiers) -> Dynamic {
     let mut map = rhai::Map::new();
 
-    map.insert(
-        "modulus".into(),
-        Dynamic::from(modulus.map(|v| WInt(v.into()))),
-    );
+    if let Some(modulus) = modulus {
+        map.insert(
+            "modulus".into(),
+            Dynamic::from(WInt(modulus.into())),
+        );
+    }
     map.insert("negative".into(), negative.into());
 
     Dynamic::from_map(map)
@@ -280,14 +299,14 @@ impl From<Ty> for Dynamic {
 
 #[cfg(test)]
 mod tests {
-    use puzzle_theory::numbers::{Int, I};
+    use puzzle_theory::numbers::{I, Int};
     use qter_core::span::Span;
     use rhai::{Dynamic, Scope};
 
     use crate::{
-        parsing::tests::file,
-        rhai::{RhaiCode, WInt, ENGINE},
         Reporter,
+        parsing::tests::file,
+        rhai::{ENGINE, RhaiCode, WInt},
     };
 
     use super::RhaiMacros;
@@ -331,9 +350,10 @@ mod tests {
 
         ENGINE.with(|v| {
             let mut scope = Scope::new();
-            assert!(v
-                .call_fn::<Dynamic>(&mut scope, &rhai_vm.rhai_asts[0].1, "fail", ())
-                .is_err());
+            assert!(
+                v.call_fn::<Dynamic>(&mut scope, &rhai_vm.rhai_asts[0].1, "fail", ())
+                    .is_err()
+            );
         });
 
         let too_big0 = Int::<I>::from(u64::MAX - 5);
