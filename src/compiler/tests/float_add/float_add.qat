@@ -1,12 +1,27 @@
 
 .registers {
-    M1 <- 3x3 builtin (1260)
-    M2 <- 3x3 builtin (1260)
-    M3 <- 3x3 builtin (1260)
-    E1,E2,E3 <- 3x3 builtin (30,30,30)
-    S1,S2,LEAD,SUB <- 3x3 builtin (6,6,6,6)
+    S1, E1, M1 <- 3x3 builtin (2,36,144)
+    S2, E2, M2 <- 3x3 builtin (2,36,144)
+    LEAD, E3, M3 <- 3x3 builtin (2,36,144)
 }
 
+.macro flip {  
+    ($BOOL:reg) => {
+        if $BOOL {
+            set $BOOL to 0
+        } else {
+            inc $BOOL
+        }
+    }
+}
+
+.macro compare {  
+    ($BOOL1:reg,$BOOL2:reg) => {
+        if not $BOOL2 {
+            flip $BOOL1
+        }
+    }
+}
 
 .macro halt_if_nan {
     ($E:reg) => { 
@@ -18,12 +33,6 @@
     }
 }
 
-// this is a hacky way to use 6 cycles as bool since we don't have some built in (2,2,2,2,2,2,2)
-.macro flip_sign {  
-    ($S1:reg) => {
-        add $S1 3
-    }
-}
 
 // give a register the value of the implicit leading digit
 .macro give_lead {  
@@ -61,11 +70,16 @@
 }
 
 .macro add_ordered {
-    ($S1:reg,$E1:reg,$M1:reg,$S2:reg,$E2:reg,$M2:reg) => { 
+    ($S1:reg,$E1:reg,$M1:reg,$SUB:reg,$E2:reg,$M2:reg) => { 
         
+        // use the second value's sign as a subtraction indicator
+        compare $SUB $S1
+
+
         solved-goto LEAD end_lead_adjust
-        solved-goto SUB lead_adjust
+        solved-goto $SUB lead_adjust
         solved-goto $E1 sub_equal_sizes
+
 
         dec $E1
         if not-solved $E1{
@@ -99,7 +113,7 @@
         // if we're subtracting normal numbers with equal exp, dump both leading 1s to prevent loss of significance by halving
         sub_equal_sizes:
 
-        flip_sign LEAD
+        flip LEAD
         goto end_lead_adjust
 
 
@@ -113,7 +127,7 @@
             halt_if_nan E3
             halve $M1
             give_half_lead $M1
-            flip_sign LEAD
+            flip LEAD
         } else {
             dec $E1
         }
@@ -123,10 +137,10 @@
 
         // halve the smaller number until the exponents match
         while not-solved $E1 {
-            if not-solved LEAD {
+            if LEAD {
                 halve $M2
             } else {
-                flip_sign LEAD
+                flip LEAD
             }
             dec $E1
             inc E3
@@ -137,24 +151,24 @@
         while not-solved $M2 {
             dec $M2
             
-            if not-solved SUB {
+            if $SUB {
                 if solved $M1 {
-                    if not-solved LEAD {
+                    if LEAD {
                         give_lead $M1
-                        flip_sign LEAD
+                        flip LEAD
                     } else {
                         inc $M1
-                        flip_sign SUB
-                        flip_sign $S1
+                        flip $SUB
+                        flip $S1
                     }
                 }
                 dec $M1
             }
 
-            if solved SUB {
+            if not $SUB {
                 inc $M1
                 if solved $M1 {
-                    if not-solved LEAD {
+                    if LEAD {
                         inc E3
                         halt_if_nan E3
 
@@ -163,7 +177,7 @@
                         halve $M2
 
                     } else {
-                        flip_sign LEAD
+                        flip LEAD
                         give_lead -$M1
                     }
                 }
@@ -176,19 +190,19 @@
             dec M3
             dec $M1
             if solved M3 {
-                if not-solved LEAD {
+                if LEAD {
                     inc E3
                     halt_if_nan E3
                     halve $M1
 
                 } else {
-                    flip_sign LEAD
+                    flip LEAD
                 }
                 goto skip_reset
             }
         }
 
-        // mantissa was not larger, reset value
+        // mantissa was flip larger, reset value
         give_lead -M3
         while not-solved M3 {
             inc M3
@@ -199,7 +213,7 @@
 
 
         // if there is no implicit leading digit, double until it is so
-        while solved LEAD {
+        while not LEAD {
             solved-goto E3 break
             dec E3
             solved-goto E3 break
@@ -209,10 +223,10 @@
                 dec $M1
                 add M3 2
                 if solved M3 {
-                    flip_sign LEAD
+                    flip LEAD
                 }
             }
-            if solved LEAD {
+            if not LEAD {
                give_lead M3 
             }
             move M3 to $M1
@@ -220,7 +234,7 @@
         }
 
         // if subnormals gained a lead, make normal
-        if not-solved LEAD {
+        if LEAD {
             if solved E3 {
                 inc E3
             }
@@ -252,17 +266,11 @@ while not-solved E1 {
     dec E2
     inc E3
     if solved LEAD {
-        flip_sign LEAD
+        flip LEAD
     }
 }
 
-// check whether this is secretly a subtraction problem
-if not-solved S1 {
-    flip_sign SUB
-}
-if not-solved S2 {
-    flip_sign SUB
-}
+
 
 if solved E1 {
     add_ordered S2 E2 M2 S1 E1 M1
