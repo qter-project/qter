@@ -19,6 +19,7 @@ serde = { version = "1.0.229", features = ["derive"] }
 [dev-dependencies]
 tokio = { version = "1.54.1", features = ["rt"] }
 itertools.workspace = true
+ariadne.workspace = true
 
 [lints]
 workspace = true

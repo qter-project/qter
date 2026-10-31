@@ -152,7 +152,7 @@ pub(crate) mod tests {
     use sarlacc::Intern;
 
     use super::parse;
-    use crate::Reporter;
+    use crate::{Reporter, tests::report_contains};
 
     pub(crate) fn file(str: &'static str) -> File {
         File::new(Intern::from_ref("<static>"), Intern::from_ref(str))
@@ -297,19 +297,10 @@ pub(crate) mod tests {
                         panic!()
                     };
 
-                    let mut cache = ariadne::sources(
-                        [("<static>", code)]
-                            .into_iter()
-                            .map(|(a, b)| (Intern::from_ref(a), Intern::from_ref(b))),
-                    );
-
                     assert_eq!(reporter.count(), 1);
 
                     for (_, report) in reporter.iter() {
-                        let mut data = Vec::<u8>::new();
-                        report.write(&mut cache, &mut data).unwrap();
-                        let st = str::from_utf8(&data).unwrap();
-                        assert!(st.contains(counterexample), "{st}");
+                        report_contains(report, code, counterexample);
                     }
                 }
             }

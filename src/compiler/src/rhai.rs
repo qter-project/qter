@@ -1,13 +1,11 @@
 use std::fmt::Debug;
 
 use ariadne::{Color, Label, Report, ReportKind, Span as _};
-use sarlacc::Intern;
 use itertools::Itertools;
-use puzzle_theory::{
-    numbers::{I, Int, U},
-};
+use puzzle_theory::numbers::{I, Int, U};
 use qter_core::span::{Span, WithSpan};
 use rhai::{AST, Array, CustomType, Dynamic, Engine, ImmutableString, Position, Scope};
+use sarlacc::Intern;
 
 use crate::{
     Block, Code, ExpansionInfo, Instruction, MacroBranchKey, MacroCall, RegisterInfo, Reporter,
@@ -19,7 +17,7 @@ thread_local! {
         let mut engine = Engine::new();
 
         register_int(&mut engine);
-        engine.build_type::<WRegisterInfo>();
+        engine.register_type_with_name::<WRegisterInfo>("register");
 
         engine.register_fn("big", |v: i64| WInt(Int::<I>::from(v)));
         engine.set_max_expr_depths(256, 256);
@@ -169,11 +167,12 @@ impl RhaiMacros {
         args: Vec<WithSpan<ResolvedValue>>,
         span: Span,
         info: &ExpansionInfo,
+        branch_key: MacroBranchKey,
         r: &Reporter,
     ) -> Option<ResolvedValue> {
         let args = args
             .into_iter()
-            .map(|v| into_rhai(v.into_inner(), info, r))
+            .map(|v| into_rhai(v.into_inner(), info, branch_key, r))
             .collect::<Option<Vec<_>>>()?;
 
         let mut result = None;
@@ -228,13 +227,11 @@ impl RhaiMacros {
             }
         };
 
-        let branch_key = info.fresh_branch_key()();
-
         from_rhai(value, span, branch_key, r)
     }
 }
 
-fn into_rhai(arg: ResolvedValue, info: &ExpansionInfo, r: &Reporter) -> Option<Dynamic> {
+fn into_rhai(arg: ResolvedValue, info: &ExpansionInfo, surrounding_branch_key: MacroBranchKey, r: &Reporter) -> Option<Dynamic> {
     Some(match arg {
         ResolvedValue::Int(int) => Dynamic::from(WInt(int.into())),
         ResolvedValue::Register(_) => match arg.as_reg(info) {
@@ -255,9 +252,40 @@ fn into_rhai(arg: ResolvedValue, info: &ExpansionInfo, r: &Reporter) -> Option<D
             let str = ImmutableString::from(&**ident);
             Dynamic::from(str)
         }
-        ResolvedValue::Block(_block) => {
-            todo!()
-        }
+        ResolvedValue::Block(block) => Dynamic::from_array(
+            block
+                .code
+                .into_iter()
+                .map(|v| {
+                    assert!(v.1.is_none());
+
+                    let mut map = rhai::Map::new();
+
+                    match v.into_inner().0 {
+                        Instruction::Label(label) => {
+                            let crate::Label {
+                                name,
+                                maybe_block_id,
+                                public,
+                                branch_key,
+                            } = label;
+                            assert!(maybe_block_id.is_none());
+                            assert_eq!(branch_key, surrounding_branch_key);
+                            map.insert("ty".into(), "label".into());
+                            map.insert("name".into(), (&*name).into());
+                            map.insert("public".into(), public.into());
+                        }
+                        Instruction::Code(code) => todo!(),
+                        Instruction::Constant(intern) => todo!(),
+                        Instruction::RhaiCall(rhai_call) => todo!(),
+                        Instruction::Define(define) => todo!(),
+                        Instruction::Block(block) => todo!(),
+                    }
+
+                    Dynamic::from_map(map)
+                })
+                .collect_vec(),
+        ),
     })
 }
 
@@ -314,7 +342,7 @@ fn from_rhai(
         ResolvedValue::Block(Block {
             code: v
                 .into_iter()
-                .map(|v| v.map(|v| (v, None, Some(branch_key))))
+                .map(|v| v.map(|v| (v, None, branch_key)))
                 .collect_vec(),
         })
     })
@@ -351,18 +379,13 @@ fn try_decode_block(
         let name = values.next().unwrap().into_string().unwrap();
 
         let args = values
-            .map(|v| {
-                from_rhai(v, span, branch_key, r)
-                    .map(|v| span.with(Value::Resolved(v)))
-            })
+            .map(|v| from_rhai(v, span, branch_key, r).map(|v| span.with(Value::Resolved(v))))
             .collect::<Option<Vec<_>>>()?;
 
-        Some(Some(span.with(Instruction::Code(Code::Macro(
-            MacroCall {
-                name: span.with(Intern::from_owned(name)),
-                arguments: span.with(args),
-            },
-        )))))
+        Some(Some(span.with(Instruction::Code(Code::Macro(MacroCall {
+            name: span.with(Intern::from_owned(name)),
+            arguments: span.with(args),
+        })))))
     } else {
         // This is a code block
         Some(Some(
@@ -373,7 +396,7 @@ fn try_decode_block(
                     .collect::<Option<Vec<Option<WithSpan<Instruction>>>>>()?
                     .into_iter()
                     .flatten()
-                    .map(|v| v.map(|v| (v, None, Some(branch_key))))
+                    .map(|v| v.map(|v| (v, None, branch_key)))
                     .collect_vec(),
             })),
         ))
@@ -382,10 +405,7 @@ fn try_decode_block(
 
 #[cfg(test)]
 mod tests {
-    use puzzle_theory::{
-        numbers::{I, Int},
-        
-    };
+    use puzzle_theory::numbers::{I, Int};
     use qter_core::span::Span;
     use rhai::{Dynamic, Scope};
 

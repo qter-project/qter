@@ -2,7 +2,10 @@ use std::{
     collections::HashMap,
     mem,
     rc::Rc,
-    sync::{Arc, atomic::AtomicUsize},
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 use ariadne::{Color, Label, Report, ReportKind};
@@ -26,6 +29,12 @@ use crate::{
     rhai::RhaiMacros,
 };
 
+fn new_branch_key() -> MacroBranchKey {
+    static BRANCH_COUNT: AtomicU64 = AtomicU64::new(0);
+    let num = BRANCH_COUNT.fetch_add(1, Ordering::Relaxed);
+    MacroBranchKey(num)
+}
+
 pub fn parse(
     iter: &mut TokenIter,
     find_import: &Rc<impl Fn(&str) -> Result<Intern<str>, String> + 'static>,
@@ -46,7 +55,6 @@ pub fn parse(
         macros: HashMap::new(),
         available_macros: HashMap::new(),
         rhai_macros: HashMap::new(),
-        branch_count: Arc::new(AtomicUsize::new(0)),
     };
 
     let code = Vec::new();
@@ -80,15 +88,17 @@ pub fn parse(
 
     let mut ok = true;
 
+    let global_branch_key = new_branch_key();
+
     loop {
         let marker = iter.marker();
 
-        if let Attempt::Taken(instr) = instruction(iter) {
+        if let Attempt::Taken(instr) = instruction(iter, global_branch_key) {
             let instr = instr?;
             let span = instr.span();
             parsed_syntax
                 .code
-                .push(span.with((instr.into_inner(), None, None)));
+                .push(span.with((instr.into_inner(), None, global_branch_key)));
 
             continue;
         }
@@ -99,8 +109,7 @@ pub fn parse(
         match &*token {
             Token::Directive(directive) => {
                 if directive.as_ref() == "macro" {
-                    let (name, def) =
-                        macro_def(iter, parsed_syntax.expansion_info.fresh_branch_key())?;
+                    let (name, def) = macro_def(iter)?;
 
                     if parsed_syntax
                         .expansion_info
@@ -456,7 +465,10 @@ fn parse_alg(t: &mut TokenIter, group: &Arc<PermutationGroup>) -> Option<Algorit
     }
 }
 
-fn instruction(t: &mut TokenIter) -> Attempt<Option<WithSpan<Instruction>>> {
+fn instruction(
+    t: &mut TokenIter,
+    branch_key: MacroBranchKey,
+) -> Attempt<Option<WithSpan<Instruction>>> {
     let marker = t.marker();
     t.attempt(|t, commit| {
         *commit = true;
@@ -484,22 +496,22 @@ fn instruction(t: &mut TokenIter) -> Attempt<Option<WithSpan<Instruction>>> {
                         name,
                         public,
                         maybe_block_id: None,
-                        branch_key: None,
+                        branch_key,
                     }))
                 }) {
                     v
                 } else {
                     Some(if name.as_ref() == "rhai" {
-                        Instruction::RhaiCall(rhai_call(t)?)
+                        Instruction::RhaiCall(rhai_call(t, branch_key)?)
                     } else {
                         Instruction::Code(Code::Macro(crate::MacroCall {
                             name: span.with(name),
-                            arguments: args(t)?,
+                            arguments: args(t, branch_key)?,
                         }))
                     })
                 }
             }
-            Token::Directive(ident) if &*ident == "define" => Some(Instruction::Define(define(t)?)),
+            Token::Directive(ident) if &*ident == "define" => Some(Instruction::Define(define(t, branch_key)?)),
             Token::Constant(ident, mods) => {
                 if !mods.is_plain() {
                     t.report(Report::build(ReportKind::Error, span).with_label(
@@ -512,7 +524,7 @@ fn instruction(t: &mut TokenIter) -> Attempt<Option<WithSpan<Instruction>>> {
                 Some(Instruction::Constant(ident))
             }
             Token::Enclosure(Encloser::Brace, enclosure) => Some(Instruction::Block(
-                enclosure.into_inner().parse(block)?.value.value,
+                enclosure.into_inner().parse(|t| block(t, branch_key))?.value.value,
             )),
             _ => {
                 *commit = false;
@@ -523,7 +535,7 @@ fn instruction(t: &mut TokenIter) -> Attempt<Option<WithSpan<Instruction>>> {
     })
 }
 
-fn args(t: &mut TokenIter) -> Option<WithSpan<Vec<WithSpan<Value>>>> {
+fn args(t: &mut TokenIter, branch_key: MacroBranchKey) -> Option<WithSpan<Vec<WithSpan<Value>>>> {
     let marker = t.marker();
     let mut args = Some(Vec::new());
 
@@ -533,7 +545,7 @@ fn args(t: &mut TokenIter) -> Option<WithSpan<Vec<WithSpan<Value>>>> {
         Some(())
     }) {
         let token = t.next()?;
-        if let Some(v) = value(t, token) {
+        if let Some(v) = value(t, token, branch_key) {
             if let Some(args) = &mut args {
                 args.push(v);
             }
@@ -545,7 +557,11 @@ fn args(t: &mut TokenIter) -> Option<WithSpan<Vec<WithSpan<Value>>>> {
     args.map(|args| t.cash_in(marker).with(args))
 }
 
-fn value(t: &TokenIter, token: WithSpan<Token>) -> Option<WithSpan<Value>> {
+fn value(
+    t: &TokenIter,
+    token: WithSpan<Token>,
+    branch_key: MacroBranchKey,
+) -> Option<WithSpan<Value>> {
     let span = token.span();
     match &*token {
         Token::Ident(ident) => {
@@ -557,15 +573,16 @@ fn value(t: &TokenIter, token: WithSpan<Token>) -> Option<WithSpan<Value>> {
             mods: *mods,
         })),
         Token::Number(num) => Some(span.with(Value::Resolved(ResolvedValue::Int(*num)))),
-        Token::Enclosure(Encloser::Brace, enclosure) => {
-            (**enclosure).clone().parse(block).map(|v| {
+        Token::Enclosure(Encloser::Brace, enclosure) => (**enclosure)
+            .clone()
+            .parse(|t| block(t, branch_key))
+            .map(|v| {
                 let block = v.value;
 
                 block
                     .span()
                     .with(Value::Resolved(ResolvedValue::Block(block.value)))
-            })
-        }
+            }),
         _ => {
             t.unexpected(token, "an argument for an instruction")?;
             None
@@ -573,7 +590,7 @@ fn value(t: &TokenIter, token: WithSpan<Token>) -> Option<WithSpan<Value>> {
     }
 }
 
-fn block(t: &mut TokenIter) -> Option<WithSpan<Block>> {
+fn block(t: &mut TokenIter, branch_key: MacroBranchKey) -> Option<WithSpan<Block>> {
     let mut code = Vec::new();
 
     loop {
@@ -593,7 +610,7 @@ fn block(t: &mut TokenIter) -> Option<WithSpan<Block>> {
             return v;
         }
 
-        code.push(match instruction(t) {
+        code.push(match instruction(t, branch_key) {
             Attempt::NotTaken(span) => {
                 t.report(
                     Report::build(ReportKind::Error, span)
@@ -604,13 +621,13 @@ fn block(t: &mut TokenIter) -> Option<WithSpan<Block>> {
             }
             Attempt::Taken(v) => {
                 let v = v?;
-                v.span().with((v.into_inner(), None, None))
+                v.span().with((v.into_inner(), None, branch_key))
             }
         });
     }
 }
 
-fn define(t: &mut TokenIter) -> Option<DefineUnresolved> {
+fn define(t: &mut TokenIter, branch_key: MacroBranchKey) -> Option<DefineUnresolved> {
     // Expects the `.define` to already be consumed
 
     let token = t.constant()?;
@@ -633,7 +650,7 @@ fn define(t: &mut TokenIter) -> Option<DefineUnresolved> {
             let marker = t.marker();
             if t.word("rhai").is_some() {
                 *commit = true;
-                rhai_call(t).map(|v| t.cash_in(marker).with(v))
+                rhai_call(t, branch_key).map(|v| t.cash_in(marker).with(v))
             } else {
                 None
             }
@@ -647,14 +664,14 @@ fn define(t: &mut TokenIter) -> Option<DefineUnresolved> {
 
                 return Some(DefineUnresolved {
                     name: span.with(name),
-                    value: DefineValue::Value(value(t, token)?),
+                    value: DefineValue::Value(value(t, token, branch_key)?),
                 });
             }
         },
     )
 }
 
-fn rhai_call(t: &mut TokenIter) -> Option<RhaiCall> {
+fn rhai_call(t: &mut TokenIter, branch_key: MacroBranchKey) -> Option<RhaiCall> {
     let name = t.ident()?;
 
     let args = t.enclosure(Encloser::Paren)?.into_inner().parse(|t| {
@@ -665,7 +682,7 @@ fn rhai_call(t: &mut TokenIter) -> Option<RhaiCall> {
                     Token::EndOfEnclosure(_) => None,
                     _ => {
                         *commit = true;
-                        value(t, token)
+                        value(t, token, branch_key)
                     }
                 }
             },
@@ -692,16 +709,13 @@ fn rhai_call(t: &mut TokenIter) -> Option<RhaiCall> {
     })
 }
 
-fn macro_def(
-    t: &mut TokenIter,
-    fresh_branch_key: impl Fn() -> MacroBranchKey,
-) -> Option<(WithSpan<Intern<str>>, WithSpan<Macro>)> {
+fn macro_def(t: &mut TokenIter) -> Option<(WithSpan<Intern<str>>, WithSpan<Macro>)> {
     let name = t.ident()?;
 
     let macro_def = t.enclosure(Encloser::Brace)?.into_inner().parse(|t| {
         let mut branches = Vec::<WithSpan<MacroBranch>>::new();
 
-        while let Attempt::Taken(branch) = macro_branch(t, &fresh_branch_key) {
+        while let Attempt::Taken(branch) = macro_branch(t) {
             let branch = branch?;
 
             for old_branch in &branches {
@@ -711,8 +725,12 @@ fn macro_def(
                             .with_message(format!(
                                 "Macro branches are conflicting. `{ce}` would match both of them."
                             ))
-                            .with_label(Label::new(old_branch.pattern.span()).with_message("First branch"))
-                            .with_label(Label::new(branch.pattern.span()).with_message("Second branch"))
+                            .with_label(
+                                Label::new(old_branch.pattern.span()).with_message("First branch"),
+                            )
+                            .with_label(
+                                Label::new(branch.pattern.span()).with_message("Second branch"),
+                            )
                             .finish(),
                     );
                 }
@@ -729,10 +747,7 @@ fn macro_def(
     Some((name, macro_def))
 }
 
-fn macro_branch(
-    t: &mut TokenIter,
-    fresh_branch_key: impl Fn() -> MacroBranchKey,
-) -> Attempt<Option<WithSpan<MacroBranch>>> {
+fn macro_branch(t: &mut TokenIter) -> Attempt<Option<WithSpan<MacroBranch>>> {
     t.attempt(|t, commit| {
         let start = t.marker();
 
@@ -752,7 +767,9 @@ fn macro_branch(
 
         t.symbol(Symbol::DefineArrow)?;
 
-        let subst = match instruction(t) {
+        let branch_key = new_branch_key();
+
+        let subst = match instruction(t, branch_key) {
             Attempt::NotTaken(span) => {
                 t.report(
                     Report::build(ReportKind::Error, span)
@@ -765,14 +782,10 @@ fn macro_branch(
             Attempt::Taken(v) => v?,
         };
 
-        Some(
-            t.cash_in(start).with(MacroBranch {
-                pattern,
-                code: subst
-                    .span()
-                    .with((subst.into_inner(), None, Some(fresh_branch_key()))),
-            }),
-        )
+        Some(t.cash_in(start).with(MacroBranch {
+            pattern,
+            code: subst.span().with((subst.into_inner(), None, branch_key)),
+        }))
     })
 }
 

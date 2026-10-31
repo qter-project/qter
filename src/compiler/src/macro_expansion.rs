@@ -7,24 +7,10 @@ use qter_core::span::{Span, WithSpan};
 use crate::{
     BlockID, Code, Define, ExpandedCode, ExpandedCodeComponent, ExpansionInfo, Instruction, Macro,
     MacroBranchKey, ParsedSyntax, RegistersDecl, Reporter, ResolvedValue, TaggedInstruction,
-    resolve_just_these_defines, tag_with_key,
+    resolve_just_these_defines,
 };
 
 pub fn expand(mut parsed: ParsedSyntax, r: &Reporter) -> Option<ExpandedCode> {
-    let branch_key_fn = parsed.expansion_info.fresh_branch_key();
-
-    for macro_ in &mut parsed.expansion_info.macros {
-        let Macro::UserDefined { branches } = &mut macro_.1.value else {
-            continue;
-        };
-
-        for branch in branches {
-            let key = branch_key_fn();
-
-            tag_with_key(&mut branch.code, Some(key));
-        }
-    }
-
     let mut limit = 100;
 
     let before = r.count();
@@ -104,7 +90,7 @@ fn expand_block(
         .flat_map(|tagged_instruction| {
             let span = tagged_instruction.span();
 
-            let (instruction, maybe_block_id, maybe_branch_key) = tagged_instruction.into_inner();
+            let (instruction, maybe_block_id, branch_key) = tagged_instruction.into_inner();
             let block_id = maybe_block_id.unwrap();
 
             let block_info = expansion_info.block_info.blocks.get_mut(&block_id).unwrap();
@@ -119,7 +105,7 @@ fn expand_block(
                     block_info.labels.push(label);
 
                     vec![WithSpan::new(
-                        (Instruction::Label(label), maybe_block_id, maybe_branch_key),
+                        (Instruction::Label(label), maybe_block_id, branch_key),
                         span,
                     )]
                 }
@@ -129,7 +115,7 @@ fn expand_block(
                         return vec![]
                     }
 
-                    let Some(resolved) = expansion_info.resolve(define.value, block_id, r) else {
+                    let Some(resolved) = expansion_info.resolve(define.value, block_id, branch_key, r) else {
                         return vec![]
                     };
 
@@ -150,7 +136,7 @@ fn expand_block(
                     vec![]
                 }
                 Instruction::Code(code) => {
-                    expand_code(block_id, expansion_info, code, span, &changed, maybe_branch_key, r)
+                    expand_code(block_id, expansion_info, code, span, &changed, branch_key, r)
                 }
                 Instruction::Constant(name) => {
                     let whoops = |actually| {
@@ -187,7 +173,7 @@ fn expand_block(
                     }
                 }
                 Instruction::RhaiCall(call) => {
-                    let Some(value) = call.perform(span, expansion_info, block_id, r) else {
+                    let Some(value) = call.perform(span, expansion_info, block_id, branch_key, r) else {
                         return vec![]
                     };
                     let _ = changed.set(span);
@@ -204,7 +190,8 @@ fn expand_block(
                         ResolvedValue::Block(block) => {
                             let _ = changed.set(span);
 
-                            block.code
+                            // Return this as a block so that it gets its own block ID without us having to think about it too much
+                            vec![span.with((Instruction::Block(block), Some(block_id), branch_key))]
                         },
                     }
                 }
@@ -236,7 +223,7 @@ fn expand_code(
     code: Code,
     span: Span,
     changed: &OnceCell<Span>,
-    maybe_branch_key: Option<MacroBranchKey>,
+    branch_key: MacroBranchKey,
     r: &Reporter,
 ) -> Vec<WithSpan<TaggedInstruction>> {
     let macro_call = match code {
@@ -244,7 +231,7 @@ fn expand_code(
             return vec![span.with((
                 Instruction::Code(Code::Primitive(prim)),
                 Some(block_id),
-                maybe_branch_key,
+                branch_key,
             ))];
         }
         Code::Macro(mac) => mac,
@@ -252,10 +239,10 @@ fn expand_code(
 
     let _ = changed.set(span);
 
-    let Some(macro_access) = expansion_info.available_macros.get(&(
-        macro_call.name.span().source(),
-        *macro_call.name,
-    )) else {
+    let Some(macro_access) = expansion_info
+        .available_macros
+        .get(&(macro_call.name.span().source(), *macro_call.name))
+    else {
         r.push(
             Report::build(ReportKind::Error, macro_call.name.span())
                 .with_message("Macro was not found in this scope")
@@ -308,11 +295,17 @@ fn expand_code(
             vec![]
         }
         Macro::Builtin(macro_fn) => {
-            match macro_fn(expansion_info, macro_call.arguments, block_id, r) {
+            match macro_fn(
+                expansion_info,
+                macro_call.arguments,
+                block_id,
+                branch_key,
+                r,
+            ) {
                 Some(v) => vec![span.with((
-                    Instruction::Code(Code::Primitive(v.insert_branch_key(maybe_branch_key))),
+                    Instruction::Code(Code::Primitive(v)),
                     Some(block_id),
-                    maybe_branch_key,
+                    branch_key,
                 ))],
                 None => vec![],
             }

@@ -3,8 +3,7 @@ use sarlacc::Intern;
 use qter_core::span::{File, Span, WithSpan};
 
 use crate::{
-    BlockID, ExpansionInfo, LabelReference, Macro, MaybeReg, Primitive, RegisterReference,
-    Reporter, ResolvedValue, Value,
+    BlockID, ExpansionInfo, LabelReference, Macro, MacroBranchKey, MaybeReg, Primitive, RegisterReference, Reporter, ResolvedValue, Value,
 };
 
 use std::collections::HashMap;
@@ -50,6 +49,7 @@ fn expect_label(
     label_value: WithSpan<Value>,
     block_id: BlockID,
     syntax: &ExpansionInfo,
+    branch_key: MacroBranchKey,
     r: &Reporter,
 ) -> Option<WithSpan<LabelReference>> {
     let span = label_value.span();
@@ -58,7 +58,7 @@ fn expect_label(
             LabelReference {
                 name: name.into_inner(),
                 block_id,
-                branch_key: None,
+                branch_key,
             },
             span,
         )),
@@ -131,7 +131,7 @@ pub fn builtin_macros(prelude: File) -> HashMap<(File, Intern<str>), WithSpan<Ma
     macros.insert(
         (prelude, Intern::from_ref("add")),
         WithSpan::new(
-            Macro::Builtin(|syntax, mut args, block_id, r| {
+            Macro::Builtin(|syntax, mut args, block_id, _, r| {
                 if args.len() != 2 {
                     r.push(
                         Report::build(ReportKind::Error, args.span())
@@ -170,7 +170,7 @@ pub fn builtin_macros(prelude: File) -> HashMap<(File, Intern<str>), WithSpan<Ma
     macros.insert(
         (prelude, Intern::from_ref("goto")),
         WithSpan::new(
-            Macro::Builtin(|syntax, mut args, block_id, r| {
+            Macro::Builtin(|syntax, mut args, block_id, branch_key, r| {
                 if args.len() != 1 {
                     r.push(
                         Report::build(ReportKind::Error, args.span())
@@ -180,7 +180,7 @@ pub fn builtin_macros(prelude: File) -> HashMap<(File, Intern<str>), WithSpan<Ma
                     return None;
                 }
 
-                let label = expect_label(args.pop().unwrap(), block_id, syntax, r)?;
+                let label = expect_label(args.pop().unwrap(), block_id, syntax, branch_key, r)?;
 
                 Some(Primitive::Goto { label })
             }),
@@ -191,7 +191,7 @@ pub fn builtin_macros(prelude: File) -> HashMap<(File, Intern<str>), WithSpan<Ma
     macros.insert(
         (prelude, Intern::from_ref("solved-goto")),
         WithSpan::new(
-            Macro::Builtin(|syntax, mut args, block_id, r| {
+            Macro::Builtin(|syntax, mut args, block_id, branch_key, r| {
                 if args.len() != 2 {
                     r.push(
                         Report::build(ReportKind::Error, args.span())
@@ -201,7 +201,7 @@ pub fn builtin_macros(prelude: File) -> HashMap<(File, Intern<str>), WithSpan<Ma
                     return None;
                 }
 
-                let label = expect_label(args.pop().unwrap(), block_id, syntax, r)?;
+                let label = expect_label(args.pop().unwrap(), block_id, syntax, branch_key, r)?;
                 let register = expect_reg(args.pop().unwrap(), block_id, syntax, r)?;
 
                 Some(Primitive::SolvedGoto { register, label })
@@ -213,7 +213,7 @@ pub fn builtin_macros(prelude: File) -> HashMap<(File, Intern<str>), WithSpan<Ma
     macros.insert(
         (prelude, Intern::from_ref("input")),
         WithSpan::new(
-            Macro::Builtin(|syntax, mut args, block_id, r| {
+            Macro::Builtin(|syntax, mut args, block_id, _, r| {
                 if args.len() != 2 {
                     r.push(
                         Report::build(ReportKind::Error, args.span())
@@ -254,7 +254,7 @@ pub fn builtin_macros(prelude: File) -> HashMap<(File, Intern<str>), WithSpan<Ma
     macros.insert(
         (prelude, Intern::from_ref("halt")),
         WithSpan::new(
-            Macro::Builtin(|syntax, args, block_id, r| {
+            Macro::Builtin(|syntax, args, block_id, _, r| {
                 let (register, message) = print_like(syntax, args, block_id, r)?;
 
                 Some(Primitive::Halt { register, message })
@@ -266,7 +266,7 @@ pub fn builtin_macros(prelude: File) -> HashMap<(File, Intern<str>), WithSpan<Ma
     macros.insert(
         (prelude, Intern::from_ref("print")),
         WithSpan::new(
-            Macro::Builtin(|syntax, args, block_id, r| {
+            Macro::Builtin(|syntax, args, block_id, _, r| {
                 let (register, message) = print_like(syntax, args, block_id, r)?;
 
                 Some(Primitive::Print { register, message })

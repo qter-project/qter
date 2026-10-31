@@ -663,9 +663,16 @@ mod tests {
         cases: impl Iterator<Item = ([usize; N], String)>,
     ) {
         let reporter = Reporter::default();
-        let (program, _) = match compile(file(code), |_| unreachable!(), &reporter) {
-            Some(v) => v,
-            None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
+        let Some((program, _)) = compile(file(code), |_| unreachable!(), &reporter) else {
+            let mut cache = ariadne::sources(
+                [("<static>", code)]
+                    .into_iter()
+                    .map(|(a, b)| (Intern::from_ref(a), Intern::from_ref(b))),
+            );
+            for err in reporter.drain() {
+                err.eprint(&mut cache).unwrap();
+            }
+            panic!()
         };
 
         let program = Arc::new(program);

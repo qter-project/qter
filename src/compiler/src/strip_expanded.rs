@@ -195,7 +195,10 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
                                 let Some(label) = expanded.block_info.label_scope(&label) else {
                                     r.push(
                                         Report::build(ReportKind::Error, label.span())
-                                            .with_message("Could not find label in scope")
+                                            .with_label(
+                                                Label::new(label.span())
+                                                    .with_message("Could not find label in scope"),
+                                            )
                                             .finish(),
                                     );
                                     return None;
@@ -210,7 +213,10 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
                                 let Some(label) = expanded.block_info.label_scope(&label) else {
                                     r.push(
                                         Report::build(ReportKind::Error, label.span())
-                                            .with_message("Could not find label in scope")
+                                            .with_label(
+                                                Label::new(label.span())
+                                                    .with_message("Could not find label in scope"),
+                                            )
                                             .finish(),
                                     );
                                     return None;
@@ -346,7 +352,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
                         message: message.into_inner(),
                         maybe_reg: decoding,
                     }
-                },
+                }
                 OptimizingPrimitive::Print { message, register } => {
                     let decoding = match register {
                         Some(v) => Some(global_regs.decoding(v, r)?),
