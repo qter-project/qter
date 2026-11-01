@@ -8,14 +8,15 @@
 ## CCF
 
 - important
-  - fix claude's bugs
+  - disable fast assumptions in expansion
+  - minimum solution expansion flag
   - sort the order value constraints if i dont already
-  - make sure its still fast with two orbits with the same ori
   - optimize orbit traversal algorithm: dont loop twice to change states
   - fit equal fitting cycles first into orbits
     - if the remaining pieces is less than a prime number, then fit it there last
   - put "equal to" registers first; one less dof
   - make the number of max fitting tries for expansion significantly greater
+    - or remove max fitting tries for expansion entirely
 
   - parity; look in stash!
 

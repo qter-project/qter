@@ -174,51 +174,6 @@ impl CycleOrientState {
     }
 }
 
-impl<const N: usize> OrbitTraversalState<'_, N> {
-    fn cmp(&self, other: &Self) -> Ordering {
-        let &OrbitTraversalState {
-            unused_piece_count,
-            orientation_exps,
-            register_orbit_constraint:
-                RegisterOrbitConstraint {
-                    known_share_state,
-                    orientation_satisfied_by,
-                    borrowed_noncanonical_piece: _,
-                },
-        } = self;
-        let &OrbitTraversalState {
-            unused_piece_count: unused_piece_count_1,
-            orientation_exps: orientation_exps_1,
-            register_orbit_constraint:
-                RegisterOrbitConstraint {
-                    known_share_state: known_share_state_1,
-                    orientation_satisfied_by: orientation_satisfied_by_1,
-                    borrowed_noncanonical_piece: _,
-                },
-        } = other;
-        unused_piece_count
-            .cmp(&unused_piece_count_1)
-            .then(orientation_exps.cmp(orientation_exps_1))
-            .then(
-                known_share_state
-                    .required_ignored_pieces()
-                    .cmp(&known_share_state_1.required_ignored_pieces()),
-            )
-            // We need this. Assume both orbits share nothing
-            //
-            // o1:
-            // 10 pieces
-            // 2+ cycle
-            //
-            // o2:
-            // 8 pieces
-            //
-            // We can't treat them the same. Placing a 3 cycle would require a leftover piece for
-            // the second orbit but not the first
-            .then(orientation_satisfied_by.cmp(&orientation_satisfied_by_1))
-    }
-}
-
 impl<'a, const N: usize> CycleCombinationFinder<'a, N> {
     #[must_use]
     pub(crate) fn solutions_calculator(&self) -> CycleCombinationSolutionsCalculator<'a, '_, N> {
@@ -290,6 +245,62 @@ impl<'a, const N: usize> CycleCombinationFinder<'a, N> {
             },
         }
     }
+}
+
+fn traversal_cmp<const N: usize>(
+    orbit_index2: usize,
+    state: &OrbitTraversalState<N>,
+    other_orbit_index2: usize,
+    other_state: &OrbitTraversalState<N>,
+    expansion: bool,
+) -> Ordering {
+    let &OrbitTraversalState {
+        unused_piece_count,
+        orientation_exps,
+        register_orbit_constraint:
+            RegisterOrbitConstraint {
+                known_share_state,
+                orientation_satisfied_by,
+                borrowed_noncanonical_piece: _,
+            },
+    } = state;
+    let &OrbitTraversalState {
+        unused_piece_count: unused_piece_count_1,
+        orientation_exps: orientation_exps_1,
+        register_orbit_constraint:
+            RegisterOrbitConstraint {
+                known_share_state: known_share_state_1,
+                orientation_satisfied_by: orientation_satisfied_by_1,
+                borrowed_noncanonical_piece: _,
+            },
+    } = other_state;
+    let mut ret = unused_piece_count
+        .cmp(&unused_piece_count_1)
+        .then(orientation_exps.cmp(orientation_exps_1))
+        .then(
+            known_share_state
+                .required_ignored_pieces()
+                .cmp(&known_share_state_1.required_ignored_pieces()),
+        )
+        // We need this. Assume both orbits share nothing
+        //
+        // o1:
+        // 10 pieces
+        // 2+ cycle
+        //
+        // o2:
+        // 8 pieces
+        //
+        // We can't treat them the same. Placing a 3 cycle would require a leftover piece
+        // for the second orbit but not the first
+        .then(orientation_satisfied_by.cmp(&orientation_satisfied_by_1));
+    // Orbits with equal traversal states have identical remaining searches, so
+    // existence visits only one of them. Expansion must visit each because
+    // the solutions differ.
+    if expansion {
+        ret = ret.then(orbit_index2.cmp(&other_orbit_index2));
+    }
+    ret
 }
 
 impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
@@ -382,9 +393,10 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
         let register_order_exp = register_order.prime_exponent(prime_index);
 
         let mut traverse_orients = orienting_unassigned_exponents_mask != 0;
-        let mut maybe_prev_traversal_state: Option<OrbitTraversalState<N>> = None;
+        let mut maybe_prev_traversal_state: Option<(usize, OrbitTraversalState<N>)> = None;
         let orientations_exps = self.ccf.puzzle_def.orientations_exps();
         loop {
+            // Visit orbits in ascending `traversal_cmp` order, skipping equal elements
             let Some((orbit_index2, orbit_traversal_state)) = orientations_exps
                 .iter()
                 .zip(&self.orbit_remaining_pieces)
@@ -425,12 +437,30 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                             register_orbit_constraint,
                         };
                         // Filter out everything <= the previous traversal state
-                        if maybe_prev_traversal_state.is_some_and(|prev| curr.cmp(&prev).is_le()) {
+                        if maybe_prev_traversal_state.is_some_and(|(prev_orbit_index2, prev)| {
+                            traversal_cmp(
+                                orbit_index2,
+                                &curr,
+                                prev_orbit_index2,
+                                &prev,
+                                self.expansion,
+                            )
+                            .is_le()
+                        }) {
                             acc
                         // curr is > the previous traversal state. If we have a
-                        // previous best and curr < min, or if there was no
-                        // previous best, swap it out with curr.
-                        } else if acc.as_ref().is_none_or(|(_, min)| curr.cmp(min).is_lt()) {
+                        // previous best `min` and curr < min, or if there was
+                        // no previous best, swap out the best with curr.
+                        } else if acc.as_ref().is_none_or(|&(min_orbit_index2, min)| {
+                            traversal_cmp(
+                                orbit_index2,
+                                &curr,
+                                min_orbit_index2,
+                                &min,
+                                self.expansion,
+                            )
+                            .is_lt()
+                        }) {
                             Some((orbit_index2, curr))
                         } else {
                             acc
@@ -447,7 +477,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                 maybe_prev_traversal_state = None;
                 continue;
             };
-            maybe_prev_traversal_state = Some(orbit_traversal_state);
+            maybe_prev_traversal_state = Some((orbit_index2, orbit_traversal_state));
             trace!("{register_index2} {orbit_index2}; p={prime}");
 
             let OrbitTraversalState {
@@ -1094,14 +1124,15 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                                 saturated_orbit_found =
                                     SaturatingOrbit::Orbit(orbit_index, orientation_exp);
                             }
-                        // If we have one saturating orbit and we reach this branch, we will
-                        // no longer have any saturating orbits since we traverse exps in
-                        // descending order. We want to saturate the cycle instead of not
-                        // saturating it because it saves the most pieces.
+                        // If we have one saturating orbit and we reach this
+                        // branch, we will no longer have any saturating orbits
+                        // since we traverse exps in descending order. We want
+                        // to saturate the cycle instead of not saturating it
+                        // because it saves the most pieces.
                         } else if let SaturatingOrbit::Orbit(..) = saturated_orbit_found {
                             break;
-                        // If nothing was saturated at all then preassign the orienting cycle
-                        // into the orbit
+                        // If nothing was saturated at all then preassign the
+                        // orienting cycle into the orbit
                         } else if try_assign_pp_to_orbit(orbit_index, orientation_exp) {
                             continue 'next_reg;
                         }
@@ -1374,6 +1405,60 @@ mod tests {
     }
 
     #[test_log::test]
+    fn expansion_coincident_unused_counts() {
+        let crazy = PuzzleDef::<64>::new((
+            vec![
+                PartialOrbitDef {
+                    name: None,
+                    piece_count: 8.try_into().unwrap(),
+                    orientation: OrientationStatus::CannotOrient,
+                },
+                PartialOrbitDef {
+                    name: None,
+                    piece_count: 5.try_into().unwrap(),
+                    orientation: OrientationStatus::CannotOrient,
+                },
+            ],
+            EvenParityConstraints(vec![]),
+        ))
+        .unwrap();
+        let analysis = PuzzleAnalysis::new(&crazy, NumCores::AllCores).unwrap();
+        let ccf = CycleCombinationFinderBuilder::default()
+            .with_puzzle_analysis(&analysis)
+            .with_registers(Register::default_count(2))
+            .with_solution_expansion(SolutionExpansion::All)
+            .build()
+            .unwrap();
+        let register_orders = vec![3, 2];
+        let expected = "
+            3: 0: () 1: (3)
+            2: 0: () 1: (2)
+
+            0: 0 ignored, 8 unused
+            1: 0 ignored, 0 unused
+
+            3: 0: () 1: (3)
+            2: 0: (2) 1: ()
+
+            0: 0 ignored, 6 unused
+            1: 0 ignored, 2 unused
+
+            3: 0: (3) 1: ()
+            2: 0: (2) 1: ()
+
+            0: 0 ignored, 3 unused
+            1: 0 ignored, 5 unused
+
+            3: 0: (3) 1: ()
+            2: 0: () 1: (2)
+
+            0: 0 ignored, 5 unused
+            1: 0 ignored, 3 unused
+        ";
+        do_test(ccf.solutions_calculator(), register_orders, expected);
+    }
+
+    #[test_log::test]
     fn minx3_optimal_3() {
         let minx3 = MINX3.clone();
         let analysis = PuzzleAnalysis::new(&minx3, NumCores::AllCores).unwrap();
@@ -1527,60 +1612,6 @@ mod tests {
             .unwrap();
         let mut solutions_calculator = ccf.solutions_calculator();
         let register_orders = vec![959_310, 765_765, 765_765, 622_440];
-
-        let mut registers = register_orders
-            .into_iter()
-            .map(|register_order| {
-                possible_orders_len_cast(
-                    solutions_calculator
-                        .ccf
-                        .possible_orders_except_one
-                        .iter()
-                        .position(|possible_order| {
-                            u64::try_from(possible_order.order.as_bigint()).unwrap()
-                                == register_order
-                        })
-                        .unwrap(),
-                )
-            })
-            .collect::<Box<[_]>>();
-        registers.sort_by_key(|&r| std::cmp::Reverse(r));
-        let registers = Arc::from(registers);
-        let now = Instant::now();
-        let solutions = solutions_calculator
-            .expansion(DisjointRegisters::from(
-                NonemptySlice::try_from(&*registers).unwrap(),
-            ))
-            .unwrap();
-        let len = solutions.0.len();
-        let cycle_combination = CycleCombination {
-            registers: Arc::clone(&registers),
-            solutions,
-        };
-
-        println!(
-            "Found {len} solutions in {}:\n{}",
-            now.elapsed().human(Truncate::Micro),
-            cycle_combination.solutions_fmt(
-                &solutions_calculator.ccf.possible_orders_except_one,
-                solutions_calculator.ccf.puzzle_def,
-            )
-        );
-        panic!();
-    }
-
-    #[test_log::test]
-    fn main2() {
-        let minx5 = MINX3.clone();
-        let analysis = PuzzleAnalysis::new(&minx5, NumCores::AllCores).unwrap();
-        let ccf = CycleCombinationFinderBuilder::default()
-            .with_puzzle_analysis(&analysis)
-            .with_registers(Register::default_count(4))
-            .with_solution_expansion(SolutionExpansion::All)
-            .build()
-            .unwrap();
-        let mut solutions_calculator = ccf.solutions_calculator();
-        let register_orders = vec![15120, 180, 30, 12];
 
         let mut registers = register_orders
             .into_iter()
