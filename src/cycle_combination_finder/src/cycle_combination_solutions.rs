@@ -304,9 +304,13 @@ fn traversal_cmp<const N: usize>(
 }
 
 impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
+    fn existence_mode(&self) -> bool {
+        !self.expansion
+    }
+
     // TODO: inline this more for previous calls
     fn recursive_backtrack(&mut self, registers: DisjointRegisters) -> bool {
-        if !self.expansion
+        if self.existence_mode()
             && let Some(max_fitting_tries) = self.ccf.maybe_max_fitting_tries
         {
             if self.fitting_tries == max_fitting_tries {
@@ -341,7 +345,8 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                 if invalid {
                     false
                 } else {
-                    self.emit_solution(registers)
+                    self.emit_solution(registers);
+                    true
                 }
             } else {
                 self.register_index += 1;
@@ -372,16 +377,17 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
         // the fail state
         let orienting_unassigned_exponents_mask =
             unassigned_exponents_mask & self.immutable.orientations_exps_mask;
+        let any_orienting_unassigned_exponent = orienting_unassigned_exponents_mask != 0;
         // There is a good reason to visit primes with an orbit with that orientation
         // factor first. Recall how every canonically orienting cycle also has an
         // iteration where it does not canonically orient. Also recall how, in the case
         // we want to optimize for, we are just checking for existence. If we have an
         // orienting cycle at the root node, we never have to make it unorient which can
         // be unoptimal
-        let prime_index = if orienting_unassigned_exponents_mask == 0 {
-            unassigned_exponents_mask.ilog2() as usize
-        } else {
+        let prime_index = if any_orienting_unassigned_exponent {
             orienting_unassigned_exponents_mask.ilog2() as usize
+        } else {
+            unassigned_exponents_mask.ilog2() as usize
         };
         let prime = FIRST_65_PRIMES[prime_index];
 
@@ -392,7 +398,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
             .order;
         let register_order_exp = register_order.prime_exponent(prime_index);
 
-        let mut traverse_orients = orienting_unassigned_exponents_mask != 0;
+        let mut traverse_orients = any_orienting_unassigned_exponent;
         let mut maybe_prev_traversal_state: Option<(usize, OrbitTraversalState<N>)> = None;
         let orientations_exps = self.ccf.puzzle_def.orientations_exps();
         loop {
@@ -410,7 +416,13 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                             .to_bitmask()
                             .trailing_zeros()
                             as usize;
-                        let orients = orientation_prime_index == prime_index;
+                        // If the prime has no orienting orbits then place it into other orienting
+                        // orbits last. This favors noncanonical cycles.
+                        let orients = if any_orienting_unassigned_exponent {
+                            orientation_prime_index == prime_index
+                        } else {
+                            orientation_prime_index != 64
+                        };
                         trace!(
                             "orients={orients}; orientation_prime={}; p={prime}",
                             FIRST_65_PRIMES[orientation_prime_index]
@@ -468,12 +480,10 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                     },
                 )
             else {
-                if !traverse_orients {
-                    trace!("reg {register_index2} finished traversing");
+                if traverse_orients != any_orienting_unassigned_exponent {
                     break;
                 }
-                trace!("reg {register_index2} traversing nonorienting");
-                traverse_orients = false;
+                traverse_orients = !traverse_orients;
                 maybe_prev_traversal_state = None;
                 continue;
             };
@@ -497,7 +507,18 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                 if self.ccf.fast_assumptions {
                     &[CycleOrientState::Canonical][..]
                 } else {
-                    // see https://discord.com/channels/1528552221695021096/1528556519602389062/1544422221815087105
+                    // orbit 1: 3 orientations, 20 pieces, zero orientation sum
+                    // orbit 2: 1 orientation, 10 pieces, zero orientation sum
+                    //
+                    // fit architecture 297/3
+                    //
+                    // the only way to do so is
+                    //
+                    // orbit 1: 9+ 11+
+                    // orbit 2: 3
+                    // had we assigned the 3 to orbit 1 in the form of 1+, then 11 could not fit
+                    // anywhere
+                    //
                     // canonical first so we find a solution faster
                     &[CycleOrientState::Canonical, CycleOrientState::None][..]
                 }
@@ -627,7 +648,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
 
                 let exists = self.recursive_backtrack(registers);
                 if exists {
-                    if !self.expansion {
+                    if self.existence_mode() {
                         return true;
                     } else if let ValidatedSolutionExpansion::Limit(limit) =
                         self.ccf.solution_expansion
@@ -753,7 +774,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
     }
 
     #[inline]
-    fn emit_solution(&mut self, registers: DisjointRegisters) -> bool {
+    fn emit_solution(&mut self, registers: DisjointRegisters) {
         if self.expansion {
             trace!("{:#?}", self.register_assignments);
             // TODO: allocator
@@ -831,7 +852,6 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                 });
         }
         trace!("Solution!");
-        true
     }
 
     #[inline]
@@ -1477,16 +1497,16 @@ mod tests {
         let register_orders = vec![2520, 630, 420];
 
         let expected = "
-            2520: c: (3+, 7) e: (4+, 5)
-             630: c: (3+) e: (5, 7+)
-             420: c: (5+) e: (2+, 7)
+            2520: c: (3+, 7+) e: (4+, 5+)
+             630: c: (3+) e: (5+, 7+)
+             420: c: (5+) e: (2+, 7+)
 
             c: 1 ignored, 1 unused
             e: 0 ignored, 0 unused
 
-            2520: c: (3+, 5) e: (4+, 7)
-             630: c: (3+) e: (5, 7+)
-             420: c: (7+) e: (2+, 5)
+            2520: c: (3+, 5+) e: (4+, 7+)
+             630: c: (3+) e: (5+, 7+)
+             420: c: (7+) e: (2+, 5+)
 
             c: 1 ignored, 1 unused
             e: 0 ignored, 0 unused
@@ -1510,23 +1530,23 @@ mod tests {
         let register_orders = vec![840, 840, 840];
 
         let expected = "
-            840: c: (5+) e: (4+, 7)
-            840: c: (7+) e: (4+, 5)
-            840: c: (7+) e: (4+, 5)
+            840: c: (5+) e: (4+, 7+)
+            840: c: (7+) e: (4+, 5+)
+            840: c: (7+) e: (4+, 5+)
 
             c: 1 ignored, 0 unused
             e: 0 ignored, 1 unused
 
-            840: c: (7+) e: (4+, 5)
-            840: c: (7+) e: (4+, 5)
-            840: c: (5+) e: (4+, 7)
+            840: c: (7+) e: (4+, 5+)
+            840: c: (7+) e: (4+, 5+)
+            840: c: (5+) e: (4+, 7+)
 
             c: 1 ignored, 0 unused
             e: 0 ignored, 1 unused
 
-            840: c: (7+) e: (4+, 5)
-            840: c: (5+) e: (4+, 7)
-            840: c: (7+) e: (4+, 5)
+            840: c: (7+) e: (4+, 5+)
+            840: c: (5+) e: (4+, 7+)
+            840: c: (7+) e: (4+, 5+)
 
             c: 1 ignored, 0 unused
             e: 0 ignored, 1 unused
@@ -1611,7 +1631,8 @@ mod tests {
             .build()
             .unwrap();
         let mut solutions_calculator = ccf.solutions_calculator();
-        let register_orders = vec![959_310, 765_765, 765_765, 622_440];
+        // 1989680, 1531530, 1081080, 1081080
+        let register_orders = vec![13_693_680, 1_531_530, 1_531_530, 1_081_080];
 
         let mut registers = register_orders
             .into_iter()

@@ -8,7 +8,6 @@
 ## CCF
 
 - important
-  - disable fast assumptions in expansion
   - minimum solution expansion flag
   - sort the order value constraints if i dont already
   - optimize orbit traversal algorithm: dont loop twice to change states
