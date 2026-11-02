@@ -398,10 +398,13 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
             .order;
         let register_order_exp = register_order.prime_exponent(prime_index);
 
-        let mut traverse_orients = any_orienting_unassigned_exponent;
+        let mut traverse_orienting_orbits = any_orienting_unassigned_exponent;
         let mut maybe_prev_traversal_state: Option<(usize, OrbitTraversalState<N>)> = None;
         let orientations_exps = self.ccf.puzzle_def.orientations_exps();
         loop {
+            // Do not consider a non-orienting cycle visiting other orienting orbits to
+            // be orienting that cycle
+            let cycle_orients = any_orienting_unassigned_exponent && traverse_orienting_orbits;
             // Visit orbits in ascending `traversal_cmp` order, skipping equal elements
             let Some((orbit_index2, orbit_traversal_state)) = orientations_exps
                 .iter()
@@ -418,16 +421,16 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                             as usize;
                         // If the prime has no orienting orbits then place it into other orienting
                         // orbits last. This favors noncanonical cycles.
-                        let orients = if any_orienting_unassigned_exponent {
+                        let orienting_orbit = if any_orienting_unassigned_exponent {
                             orientation_prime_index == prime_index
                         } else {
                             orientation_prime_index != 64
                         };
                         trace!(
-                            "orients={orients}; orientation_prime={}; p={prime}",
+                            "orienting_orbit={orienting_orbit}; orientation_prime={}; p={prime}",
                             FIRST_65_PRIMES[orientation_prime_index]
                         );
-                        if traverse_orients != orients {
+                        if traverse_orienting_orbits != orienting_orbit {
                             return acc;
                         }
                         let register_orbit_constraint = self.register_orbit_constraints
@@ -436,7 +439,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                         // fast check to make sure the nonorienting prime fits into this orbit
                         // we cannot use logarithms because it misbehaves when the orbit size
                         // exactly fits the prime power
-                        if !traverse_orients
+                        if !cycle_orients
                             && prime
                                 .checked_pow(u32::from(register_order_exp))
                                 .is_none_or(|pp| pp > orbit_remaining_pieces.unused)
@@ -480,10 +483,10 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                     },
                 )
             else {
-                if traverse_orients != any_orienting_unassigned_exponent {
+                if traverse_orienting_orbits != any_orienting_unassigned_exponent {
                     break;
                 }
-                traverse_orients = !traverse_orients;
+                traverse_orienting_orbits = !traverse_orienting_orbits;
                 maybe_prev_traversal_state = None;
                 continue;
             };
@@ -503,7 +506,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
 
             // TODO: do parity by checking ParityConstraint::Even first in OrbitDef
             // put in the 2 cycle case here
-            let orient_states = if traverse_orients {
+            let orient_states = if cycle_orients {
                 if self.ccf.fast_assumptions {
                     &[CycleOrientState::Canonical][..]
                 } else {
@@ -1479,6 +1482,39 @@ mod tests {
     }
 
     #[test_log::test]
+    fn nonorienting_prime_in_orienting_orbit() {
+        let crazy = PuzzleDef::<64>::new((
+            vec![PartialOrbitDef {
+                name: None,
+                piece_count: 3.try_into().unwrap(),
+                orientation: OrientationStatus::CanOrient {
+                    count: 2,
+                    sum_constraint: OrientationSumConstraint::Zero,
+                },
+            }],
+            EvenParityConstraints(vec![]),
+        ))
+        .unwrap();
+        let analysis = PuzzleAnalysis::new(&crazy, NumCores::AllCores).unwrap();
+        let ccf = CycleCombinationFinderBuilder::default()
+            .with_puzzle_analysis(&analysis)
+            .with_registers(Register::default_count(1))
+            .with_solution_expansion(SolutionExpansion::All)
+            .build()
+            .unwrap();
+        let solutions_calculator = ccf.solutions_calculator();
+        let register_orders = vec![3];
+        
+        let expected = "
+            3: 0: (3)
+
+            0: 0 ignored, 0 unused
+        ";
+
+        do_test(solutions_calculator, register_orders, expected);
+    }
+
+    #[test_log::test]
     fn minx3_optimal_3() {
         let minx3 = MINX3.clone();
         let analysis = PuzzleAnalysis::new(&minx3, NumCores::AllCores).unwrap();
@@ -1497,16 +1533,16 @@ mod tests {
         let register_orders = vec![2520, 630, 420];
 
         let expected = "
-            2520: c: (3+, 7+) e: (4+, 5+)
-             630: c: (3+) e: (5+, 7+)
-             420: c: (5+) e: (2+, 7+)
+            2520: c: (3+, 7) e: (4+, 5)
+             630: c: (3+) e: (5, 7+)
+             420: c: (5+) e: (2+, 7)
 
             c: 1 ignored, 1 unused
             e: 0 ignored, 0 unused
 
-            2520: c: (3+, 5+) e: (4+, 7+)
-             630: c: (3+) e: (5+, 7+)
-             420: c: (7+) e: (2+, 5+)
+            2520: c: (3+, 5) e: (4+, 7)
+             630: c: (3+) e: (5, 7+)
+             420: c: (7+) e: (2+, 5)
 
             c: 1 ignored, 1 unused
             e: 0 ignored, 0 unused
@@ -1530,23 +1566,23 @@ mod tests {
         let register_orders = vec![840, 840, 840];
 
         let expected = "
-            840: c: (5+) e: (4+, 7+)
-            840: c: (7+) e: (4+, 5+)
-            840: c: (7+) e: (4+, 5+)
+            840: c: (5+) e: (4+, 7)
+            840: c: (7+) e: (4+, 5)
+            840: c: (7+) e: (4+, 5)
 
             c: 1 ignored, 0 unused
             e: 0 ignored, 1 unused
 
-            840: c: (7+) e: (4+, 5+)
-            840: c: (7+) e: (4+, 5+)
-            840: c: (5+) e: (4+, 7+)
+            840: c: (7+) e: (4+, 5)
+            840: c: (7+) e: (4+, 5)
+            840: c: (5+) e: (4+, 7)
 
             c: 1 ignored, 0 unused
             e: 0 ignored, 1 unused
 
-            840: c: (7+) e: (4+, 5+)
-            840: c: (5+) e: (4+, 7+)
-            840: c: (7+) e: (4+, 5+)
+            840: c: (7+) e: (4+, 5)
+            840: c: (5+) e: (4+, 7)
+            840: c: (7+) e: (4+, 5)
 
             c: 1 ignored, 0 unused
             e: 0 ignored, 1 unused
@@ -1631,8 +1667,8 @@ mod tests {
             .build()
             .unwrap();
         let mut solutions_calculator = ccf.solutions_calculator();
-        // 1989680, 1531530, 1081080, 1081080
-        let register_orders = vec![13_693_680, 1_531_530, 1_531_530, 1_081_080];
+        // 8288280, 1531530, 1531530, 1081080
+        let register_orders = vec![8_288_280, 1_531_530, 1_531_530, 1_081_080];
 
         let mut registers = register_orders
             .into_iter()
