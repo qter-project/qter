@@ -103,6 +103,11 @@ impl<T> NonemptyVec<T> {
 
 impl<'a, T> NonemptySlice<'a, T> {
     #[must_use]
+    pub fn into_slice(self) -> &'a [T] {
+        self.0
+    }
+
+    #[must_use]
     pub fn len(self) -> NonZeroUsize {
         unsafe { NonZeroUsize::new_unchecked(self.0.len()) }
     }
