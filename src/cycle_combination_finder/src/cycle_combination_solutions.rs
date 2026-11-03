@@ -58,8 +58,6 @@ pub struct CycleCombinationSolutionsCalculator<'pd, 'a, const N: usize> {
     register_exponent_sorter: Vec<(u16, u8)>,
     /// Gives the best orientation orders
     best_orientations_queue: [BestOrientation; MAX_ORIENTATION_EXP],
-    /// Sorted orbits to visit, stacked by recursion depth
-    orbit_traversal_stack: Vec<OrbitTraversalCandidate<'pd, N>>,
 
     /// Map of every register, to its cycles, to which orbit its prime power
     /// component is assigned to and bitmask
@@ -141,14 +139,6 @@ struct OrbitTraversalState<'a, const N: usize> {
     unused_piece_count: u16,
     orientation_exps: &'a OrderExps<N>,
     register_orbit_constraint: RegisterOrbitConstraint,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct OrbitTraversalCandidate<'a, const N: usize> {
-    orbit_index2: usize,
-    /// Visited after every orbit not in the second pass
-    second_pass: bool,
-    orbit_traversal_state: OrbitTraversalState<'a, N>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -248,7 +238,6 @@ impl<'pd, const N: usize> CycleCombinationFinder<'pd, N> {
             ccf: self,
             register_exponent_sorter,
             best_orientations_queue,
-            orbit_traversal_stack: vec![],
             immutable: CycleCombinationSolutionsCalculatorImmutable {
                 initial_register_orbit_constraints,
                 initial_orbit_remaining_piece_counts,
@@ -413,95 +402,99 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
             .order;
         let register_order_exp = register_order.prime_exponent(prime_index);
 
-        // Every orbit's traversal state is restored after recursing, so the visit order
-        // can be computed once. Visit orbits in ascending `traversal_cmp` order,
-        // skipping equal elements.
-        let ccf = self.ccf;
-        let expansion = self.expansion;
-        let orbit_count = ccf.puzzle_def.orbit_defs().len().get();
-        let start = self.orbit_traversal_stack.len();
-        for (orbit_index2, (orientation_exps, &orbit_remaining_pieces)) in ccf
-            .puzzle_def
-            .orientations_exps()
-            .into_slice()
-            .iter()
-            .zip(&self.orbit_remaining_pieces)
-            .enumerate()
-        {
-            let orientation_prime_index = orientation_exps
-                .0
-                .simd_ne(Simd::splat(0))
-                .to_bitmask()
-                .trailing_zeros() as usize;
-            // If the prime has no orienting orbits then place it into other orienting
-            // orbits last. This favors noncanonical cycles.
-            let orienting_orbit = if any_orienting_unassigned_exponent {
-                orientation_prime_index == prime_index
-            } else {
-                orientation_prime_index != 64
-            };
-            trace!(
-                "orienting_orbit={orienting_orbit}; orientation_prime={}; p={prime}",
-                FIRST_65_PRIMES[orientation_prime_index]
-            );
+        let mut traverse_orienting_orbits = any_orienting_unassigned_exponent;
+        let mut maybe_prev_traversal_state: Option<(usize, OrbitTraversalState<N>)> = None;
+        let orientations_exps = self.ccf.puzzle_def.orientations_exps();
+        loop {
             // Do not consider a non-orienting cycle visiting other orienting orbits to
             // be orienting that cycle
-            let cycle_orients = any_orienting_unassigned_exponent && orienting_orbit;
-            // fast check to make sure the nonorienting prime fits into this orbit
-            // we cannot use logarithms because it misbehaves when the orbit size
-            // exactly fits the prime power
-            if !cycle_orients
-                && prime
-                    .checked_pow(u32::from(register_order_exp))
-                    .is_none_or(|pp| pp > orbit_remaining_pieces.unused)
-            {
+            let cycle_orients = any_orienting_unassigned_exponent && traverse_orienting_orbits;
+            // Visit orbits in ascending `traversal_cmp` order, skipping equal elements
+            let Some((orbit_index2, orbit_traversal_state)) = orientations_exps
+                .iter()
+                .zip(&self.orbit_remaining_pieces)
+                .enumerate()
+                .fold(
+                    None,
+                    |acc, (orbit_index2, (orientation_exps, &orbit_remaining_pieces))| {
+                        let orientation_prime_index = orientation_exps
+                            .0
+                            .simd_ne(Simd::splat(0))
+                            .to_bitmask()
+                            .trailing_zeros()
+                            as usize;
+                        // If the prime has no orienting orbits then place it into other orienting
+                        // orbits last. This favors noncanonical cycles.
+                        let orienting_orbit = if any_orienting_unassigned_exponent {
+                            orientation_prime_index == prime_index
+                        } else {
+                            orientation_prime_index != 64
+                        };
+                        trace!(
+                            "orienting_orbit={orienting_orbit}; orientation_prime={}; p={prime}",
+                            FIRST_65_PRIMES[orientation_prime_index]
+                        );
+                        if traverse_orienting_orbits != orienting_orbit {
+                            return acc;
+                        }
+                        let register_orbit_constraint = self.register_orbit_constraints
+                            [register_index2 * self.ccf.puzzle_def.orbit_defs().len().get()
+                                + orbit_index2];
+                        // fast check to make sure the nonorienting prime fits into this orbit
+                        // we cannot use logarithms because it misbehaves when the orbit size
+                        // exactly fits the prime power
+                        if !cycle_orients
+                            && prime
+                                .checked_pow(u32::from(register_order_exp))
+                                .is_none_or(|pp| pp > orbit_remaining_pieces.unused)
+                        {
+                            return acc;
+                        }
+                        let curr = OrbitTraversalState {
+                            unused_piece_count: orbit_remaining_pieces.unused,
+                            orientation_exps,
+                            register_orbit_constraint,
+                        };
+                        // Filter out everything <= the previous traversal state
+                        if maybe_prev_traversal_state.is_some_and(|(prev_orbit_index2, prev)| {
+                            traversal_cmp(
+                                orbit_index2,
+                                &curr,
+                                prev_orbit_index2,
+                                &prev,
+                                self.expansion,
+                            )
+                            .is_le()
+                        }) {
+                            acc
+                        // curr is > the previous traversal state. If we have a
+                        // previous best `min` and curr < min, or if there was
+                        // no previous best, swap out the best with curr.
+                        } else if acc.as_ref().is_none_or(|&(min_orbit_index2, min)| {
+                            traversal_cmp(
+                                orbit_index2,
+                                &curr,
+                                min_orbit_index2,
+                                &min,
+                                self.expansion,
+                            )
+                            .is_lt()
+                        }) {
+                            Some((orbit_index2, curr))
+                        } else {
+                            acc
+                        }
+                    },
+                )
+            else {
+                if traverse_orienting_orbits != any_orienting_unassigned_exponent {
+                    break;
+                }
+                traverse_orienting_orbits = !traverse_orienting_orbits;
+                maybe_prev_traversal_state = None;
                 continue;
-            }
-            self.orbit_traversal_stack.push(OrbitTraversalCandidate {
-                orbit_index2,
-                second_pass: orienting_orbit != any_orienting_unassigned_exponent,
-                orbit_traversal_state: OrbitTraversalState {
-                    unused_piece_count: orbit_remaining_pieces.unused,
-                    orientation_exps,
-                    register_orbit_constraint: self.register_orbit_constraints
-                        [register_index2 * orbit_count + orbit_index2],
-                },
-            });
-        }
-        let candidate_cmp = |a: &OrbitTraversalCandidate<N>, b: &OrbitTraversalCandidate<N>| {
-            a.second_pass.cmp(&b.second_pass).then_with(|| {
-                traversal_cmp(
-                    a.orbit_index2,
-                    &a.orbit_traversal_state,
-                    b.orbit_index2,
-                    &b.orbit_traversal_state,
-                    expansion,
-                )
-            })
-        };
-        self.orbit_traversal_stack[start..].sort_unstable_by(candidate_cmp);
-        let mut end = start;
-        for candidate_index in start..self.orbit_traversal_stack.len() {
-            if end == start
-                || candidate_cmp(
-                    &self.orbit_traversal_stack[end - 1],
-                    &self.orbit_traversal_stack[candidate_index],
-                )
-                .is_ne()
-            {
-                self.orbit_traversal_stack[end] = self.orbit_traversal_stack[candidate_index];
-                end += 1;
-            }
-        }
-        self.orbit_traversal_stack.truncate(end);
-
-        for candidate_index in start..end {
-            let OrbitTraversalCandidate {
-                orbit_index2,
-                second_pass,
-                orbit_traversal_state,
-            } = self.orbit_traversal_stack[candidate_index];
-            let cycle_orients = any_orienting_unassigned_exponent && !second_pass;
+            };
+            maybe_prev_traversal_state = Some((orbit_index2, orbit_traversal_state));
             trace!("{register_index2} {orbit_index2}; p={prime}");
 
             let OrbitTraversalState {
@@ -661,16 +654,16 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                 }
 
                 let exists = self.recursive_backtrack(registers);
-                if exists
-                    && (self.existence_mode()
-                        || self.ccf.solution_expansion.max_count.is_some_and(|max| {
-                            self.maybe_solutions.as_ref().is_some_and(
-                                |CycleCombinationSolutions(solutions)| solutions.len() >= max.get(),
-                            )
-                        }))
-                {
-                    self.orbit_traversal_stack.truncate(start);
-                    return true;
+                if exists {
+                    if self.existence_mode() {
+                        return true;
+                    } else if let Some(max) = self.ccf.solution_expansion.max_count
+                        && self.maybe_solutions.as_ref().is_some_and(
+                            |CycleCombinationSolutions(solutions)| solutions.len() >= max.get(),
+                        )
+                    {
+                        return true;
+                    }
                 }
                 trace!(
                     "{register_index2} {orbit_index}: undo {old_orientation_satisfied_by:?} <- \
@@ -698,7 +691,6 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                     .known_share_state = old_known_share_state;
             }
         }
-        self.orbit_traversal_stack.truncate(start);
         false
     }
 
