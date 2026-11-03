@@ -8,8 +8,6 @@
 ## CCF
 
 - important
-  - minimum solution expansion flag
-  - sort the order value constraints if i dont already
   - optimize orbit traversal algorithm: dont loop twice to change states
   - fit equal fitting cycles first into orbits
     - if the remaining pieces is less than a prime number, then fit it there last

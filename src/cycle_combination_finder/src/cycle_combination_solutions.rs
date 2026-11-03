@@ -47,7 +47,7 @@ pub struct CycleCombinationSolution {
 
 #[non_exhaustive]
 #[derive(Debug)]
-pub struct CycleCombinationSolutionsCalculator<'a, 'b, const N: usize> {
+pub struct CycleCombinationSolutionsCalculator<'pd, 'a, const N: usize> {
     expansion: bool,
     register_index: u16,
 
@@ -65,7 +65,7 @@ pub struct CycleCombinationSolutionsCalculator<'a, 'b, const N: usize> {
     register_orbit_constraints: Box<[RegisterOrbitConstraint]>,
     /// Remaining piece count for every orbit
     orbit_remaining_pieces: Box<[OrbitRemainingPieces]>,
-    ccf: &'b CycleCombinationFinder<'a, N>,
+    ccf: &'a CycleCombinationFinder<'pd, N>,
     immutable: CycleCombinationSolutionsCalculatorImmutable<N>,
 }
 
@@ -174,9 +174,9 @@ impl CycleOrientState {
     }
 }
 
-impl<'a, const N: usize> CycleCombinationFinder<'a, N> {
+impl<'pd, const N: usize> CycleCombinationFinder<'pd, N> {
     #[must_use]
-    pub(crate) fn solutions_calculator(&self) -> CycleCombinationSolutionsCalculator<'a, '_, N> {
+    pub(crate) fn solutions_calculator(&self) -> CycleCombinationSolutionsCalculator<'pd, '_, N> {
         let register_assignments = vec![
             RegisterCycleAssignments {
                 all_exponents_mask: 0,
@@ -361,6 +361,10 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                 } else if invalid {
                     trace!("pruned by invalid");
                     false
+                // debugging
+                // } else if self.register_index == 2 {
+                //     self.emit_solution(registers);
+                //     true
                 } else {
                     self.recursive_backtrack(registers)
                 };
@@ -653,10 +657,9 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                 if exists {
                     if self.existence_mode() {
                         return true;
-                    } else if let ValidatedSolutionExpansion::Limit(limit) =
-                        self.ccf.solution_expansion
+                    } else if let Some(max) = self.ccf.solution_expansion.max_count
                         && self.maybe_solutions.as_ref().is_some_and(
-                            |CycleCombinationSolutions(solutions)| solutions.len() >= limit.get(),
+                            |CycleCombinationSolutions(solutions)| solutions.len() >= max.get(),
                         )
                     {
                         return true;
@@ -1504,7 +1507,7 @@ mod tests {
             .unwrap();
         let solutions_calculator = ccf.solutions_calculator();
         let register_orders = vec![3];
-        
+
         let expected = "
             3: 0: (3)
 

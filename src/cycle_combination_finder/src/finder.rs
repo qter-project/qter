@@ -95,29 +95,28 @@ impl NumCores {
 }
 
 #[derive(Clone, Copy, Default, Debug, PartialEq)]
-pub(crate) enum ValidatedSolutionExpansion {
-    #[default]
-    All,
-    Limit(NonZeroUsize),
+pub(crate) struct ValidatedSolutionExpansion {
+    pub(crate) max_count: Option<NonZeroUsize>,
 }
 
 #[derive(Clone, Copy, Default, Debug, PartialEq)]
 pub enum SolutionExpansion {
     #[default]
     All,
-    Limit(usize),
+    /// Truncates expansion
+    MaxCount(usize),
 }
 
 impl SolutionExpansion {
-    pub const FIRST: Self = Self::Limit(1);
+    pub const FIRST: Self = Self::MaxCount(1);
 
     fn validate(self) -> Option<ValidatedSolutionExpansion> {
-        match self {
-            SolutionExpansion::All => Some(ValidatedSolutionExpansion::All),
-            SolutionExpansion::Limit(limit) => {
-                NonZeroUsize::new(limit).map(ValidatedSolutionExpansion::Limit)
-            }
-        }
+        Some(ValidatedSolutionExpansion {
+            max_count: match self {
+                SolutionExpansion::All => None,
+                SolutionExpansion::MaxCount(max) => Some(NonZeroUsize::new(max)?),
+            },
+        })
     }
 }
 
@@ -258,9 +257,9 @@ pub struct CycleCombinationFinderBuilder<R, P> {
 }
 
 #[derive(Clone, Debug)]
-pub struct CycleCombinationFinder<'a, const N: usize> {
+pub struct CycleCombinationFinder<'pd, const N: usize> {
     pub(crate) register_count: NonZeroU16,
-    pub(crate) puzzle_def: &'a PuzzleDef<N>,
+    pub(crate) puzzle_def: &'pd PuzzleDef<N>,
     pub(crate) possible_orders_except_one: Arc<[PossibleOrder<N>]>,
     pub(crate) optimality: Optimality,
     pub(crate) num_cores: ValidatedNumCores,
@@ -410,7 +409,7 @@ impl Default for CycleCombinationFinderBuilder<NeedsRegisters, NeedsPuzzleAnalys
             sorted: true,
             maybe_expected_solution_count: None,
             maybe_max_fitting_tries: None,
-            solution_expansion: SolutionExpansion::Limit(10_000),
+            solution_expansion: SolutionExpansion::MaxCount(100_000),
             maybe_mss_batch_size: None,
             maybe_time_limit: None,
             fast_assumptions: true,
@@ -608,15 +607,15 @@ impl<'a, 'pd, R, const N: usize> CycleCombinationFinderBuilder<R, HasPuzzleAnaly
     }
 }
 
-impl<'a, const N: usize>
-    CycleCombinationFinderBuilder<HasRegisters<N>, HasPuzzleAnalysis<'a, '_, N>>
+impl<'pd, const N: usize>
+    CycleCombinationFinderBuilder<HasRegisters<N>, HasPuzzleAnalysis<'pd, '_, N>>
 {
     /// Validate the builder.
     ///
     /// # Errors
     ///
     /// Errors following the variants of `CycleCombinationFinderBuildError`.
-    pub fn build(self) -> Result<CycleCombinationFinder<'a, N>, CycleCombinationFinderBuildError> {
+    pub fn build(self) -> Result<CycleCombinationFinder<'pd, N>, CycleCombinationFinderBuildError> {
         let CycleCombinationFinderBuilder {
             registers: HasRegisters(registers),
             puzzle_analysis: HasPuzzleAnalysis(puzzle_analysis),
@@ -1066,7 +1065,7 @@ mod tests {
             .with_registers(Register::default_count(3))
             // .with_max_fitting_tries(Some(500))
             // .with_optimality(Optimality::MaxOrderRatio(1.0))
-            .with_solution_expansion(SolutionExpansion::Limit(10))
+            .with_solution_expansion(SolutionExpansion::MaxCount(10))
             .with_mss_batch_size(Some(100))
             .build()
             .unwrap()

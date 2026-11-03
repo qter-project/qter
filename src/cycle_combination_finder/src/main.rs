@@ -40,18 +40,19 @@ fn main() {
             PuzzleAnalysis::new(&minx3, NumCores::AllCores).unwrap_or_else(|e| panic!("{e}"));
         let ret = ccf
             .with_puzzle_analysis(&analysis)
-            .with_registers(vec![
-                Register::default().with_order_value_constraint(OrderValueConstraint::Exactly(
-                    Int::<U>::from(180u64),
-                )),
-                Register::default().with_order_value_constraint(OrderValueConstraint::Exactly(
-                    Int::<U>::from(15u64),
-                )),
-                Register::default(),
-                Register::default(),
-            ])
+            .with_registers(Register::default_count(4))
+            // .with_registers(vec![
+            //     Register::default().with_order_value_constraint(OrderValueConstraint::Exactly(
+            //         Int::<U>::from(180u64),
+            //     )),
+            //     Register::default().with_order_value_constraint(OrderValueConstraint::Exactly(
+            //         Int::<U>::from(15u64),
+            //     )),
+            //     Register::default(),
+            //     Register::default(),
+            // ])
             // .with_optimality(Optimality::MaxOrderRatio(20.0))
-            .with_expected_solutions_count_assertion(Some(347))
+            // .with_expected_solutions_count_assertion(Some(347))
             .build()
             .unwrap_or_else(|e| panic!("{e}"))
             .find()
@@ -107,7 +108,7 @@ fn main() {
             .with_max_fitting_tries(Some(2500))
             .with_mss_batch_size(Some(10000))
             .with_time_limit(Some(Duration::from_mins(10)))
-            .with_solution_expansion(SolutionExpansion::Limit(100))
+            .with_solution_expansion(SolutionExpansion::MaxCount(100))
             .with_optimality(Optimality::MaxOrderRatio(1.3))
             .build()
             .unwrap_or_else(|e| panic!("{e}"))

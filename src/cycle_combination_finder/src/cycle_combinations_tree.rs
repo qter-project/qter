@@ -831,6 +831,10 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                 }
             }
         }
+        // Registers are assigned in descending order, so `search_dfs_recur` must
+        // consume exact constraints in descending order too
+        exact_order_value_constraints.sort_by_key(|&a| std::cmp::Reverse(a));
+        at_least_order_value_constraints.sort_by_key(|&a| std::cmp::Reverse(a));
 
         // We can unwrap because `exact_register_count` is NonZero.
         #[allow(clippy::missing_panics_doc)]
