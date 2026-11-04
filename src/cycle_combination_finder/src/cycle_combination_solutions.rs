@@ -15,7 +15,7 @@ use log::{Level, debug, log_enabled, trace};
 use crate::{
     FIRST_65_PRIMES,
     cycle_combinations_tree::{DisjointRegisters, dbg_registers},
-    finder::{CycleCombination, CycleCombinationFinder, ValidatedSolutionExpansion},
+    finder::{CycleCombination, CycleCombinationFinder},
     nonemptyvec::NonemptySlice,
     orderexps::OrderExps,
     puzzle::{OrientationStatus, OrientationSumConstraint, orbit_index_cast, register_index_cast},
@@ -270,7 +270,7 @@ fn orbit_traversal_key_cmp<const N: usize>(
 ) -> Ordering {
     let &OrbitTraversalKey {
         orbit_index2,
-        orbit_pass: pass,
+        orbit_pass,
         unused_piece_count,
         orientation_exps,
         register_orbit_constraint:
@@ -282,7 +282,7 @@ fn orbit_traversal_key_cmp<const N: usize>(
     } = state;
     let &OrbitTraversalKey {
         orbit_index2: orbit_index2_1,
-        orbit_pass: pass_1,
+        orbit_pass: orbit_pass_1,
         unused_piece_count: unused_piece_count_1,
         orientation_exps: orientation_exps_1,
         register_orbit_constraint:
@@ -292,8 +292,8 @@ fn orbit_traversal_key_cmp<const N: usize>(
                 borrowed_noncanonical_piece: _,
             },
     } = other_state;
-    let mut ret = pass
-        .cmp(&pass_1)
+    let mut ret = orbit_pass
+        .cmp(&orbit_pass_1)
         .then(unused_piece_count.cmp(&unused_piece_count_1))
         .then(orientation_exps.cmp(orientation_exps_1))
         .then(
@@ -1696,8 +1696,8 @@ mod tests {
             .build()
             .unwrap();
         let mut solutions_calculator = ccf.solutions_calculator();
-        // 8288280, 1531530, 1531530, 1081080
-        let register_orders = vec![8_288_280, 1_531_530, 1_531_530, 1_081_080];
+        let register_orders = vec![
+            6846840, 3063060, 3063060, 1081080];
 
         let mut registers = register_orders
             .into_iter()

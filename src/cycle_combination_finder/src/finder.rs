@@ -8,7 +8,7 @@ use std::{
 
 use fxhash::FxHashMap;
 use humanize_duration::{Truncate, prelude::DurationExt};
-use log::{debug, info, trace};
+use log::{Level, debug, info, log_enabled, trace};
 use puzzle_theory::numbers::{Int, U};
 use rayon::{
     ThreadPool,
@@ -795,14 +795,19 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
             None => expand(),
         };
         info!("Expansion took {}", now.elapsed().human(Truncate::Micro));
-        debug!(
-            "Found {} solutions, with {} expansions average",
-            cycle_combinations.len(),
-            cycle_combinations
+        if log_enabled!(Level::Debug) {
+            let total_expansions = cycle_combinations
                 .iter()
                 .map(|cycle_combination| cycle_combination.solutions.0.len())
-                .sum::<usize>()
-        );
+                .sum::<usize>();
+            #[allow(clippy::cast_precision_loss)]
+            let average_expansions =
+                total_expansions as f64 / cycle_combinations.len().max(1) as f64;
+            debug!(
+                "Found {} solutions, with {average_expansions:.2} expansions average",
+                cycle_combinations.len(),
+            );
+        }
         if self.sorted {
             cycle_combinations.sort_unstable();
         }

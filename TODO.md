@@ -7,6 +7,7 @@
 
 ## CCF
 
+- improve round robin
 - Fit exact **cycles** first, not relevant to orbit ordering
 - An exact fit is also *invalid* when the orbit's orientation still has to be satisfied by a leftover piece (`:532`), so a "perfect fit first" rule needs that exception.
 - **The "dead remainder goes last" rule works against the current order.** The tightest fit is exactly the one most likely to leave a remainder smaller than any prime still to be placed. To add it without breaking the dedup, put the tier first in the sort key: `(tier, unused, ori, share, satisfied_by)`. The tier depends only on the orbit's state and the current prime, so equal states still get equal tiers and the order stays total. Remainders of 1-2 still need special handling for leftover and parity pieces, as I mentioned earlier.
