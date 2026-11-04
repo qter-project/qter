@@ -1,0 +1,399 @@
+
+.registers {
+    S1, E1, M1 <- 3x3 builtin (2,36,144)
+    S2, E2, M2 <- 3x3 builtin (2,36,144)
+    LEAD1, E3, M3 <- 3x3 builtin (2,36,144)
+    LEAD2, E4, M4 <- 3x3 builtin (2,36,144)
+}
+
+.macro flip {  
+    ($BOOL:reg) => {
+        if $BOOL {
+            inc $BOOL
+        } else {
+            set $BOOL to 0
+        }
+    }
+}
+
+.macro compare {  
+    ($BOOL1:reg,$BOOL2:reg) => {
+        if not $BOOL2 {
+            flip $BOOL1
+        }
+    }
+}
+
+.macro halt_if_nan {
+    ($E:reg) => { 
+        inc $E
+        if solved $E {
+            halt "NaN"
+        }
+        dec $E
+    }
+}
+
+// give a register the value of the implicit leading digit
+// this should be the largest power of 2 <= the mantissa order
+.macro give_lead {  
+    ($M:reg) => {
+        add $M 128
+    }
+}
+
+// give a register half of the implicit leading digit
+.macro give_half_lead {  
+    ($M:reg) => {
+        add $M 64
+    }
+}
+
+// give a register the exponent bias
+// this should be (exponent order)/2 - 1
+.macro give_bias{  
+    ($M:reg) => {
+        add $M 17
+    }
+}
+
+
+// cut a value in half. we assume that SCRATCH starts at 0, so KEEP IT CLEAN
+.macro halve {
+    ($M:reg,$SCRATCH:reg) => {
+
+        while not-solved $M {
+            dec $M
+            if solved $M {
+                goto break
+            }
+            inc $SCRATCH
+            dec $M
+        }
+        set $M to $SCRATCH
+    }
+}
+
+
+// cut a value in half, swapping between rounding up and down each time
+.macro halve_directional {
+    ($M:reg,$SCRATCH:reg,$ROUNDDOWN:reg) => {
+
+        while not-solved $M {
+            dec $M
+            if solved $M {
+                if not $ROUNDDOWN {
+                    inc $SCRATCH
+                }
+                flip $ROUNDDOWN
+                goto break
+            }
+            inc $SCRATCH
+            dec $M
+        }
+        set $M to $SCRATCH
+    }
+}
+
+
+// double a value, flipping the LEAD indicator if applicable
+.macro double {
+    ($M:reg,$LEAD:reg,$SCRATCH:reg) => {
+
+        give_lead $SCRATCH 
+        while not-solved $M {
+            dec $M1
+            inc $SCRATCH
+            inc $SCRATCH
+            if solved $SCRATCH {
+                flip $LEAD
+            }
+        }
+
+        if not $LEAD {
+            give_lead $SCRATCH
+        }
+        set $M to $SCRATCH
+    }
+}
+
+
+.macro adjust_extended {
+    ($M:reg,$E:reg,$LEAD:reg,$SCRATCH:reg) => {
+
+        give_lead $SCRATCH
+        while not-solved $M {
+            dec $SCRATCH
+            dec $M
+            if solved $SCRATCH {
+                if $LEAD {
+                    inc $E
+                    halt_if_nan $E
+                    halve $M $SCRATCH
+
+                } else {
+                    flip $LEAD
+                }
+                goto skip_reset
+            }
+        }
+        
+        give_lead -$SCRATCH
+        while not-solved $SCRATCH {
+            inc $SCRATCH
+            inc $M
+        }
+
+        skip_reset:
+    }
+}
+
+
+
+.macro mult_ordered {
+    ($E1:reg,$M1:reg,$E2:reg,$M2:reg) => { 
+
+        // merge exponent values
+
+        .define $NO_OVERFLOW E4
+        while not-solved $E2 {
+            dec $E2
+            if solved $E1 {
+                flip $NO_OVERFLOW
+            }
+            inc $E1
+        }
+
+        .define $NO_UNDERFLOW S2
+        if not $NO_UNDERFLOW {
+            flip $NO_UNDERFLOW
+        }
+        give_bias E3
+        while not-solved E3 {
+            dec E3
+            dec $E1
+            if solved $E1 {
+                if not $NO_OVERFLOW {
+                    flip $NO_OVERFLOW
+                } else {
+                    flip $NO_UNDERFLOW
+                }
+            }
+        }
+
+
+        if not $NO_OVERFLOW {
+            halt "NaN"
+        }
+
+        // if below subnormal, adjust mantissa until subnormal
+        if not $NO_UNDERFLOW {
+            dec $E1
+            while not-solved $E1 {
+                halve $M2 M3
+
+                if LEAD2 {
+                    give_half_lead $M2
+                    flip LEAD2
+                }
+                if solved $M2 {
+                    halt "The product is 0"
+                }
+                inc $E1
+            }
+            inc $E1
+
+        } else {
+            halt_if_nan $E1
+            flip $NO_UNDERFLOW
+        }
+
+
+
+        // the following big chunk does the multiplication
+        // the working value is stored in M3
+        // we repeatedly halve $M1 and double $M2
+        // if $M2 has a lead value, then add $M1 to M3, and drop the lead from $M2
+
+
+        .define $LEAD3 S2
+        .define $ROUNDDOWN E3
+
+        .define $NONZERO_2 E4
+        if not LEAD2 {
+            if solved $M2 {
+                flip $NONZERO_2
+            }
+        }
+        while $NONZERO_2 {
+
+            if LEAD2 {
+                flip LEAD2
+
+                if LEAD1 {
+                    flip $LEAD3
+                }
+            
+                while not-solved $M1 {
+                    inc M3
+                    inc M4
+                    dec $M1
+                    if solved M3 {
+                        flip $NO_OVERFLOW
+                    }
+                }
+                while not-solved M4 {
+                    inc $M1
+                    dec M4
+                }
+
+                if not $NO_OVERFLOW {
+                    flip $NO_OVERFLOW
+                    give_lead -M3
+
+                    if $LEAD3 {
+                        inc $E1
+                        halt_if_nan $E1
+                        halve M3 M4
+                        halve_directional $M1 M4 $ROUNDDOWN
+
+                    } else {
+                        flip $LEAD3
+                    }
+                }
+            }
+
+            if solved $M2 {
+                goto break
+            }
+
+            if not-solved $M1 {
+                halve_directional $M1 M4 $ROUNDDOWN
+            }
+
+            if LEAD1 {
+                flip LEAD1
+                give_half_lead $M1
+            }
+
+            if solved $M1 {
+                goto break
+            }
+
+            double $M2 LEAD2 M4
+
+            if not LEAD2 {
+                if solved $M2 {
+                    flip $NONZERO_2
+                }
+            }
+        }
+
+        
+
+        if solved M3 {
+            if not $LEAD3 {
+                halt "The product is 0" 
+            }
+        }
+
+
+        adjust_extended M3 $E1 $LEAD3 M4
+
+        while not $LEAD3 {
+            dec $E1
+            if solved $E1 {
+                goto break
+            }
+
+            double M3 $LEAD3 M4
+        }
+
+        print "The sign of the product is " S1
+        print "The exponent of the product is " $E1
+        halt "The mantissa of the product is " M3
+    }
+}
+
+
+
+
+
+input "Enter the sign of first value" S1
+input "Enter the exponent of first value" E1
+halt_if_nan E1
+input "Enter the mantissa of first value" M1
+input "Enter the sign of second value" S2
+input "Enter the exponent of second value" E2
+halt_if_nan E2
+input "Enter the mantissa of second value" M2
+
+
+if solved E1 {
+    if solved M1 {
+        halt "The product is 0" 
+    }
+}
+if solved E2 {
+    if solved M2 {
+        halt "The product is 0" 
+    }
+}
+
+
+// result is not negative if signs match
+compare S1 S2 
+flip S1
+
+
+// assuming they start true, set false
+flip LEAD1
+flip LEAD2
+
+
+// send reg 1 first if only reg 2 is subnormal
+if not-solved E1 {
+    flip LEAD1
+    if solved E2 {
+        inc E2
+        mult_ordered E1 M1 E2 M2
+    }
+}
+
+// send reg 2 first if only reg 1 is subnormal
+if not-solved E2 {
+    flip LEAD2
+    if solved E1 {
+        inc E1
+        mult_ordered E2 M2 E1 M1
+    }
+}
+
+
+// if both are normal or both are subnormal, send larger mantissa first
+
+while not-solved M1{
+    if solved M2 {
+        goto break
+    }
+    dec M1
+    dec M2
+    inc M3
+}
+
+if solved M2 {
+    while not-solved M3 {
+        inc M1
+        inc M2
+        dec M3
+    }
+    mult_ordered E1 M1 E2 M2
+}
+
+while not-solved M3 {
+    inc M1
+    inc M2
+    dec M3
+}
+mult_ordered E2 M2 E1 M1
+
