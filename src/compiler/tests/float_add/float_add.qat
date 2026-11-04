@@ -8,9 +8,9 @@
 .macro flip {  
     ($BOOL:reg) => {
         if $BOOL {
-            set $BOOL to 0
-        } else {
             inc $BOOL
+        } else {
+            set $BOOL to 0
         }
     }
 }
@@ -35,39 +35,68 @@
 
 
 // give a register the value of the implicit leading digit
+// this should be the largest power of 2 <= the mantissa order
 .macro give_lead {  
     ($M:reg) => {
-        add $M 1024
+        add $M 128
     }
 }
 
 // give a register half of the implicit leading digit
 .macro give_half_lead {  
     ($M:reg) => {
-        add $M 512
+        add $M 64
     }
 }
 
 
-// cut a value in half. we assume that M3 starts at 0, so KEEP IT CLEAN
+// cut a value in half. we assume that SCRATCH starts at 0, so KEEP IT CLEAN
 .macro halve {
-    ($M:reg) => {
-        solved-goto $M halved
+    ($M:reg,$SCRATCH:reg) => {
 
-        dec $M
         while not-solved $M {
             dec $M
-            inc M3
             if solved $M {
                 goto break
             }
+            inc $SCRATCH
             dec $M
         }
-        set $M to M3
-
-        halved:
+        set $M to $SCRATCH
     }
 }
+
+
+.macro adjust_extended {
+    ($M:reg,$E:reg,$LEAD:reg,$SCRATCH:reg) => {
+
+        give_lead $SCRATCH
+        while not-solved $M {
+            dec $SCRATCH
+            dec $M
+            if solved $SCRATCH {
+                if $LEAD {
+                    inc $E
+                    halt_if_nan $E
+                    halve $M $SCRATCH
+
+                } else {
+                    flip $LEAD
+                }
+                goto skip_reset
+            }
+        }
+        
+        give_lead -$SCRATCH
+        while not-solved $SCRATCH {
+            inc $SCRATCH
+            inc $M
+        }
+
+        skip_reset:
+    }
+}
+
 
 .macro add_ordered {
     ($S1:reg,$E1:reg,$M1:reg,$SUB:reg,$E2:reg,$M2:reg) => { 
@@ -120,12 +149,12 @@
         // if both values have an implicit leading 1, dump at least one of them and increase exponent
         lead_adjust:
 
-        halve $M2
+        halve $M2 M3
         give_half_lead $M2
         inc E3
         if solved $E1 {
             halt_if_nan E3
-            halve $M1
+            halve $M1 M3
             give_half_lead $M1
             flip LEAD
         } else {
@@ -138,7 +167,7 @@
         // halve the smaller number until the exponents match
         while not-solved $E1 {
             if LEAD {
-                halve $M2
+                halve $M2 M3
             } else {
                 flip LEAD
             }
@@ -173,8 +202,8 @@
                         halt_if_nan E3
 
                         give_lead -$M1
-                        halve $M1
-                        halve $M2
+                        halve $M1 M3
+                        halve $M2 M3
 
                     } else {
                         flip LEAD
@@ -185,31 +214,7 @@
         }
 
         // if the mantissa is larger than the leading value, adjust down
-        give_lead M3
-        while not-solved $M1 {
-            dec M3
-            dec $M1
-            if solved M3 {
-                if LEAD {
-                    inc E3
-                    halt_if_nan E3
-                    halve $M1
-
-                } else {
-                    flip LEAD
-                }
-                goto skip_reset
-            }
-        }
-
-        // mantissa was flip larger, reset value
-        give_lead -M3
-        while not-solved M3 {
-            inc M3
-            inc $M1
-        }
-
-        skip_reset:
+        adjust_extended $M1 E3 LEAD M3
 
 
         // if there is no implicit leading digit, double until it is so
