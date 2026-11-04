@@ -68,7 +68,7 @@ fn main() {
             .with_puzzle_analysis(&analysis)
             .with_registers(Register::default_count(3))
             .with_mss_batch_size(Some(1000))
-            .with_expected_solutions_count_assertion(Some(296))
+            .with_expected_solutions_count_assertion(Some(306))
             .build()
             .unwrap_or_else(|e| panic!("{e}"))
             .find()

@@ -6,7 +6,7 @@ use std::{
     ptr::{self, NonNull},
     sync::{
         Arc,
-        atomic::{self, AtomicBool, AtomicPtr},
+        atomic::{self, AtomicBool, AtomicPtr, AtomicUsize},
         mpmc,
         nonpoison::Mutex,
     },
@@ -665,9 +665,9 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
         &self,
         core_id: CoreId,
         thread_index: usize,
-        num_cores: usize,
         exact_piece_count: NonZeroU32,
         mut shard: CycleCombinationsTreeShard,
+        first_register_claims: &AtomicUsize,
         old_bucket: &Mutex<usize>,
         time_limit_reached: &AtomicBool,
     ) -> TreeThreadInfo {
@@ -680,14 +680,14 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
             self.optimality.maybe_min_max_order_ratio();
 
         let mut candidate_count = 0;
-        for (i, possible_order) in self
+        // Threads claim first register orders from largest to smallest whenever they
+        // finish one, so a thread with expensive subtrees does not hold up the others
+        while let Some(i) = self
             .possible_orders_except_one
-            .iter()
-            .enumerate()
-            .rev()
-            .skip(thread_index)
-            .step_by(num_cores)
+            .len()
+            .checked_sub(first_register_claims.fetch_add(1, atomic::Ordering::Relaxed) + 1)
         {
+            let possible_order = &self.possible_orders_except_one[i];
             if thread_index == 0
                 && let Some(time_limit) = self.maybe_time_limit
                 && real_time.elapsed() >= time_limit
@@ -768,6 +768,7 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                         }),
                     );
                 }
+                let subtree_real_time = Instant::now();
                 unsafe {
                     shard.search_dfs_recur(
                         next_possible_orders_except_one,
@@ -775,6 +776,15 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                         0,
                         next_remaining_piece_count,
                     );
+                }
+                if log_enabled!(Level::Debug) {
+                    let subtree_real_time = subtree_real_time.elapsed();
+                    if subtree_real_time >= Duration::from_secs(1) {
+                        debug!(
+                            "DFS: root register {i} took {}",
+                            subtree_real_time.human(Truncate::Millis)
+                        );
+                    }
                 }
             }
         }
@@ -884,6 +894,7 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
         )
         .unwrap();
         let real_time = Instant::now();
+        let first_register_claims = AtomicUsize::new(0);
         let old_bucket = Mutex::new(0);
         let time_limit_reached = AtomicBool::new(false);
         std::thread::scope(|s| {
@@ -897,15 +908,16 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                         .extend(std::iter::repeat_n(0, self.mss_batch_size.get()));
                     shard.pareto_efficient_prunings = &pareto_efficient_prunings;
 
+                    let first_register_claims = &first_register_claims;
                     let old_bucket = &old_bucket;
                     let time_limit_reached = &time_limit_reached;
                     let tree_thread_handle = s.spawn(move || {
                         self.dfs_shard_thread(
                             core_id,
                             thread_index,
-                            num_cores,
                             exact_piece_count,
                             shard,
+                            first_register_claims,
                             old_bucket,
                             time_limit_reached,
                         )
