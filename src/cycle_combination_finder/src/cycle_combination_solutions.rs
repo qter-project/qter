@@ -1,6 +1,7 @@
 use std::{
     cmp::Ordering,
     fmt::Debug,
+    hint,
     num::NonZeroUsize,
     simd::{Mask, Simd, cmp::SimdPartialEq},
     sync::{
@@ -498,21 +499,16 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                         orientation_exps,
                         register_orbit_constraint,
                     };
-                    // Filter out everything <= the previous traversal state
-                    if maybe_prev_traversal_state.as_ref().is_some_and(|prev| {
-                        orbit_traversal_key_cmp(&curr, prev, self.expansion).is_le()
-                    }) {
-                        acc
-                    // curr is > the previous traversal state. If we have a
-                    // previous best `min` and curr < min, or if there was no
-                    // previous best, swap out the best with curr.
-                    } else if acc.as_ref().is_none_or(|min| {
+                    // Filter out everything <= the previous traversal state. If curr is > the
+                    // previous traversal state, and we have a previous best `min` and curr < min,
+                    // or if there was no previous best, swap out the best with curr.
+                    let better = maybe_prev_traversal_state.as_ref().is_none_or(|prev| {
+                        orbit_traversal_key_cmp(&curr, prev, self.expansion).is_gt()
+                    }) && acc.as_ref().is_none_or(|min| {
                         orbit_traversal_key_cmp(&curr, min, self.expansion).is_lt()
-                    }) {
-                        Some(curr)
-                    } else {
-                        acc
-                    }
+                    });
+                    // Which orbit wins depends on the orbit states
+                    hint::select_unpredictable(better, Some(curr), acc)
                 },
             )
         {
@@ -1685,7 +1681,7 @@ mod tests {
     }
 
     #[test_log::test]
-    #[ignore = "long"]
+    // #[ignore = "long"]
     fn main1() {
         let minx5 = MINX5.clone();
         let analysis = PuzzleAnalysis::new(&minx5, NumCores::AllCores).unwrap();
@@ -1696,8 +1692,7 @@ mod tests {
             .build()
             .unwrap();
         let mut solutions_calculator = ccf.solutions_calculator();
-        let register_orders = vec![
-            6846840, 3063060, 3063060, 1081080];
+        let register_orders = vec![5354228880, 1531530, 90090, 9240];
 
         let mut registers = register_orders
             .into_iter()

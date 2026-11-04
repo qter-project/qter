@@ -10,6 +10,7 @@
 //! vector of the appropriate size.
 
 use std::{
+    hint,
     marker::PhantomData,
     num::{NonZeroU8, NonZeroUsize},
     time::Instant,
@@ -260,6 +261,11 @@ mod private {
 
         pub fn get_occupied(self) -> Option<u8> {
             if self.is_vacant() { None } else { Some(self.0) }
+        }
+
+        /// Whether a lookup hits a vacant entry depends on the hash
+        pub fn occupied_or(self, default: u8) -> u8 {
+            super::hint::select_unpredictable(self.is_vacant(), default, self.0)
         }
     }
 }
@@ -564,9 +570,7 @@ impl<const EXACT: bool> StorageBackend<EXACT> for UncompressedStorageBackend<EXA
     }
 
     fn admissible_heuristic_hash(&self, hash: u64) -> u8 {
-        self.heuristic_hash(hash)
-            .get_occupied()
-            .unwrap_or(self.depth_traversed)
+        self.heuristic_hash(hash).occupied_or(self.depth_traversed)
     }
 
     fn heuristic_hash(&self, hash: u64) -> OrbitPruneHeuristic {
