@@ -140,7 +140,6 @@ pub enum ValidatedOrderValueConstraint<const N: usize> {
 pub struct PossibleOrder<const N: usize> {
     pub order: OrderExps<N>,
     pub min_piece_count: NonZeroU16,
-    pub min_piece_count_naive: u16,
 }
 
 #[derive(Debug)]
@@ -474,14 +473,9 @@ impl<'pd, const N: usize> PuzzleAnalysis<'pd, N> {
         let mut min_piece_count_calculator = MinPieceCount::from(puzzle_def);
         let mut possible_orders_except_one = possible_orders
             .into_iter()
-            .map(|possible_order| {
-                let (min_piece_count, min_piece_count_naive) =
-                    min_piece_count_calculator.calculate(&possible_order);
-                PossibleOrder {
-                    order: possible_order,
-                    min_piece_count,
-                    min_piece_count_naive,
-                }
+            .map(|possible_order| PossibleOrder {
+                min_piece_count: min_piece_count_calculator.calculate(&possible_order),
+                order: possible_order,
             })
             .collect::<Vec<_>>();
         debug!(

@@ -150,6 +150,9 @@ enum OrbitPass {
 struct OrbitTraversalKey<'a, const N: usize> {
     orbit_index2: usize,
     orbit_pass: OrbitPass,
+    /// The cycle leaves pieces in this orbit that no other unplaced cycle fits
+    /// in
+    dead_remainder: bool,
     unused_piece_count: u16,
     orientation_exps: &'a OrderExps<N>,
     register_orbit_constraint: RegisterOrbitConstraint,
@@ -261,7 +264,7 @@ impl<'pd, const N: usize> CycleCombinationFinder<'pd, N> {
     }
 }
 
-/// (`pass`, `unused_piece_count` `orientation_exps`,
+/// (`pass`, `dead_remainder`, `unused_piece_count` `orientation_exps`,
 /// `known_share_state`, `orientation_satisfied_by`, `orbit_index2` if
 /// expansion)
 fn orbit_traversal_key_cmp<const N: usize>(
@@ -272,6 +275,7 @@ fn orbit_traversal_key_cmp<const N: usize>(
     let &OrbitTraversalKey {
         orbit_index2,
         orbit_pass,
+        dead_remainder,
         unused_piece_count,
         orientation_exps,
         register_orbit_constraint:
@@ -284,6 +288,7 @@ fn orbit_traversal_key_cmp<const N: usize>(
     let &OrbitTraversalKey {
         orbit_index2: orbit_index2_1,
         orbit_pass: orbit_pass_1,
+        dead_remainder: dead_remainder_1,
         unused_piece_count: unused_piece_count_1,
         orientation_exps: orientation_exps_1,
         register_orbit_constraint:
@@ -295,6 +300,7 @@ fn orbit_traversal_key_cmp<const N: usize>(
     } = other_state;
     let mut ret = orbit_pass
         .cmp(&orbit_pass_1)
+        .then(dead_remainder.cmp(&dead_remainder_1))
         .then(unused_piece_count.cmp(&unused_piece_count_1))
         .then(orientation_exps.cmp(orientation_exps_1))
         .then(
@@ -353,8 +359,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                 self.orbit_remaining_pieces, self.register_orbit_constraints,
             );
 
-            let (orbits_unused_piece_count_sum, invalid) =
-                self.finalize_register_orbits(register_index2);
+            let invalid = self.finalize_register_orbits(register_index2);
 
             trace!(
                 "{register_index2} after: {:?} {:?}",
@@ -370,15 +375,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                 }
             } else {
                 self.register_index += 1;
-                let next_register = registers
-                    .get_order(self.register_index, &self.ccf.possible_orders_except_one)
-                    .unwrap();
-                let found = if u32::from(next_register.min_piece_count_naive)
-                    > orbits_unused_piece_count_sum
-                {
-                    trace!("pruned by min piece count");
-                    false
-                } else if invalid {
+                let found = if invalid {
                     trace!("pruned by invalid");
                     false
                 // debugging
@@ -421,6 +418,13 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
             .unwrap()
             .order;
         let register_order_exp = register_order.prime_exponent(prime_index);
+
+        let Some(smallest_other_cycle_len) = self.remaining_cycles_bound(registers, prime_index)
+        else {
+            trace!("pruned by remaining cycles");
+            return false;
+        };
+        let cycle_len = prime.pow(u32::from(register_order_exp));
 
         let mut maybe_prev_traversal_state: Option<OrbitTraversalKey<N>> = None;
         let orientations_exps = self.ccf.puzzle_def.orientations_exps();
@@ -479,7 +483,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                         "pass={orbit_pass:?}; orientation_prime={}; p={prime}",
                         FIRST_65_PRIMES[orientation_prime_index]
                     );
-                    // fast check to make sure the nonorienting prime fits into this orbit. we
+                    // fast check to make sure the nonorienting cycle fits into this orbit. we
                     // cannot use logarithms because it misbehaves when the
                     // orbit size exactly fits the prime power
                     if orbit_pass != OrbitPass::Orienting
@@ -489,12 +493,23 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                     {
                         return acc;
                     }
+                    // Fit cycles last where they leave pieces no other cycle can use, since
+                    // those pieces are wasted
+                    let dead_remainder =
+                        // If the orbit CannotOrient (ie no possible remaining cycle can orient)
+                        orbit_pass == OrbitPass::NonOrienting
+                        && {
+                            let remainder = orbit_remaining_pieces.unused - cycle_len;
+                            // A nonzero remainder smaller than every other cycle is "dead"
+                            remainder != 0 && remainder < smallest_other_cycle_len
+                        };
                     let register_orbit_constraint = self.register_orbit_constraints[register_index2
                         * self.ccf.puzzle_def.orbit_defs().len().get()
                         + orbit_index2];
                     let curr = OrbitTraversalKey {
                         orbit_index2,
                         orbit_pass,
+                        dead_remainder,
                         unused_piece_count: orbit_remaining_pieces.unused,
                         orientation_exps,
                         register_orbit_constraint,
@@ -715,12 +730,81 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
         false
     }
 
+    /// Bounds the pieces needed by the unplaced cycles of this and later
+    /// registers. Returns `None` if they cannot fit, and otherwise the length
+    /// of the smallest unplaced cycle other than this register's `prime_index`
+    /// cycle.
+    fn remaining_cycles_bound(
+        &self,
+        registers: DisjointRegisters,
+        prime_index: usize,
+    ) -> Option<u16> {
+        let max_orientation_exps = self.ccf.puzzle_def.orientations_exps_lcm();
+        let mut min_piece_count_sum = 0u32;
+        let mut largest_min_piece_count = 0;
+        // why u32
+        let mut smallest_cycle_len = u16::MAX;
+        let mut smallest_other_cycle_len = u16::MAX;
+        for (register_index2, possible_order) in registers
+            .iter_orders(&self.ccf.possible_orders_except_one)
+            .enumerate()
+            .skip(usize::from(self.register_index))
+        {
+            let mut unassigned_exponents_mask =
+                self.register_assignments[register_index2].unassigned_exponents_mask;
+            while unassigned_exponents_mask != 0 {
+                let cycle_prime_index = unassigned_exponents_mask.trailing_zeros() as usize;
+                unassigned_exponents_mask &= unassigned_exponents_mask - 1;
+                let prime = FIRST_65_PRIMES[cycle_prime_index];
+                let exp = possible_order.order.prime_exponent(cycle_prime_index);
+                let cycle_len = prime.saturating_pow(u32::from(exp));
+                // Orienting in the orbit with the most orientation saves the most pieces
+                let min_exp =
+                    exp.saturating_sub(max_orientation_exps.prime_exponent(cycle_prime_index));
+                let min_piece_count = if min_exp == 0 {
+                    0
+                } else {
+                    prime.saturating_pow(u32::from(min_exp))
+                };
+                min_piece_count_sum += u32::from(min_piece_count);
+                largest_min_piece_count = largest_min_piece_count.max(min_piece_count);
+                smallest_cycle_len = smallest_cycle_len.min(cycle_len);
+                if register_index2 != usize::from(self.register_index)
+                    || cycle_prime_index != prime_index
+                {
+                    smallest_other_cycle_len = smallest_other_cycle_len.min(cycle_len);
+                }
+            }
+        }
+
+        let mut usable_piece_count = 0;
+        let mut largest_unused_piece_count = 0;
+        for (orbit_remaining_pieces, orientation_exps) in self
+            .orbit_remaining_pieces
+            .iter()
+            .zip(self.ccf.puzzle_def.orientations_exps().iter())
+        {
+            let unused_piece_count = orbit_remaining_pieces.unused;
+            largest_unused_piece_count = largest_unused_piece_count.max(unused_piece_count);
+            // Only cycles use the pieces of an orbit that cannot orient, so they are
+            // wasted if every unplaced cycle is longer
+            if unused_piece_count >= smallest_cycle_len
+                || orientation_exps.0.simd_ne(Simd::splat(0)).any()
+            {
+                usable_piece_count += u32::from(unused_piece_count);
+            }
+        }
+
+        (largest_min_piece_count <= largest_unused_piece_count
+            && min_piece_count_sum <= usable_piece_count)
+            .then_some(smallest_other_cycle_len)
+    }
+
     #[inline]
-    fn finalize_register_orbits(&mut self, register_index2: usize) -> (u32, bool) {
+    fn finalize_register_orbits(&mut self, register_index2: usize) -> bool {
         let (orbits_constraints, next_orbits_constraints) = self.register_orbit_constraints
             [register_index2 * self.ccf.puzzle_def.orbit_defs().len().get()..]
             .split_at_mut(self.ccf.puzzle_def.orbit_defs().len().get());
-        let mut orbits_unused_piece_count_sum = 0;
         let mut invalid = false;
         for (
             orbit_index2,
@@ -795,9 +879,8 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
             {
                 *next_share_state = *known_share_state;
             }
-            orbits_unused_piece_count_sum += u32::from(orbit_remaining_piece.unused);
         }
-        (orbits_unused_piece_count_sum, invalid)
+        invalid
     }
 
     #[inline]
@@ -840,6 +923,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                         let register_orbit_index = register_index2
                             * self.ccf.puzzle_def.orbit_defs().len().get()
                             + orbit_index2;
+                        // Panic is okay because `cycle_piece_count` is less than u16::MAX
                         let cycle_piece_count = prime.pow(u32::from(exp));
                         register_orbit_cycles[register_orbit_index].push(Cycle {
                             piece_count: cycle_piece_count,
@@ -1200,10 +1284,11 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
         self.fitting_tries = 0;
         if self.expansion {
             self.recursive_backtrack(registers);
-            if self.maybe_solutions.is_some() {
+            if let Some(solutions) = &self.maybe_solutions {
                 debug!(
-                    "Expansion for {} in {} steps",
+                    "Expansion for {} found {} solutions in {} steps",
                     dbg_registers(registers.iter(), &self.ccf.possible_orders_except_one),
+                    solutions.0.len(),
                     self.fitting_tries
                 );
             }
@@ -1373,7 +1458,6 @@ mod tests {
             possible_orders_except_one: Arc::from(vec![PossibleOrder {
                 order: OrderExps::try_from(NonZeroU16::new(3).unwrap()).unwrap(),
                 min_piece_count: 1.try_into().unwrap(),
-                min_piece_count_naive: 1,
             }]),
         };
         let ccf = CycleCombinationFinderBuilder::default()

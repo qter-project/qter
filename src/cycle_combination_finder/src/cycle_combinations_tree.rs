@@ -780,8 +780,9 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                 if log_enabled!(Level::Debug) {
                     let subtree_real_time = subtree_real_time.elapsed();
                     if subtree_real_time >= Duration::from_secs(1) {
-                        debug!(
-                            "DFS: root register {i} took {}",
+                        trace!(
+                            "DFS: root register order {:?} took {}; i={i}",
+                            possible_order,
                             subtree_real_time.human(Truncate::Millis)
                         );
                     }

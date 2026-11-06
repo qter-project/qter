@@ -67,7 +67,7 @@ fn main() {
         let ret = CycleCombinationFinderBuilder::default()
             .with_puzzle_analysis(&analysis)
             .with_registers(Register::default_count(3))
-            .with_mss_batch_size(Some(1000))
+            .with_mss_batch_size(Some(10000))
             .with_expected_solutions_count_assertion(Some(306))
             .build()
             .unwrap_or_else(|e| panic!("{e}"))
@@ -88,8 +88,9 @@ fn main() {
             PuzzleAnalysis::new(&minx4, NumCores::AllCores).unwrap_or_else(|e| panic!("{e}"));
         let ret = CycleCombinationFinderBuilder::default()
             .with_puzzle_analysis(&analysis)
+            .with_mss_batch_size(Some(100000))
             .with_registers(Register::default_count(4))
-            .with_optimality(Optimality::MaxOrderRatio(10.0))
+            // .with_optimality(Optimality::MaxOrderRatio(10.0))
             .with_mss_batch_size(Some(1))
             .build()
             .unwrap_or_else(|e| panic!("{e}"))
@@ -105,11 +106,10 @@ fn main() {
         let ret = CycleCombinationFinderBuilder::default()
             .with_puzzle_analysis(&analysis)
             .with_registers(Register::default_count(3))
-            .with_max_fitting_tries(Some(2500))
             .with_mss_batch_size(Some(10000))
+            .with_optimality(Optimality::MaxOrderRatio(5.0))
             .with_time_limit(Some(Duration::from_mins(10)))
-            .with_solution_expansion(SolutionExpansion::MaxCount(100))
-            .with_optimality(Optimality::MaxOrderRatio(1.3))
+            .with_solution_expansion(SolutionExpansion::MaxCount(100000))
             .build()
             .unwrap_or_else(|e| panic!("{e}"))
             .find()
@@ -123,8 +123,8 @@ fn main() {
             );
             println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
         }
-    } else if p == "cube5" {
-        let cube3 = cubeN::CUBE5.clone();
+    } else if p == "cube3" {
+        let cube3 = cubeN::CUBE3.clone();
         let analysis =
             PuzzleAnalysis::new(&cube3, NumCores::AllCores).unwrap_or_else(|e| panic!("{e}"));
         let ret = ccf
@@ -132,12 +132,13 @@ fn main() {
             // .with_fast_assumptions(false)
             .with_puzzle_analysis(&analysis)
             .with_registers(vec![
-                Register::default().with_order_value_constraint(OrderValueConstraint::Exactly(
-                    Int::<U>::from(2u64),
-                )),
+                // Register::default().with_order_value_constraint(OrderValueConstraint::Exactly(
+                //     Int::<U>::from(2u64),
+                // )),
                 // Register::default().with_order_value_constraint(OrderValueConstraint::Custom(
                 //     |order| order.0.simd_ne(Simd::splat(0)).to_bitmask() == 1,
                 // )),
+                Register::default(),
                 Register::default(),
                 Register::default(),
             ])

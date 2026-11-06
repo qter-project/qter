@@ -7,21 +7,34 @@
 
 ## CCF
 
-- improve round robin
-- Fit exact **cycles** first, not relevant to orbit ordering
+- dont make the first thread only log the total time, make it every "first register reciever + len(orders) / 100"
+- figure out why putting the 9 cycles in the edges orbit didnt just preassign that 9 cycle to corners
+- root register should fit an exact constraint
+- log outliers instead of hardcoding 1s
+- Fit exact cycles first, not relevant to orbit ordering
 - An exact fit is also *invalid* when the orbit's orientation still has to be satisfied by a leftover piece (`:532`), so a "perfect fit first" rule needs that exception.
-- **The "dead remainder goes last" rule works against the current order.** The tightest fit is exactly the one most likely to leave a remainder smaller than any prime still to be placed. To add it without breaking the dedup, put the tier first in the sort key: `(tier, unused, ori, share, satisfied_by)`. The tier depends only on the orbit's state and the current prime, so equal states still get equal tiers and the order stays total. Remainders of 1-2 still need special handling for leftover and parity pieces, as I mentioned earlier.
-- The largest unplaced non-orienting pᵏ is bigger than the largest orbit's unused count → fail.
-- The current register's remaining cycles need more pieces than are left in total → fail.
-- if the remaining pieces is less than a prime number, then fit it there last
 
 - parity; look in stash!
 
-TreeThreadInfo already records each thread's candidate_count and real_time. They're only summed and never logged per thread. Logging them per thread, plus time and candidate count for each first-register subtree, would tell the causes apart:
+- make this case auto flip the edges cycle
 
-- If one or a few subtrees account for most of the time, it's cause 1. The fix is to split work below the first register, or hand it out dynamically.
-- If candidate counts are even but times aren't, it's the hardware (cause 3).
-- If a thread's candidate count for the same subtree changes from run to run, it's timing-dependent pruning (cause 2).
+840:
+
+c: (5+)
+e: (4+, 7)
+
+3:
+
+c: (1+)
+e: ()
+
+3:
+
+c: (1+)
+e: ()
+
+c: 1 ignored, 0 unused
+e: 0 ignored, 1 unused
 
 - `stash@{0}`'s `identical_orbits_dedup` second case (20/18/17 pieces) expects exactly the same output as the 20/20/20 case, including `2: 20 unused` on a 17-piece orbit. It looks copy-pasted and will fail as written.
 - put "equal to" registers first; one less dof
