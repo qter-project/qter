@@ -185,8 +185,7 @@ impl Tokenizer {
             let span = self.mk_span(spot - ".start-rhai".len(), spot);
             self.reporter.push(
                 Report::build(ReportKind::Error, span)
-                    .with_message("Unterminated Rhai block")
-                    .with_label(Label::new(span))
+                    .with_label(Label::new(span).with_message("Unterminated Rhai block"))
                     .finish(),
             );
             return None;
@@ -252,7 +251,7 @@ impl Iterator for Tokenizer {
                         let eof = || {
                             self.reporter.push(
                                 Report::build(ReportKind::Error, self.mk_span(before, self.spot))
-                                    .with_message("Unclosed quotation")
+                                    .with_label(Label::new(self.mk_span(before, self.spot)).with_message("Unclosed quotation"))
                                     .finish(),
                             );
                         };
@@ -315,7 +314,7 @@ impl Iterator for Tokenizer {
                                     ReportKind::Error,
                                     self.mk_span(comment_start, self.spot),
                                 )
-                                .with_message("Unclosed block comment")
+                                .with_label(Label::new(self.mk_span(comment_start, self.spot)).with_message("Unclosed block comment"))
                                 .finish(),
                             );
                             return None;

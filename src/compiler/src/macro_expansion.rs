@@ -22,7 +22,7 @@ pub fn expand(mut parsed: ParsedSyntax, r: &Reporter) -> Option<ExpandedCode> {
         if limit == 0 {
             r.push(
                 Report::build(ReportKind::Error, span)
-                    .with_message("Depth limit reached during macro expansion")
+                    .with_label(ariadne::Label::new(span).with_message("Depth limit reached during macro expansion"))
                     .finish(),
             );
             return None;
@@ -111,7 +111,7 @@ fn expand_block(
                 }
                 Instruction::Define(define) => {
                     if block_info.defines.contains_key(&define.name) {
-                        r.push(Report::build(ReportKind::Error, span).with_message("Cannot shadow a `.define` in the same scope!").finish());
+                        r.push(Report::build(ReportKind::Error, span).with_label(ariadne::Label::new(span).with_message("Cannot shadow a `.define` in the same scope!")).finish());
                         return vec![]
                     }
 
@@ -140,7 +140,7 @@ fn expand_block(
                 }
                 Instruction::Constant(name) => {
                     let whoops = |actually| {
-                            r.push(Report::build(ReportKind::Error, span).with_message(format!("Expected a code block, found {actually}")).finish());
+                            r.push(Report::build(ReportKind::Error, span).with_label(ariadne::Label::new(span).with_message(format!("Expected a code block, found {actually}"))).finish());
                             vec![]
                     };
 
@@ -167,7 +167,7 @@ fn expand_block(
                             }
                         },
                         None => {
-                            r.push(Report::build(ReportKind::Error, span).with_message(format!("`{name}` was not found in this scope")).finish());
+                            r.push(Report::build(ReportKind::Error, span).with_label(ariadne::Label::new(span).with_message(format!("`{name}` was not found in this scope"))).finish());
                             vec![]
                         }
                     }
@@ -179,7 +179,7 @@ fn expand_block(
                     let _ = changed.set(span);
 
                     let whoops = |actually| {
-                            r.push(Report::build(ReportKind::Error, span).with_message(format!("Expected the macro to return a code block; actually returned {actually}")).finish());
+                            r.push(Report::build(ReportKind::Error, span).with_label(ariadne::Label::new(span).with_message(format!("Expected the macro to return a code block; actually returned {actually}"))).finish());
                             vec![]
                     };
 
@@ -245,7 +245,7 @@ fn expand_code(
     else {
         r.push(
             Report::build(ReportKind::Error, macro_call.name.span())
-                .with_message("Macro was not found in this scope")
+                .with_label(ariadne::Label::new(macro_call.name.span()).with_message("Macro was not found in this scope"))
                 .finish(),
         );
         return vec![];
@@ -289,7 +289,7 @@ fn expand_code(
 
             r.push(
                 Report::build(ReportKind::Error, args_span)
-                    .with_message("These arguments did not match any of the patterns of this macro")
+                    .with_label(ariadne::Label::new(args_span).with_message("These arguments did not match any of the patterns of this macro"))
                     .finish(),
             );
             vec![]

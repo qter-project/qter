@@ -18,7 +18,7 @@ pub fn into_rhai(
             crate::MaybeReg::RegNotFound(span) => {
                 r.push(
                     Report::build(ReportKind::Error, span)
-                        .with_message("Register does not exist")
+                        .with_label(ariadne::Label::new(span).with_message("Register does not exist"))
                         .finish(),
                 );
                 return None;

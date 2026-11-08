@@ -32,7 +32,7 @@ impl Program {
             let span = span.unwrap_or_else(|| Span::new(s, 0, s.inner().len()));
             vec![CompileError {
                 report: AriadneReport::build(ReportKind::Error, span)
-                    .with_message(msg)
+                    .with_label(ariadne::Label::new(span).with_message(msg))
                     .finish(),
                 source: s,
             }]

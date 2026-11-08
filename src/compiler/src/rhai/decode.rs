@@ -115,7 +115,7 @@ fn int_from_rhai(value: Dynamic, span: Span, r: &Reporter) -> Option<Result<Int<
         let Ok(v) = u64::try_from(int) else {
             r.push(
                 Report::build(ReportKind::Error, span)
-                    .with_message(format!("Integer values must be positive. Found {int}"))
+                    .with_label(Label::new(span).with_message(format!("Integer values must be positive. Found {int}")))
                     .finish(),
             );
             return None;
@@ -129,7 +129,7 @@ fn int_from_rhai(value: Dynamic, span: Span, r: &Reporter) -> Option<Result<Int<
             if int < Int::<I>::zero() {
                 r.push(
                     Report::build(ReportKind::Error, span)
-                        .with_message(format!("Integer values must be positive. Found {int}"))
+                        .with_label(Label::new(span).with_message(format!("Integer values must be positive. Found {int}")))
                         .finish(),
                 );
                 return None;
@@ -240,9 +240,9 @@ fn try_decode_block(
         Err(value) => {
             r.push(
                 Report::build(ReportKind::Error, span)
-                    .with_message(format!(
+                    .with_label(Label::new(span).with_message(format!(
                         "Unable to interpret `{value}` as a positive integer, identifier, register, constant, or code block."
-                    ))
+                    )))
                     .finish(),
             );
             return None;

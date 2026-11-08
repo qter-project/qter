@@ -118,7 +118,7 @@ pub fn parse(
                     {
                         iter.report(
                             Report::build(ReportKind::Error, name.span())
-                                .with_message("This macro is already defined.")
+                                .with_label(Label::new(name.span()).with_message("This macro is already defined."))
                                 .finish(),
                         );
                         continue;
@@ -138,7 +138,7 @@ pub fn parse(
                     if !filename.ends_with(".qat") {
                         iter.report(
                             Report::build(ReportKind::Error, filename.span())
-                                .with_message("The file extension must be `.qat`")
+                                .with_label(Label::new(filename.span()).with_message("The file extension must be `.qat`"))
                                 .finish(),
                         );
                         ok = false;
@@ -150,7 +150,7 @@ pub fn parse(
                         Err(e) => {
                             iter.report(
                                 Report::build(ReportKind::Error, filename.span())
-                                    .with_message(format!("Unable to find import: {e}"))
+                                    .with_label(Label::new(filename.span()).with_message(format!("Unable to find import: {e}")))
                                     .finish(),
                             );
                             ok = false;
@@ -180,7 +180,7 @@ pub fn parse(
                 } else {
                     iter.report(
                         Report::build(ReportKind::Error, span)
-                            .with_message("Unknown directive; expected .macro or .import")
+                            .with_label(Label::new(span).with_message("Unknown directive; expected .macro or .import"))
                             .finish(),
                     );
                     return None;
@@ -280,11 +280,11 @@ fn register_decl(t: &mut TokenIter) -> Attempt<Option<Puzzle>> {
         } else {
             t.report(
                 Report::build(ReportKind::Error, t.cash_in(start))
-                    .with_message(format!(
+                    .with_label(Label::new(t.cash_in(start)).with_message(format!(
                         "Expected {} names whereas {} were provided.",
                         arch.registers().len(),
                         names.len()
-                    ))
+                    )))
                     .finish(),
             );
 
@@ -310,7 +310,6 @@ fn register_architecture(t: &mut TokenIter) -> Option<PuzzleUnnamed> {
             t.report(
                 Report::build(ReportKind::Error, puzzle_def.span())
                     .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
-                    .with_message(err.clone())
                     .with_label(
                         Label::new(puzzle_def.span())
                             .with_message(err)
@@ -449,7 +448,6 @@ fn parse_alg(t: &mut TokenIter, group: &Arc<PermutationGroup>) -> Option<Algorit
             for span in spans.get(&k).unwrap() {
                 t.report(
                     Report::build(ReportKind::Error, *span)
-                        .with_message("Nonexistant move")
                         .with_help(format!(
                             "Valid options are {}",
                             group
@@ -457,6 +455,7 @@ fn parse_alg(t: &mut TokenIter, group: &Arc<PermutationGroup>) -> Option<Algorit
                                 .sorted_by(|a, b| a.0.cmp(&b.0))
                                 .format_with(", ", |v, f| f(&format_args!("`{}`", v.0)))
                         ))
+                        .with_label(Label::new(*span).with_message("Nonexistant move"))
                         .finish(),
                 );
             }
@@ -614,7 +613,7 @@ fn block(t: &mut TokenIter, branch_key: MacroBranchKey) -> Option<WithSpan<Block
             Attempt::NotTaken(span) => {
                 t.report(
                     Report::build(ReportKind::Error, span)
-                        .with_message("Could not be parsed as an instruction")
+                        .with_label(Label::new(span).with_message("Could not be parsed as an instruction"))
                         .finish(),
                 );
                 return None;
@@ -773,7 +772,7 @@ fn macro_branch(t: &mut TokenIter) -> Attempt<Option<WithSpan<MacroBranch>>> {
             Attempt::NotTaken(span) => {
                 t.report(
                     Report::build(ReportKind::Error, span)
-                        .with_message("Unable to parse as an instruction")
+                        .with_label(Label::new(span).with_message("Unable to parse as an instruction"))
                         .finish(),
                 );
 
@@ -817,7 +816,7 @@ fn macro_pattern_component(t: &mut TokenIter) -> Attempt<Option<WithSpan<MacroPa
                 if let Some(ws) = t.on_whitespace() {
                     t.report(
                         Report::build(ReportKind::Error, ws)
-                            .with_message("Expected colon, found whitespace")
+                            .with_label(Label::new(ws).with_message("Expected colon, found whitespace"))
                             .finish(),
                     );
                     return None;

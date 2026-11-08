@@ -30,7 +30,7 @@ pub fn emit_q(
     if program.puzzles.len() > 1 {
         r.push(
             Report::build(ReportKind::Error, program.puzzles[1].span())
-                .with_message("Compiling with multiple puzzles is unsupported (for now)")
+                .with_label(ariadne::Label::new(program.puzzles[1].span()).with_message("Compiling with multiple puzzles is unsupported (for now)"))
                 .finish(),
         );
     }

@@ -122,7 +122,7 @@ pub fn tokenize(qat: File, reporter: Reporter) -> Option<TokenEnclosure> {
                     let Some((before_t, after_t, encloser, prev_out)) = stack.pop() else {
                         reporter.push(
                             Report::build(ReportKind::Error, span)
-                                .with_message("Unmatched closing delimiter")
+                                .with_label(Label::new(span).with_message("Unmatched closing delimiter"))
                                 .finish(),
                         );
                         return None;
@@ -173,7 +173,7 @@ pub fn tokenize(qat: File, reporter: Reporter) -> Option<TokenEnclosure> {
         for (before, after, _, _) in stack {
             reporter.push(
                 Report::build(ReportKind::Error, mk_span(before, after))
-                    .with_message("Unmatched opening delimiter")
+                    .with_label(Label::new(mk_span(before, after)).with_message("Unmatched opening delimiter"))
                     .finish(),
             );
         }
@@ -266,8 +266,9 @@ impl TokenIter {
                 let span = self.tokens.last().unwrap().span();
                 self.report(
                     Report::build(ReportKind::Error, span)
-                        .with_label(Label::new(span).with_message("Here"))
-                        .with_message("Expected token, found end of enclosure")
+                        .with_label(
+                            Label::new(span).with_message("Expected token, found end of enclosure"),
+                        )
                         .finish(),
                 );
                 None
@@ -516,8 +517,9 @@ impl TokenIter {
 
         self.r().push(
             Report::build(ReportKind::Error, span)
-                .with_message(format!("Expected {expected} but found {found}."))
-                .with_label(Label::new(span).with_message("here"))
+                .with_label(
+                    Label::new(span).with_message(format!("Expected {expected} but found {found}.")),
+                )
                 .finish(),
         );
 

@@ -100,7 +100,7 @@ fn resolve_just_these_defines(
                 let whoops = |which| {
                     r.push(
                         Report::build(ReportKind::Error, this.span())
-                            .with_message(format!("This constant cannot be expanded as source code because it defines {which}, not a code block"))
+                            .with_label(ariadne::Label::new(this.span()).with_message(format!("This constant cannot be expanded as source code because it defines {which}, not a code block")))
                             .finish(),
                     );
                     None
@@ -691,7 +691,7 @@ impl BlockInfoTracker {
                 let Some(v) = self.get_define(block_id, name) else {
                     self.reporter.push(
                         Report::build(ReportKind::Error, span)
-                            .with_message("Constant not found in this scope")
+                            .with_label(ariadne::Label::new(span).with_message("Constant not found in this scope"))
                             .finish(),
                     );
                     return None;

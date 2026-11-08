@@ -1,9 +1,10 @@
 use ariadne::{Label, Report, ReportKind};
-use sarlacc::Intern;
 use qter_core::span::{File, Span, WithSpan};
+use sarlacc::Intern;
 
 use crate::{
-    BlockID, ExpansionInfo, LabelReference, Macro, MacroBranchKey, MaybeReg, Primitive, RegisterReference, Reporter, ResolvedValue, Value,
+    BlockID, ExpansionInfo, LabelReference, Macro, MacroBranchKey, MaybeReg, Primitive,
+    RegisterReference, Reporter, ResolvedValue, Value,
 };
 
 use std::collections::HashMap;
@@ -53,7 +54,11 @@ fn expect_label(
     r: &Reporter,
 ) -> Option<WithSpan<LabelReference>> {
     let span = label_value.span();
-    match syntax.block_info.resolve(block_id, label_value)?.into_inner() {
+    match syntax
+        .block_info
+        .resolve(block_id, label_value)?
+        .into_inner()
+    {
         ResolvedValue::Ident(name) => Some(WithSpan::new(
             LabelReference {
                 name: name.into_inner(),
@@ -65,7 +70,7 @@ fn expect_label(
         _ => {
             r.push(
                 Report::build(ReportKind::Error, span)
-                    .with_message("Expected a label")
+                    .with_label(Label::new(span).with_message("Expected a label"))
                     .finish(),
             );
             None
@@ -82,22 +87,17 @@ fn print_like(
     if args.len() > 2 || args.is_empty() {
         r.push(
             Report::build(ReportKind::Error, args.span())
-                .with_message(format!(
+                .with_label(Label::new(args.span()).with_message(format!(
                     "Expected one or two arguments, found {}",
                     args.len()
-                ))
+                )))
                 .finish(),
         );
         return None;
     }
 
     let maybe_reg = if args.len() == 2 {
-        Some(expect_reg(
-            args.pop().unwrap(),
-            block_id,
-            syntax,
-            r,
-        )?)
+        Some(expect_reg(args.pop().unwrap(), block_id, syntax, r)?)
     } else {
         None
     };
@@ -109,7 +109,7 @@ fn print_like(
         _ => {
             r.push(
                 Report::build(ReportKind::Error, span)
-                    .with_message("Expected a message")
+                    .with_label(Label::new(span).with_message("Expected a message"))
                     .finish(),
             );
             return None;
@@ -135,7 +135,10 @@ pub fn builtin_macros(prelude: File) -> HashMap<(File, Intern<str>), WithSpan<Ma
                 if args.len() != 2 {
                     r.push(
                         Report::build(ReportKind::Error, args.span())
-                            .with_message(format!("Expected two arguments, found {}", args.len()))
+                            .with_label(Label::new(args.span()).with_message(format!(
+                                "Expected two arguments, found {}",
+                                args.len()
+                            )))
                             .finish(),
                     );
                     return None;
@@ -152,7 +155,7 @@ pub fn builtin_macros(prelude: File) -> HashMap<(File, Intern<str>), WithSpan<Ma
                     _ => {
                         r.push(
                             Report::build(ReportKind::Error, span)
-                                .with_message("Expected a number")
+                                .with_label(Label::new(span).with_message("Expected a number"))
                                 .finish(),
                         );
                         return None;
@@ -174,7 +177,7 @@ pub fn builtin_macros(prelude: File) -> HashMap<(File, Intern<str>), WithSpan<Ma
                 if args.len() != 1 {
                     r.push(
                         Report::build(ReportKind::Error, args.span())
-                            .with_message(format!("Expected one argument, found {}", args.len()))
+                            .with_label(Label::new(args.span()).with_message(format!("Expected one argument, found {}", args.len())))
                             .finish(),
                     );
                     return None;
@@ -195,7 +198,7 @@ pub fn builtin_macros(prelude: File) -> HashMap<(File, Intern<str>), WithSpan<Ma
                 if args.len() != 2 {
                     r.push(
                         Report::build(ReportKind::Error, args.span())
-                            .with_message(format!("Expected two arguments, found {}", args.len()))
+                            .with_label(Label::new(args.span()).with_message(format!("Expected two arguments, found {}", args.len())))
                             .finish(),
                     );
                     return None;
@@ -217,7 +220,7 @@ pub fn builtin_macros(prelude: File) -> HashMap<(File, Intern<str>), WithSpan<Ma
                 if args.len() != 2 {
                     r.push(
                         Report::build(ReportKind::Error, args.span())
-                            .with_message(format!("Expected two arguments, found {}", args.len()))
+                            .with_label(Label::new(args.span()).with_message(format!("Expected two arguments, found {}", args.len())))
                             .finish(),
                     );
                     return None;
@@ -238,7 +241,7 @@ pub fn builtin_macros(prelude: File) -> HashMap<(File, Intern<str>), WithSpan<Ma
                     _ => {
                         r.push(
                             Report::build(ReportKind::Error, span)
-                                .with_message("Expected a message")
+                                .with_label(Label::new(span).with_message("Expected a message"))
                                 .finish(),
                         );
                         return None;
