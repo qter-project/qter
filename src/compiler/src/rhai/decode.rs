@@ -10,6 +10,7 @@ use sarlacc::Intern;
 use crate::{
     Block, Code, Define, DefineValue, Instruction, MacroBranchKey, MacroCall, RegisterModifiers,
     Reporter, ResolvedValue, RhaiCall, Value,
+    reporter::OrErrorProof,
     rhai::{Ty, WInt, WRegisterInfo},
 };
 
@@ -18,15 +19,15 @@ pub fn from_rhai(
     span: Span,
     branch_key: MacroBranchKey,
     r: &Reporter,
-) -> Option<Value> {
+) -> OrErrorProof<Value> {
     let value = match int_from_rhai(value, span, r)? {
-        Ok(int) => return Some(Value::Resolved(ResolvedValue::Int(int))),
+        Ok(int) => return Ok(Value::Resolved(ResolvedValue::Int(int))),
         Err(v) => v,
     };
 
     let value = match value.try_cast_result::<ImmutableString>() {
         Ok(str) => {
-            return Some(Value::Resolved(ResolvedValue::Ident(
+            return Ok(Value::Resolved(ResolvedValue::Ident(
                 span.with(Intern::from_ref(&*str)),
             )));
         }
@@ -35,7 +36,7 @@ pub fn from_rhai(
 
     let value = match value.try_cast_result::<WRegisterInfo>() {
         Ok(WRegisterInfo(str)) => {
-            return Some(Value::Resolved(ResolvedValue::Register(str.0)));
+            return Ok(Value::Resolved(ResolvedValue::Register(str.0)));
         }
         Err(v) => v,
     };
@@ -45,15 +46,14 @@ pub fn from_rhai(
             let ty = get_ty(&mut map, span, r)?;
 
             if ty != Ty::Const {
-                r.push(
+                return Err(r.push(
                     Report::build(ReportKind::Error, span)
                         .with_label(
                             Label::new(span)
                                 .with_message(format!("A map of type `{ty}` cannot be a value")),
                         )
                         .finish(),
-                );
-                return None;
+                ));
             }
 
             return get_const(map, span, r);
@@ -61,12 +61,12 @@ pub fn from_rhai(
         Err(v) => v,
     };
 
-    Some(Value::Resolved(ResolvedValue::Block(try_decode_block(
+    Ok(Value::Resolved(ResolvedValue::Block(try_decode_block(
         value, span, branch_key, r,
     )?)))
 }
 
-fn get_const(mut map: rhai::Map, span: Span, r: &Reporter) -> Option<Value> {
+fn get_const(mut map: rhai::Map, span: Span, r: &Reporter) -> OrErrorProof<Value> {
     let name = get_str(&mut map, "name", span, r)?;
 
     let mods = if map.contains_key("mods") {
@@ -79,14 +79,13 @@ fn get_const(mut map: rhai::Map, span: Span, r: &Reporter) -> Option<Value> {
 
         if let Some(value) = mods.get("modulus") {
             let Ok(v) = int_from_rhai(value.clone(), span, r)? else {
-                r.push(
+                return Err(r.push(
                     Report::build(ReportKind::Error, span)
                         .with_label(Label::new(span).with_message(
                             "Expected the `modulus` field of register modifiers to be an integer",
                         ))
                         .finish(),
-                );
-                return None;
+                ));
             };
             modulus = Some(v);
         }
@@ -104,73 +103,70 @@ fn get_const(mut map: rhai::Map, span: Span, r: &Reporter) -> Option<Value> {
 
     done(map, span, r)?;
 
-    Some(Value::Constant {
+    Ok(Value::Constant {
         name: Intern::from_ref(&name),
         mods,
     })
 }
 
-fn int_from_rhai(value: Dynamic, span: Span, r: &Reporter) -> Option<Result<Int<U>, Dynamic>> {
+fn int_from_rhai(value: Dynamic, span: Span, r: &Reporter) -> OrErrorProof<Result<Int<U>, Dynamic>> {
     if let Ok(int) = value.as_int() {
         let Ok(v) = u64::try_from(int) else {
-            r.push(
+            return Err(r.push(
                 Report::build(ReportKind::Error, span)
                     .with_label(Label::new(span).with_message(format!("Integer values must be positive. Found {int}")))
                     .finish(),
-            );
-            return None;
+            ));
         };
 
-        return Some(Ok(Int::<U>::from(v)));
+        return Ok(Ok(Int::<U>::from(v)));
     }
 
     let value = match value.try_cast_result::<WInt>() {
         Ok(WInt(int)) => {
             if int < Int::<I>::zero() {
-                r.push(
+                return Err(r.push(
                     Report::build(ReportKind::Error, span)
                         .with_label(Label::new(span).with_message(format!("Integer values must be positive. Found {int}")))
                         .finish(),
-                );
-                return None;
+                ));
             }
 
-            return Some(Ok(int.abs()));
+            return Ok(Ok(int.abs()));
         }
         Err(v) => v,
     };
 
-    Some(Err(value))
+    Ok(Err(value))
 }
 
-fn get_ty(map: &mut rhai::Map, span: Span, r: &Reporter) -> Option<Ty> {
+fn get_ty(map: &mut rhai::Map, span: Span, r: &Reporter) -> OrErrorProof<Ty> {
     let v = get_str(map, "ty", span, r)?;
 
-    Some(match &*v {
+    Ok(match &*v {
         "label" => Ty::Label,
         "call" => Ty::Call,
         "const" => Ty::Const,
         "define" => Ty::Define,
         "rhai call" => Ty::RhaiCall,
         x => {
-            r.push(
+            return Err(r.push(
                 Report::build(ReportKind::Error, span)
                     .with_label(
                         Label::new(span)
                             .with_message(format!("Unknown value of the `ty` field; found `{x}`")),
                     )
                     .finish(),
-            );
-            return None;
+            ));
         }
     })
 }
 
-fn get_str(map: &mut rhai::Map, field: &str, span: Span, r: &Reporter) -> Option<ImmutableString> {
+fn get_str(map: &mut rhai::Map, field: &str, span: Span, r: &Reporter) -> OrErrorProof<ImmutableString> {
     get(map, field, "string", span, r)
 }
 
-fn get_map(map: &mut rhai::Map, field: &str, span: Span, r: &Reporter) -> Option<rhai::Map> {
+fn get_map(map: &mut rhai::Map, field: &str, span: Span, r: &Reporter) -> OrErrorProof<rhai::Map> {
     get(map, field, "map", span, r)
 }
 
@@ -180,53 +176,49 @@ fn get<T: Any>(
     type_name: &str,
     span: Span,
     r: &Reporter,
-) -> Option<T> {
+) -> OrErrorProof<T> {
     match map.remove(field) {
         Some(v) => {
             match v.clone().try_cast::<T>() {
-                Some(s) => Some(s),
+                Some(s) => Ok(s),
                 None => {
-                    r.push(
+                    Err(r.push(
                         Report::build(ReportKind::Error, span)
                             .with_label(Label::new(span).with_message(format!(
                                 "The field `{field}` should be a {type_name}"
                             )))
                             .finish(),
-                    );
-                    None
+                    ))
                 }
             }
         }
         None => {
-            r.push(
+            Err(r.push(
                 Report::build(ReportKind::Error, span)
                     .with_label(
                         Label::new(span)
                             .with_message(format!("Map should come with a field `{field}`")),
                     )
                     .finish(),
-            );
-            None
+            ))
         }
     }
 }
 
 #[expect(clippy::needless_pass_by_value)] // I need to take ownership for type safety
-fn done(map: rhai::Map, span: Span, r: &Reporter) -> Option<()> {
+fn done(map: rhai::Map, span: Span, r: &Reporter) -> OrErrorProof<()> {
     if !map.is_empty() {
-        r.push(
+        return Err(r.push(
             Report::build(ReportKind::Error, span)
                 .with_label(Label::new(span).with_message(format!(
                     "Map contains unknown fields: {}",
                     map.keys().format_with(", ", |elt, f| f(&format_args!("`{elt}`")))
                 )))
                 .finish(),
-        );
-
-        return None;
+        ));
     }
 
-    Some(())
+    Ok(())
 }
 
 fn try_decode_block(
@@ -234,18 +226,17 @@ fn try_decode_block(
     span: Span,
     branch_key: MacroBranchKey,
     r: &Reporter,
-) -> Option<Block> {
+) -> OrErrorProof<Block> {
     let value = match value.try_cast_result::<Array>() {
         Ok(v) => v,
         Err(value) => {
-            r.push(
+            return Err(r.push(
                 Report::build(ReportKind::Error, span)
                     .with_label(Label::new(span).with_message(format!(
                         "Unable to interpret `{value}` as a positive integer, identifier, register, constant, or code block."
                     )))
                     .finish(),
-            );
-            return None;
+            ));
         }
     };
 
@@ -258,7 +249,7 @@ fn try_decode_block_from_array(
     span: Span,
     branch_key: MacroBranchKey,
     r: &Reporter,
-) -> Option<Block> {
+) -> OrErrorProof<Block> {
     let mut code = Vec::new();
 
     for value in value {
@@ -272,14 +263,13 @@ fn try_decode_block_from_array(
         };
 
         let Some(mut map) = value.try_cast::<rhai::Map>() else {
-            r.push(
+            return Err(r.push(
                 Report::build(ReportKind::Error, span)
                     .with_label(
                         Label::new(span).with_message("All elements of a block should be maps or arrays".to_string()),
                     )
                     .finish(),
-            );
-            return None;
+            ));
         };
 
         let ty = get_ty(&mut map, span, r)?;
@@ -310,13 +300,13 @@ fn try_decode_block_from_array(
                             .map(|value| {
                                 from_rhai(value, span, branch_key, r).map(|v| span.with(v))
                             })
-                            .collect::<Option<Vec<_>>>()?,
+                            .collect::<OrErrorProof<Vec<_>>>()?,
                     ),
                 }))
             }
             Ty::Const => {
                 let name = get_str(&mut map, "name", span, r)?;
-                done(map, span, r);
+                done(map, span, r)?;
 
                 Instruction::Constant(Intern::from_ref(&name))
             }
@@ -342,7 +332,7 @@ fn try_decode_block_from_array(
         code.push(span.with((instr, None, branch_key)));
     }
 
-    Some(Block { code })
+    Ok(Block { code })
 }
 
 fn decode_rhai_call(
@@ -350,15 +340,15 @@ fn decode_rhai_call(
     span: Span,
     branch_key: MacroBranchKey,
     r: &Reporter,
-) -> Option<RhaiCall> {
+) -> OrErrorProof<RhaiCall> {
     let name = get_str(&mut map, "name", span, r)?;
     let args = get::<Array>(&mut map, "args", "array", span, r)?;
 
-    Some(crate::RhaiCall {
+    Ok(crate::RhaiCall {
         function_name: span.with(Intern::from_ref(&name)),
         args: args
             .into_iter()
             .map(|value| from_rhai(value, span, branch_key, r).map(|v| span.with(v)))
-            .collect::<Option<Box<[_]>>>()?,
+            .collect::<OrErrorProof<Box<[_]>>>()?,
     })
 }

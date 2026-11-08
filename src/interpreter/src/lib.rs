@@ -431,8 +431,8 @@ mod tests {
 
         let reporter = Reporter::default();
         let (program, _) = match compile(file(code), |_| unreachable!(), &reporter) {
-            Some(v) => v,
-            None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
+            Ok(v) => v,
+            Err(_) => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
 
         let mut interpreter: Interpreter<SimulatedPuzzle> =
@@ -516,8 +516,8 @@ mod tests {
 
         let reporter = Reporter::default();
         let (program, _) = match compile(file(code), |_| unreachable!(), &reporter) {
-            Some(v) => v,
-            None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
+            Ok(v) => v,
+            Err(_) => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
 
         let mut interpreter: Interpreter<SimulatedPuzzle> =
@@ -597,8 +597,8 @@ mod tests {
 
         let reporter = Reporter::default();
         let (program, _) = match compile(file(code), |_| unreachable!(), &reporter) {
-            Some(v) => v,
-            None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
+            Ok(v) => v,
+            Err(_) => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
 
         let mut interpreter: Interpreter<SimulatedPuzzle> =
@@ -663,7 +663,7 @@ mod tests {
         cases: impl Iterator<Item = ([usize; N], String)>,
     ) {
         let reporter = Reporter::default();
-        let Some((program, _)) = compile(file(code), |_| unreachable!(), &reporter) else {
+        let Ok((program, _)) = compile(file(code), |_| unreachable!(), &reporter) else {
             let mut cache = ariadne::sources(
                 [("<static>", code)]
                     .into_iter()
@@ -826,8 +826,8 @@ mod tests {
 
         let reporter = Reporter::default();
         let (program, _) = match compile(file(code), |_| unreachable!(), &reporter) {
-            Some(v) => v,
-            None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
+            Ok(v) => v,
+            Err(_) => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
 
         assert_eq!(program.instructions.len(), 2 + 4 + 1);
@@ -928,8 +928,8 @@ mod tests {
 
         let reporter = Reporter::default();
         let (program, _) = match compile(file(code), |_| unreachable!(), &reporter) {
-            Some(v) => v,
-            None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
+            Ok(v) => v,
+            Err(_) => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
 
         let q = emit_q(&program, Intern::from_ref("code.q"), &reporter)
@@ -1034,8 +1034,8 @@ A: 3x3
 
         let reporter = Reporter::default();
         let (program, _) = match compile(file(code), |_| unreachable!(), &reporter) {
-            Some(v) => v,
-            None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
+            Ok(v) => v,
+            Err(_) => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
 
         // println!("{:#?}", program);
@@ -1101,8 +1101,8 @@ A: 3x3
 
         let reporter = Reporter::default();
         let (program, _) = match compile(file(code), |_| unreachable!(), &reporter) {
-            Some(v) => v,
-            None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
+            Ok(v) => v,
+            Err(_) => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
 
         let q_code = emit_q(&program, Intern::from_ref("code.q"), &reporter)
@@ -1191,8 +1191,8 @@ A: 3x3
 
         let reporter = Reporter::default();
         let (program, _) = match compile(file(code), |_| unreachable!(), &reporter) {
-            Some(v) => v,
-            None => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
+            Ok(v) => v,
+            Err(_) => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
         };
 
         let q_code = emit_q(&program, Intern::from_ref("code.q"), &reporter)

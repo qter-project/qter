@@ -104,7 +104,7 @@ fn compile_qat(file: &Path) -> eyre::Result<(Program, File)> {
 
     let reporter = Reporter::default();
 
-    if let Some((v, _)) = compile(
+    if let Ok((v, _)) = compile(
         qat,
         {
             let sources = Rc::clone(&sources);
@@ -162,7 +162,7 @@ async fn main() -> eyre::Result<()> {
 
             let reporter = Reporter::default();
 
-            let q_code = if let Some(v) = emit_q(
+            let q_code = if let Ok(v) = emit_q(
                 &program,
                 Intern::from_owned(path.display().to_string()),
                 &reporter,

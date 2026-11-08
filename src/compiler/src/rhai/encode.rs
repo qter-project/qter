@@ -1,27 +1,26 @@
 use ariadne::{Report, ReportKind};
 use rhai::{Dynamic, ImmutableString};
 
-use crate::{Block, Code, Define, DefineValue, ExpansionInfo, Instruction, MacroBranchKey, MacroCall, RegisterModifiers, Reporter, ResolvedValue, RhaiCall, Value, rhai::{Ty, WInt, WRegisterInfo, register_mods}};
+use crate::{Block, Code, Define, DefineValue, ExpansionInfo, Instruction, MacroBranchKey, MacroCall, RegisterModifiers, Reporter, ResolvedValue, RhaiCall, Value, reporter::OrErrorProof, rhai::{Ty, WInt, WRegisterInfo, register_mods}};
 
 pub fn into_rhai(
     arg: ResolvedValue,
     info: &ExpansionInfo,
     surrounding_branch_key: MacroBranchKey,
     r: &Reporter,
-) -> Option<Dynamic> {
-    Some(match arg {
+) -> OrErrorProof<Dynamic> {
+    Ok(match arg {
         ResolvedValue::Int(int) => Dynamic::from(WInt(int.into())),
         ResolvedValue::Register(_) => match arg.as_reg(info) {
             crate::MaybeReg::Reg(register_reference, rhai_reg_info) => {
                 Dynamic::from(WRegisterInfo((register_reference, rhai_reg_info)))
             }
             crate::MaybeReg::RegNotFound(span) => {
-                r.push(
+                return Err(r.push(
                     Report::build(ReportKind::Error, span)
                         .with_label(ariadne::Label::new(span).with_message("Register does not exist"))
                         .finish(),
-                );
-                return None;
+                ));
             }
             crate::MaybeReg::NotAReg(_) => unreachable!(),
         },
@@ -38,8 +37,8 @@ fn into_rhai_block(
     info: &ExpansionInfo,
     surrounding_branch_key: MacroBranchKey,
     r: &Reporter,
-) -> Option<Dynamic> {
-    Some(Dynamic::from_array(
+) -> OrErrorProof<Dynamic> {
+    Ok(Dynamic::from_array(
         code.into_iter()
             .map(|v| {
                 assert!(v.1.is_none());
@@ -79,7 +78,7 @@ fn into_rhai_block(
                                                 r,
                                             )
                                         })
-                                        .collect::<Option<Vec<_>>>()?,
+                                        .collect::<OrErrorProof<Vec<_>>>()?,
                                 ),
                             );
                         }
@@ -124,9 +123,9 @@ fn into_rhai_block(
                     }
                 }
 
-                Some(Dynamic::from_map(map))
+                Ok(Dynamic::from_map(map))
             })
-            .collect::<Option<Vec<_>>>()?,
+            .collect::<OrErrorProof<Vec<_>>>()?,
     ))
 }
 
@@ -138,7 +137,7 @@ fn into_rhai_rhai_call(
     info: &ExpansionInfo,
     surrounding_branch_key: MacroBranchKey,
     r: &Reporter,
-) -> Option<Dynamic> {
+) -> OrErrorProof<Dynamic> {
     let mut map = rhai::Map::new();
 
     map.insert("ty".into(), Ty::RhaiCall.into());
@@ -148,11 +147,11 @@ fn into_rhai_rhai_call(
         Dynamic::from_array(
             args.into_iter()
                 .map(|arg| into_rhai_unresolved(arg.into_inner(), info, surrounding_branch_key, r))
-                .collect::<Option<Vec<_>>>()?,
+                .collect::<OrErrorProof<Vec<_>>>()?,
         ),
     );
 
-    Some(Dynamic::from_map(map))
+    Ok(Dynamic::from_map(map))
 }
 
 fn into_rhai_unresolved(
@@ -160,7 +159,7 @@ fn into_rhai_unresolved(
     info: &ExpansionInfo,
     surrounding_branch_key: MacroBranchKey,
     r: &Reporter,
-) -> Option<Dynamic> {
+) -> OrErrorProof<Dynamic> {
     match arg {
         Value::Resolved(resolved_value) => {
             into_rhai(resolved_value, info, surrounding_branch_key, r)
@@ -172,7 +171,7 @@ fn into_rhai_unresolved(
             map.insert("name".into(), (&*name).into());
             map.insert("mods".into(), register_mods(mods));
 
-            Some(Dynamic::from_map(map))
+            Ok(Dynamic::from_map(map))
         }
     }
 }

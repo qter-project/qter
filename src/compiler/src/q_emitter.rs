@@ -9,7 +9,7 @@ use qter_core::{Decoding, Facelets, Instruction, Program};
 use sarlacc::Intern;
 use std::fmt::Write;
 
-use crate::Reporter;
+use crate::{Reporter, reporter::OrErrorProof};
 
 const ALG_MAX_CHARS_WIDTH: usize = 50;
 
@@ -17,26 +17,19 @@ const ALG_MAX_CHARS_WIDTH: usize = 50;
 ///
 /// # Errors
 ///
-/// Returns `None` and pushes errors to the reporter if there are multiple puzzles.
+/// Returns an error and pushes it to the reporter if there are multiple puzzles.
 #[allow(clippy::missing_panics_doc)]
-#[must_use]
 pub fn emit_q(
     program: &Program,
     file_name: Intern<str>,
     r: &Reporter,
-) -> Option<(File, Box<[Span]>)> {
-    let before = r.count();
-
+) -> OrErrorProof<(File, Box<[Span]>)> {
     if program.puzzles.len() > 1 {
-        r.push(
+        return Err(r.push(
             Report::build(ReportKind::Error, program.puzzles[1].span())
                 .with_label(ariadne::Label::new(program.puzzles[1].span()).with_message("Compiling with multiple puzzles is unsupported (for now)"))
                 .finish(),
-        );
-    }
-
-    if r.count() - before != 0 {
-        return None;
+        ));
     }
 
     let mut out = String::new();
@@ -158,7 +151,7 @@ pub fn emit_q(
         .map(|(start, end)| Span::new(file, start, end))
         .collect();
 
-    Some((file, spans))
+    Ok((file, spans))
 }
 
 fn stringify_alg(alg: &Algorithm, padding: usize, pad_first: bool) -> String {

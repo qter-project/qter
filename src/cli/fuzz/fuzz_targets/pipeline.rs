@@ -16,7 +16,7 @@ fuzz_target!(|code: &str| {
     }, &reporter);
 
     let program = match compiled {
-        Some((p, _)) => {
+        Ok((p, _)) => {
             if !reporter.is_empty() {
                 println!("`{code}`");
                 println!("{p:?}");
@@ -35,7 +35,7 @@ fuzz_target!(|code: &str| {
             }
             p
         },
-        None => {
+        Err(_) => {
             assert!(!reporter.is_empty(), "`{code}`");
             return
         },
@@ -45,7 +45,7 @@ fuzz_target!(|code: &str| {
     let q_code = emit_q(&program, Intern::from_ref("<compiled-q>"), &reporter);
 
     match q_code {
-        Some((_, _)) => assert!(reporter.is_empty()),
-        None => assert!(!reporter.is_empty()),
+        Ok((_, _)) => assert!(reporter.is_empty()),
+        Err(_) => assert!(!reporter.is_empty()),
     }
 });

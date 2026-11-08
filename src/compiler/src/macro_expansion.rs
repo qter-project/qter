@@ -7,33 +7,30 @@ use qter_core::span::{Span, WithSpan};
 use crate::{
     BlockID, Code, Define, ExpandedCode, ExpandedCodeComponent, ExpansionInfo, Instruction, Macro,
     MacroBranchKey, ParsedSyntax, RegistersDecl, Reporter, ResolvedValue, TaggedInstruction,
-    resolve_just_these_defines,
+    reporter::OrErrorProof, resolve_just_these_defines,
 };
 
-pub fn expand(mut parsed: ParsedSyntax, r: &Reporter) -> Option<ExpandedCode> {
+pub fn expand(mut parsed: ParsedSyntax, r: &Reporter) -> OrErrorProof<ExpandedCode> {
     let mut limit = 100;
 
-    let before = r.count();
+    let before = r.count_token();
 
     while let Some(span) = expand_block(BlockID(0), &mut parsed.expansion_info, &mut parsed.code, r)
     {
         limit -= 1;
 
         if limit == 0 {
-            r.push(
+            return Err(r.push(
                 Report::build(ReportKind::Error, span)
                     .with_label(ariadne::Label::new(span).with_message("Depth limit reached during macro expansion"))
                     .finish(),
-            );
-            return None;
+            ));
         }
     }
 
-    if r.count() - before != 0 {
-        return None;
-    }
+    r.errors_since(before)?;
 
-    Some(ExpandedCode {
+    Ok(ExpandedCode {
         registers: match parsed.expansion_info.registers {
             Some(decl) => decl.into_inner(),
             None => RegistersDecl {
@@ -111,11 +108,11 @@ fn expand_block(
                 }
                 Instruction::Define(define) => {
                     if block_info.defines.contains_key(&define.name) {
-                        r.push(Report::build(ReportKind::Error, span).with_label(ariadne::Label::new(span).with_message("Cannot shadow a `.define` in the same scope!")).finish());
+                        let _ = r.push(Report::build(ReportKind::Error, span).with_label(ariadne::Label::new(span).with_message("Cannot shadow a `.define` in the same scope!")).finish());
                         return vec![]
                     }
 
-                    let Some(resolved) = expansion_info.resolve(define.value, block_id, branch_key, r) else {
+                    let Ok(resolved) = expansion_info.resolve(define.value, block_id, branch_key, r) else {
                         return vec![]
                     };
 
@@ -140,7 +137,7 @@ fn expand_block(
                 }
                 Instruction::Constant(name) => {
                     let whoops = |actually| {
-                            r.push(Report::build(ReportKind::Error, span).with_label(ariadne::Label::new(span).with_message(format!("Expected a code block, found {actually}"))).finish());
+                            let _ = r.push(Report::build(ReportKind::Error, span).with_label(ariadne::Label::new(span).with_message(format!("Expected a code block, found {actually}"))).finish());
                             vec![]
                     };
 
@@ -167,19 +164,19 @@ fn expand_block(
                             }
                         },
                         None => {
-                            r.push(Report::build(ReportKind::Error, span).with_label(ariadne::Label::new(span).with_message(format!("`{name}` was not found in this scope"))).finish());
+                            let _ = r.push(Report::build(ReportKind::Error, span).with_label(ariadne::Label::new(span).with_message(format!("`{name}` was not found in this scope"))).finish());
                             vec![]
                         }
                     }
                 }
                 Instruction::RhaiCall(call) => {
-                    let Some(value) = call.perform(span, expansion_info, block_id, branch_key, r).and_then(|value| expansion_info.block_info.resolve(block_id, value)) else {
+                    let Ok(value) = call.perform(span, expansion_info, block_id, branch_key, r).and_then(|value| expansion_info.block_info.resolve(block_id, value)) else {
                         return vec![]
                     };
                     let _ = changed.set(span);
 
                     let whoops = |actually| {
-                            r.push(Report::build(ReportKind::Error, span).with_label(ariadne::Label::new(span).with_message(format!("Expected the macro to return a code block; actually returned {actually}"))).finish());
+                            let _ = r.push(Report::build(ReportKind::Error, span).with_label(ariadne::Label::new(span).with_message(format!("Expected the macro to return a code block; actually returned {actually}"))).finish());
                             vec![]
                     };
 
@@ -243,7 +240,7 @@ fn expand_code(
         .available_macros
         .get(&(macro_call.name.span().source(), *macro_call.name))
     else {
-        r.push(
+        let _ = r.push(
             Report::build(ReportKind::Error, macro_call.name.span())
                 .with_label(ariadne::Label::new(macro_call.name.span()).with_message("Macro was not found in this scope"))
                 .finish(),
@@ -259,12 +256,12 @@ fn expand_code(
     match &**macro_def {
         Macro::UserDefined { branches } => {
             let args_span = macro_call.arguments.span();
-            let Some(mut args) = macro_call
+            let Ok(mut args) = macro_call
                 .arguments
                 .into_inner()
                 .into_iter()
                 .map(|v| expansion_info.block_info.resolve(block_id, v))
-                .collect::<Option<Vec<_>>>()
+                .collect::<OrErrorProof<Vec<_>>>()
             else {
                 return vec![];
             };
@@ -282,12 +279,12 @@ fn expand_code(
 
                 let mut instr = branch.code.clone();
                 instr.1 = Some(block_id);
-                resolve_just_these_defines(&mut instr, &defines, r);
+                let _ = resolve_just_these_defines(&mut instr, &defines, r);
 
                 return vec![instr];
             }
 
-            r.push(
+            let _ = r.push(
                 Report::build(ReportKind::Error, args_span)
                     .with_label(ariadne::Label::new(args_span).with_message("These arguments did not match any of the patterns of this macro"))
                     .finish(),
@@ -302,12 +299,12 @@ fn expand_code(
                 branch_key,
                 r,
             ) {
-                Some(v) => vec![span.with((
+                Ok(v) => vec![span.with((
                     Instruction::Code(Code::Primitive(v)),
                     Some(block_id),
                     branch_key,
                 ))],
-                None => vec![],
+                Err(_) => vec![],
             }
         }
     }
@@ -346,7 +343,7 @@ mod tests {
 
         let reporter = Reporter::default();
 
-        let Some(parsed) = parse(
+        let Ok(parsed) = parse(
             file(code),
             &Rc::new(|_: &str| unreachable!()),
             false,

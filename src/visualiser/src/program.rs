@@ -42,8 +42,8 @@ impl Program {
 
         let (program, regs) =
             match compiler::compile(s, |_| Err("Imports are not allowed".to_owned()), &reporter) {
-                Some(v) => v,
-                None => {
+                Ok(v) => v,
+                Err(_) => {
                     let reports = reporter.drain().into_iter();
                     return Err(reports
                         .map(|report| CompileError {
@@ -88,8 +88,8 @@ impl Program {
 
         let (q_text, instr_spans) =
             match compiler::q_emitter::emit_q(&program, Intern::from_ref("<output>"), &reporter) {
-                Some(v) => v,
-                None => {
+                Ok(v) => v,
+                Err(_) => {
                     let reports = reporter.drain().into_iter();
                     return Err(reports
                         .map(|report| CompileError {

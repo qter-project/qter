@@ -10,6 +10,7 @@ use rhai::{
 
 use crate::{
     ExpansionInfo, MacroBranchKey, RegisterInfo, RegisterModifiers, Reporter, ResolvedValue, Value,
+    reporter::OrErrorProof,
     rhai::{decode::from_rhai, encode::into_rhai},
 };
 
@@ -160,7 +161,7 @@ impl RhaiMacros {
         }
     }
 
-    pub fn add_code(&mut self, rhai_code: RhaiCode, r: &Reporter) -> Option<()> {
+    pub fn add_code(&mut self, rhai_code: RhaiCode, r: &Reporter) -> OrErrorProof<()> {
         let compiled = match ENGINE.with(|engine| engine.compile(rhai_code.span().slice())) {
             Ok(v) => v,
             Err(err) => {
@@ -180,15 +181,13 @@ impl RhaiMacros {
                     report = report.with_note("The Rhai compiler did not provide span information");
                 }
 
-                r.push(report.finish());
-
-                return None;
+                return Err(r.push(report.finish()));
             }
         };
 
         self.rhai_asts.push((rhai_code, compiled));
 
-        Some(())
+        Ok(())
     }
 
     pub fn do_rhai_call(
@@ -199,11 +198,11 @@ impl RhaiMacros {
         info: &ExpansionInfo,
         branch_key: MacroBranchKey,
         r: &Reporter,
-    ) -> Option<Value> {
+    ) -> OrErrorProof<Value> {
         let args = args
             .into_iter()
             .map(|v| into_rhai(v.into_inner(), info, branch_key, r))
-            .collect::<Option<Vec<_>>>()?;
+            .collect::<OrErrorProof<Vec<_>>>()?;
 
         let mut result = None;
         let mut found_with_args = None;
@@ -233,13 +232,12 @@ impl RhaiMacros {
             Some((_, Ok(v))) => v,
             Some((code, Err(e))) => {
                 let rhai_span = code.pos_to_span(e.position()).unwrap();
-                r.push(
+                return Err(r.push(
                     Report::build(ReportKind::Error, rhai_span)
                         .with_label(Label::new(rhai_span).with_message(e.to_string()))
                         .with_label(Label::new(span).with_message("Rhai function invoked here"))
                         .finish(),
-                );
-                return None;
+                ));
             }
             None => {
                 let mut report = Report::build(ReportKind::Error, span).with_label(
@@ -252,8 +250,7 @@ impl RhaiMacros {
                     ));
                 }
 
-                r.push(report.finish());
-                return None;
+                return Err(r.push(report.finish()));
             }
         };
 

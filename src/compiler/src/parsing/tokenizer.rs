@@ -6,6 +6,7 @@ use puzzle_theory::{
 
 use qter_core::span::{File, Span, WithSpan};
 use crate::Reporter;
+use crate::reporter::OrErrorProof;
 use crate::rhai::RhaiCode;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -174,7 +175,7 @@ impl Tokenizer {
         })
     }
 
-    fn take_rhai(&mut self) -> Option<Span> {
+    fn take_rhai(&mut self) -> OrErrorProof<Span> {
         let spot = self.spot;
 
         while !self.qat().is_empty() && !self.qat().starts_with(".end-rhai") {
@@ -183,19 +184,18 @@ impl Tokenizer {
 
         if self.qat().is_empty() {
             let span = self.mk_span(spot - ".start-rhai".len(), spot);
-            self.reporter.push(
+            return Err(self.reporter.push(
                 Report::build(ReportKind::Error, span)
                     .with_label(Label::new(span).with_message("Unterminated Rhai block"))
                     .finish(),
-            );
-            return None;
+            ));
         }
 
         let span = self.mk_span(spot, self.spot);
 
         self.advance(".end-rhai".len());
 
-        Some(span)
+        Ok(span)
     }
 
     pub fn done(&self) -> bool {
@@ -204,7 +204,7 @@ impl Tokenizer {
 }
 
 impl Iterator for Tokenizer {
-    type Item = WithSpan<TokenNLFlat>;
+    type Item = OrErrorProof<WithSpan<TokenNLFlat>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.done() {
@@ -213,19 +213,20 @@ impl Iterator for Tokenizer {
 
         let before = self.spot;
         if self.skip_whitespace() {
-            return Some(
-                self.mk_span(before, self.spot)
-                    .with(TokenNLFlat::Whitespace),
-            );
+            return Some(Ok(self
+                .mk_span(before, self.spot)
+                .with(TokenNLFlat::Whitespace)));
         }
 
         if self.qat().starts_with(".start-rhai") {
             self.advance(".start-rhai".len());
-            let rhai = self.take_rhai()?;
-            return Some(
-                self.mk_span(before, self.spot)
-                    .with(TokenNLFlat::Token(TokenFlat::RhaiCode(RhaiCode::new(rhai)))),
-            );
+            let rhai = match self.take_rhai() {
+                Ok(v) => v,
+                Err(e) => return Some(Err(e)),
+            };
+            return Some(Ok(self
+                .mk_span(before, self.spot)
+                .with(TokenNLFlat::Token(TokenFlat::RhaiCode(RhaiCode::new(rhai))))));
         }
 
         if let Some((sym, amt)) = self.special_sym() {
@@ -253,13 +254,12 @@ impl Iterator for Tokenizer {
                                 Report::build(ReportKind::Error, self.mk_span(before, self.spot))
                                     .with_label(Label::new(self.mk_span(before, self.spot)).with_message("Unclosed quotation"))
                                     .finish(),
-                            );
+                            )
                         };
 
                         match self.peek(0) {
                             None => {
-                                eof();
-                                return None;
+                                return Some(Err(eof()));
                             }
                             Some('"') => {
                                 self.advance(1);
@@ -269,8 +269,7 @@ impl Iterator for Tokenizer {
                                 match self.peek(1) {
                                     Some(c) => text.push(c),
                                     None => {
-                                        eof();
-                                        return None;
+                                        return Some(Err(eof()));
                                     }
                                 }
 
@@ -309,15 +308,14 @@ impl Iterator for Tokenizer {
 
                     loop {
                         let (Some(c1), Some(c2)) = (self.peek(0), self.peek(1)) else {
-                            self.reporter.push(
+                            return Some(Err(self.reporter.push(
                                 Report::build(
                                     ReportKind::Error,
                                     self.mk_span(comment_start, self.spot),
                                 )
                                 .with_label(Label::new(self.mk_span(comment_start, self.spot)).with_message("Unclosed block comment"))
                                 .finish(),
-                            );
-                            return None;
+                            )));
                         };
 
                         if (c1, c2) == ('*', '/') {
@@ -332,7 +330,7 @@ impl Iterator for Tokenizer {
                 }
             };
 
-            return Some(self.mk_span(before, self.spot).with(found));
+            return Some(Ok(self.mk_span(before, self.spot).with(found)));
         }
 
         let mut ident = String::new();
@@ -351,7 +349,7 @@ impl Iterator for Tokenizer {
 
         let span = self.mk_span(ident_start, self.spot);
 
-        Some(span.with(TokenNLFlat::Token(
+        Some(Ok(span.with(TokenNLFlat::Token(
             if let Some(constant) = ident.strip_prefix('$') {
                 TokenFlat::Constant(Intern::from_ref(constant))
             } else if let Ok(num) = ident.parse::<Int<U>>() {
@@ -361,6 +359,6 @@ impl Iterator for Tokenizer {
             } else {
                 TokenFlat::Ident(Intern::from_owned(ident))
             },
-        )))
+        ))))
     }
 }

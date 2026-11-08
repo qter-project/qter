@@ -10,11 +10,12 @@ use puzzle_theory::{
 use qter_core::span::{File, Span, WithSpan};
 use crate::{
     RegisterModifiers, RegisterReference, Reporter,
+    reporter::{OrErrorProof, ReportToken},
     parsing::tokenizer::{Encloser, Symbol, TokenFlat, TokenNLFlat, Tokenizer},
     rhai::RhaiCode,
 };
 
-pub fn tokenize(qat: File, reporter: Reporter) -> Option<TokenEnclosure> {
+pub fn tokenize(qat: File, reporter: Reporter) -> OrErrorProof<TokenEnclosure> {
     let mut t = Tokenizer::new(qat, reporter.clone());
 
     t.skip_shebang();
@@ -24,8 +25,10 @@ pub fn tokenize(qat: File, reporter: Reporter) -> Option<TokenEnclosure> {
     let last = Cell::new(t.spot);
     let mut t = t
         .inspect(|v| {
-            assert_eq!(v.span().start(), last.get());
-            last.set(v.span().end());
+            if let Ok(v) = v {
+                assert_eq!(v.span().start(), last.get());
+                last.set(v.span().end());
+            }
         })
         .multipeek();
 
@@ -35,7 +38,10 @@ pub fn tokenize(qat: File, reporter: Reporter) -> Option<TokenEnclosure> {
     let num_chars = qat.inner().chars().count();
 
     while last.get() != num_chars {
-        let token = t.next()?;
+        let Some(token) = t.next() else {
+            return Err(todo!());
+        };
+        let token = token?;
         let span = token.span();
         match token.into_inner() {
             TokenNLFlat::NewLine => out.push(span.with(TokenNL::NewLine)),
@@ -74,13 +80,13 @@ pub fn tokenize(qat: File, reporter: Reporter) -> Option<TokenEnclosure> {
                 TokenFlat::Number(v) => out.push(span.with(TokenNL::Token(Token::Number(v)))),
                 TokenFlat::Symbol(v) => {
                     if v == Symbol::Dot
-                        && let Some(v) = t.peek()
+                        && let Some(Ok(v)) = t.peek()
                         && let TokenNLFlat::Token(TokenFlat::Ident(v)) = &**v
                     {
                         out.push(span.with(TokenNL::Token(Token::Directive(*v))));
-                        t.next()?;
+                        let _ = t.next();
                     } else if v == Symbol::Negative
-                        && let Some(v) = t.peek()
+                        && let Some(Ok(v)) = t.peek()
                         && matches!(
                             &**v,
                             TokenNLFlat::Token(TokenFlat::Name(_) | TokenFlat::Constant(_))
@@ -91,7 +97,9 @@ pub fn tokenize(qat: File, reporter: Reporter) -> Option<TokenEnclosure> {
                             negative: true,
                         };
 
-                        let token = t.next().unwrap();
+                        let Some(Ok(token)) = t.next() else {
+                            unreachable!()
+                        };
                         let name_span = token.span();
 
                         let mut end = token.span().end();
@@ -120,16 +128,15 @@ pub fn tokenize(qat: File, reporter: Reporter) -> Option<TokenEnclosure> {
                 }
                 TokenFlat::CloseEncloser(e) => {
                     let Some((before_t, after_t, encloser, prev_out)) = stack.pop() else {
-                        reporter.push(
+                        return Err(reporter.push(
                             Report::build(ReportKind::Error, span)
                                 .with_label(Label::new(span).with_message("Unmatched closing delimiter"))
                                 .finish(),
-                        );
-                        return None;
+                        ));
                     };
 
                     if e != encloser {
-                        reporter.push(
+                        return Err(reporter.push(
                             Report::build(ReportKind::Error, span)
                                 .with_label(
                                     ariadne::Label::new(span)
@@ -140,8 +147,7 @@ pub fn tokenize(qat: File, reporter: Reporter) -> Option<TokenEnclosure> {
                                         .with_message("Opening delimiter found here"),
                                 )
                                 .finish(),
-                        );
-                        return None;
+                        ));
                     }
 
                     out.push(
@@ -169,21 +175,23 @@ pub fn tokenize(qat: File, reporter: Reporter) -> Option<TokenEnclosure> {
         }
     }
 
-    if !stack.is_empty() {
-        for (before, after, _, _) in stack {
-            reporter.push(
-                Report::build(ReportKind::Error, mk_span(before, after))
-                    .with_label(Label::new(mk_span(before, after)).with_message("Unmatched opening delimiter"))
-                    .finish(),
-            );
-        }
+    let mut unmatched = None;
 
-        return None;
+    for (before, after, _, _) in stack {
+        unmatched = Some(reporter.push(
+            Report::build(ReportKind::Error, mk_span(before, after))
+                .with_label(Label::new(mk_span(before, after)).with_message("Unmatched opening delimiter"))
+                .finish(),
+        ));
+    }
+
+    if let Some(token) = unmatched {
+        return Err(token);
     }
 
     out.push(mk_span(num_chars, num_chars).with(TokenNL::Token(Token::EndOfEnclosure(None))));
 
-    Some(TokenEnclosure {
+    Ok(TokenEnclosure {
         iter: TokenIter {
             tokens: out.into(),
             reporter,
@@ -193,23 +201,23 @@ pub fn tokenize(qat: File, reporter: Reporter) -> Option<TokenEnclosure> {
     })
 }
 
-fn take_modifier_postfix<I: Iterator<Item = WithSpan<TokenNLFlat>>>(
+fn take_modifier_postfix<I: Iterator<Item = OrErrorProof<WithSpan<TokenNLFlat>>>>(
     m: &mut RegisterModifiers,
     t: &mut MultiPeek<I>,
     span_end: &mut usize,
 ) {
-    if let Some(peek) = t.peek()
+    if let Some(Ok(peek)) = t.peek()
         && matches!(
             &**peek,
             TokenNLFlat::Token(TokenFlat::Symbol(Symbol::Modulus))
         )
-        && let Some(maybe_num) = t.peek()
+        && let Some(Ok(maybe_num)) = t.peek()
         && let TokenNLFlat::Token(TokenFlat::Number(num)) = &**maybe_num
     {
         m.modulus = Some(*num);
         *span_end = maybe_num.span().end();
-        t.next().unwrap();
-        t.next().unwrap();
+        let _ = t.next().unwrap();
+        let _ = t.next().unwrap();
     } else {
         t.reset_peek();
     }
@@ -223,7 +231,10 @@ pub struct TokenEnclosure {
 }
 
 impl TokenEnclosure {
-    pub fn parse<T>(mut self, f: impl FnOnce(&mut TokenIter) -> Option<T>) -> Option<WithSpan<T>> {
+    pub fn parse<T>(
+        mut self,
+        f: impl FnOnce(&mut TokenIter) -> OrErrorProof<T>,
+    ) -> OrErrorProof<WithSpan<T>> {
         assert!(matches!(
             &**self.iter.tokens.last().unwrap(),
             TokenNL::Token(Token::EndOfEnclosure(_))
@@ -233,11 +244,11 @@ impl TokenEnclosure {
 
         let res = f(&mut self.iter);
 
-        if res.is_some() && self.iter.spot < self.iter.tokens.len() - 1 {
+        if res.is_ok() && self.iter.spot < self.iter.tokens.len() - 1 {
             let token = self.iter.next().unwrap();
             println!("{token:?}");
             let span = token.span();
-            self.iter.report(
+            let _ = self.iter.report(
                 Report::build(ReportKind::Error, span)
                     .with_label(Label::new(span).with_message("Unexpected token"))
                     .finish(),
@@ -259,24 +270,23 @@ pub struct TokenIter {
 }
 
 impl TokenIter {
-    fn get(&self, idx: usize) -> Option<&WithSpan<TokenNL>> {
+    fn get(&self, idx: usize) -> OrErrorProof<&WithSpan<TokenNL>> {
         match self.tokens.get(idx) {
-            Some(v) => Some(v),
+            Some(v) => Ok(v),
             None => {
                 let span = self.tokens.last().unwrap().span();
-                self.report(
+                Err(self.report(
                     Report::build(ReportKind::Error, span)
                         .with_label(
                             Label::new(span).with_message("Expected token, found end of enclosure"),
                         )
                         .finish(),
-                );
-                None
+                ))
             }
         }
     }
 
-    pub fn next(&mut self) -> Option<WithSpan<Token>> {
+    pub fn next(&mut self) -> OrErrorProof<WithSpan<Token>> {
         loop {
             let token = self.get(self.spot)?.clone();
             self.spot += 1;
@@ -285,12 +295,18 @@ impl TokenIter {
 
             match token.into_inner() {
                 TokenNL::NewLine | TokenNL::Whitespace => {}
-                TokenNL::Token(token) => return Some(span.with(token)),
+                TokenNL::Token(token) => return Ok(span.with(token)),
             }
         }
     }
 
-    pub fn attempt<T>(&mut self, step: impl FnOnce(&mut Self, &mut bool) -> T) -> Attempt<T> {
+    /// Attempt a parsing step on a copy of the iterator. The step sets the `bool` to commit to its outcome; if it does, the reports and progress are copied into `self`. Otherwise, everything is discarded.
+    ///
+    /// The step may return `Err(None)` only if it isn't committing, since there is then no report to prove.
+    pub fn attempt<T>(
+        &mut self,
+        step: impl FnOnce(&mut Self, &mut bool) -> Result<T, Option<ReportToken>>,
+    ) -> Attempt<OrErrorProof<T>> {
         let mut new_self = self.clone();
         new_self.reporter = Reporter::default();
 
@@ -302,20 +318,24 @@ impl TokenIter {
 
         if commit {
             for report in new_self.reporter.drain() {
-                self.reporter.push(report);
+                let _ = self.reporter.push(report);
             }
 
             self.spot = new_self.spot;
 
-            Attempt::Taken(outcome)
+            Attempt::Taken(match outcome {
+                Ok(v) => Ok(v),
+                Err(Some(token)) => Err(token),
+                Err(None) => Err(todo!()),
+            })
         } else {
             let span = self.cash_in(marker);
             Attempt::NotTaken(span)
         }
     }
 
-    pub fn report(&self, report: Report<'static, Span>) {
-        self.reporter.push(report);
+    pub fn report(&self, report: Report<'static, Span>) -> ReportToken {
+        self.reporter.push(report)
     }
 
     pub fn r(&self) -> Reporter {
@@ -342,7 +362,7 @@ impl TokenIter {
     }
 
     pub fn on_whitespace(&self) -> Option<Span> {
-        let token = self.get(self.spot)?;
+        let token = self.get(self.spot).ok()?;
 
         if let TokenNL::Whitespace | TokenNL::NewLine = &**token {
             return Some(token.span());
@@ -351,17 +371,17 @@ impl TokenIter {
         None
     }
 
-    pub fn nl(&mut self) -> Option<Span> {
+    pub fn nl(&mut self) -> OrErrorProof<Span> {
         loop {
             let token = self.get(self.spot)?;
             let span = token.span();
             match &**token {
                 TokenNL::NewLine => {
                     self.spot += 1;
-                    return Some(span);
+                    return Ok(span);
                 }
                 TokenNL::Token(Token::EndOfEnclosure(_)) => {
-                    return Some(span);
+                    return Ok(span);
                 }
                 TokenNL::Whitespace => {
                     self.spot += 1;
@@ -375,45 +395,45 @@ impl TokenIter {
         &mut self,
         expected: &str,
         picker: impl FnOnce(&Token) -> Option<T>,
-    ) -> Option<WithSpan<T>> {
+    ) -> OrErrorProof<WithSpan<T>> {
         let t = self.next()?;
         let span = t.span();
 
         match picker(&t) {
-            Some(v) => Some(span.with(v)),
+            Some(v) => Ok(span.with(v)),
             None => self.unexpected(t, expected),
         }
     }
 
-    pub fn ident(&mut self) -> Option<WithSpan<Intern<str>>> {
+    pub fn ident(&mut self) -> OrErrorProof<WithSpan<Intern<str>>> {
         self.filter("an identifier", |t| match t {
             Token::Ident(ident) => Some(*ident),
             _ => None,
         })
     }
 
-    pub fn reg(&mut self) -> Option<WithSpan<RegisterReference>> {
+    pub fn reg(&mut self) -> OrErrorProof<WithSpan<RegisterReference>> {
         self.filter("a register", |t| match t {
             Token::Register(reg) => Some(*reg),
             _ => None,
         })
     }
 
-    pub fn number(&mut self) -> Option<WithSpan<Int<U>>> {
+    pub fn number(&mut self) -> OrErrorProof<WithSpan<Int<U>>> {
         self.filter("a non-negative integer", |t| match t {
             Token::Number(num) => Some(*num),
             _ => None,
         })
     }
 
-    pub fn constant(&mut self) -> Option<WithSpan<(Intern<str>, RegisterModifiers)>> {
+    pub fn constant(&mut self) -> OrErrorProof<WithSpan<(Intern<str>, RegisterModifiers)>> {
         self.filter("a constant", |t| match t {
             Token::Constant(c, mods) => Some((*c, *mods)),
             _ => None,
         })
     }
 
-    pub fn word(&mut self, word: &str) -> Option<WithSpan<()>> {
+    pub fn word(&mut self, word: &str) -> OrErrorProof<WithSpan<()>> {
         self.filter(&format!("`{word}`"), |t| {
             if let Some(word) = word.strip_prefix(".") {
                 if matches!(t, Token::Directive(directive) if directive.as_ref() == word) {
@@ -427,14 +447,14 @@ impl TokenIter {
         })
     }
 
-    pub fn symbol(&mut self, sym: Symbol) -> Option<WithSpan<()>> {
+    pub fn symbol(&mut self, sym: Symbol) -> OrErrorProof<WithSpan<()>> {
         self.filter(&format!("`{}`", sym.as_str()), |t| match t {
             Token::Symbol(symbol) if *symbol == sym => Some(()),
             _ => None,
         })
     }
 
-    pub fn enclosure(&mut self, target_enloser: Encloser) -> Option<WithSpan<TokenEnclosure>> {
+    pub fn enclosure(&mut self, target_enloser: Encloser) -> OrErrorProof<WithSpan<TokenEnclosure>> {
         self.filter(
             match target_enloser {
                 Encloser::Paren => "a parenthesized expression",
@@ -449,7 +469,7 @@ impl TokenIter {
         )
     }
 
-    pub fn end_of_enclosure(&mut self) -> Option<WithSpan<()>> {
+    pub fn end_of_enclosure(&mut self) -> OrErrorProof<WithSpan<()>> {
         self.filter("end of enclosure", |t| match t {
             Token::EndOfEnclosure(_) => Some(()),
             _ => None,
@@ -459,7 +479,7 @@ impl TokenIter {
     pub fn one_of<T, const N: usize>(
         &mut self,
         choices: [(&'static str, T); N],
-    ) -> Option<WithSpan<T>> {
+    ) -> OrErrorProof<WithSpan<T>> {
         let names = choices.each_ref().map(|v| v.0);
 
         self.filter(
@@ -482,7 +502,7 @@ impl TokenIter {
         )
     }
 
-    pub fn unexpected<T>(&self, t: WithSpan<Token>, expected: &str) -> Option<T> {
+    pub fn unexpected<T>(&self, t: WithSpan<Token>, expected: &str) -> OrErrorProof<T> {
         let span = t.span();
 
         let (found, span) = match t.into_inner() {
@@ -515,51 +535,49 @@ impl TokenIter {
             ),
         };
 
-        self.r().push(
+        Err(self.r().push(
             Report::build(ReportKind::Error, span)
                 .with_label(
                     Label::new(span).with_message(format!("Expected {expected} but found {found}.")),
                 )
                 .finish(),
-        );
-
-        None
+        ))
     }
 
     pub fn parse_list<T>(
         &mut self,
-        mut item: impl FnMut(&mut TokenIter, &mut bool) -> Option<T>,
-        mut delim: impl FnMut(&mut TokenIter, &mut bool) -> Option<()>,
-    ) -> Option<Box<[T]>> {
-        let mut maybe_out = Some(Vec::new());
+        mut item: impl FnMut(&mut TokenIter, &mut bool) -> Result<T, Option<ReportToken>>,
+        mut delim: impl FnMut(&mut TokenIter, &mut bool) -> Result<(), Option<ReportToken>>,
+    ) -> OrErrorProof<Box<[T]>> {
+        let mut maybe_out = Ok(Vec::new());
 
         loop {
             let spot = self.spot;
             match self.attempt(&mut item) {
                 Attempt::NotTaken(_) => break maybe_out.map(Into::into),
-                Attempt::Taken(Some(v)) => {
-                    if let Some(out) = &mut maybe_out {
+                Attempt::Taken(Ok(v)) => {
+                    if let Ok(out) = &mut maybe_out {
                         out.push(v);
                     }
                 }
-                Attempt::Taken(None) => maybe_out = None,
+                Attempt::Taken(Err(token)) => maybe_out = Err(token),
             }
 
             match self.attempt(&mut delim) {
                 Attempt::NotTaken(_) => break maybe_out.map(Into::into),
-                Attempt::Taken(Some(())) => {}
-                Attempt::Taken(None) => maybe_out = None,
+                Attempt::Taken(Ok(())) => {}
+                Attempt::Taken(Err(token)) => maybe_out = Err(token),
             }
 
             // No progress made across either thingy
             if spot == self.spot {
-                if maybe_out.is_none() {
-                    return None;
+                if maybe_out.is_err() {
+                    return maybe_out.map(Into::into);
                 }
 
                 panic!(
                     "Should not go through the loop without making progress; {spot} - {:?}",
-                    maybe_out.as_ref().map(Vec::len)
+                    maybe_out.as_ref().ok().map(Vec::len)
                 );
             }
         }
@@ -571,17 +589,17 @@ pub enum Attempt<T> {
     Taken(T),
 }
 
-impl<T> Attempt<Option<T>> {
+impl<T> Attempt<OrErrorProof<T>> {
     /// Nested `attempt` call combinator
-    pub fn c(self, commit: &mut bool) -> Option<T> {
+    pub fn c(self, commit: &mut bool) -> Result<T, Option<ReportToken>> {
         match self {
             Attempt::NotTaken(_) => {
                 *commit = false;
-                None
+                Err(None)
             }
             Attempt::Taken(v) => {
                 *commit = true;
-                v
+                v.map_err(Some)
             }
         }
     }

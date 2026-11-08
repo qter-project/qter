@@ -16,6 +16,7 @@ use sarlacc::Intern;
 use crate::{
     ExpandedCode, ExpandedCodeComponent, LabelReference, Primitive, Puzzle, RegisterModifiers,
     RegisterReference, Reporter,
+    reporter::OrErrorProof,
     optimization::{OptimizingCodeComponent, OptimizingPrimitive, do_optimization},
 };
 
@@ -45,7 +46,7 @@ impl GlobalRegs {
         reg
     }
 
-    fn decoding(&self, register: RegisterReference, r: &Reporter) -> Option<Decoding> {
+    fn decoding(&self, register: RegisterReference, r: &Reporter) -> OrErrorProof<Decoding> {
         let RegisterIdx {
             puzzle_idx,
             reg_idx,
@@ -59,14 +60,18 @@ impl GlobalRegs {
             alg.exponentiate(-Int::<I>::one());
         }
 
-        Some(Decoding {
+        Ok(Decoding {
             puzzle_idx,
             algorithm: alg,
             facelets: get_facelets(reg_idx, &arch, mods.modulus, register, r)?,
         })
     }
 
-    fn facelets(&self, register: RegisterReference, r: &Reporter) -> Option<(PuzzleIdx, Facelets)> {
+    fn facelets(
+        &self,
+        register: RegisterReference,
+        r: &Reporter,
+    ) -> OrErrorProof<(PuzzleIdx, Facelets)> {
         let RegisterIdx {
             puzzle_idx,
             reg_idx,
@@ -74,7 +79,7 @@ impl GlobalRegs {
             mods,
         } = self.get_reg(register);
 
-        Some((
+        Ok((
             puzzle_idx,
             get_facelets(reg_idx, &arch, mods.modulus, register, r)?,
         ))
@@ -87,11 +92,11 @@ fn get_facelets(
     modulus: Option<Int<U>>,
     register: RegisterReference,
     r: &Reporter,
-) -> Option<Facelets> {
+) -> OrErrorProof<Facelets> {
     match modulus {
         Some(modulus) => {
             if let Some(v) = arch.registers()[idx].signature_facelets_mod(modulus) {
-                Some(v)
+                Ok(v)
             } else {
                 let cycles = arch.registers()[idx]
                     .unshared_cycles()
@@ -103,7 +108,7 @@ fn get_facelets(
 
                 let span = register.reg_name.span();
 
-                r.push(
+                Err(r.push(
                     Report::build(ReportKind::Error, span)
                         .with_label(Label::new(span)
                         .with_message(format!(
@@ -112,15 +117,14 @@ fn get_facelets(
                         ))
                         )
                         .finish(),
-                );
-                None
+                ))
             }
         }
-        None => Some(arch.registers()[idx].signature_facelets()),
+        None => Ok(arch.registers()[idx].signature_facelets()),
     }
 }
 
-pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
+pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> OrErrorProof<Program> {
     let mut global_regs = GlobalRegs {
         register_table: HashMap::new(),
         puzzles: vec![],
@@ -155,7 +159,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
     let global_regs = Arc::new(global_regs);
     let global_regs_for_iter = Arc::clone(&global_regs);
 
-    let before = r.count();
+    let before = r.count_token();
 
     let instructions_mapped = expanded
         .components
@@ -193,7 +197,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
                             Primitive::Goto { label } => {
                                 let span = label.span();
                                 let Some(label) = expanded.block_info.label_scope(&label) else {
-                                    r.push(
+                                    let _ = r.push(
                                         Report::build(ReportKind::Error, label.span())
                                             .with_label(
                                                 Label::new(label.span())
@@ -211,7 +215,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
                             Primitive::SolvedGoto { label, register } => {
                                 let span = label.span();
                                 let Some(label) = expanded.block_info.label_scope(&label) else {
-                                    r.push(
+                                    let _ = r.push(
                                         Report::build(ReportKind::Error, label.span())
                                             .with_label(
                                                 Label::new(label.span())
@@ -247,9 +251,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
         })
         .collect_vec();
 
-    if r.count() - before != 0 {
-        return None;
-    }
+    r.errors_since(before)?;
 
     let optimized = do_optimization(instructions_mapped.into_iter(), &global_regs);
 
@@ -283,7 +285,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
         })
         .collect_vec();
 
-    let before = r.count();
+    let before = r.count_token();
 
     let instructions = instructions
         .into_iter()
@@ -306,7 +308,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
                     instruction_idx: *label_locations.get(&label).unwrap(),
                 },
                 OptimizingPrimitive::SolvedGoto { register, label } => {
-                    let (puzzle_idx, facelets) = global_regs.facelets(register, r)?;
+                    let (puzzle_idx, facelets) = global_regs.facelets(register, r).ok()?;
 
                     Instruction::SolvedGoto {
                         instruction_idx: *label_locations.get(&label).unwrap(),
@@ -322,7 +324,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
                 } => Instruction::RepeatUntil {
                     puzzle_idx: puzzle,
                     facelets: {
-                        let (idx, facelets) = global_regs.facelets(register, r)?;
+                        let (idx, facelets) = global_regs.facelets(register, r).ok()?;
                         assert_eq!(idx, puzzle);
                         facelets
                     },
@@ -335,7 +337,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
                 },
                 OptimizingPrimitive::Solve { puzzle } => Instruction::Solve(puzzle),
                 OptimizingPrimitive::Input { message, register } => {
-                    let decoding = global_regs.decoding(register, r)?;
+                    let decoding = global_regs.decoding(register, r).ok()?;
 
                     Instruction::Input {
                         message: message.into_inner(),
@@ -344,7 +346,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
                 }
                 OptimizingPrimitive::Halt { message, register } => {
                     let decoding = match register {
-                        Some(v) => Some(global_regs.decoding(v, r)?),
+                        Some(v) => Some(global_regs.decoding(v, r).ok()?),
                         None => None,
                     };
 
@@ -355,7 +357,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
                 }
                 OptimizingPrimitive::Print { message, register } => {
                     let decoding = match register {
-                        Some(v) => Some(global_regs.decoding(v, r)?),
+                        Some(v) => Some(global_regs.decoding(v, r).ok()?),
                         None => None,
                     };
 
@@ -370,13 +372,11 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
         })
         .collect_vec();
 
-    if r.count() - before != 0 {
-        return None;
-    }
+    r.errors_since(before)?;
 
     let global_regs = Arc::into_inner(global_regs).unwrap();
 
-    Some(Program {
+    Ok(Program {
         puzzles: global_regs.puzzles,
         instructions,
     })

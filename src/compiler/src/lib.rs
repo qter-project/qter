@@ -23,7 +23,7 @@ use rhai::RhaiMacros;
 use sarlacc::Intern;
 use strip_expanded::strip_expanded;
 
-use crate::macro_expansion::expand;
+use crate::{macro_expansion::expand, reporter::OrErrorProof};
 
 mod builtin_macros;
 mod macro_expansion;
@@ -45,7 +45,7 @@ pub fn compile(
     qat: File,
     find_import: impl Fn(&str) -> Result<Intern<str>, String> + 'static,
     reporter: &Reporter,
-) -> Option<(Program, Option<WithSpan<RegistersDecl>>)> {
+) -> OrErrorProof<(Program, Option<WithSpan<RegistersDecl>>)> {
     let parsed = parse(qat, &Rc::new(find_import), false, reporter)?;
 
     let arch = parsed.expansion_info.registers.clone();
@@ -82,28 +82,27 @@ fn resolve_just_these_defines(
     this: &mut WithSpan<TaggedInstruction>,
     defines: &HashMap<Intern<str>, Define<WithSpan<ResolvedValue>>>,
     r: &Reporter,
-) -> Option<()> {
+) -> OrErrorProof<()> {
     match &mut this.0 {
         Instruction::Label(_) | Instruction::Define(_) | Instruction::Code(Code::Primitive(_)) => {
-            Some(())
+            Ok(())
         }
         Instruction::Code(Code::Macro(call)) => {
             call.arguments
                 .iter_mut()
                 .map(|arg| value_resolve_just_these_defines(arg, defines, r))
-                .collect::<Option<Vec<_>>>()?;
-            Some(())
+                .collect::<OrErrorProof<Vec<_>>>()?;
+            Ok(())
         }
         Instruction::Constant(arc_intern) => match defines.get(arc_intern) {
-            None => Some(()),
+            None => Ok(()),
             Some(value) => {
                 let whoops = |which| {
-                    r.push(
+                    Err(r.push(
                         Report::build(ReportKind::Error, this.span())
                             .with_label(ariadne::Label::new(this.span()).with_message(format!("This constant cannot be expanded as source code because it defines {which}, not a code block")))
                             .finish(),
-                    );
-                    None
+                    ))
                 };
 
                 match &*value.value {
@@ -112,7 +111,7 @@ fn resolve_just_these_defines(
                     ResolvedValue::Register(_) => whoops("a register"),
                     ResolvedValue::Block(block) => {
                         this.0 = Instruction::Block(block.clone());
-                        Some(())
+                        Ok(())
                     }
                 }
             }
@@ -122,16 +121,16 @@ fn resolve_just_these_defines(
                 .args
                 .iter_mut()
                 .map(|arg| value_resolve_just_these_defines(arg, defines, r))
-                .collect::<Option<Vec<_>>>()?;
-            Some(())
+                .collect::<OrErrorProof<Vec<_>>>()?;
+            Ok(())
         }
         Instruction::Block(block) => {
             block
                 .code
                 .iter_mut()
                 .map(|instr| resolve_just_these_defines(instr, defines, r))
-                .collect::<Option<Vec<_>>>()?;
-            Some(())
+                .collect::<OrErrorProof<Vec<_>>>()?;
+            Ok(())
         }
     }
 }
@@ -167,14 +166,14 @@ impl RegisterModifiers {
         old_span: Span,
         new_span: Span,
         r: &Reporter,
-    ) -> Option<RegisterModifiers> {
-        Some(RegisterModifiers {
+    ) -> OrErrorProof<RegisterModifiers> {
+        Ok(RegisterModifiers {
             modulus: match (self.modulus, new.modulus) {
                 (None, None) => None,
                 (None, Some(v)) | (Some(v), None) => Some(v),
                 (Some(a), Some(b)) => {
                     if !(a % b).is_zero() {
-                        r.push(
+                        return Err(r.push(
                             Report::build(ReportKind::Error, new_span)
                                 .with_label(ariadne::Label::new(new_span).with_message(format!(
                                     "{b} does not divide {a} so the modulus can't be refined to {b}"
@@ -184,8 +183,7 @@ impl RegisterModifiers {
                                         .with_message("Constant was defined here"),
                                 )
                                 .finish(),
-                        );
-                        return None;
+                        ));
                     }
 
                     Some(b)
@@ -277,31 +275,31 @@ fn value_resolve_just_these_defines(
     value: &mut WithSpan<Value>,
     defines: &HashMap<Intern<str>, Define<WithSpan<ResolvedValue>>>,
     r: &Reporter,
-) -> Option<()> {
+) -> OrErrorProof<()> {
     let span = value.span();
     match &mut **value {
         Value::Resolved(value) => match value {
             ResolvedValue::Int(_) | ResolvedValue::Register(_) | ResolvedValue::Ident(_) => {
-                Some(())
+                Ok(())
             }
             ResolvedValue::Block(block) => {
                 block
                     .code
                     .iter_mut()
                     .map(|instr| resolve_just_these_defines(instr, defines, r))
-                    .collect::<Option<Vec<_>>>()?;
-                Some(())
+                    .collect::<OrErrorProof<Vec<_>>>()?;
+                Ok(())
             }
         },
         Value::Constant {
             name: arc_intern,
             mods,
         } => match defines.get(arc_intern) {
-            None => Some(()),
+            None => Ok(()),
             Some(define) => {
                 value.value =
                     Value::Resolved(compose_mod(define.value.clone(), *mods, span, r)?.value);
-                Some(())
+                Ok(())
             }
         },
     }
@@ -312,15 +310,15 @@ fn compose_mod(
     mods: RegisterModifiers,
     ref_span: Span,
     r: &Reporter,
-) -> Option<WithSpan<ResolvedValue>> {
+) -> OrErrorProof<WithSpan<ResolvedValue>> {
     if mods.is_plain() {
-        return Some(value);
+        return Ok(value);
     }
 
     let def_span = value.span();
 
     let ResolvedValue::Register(mut reg) = value.value else {
-        r.push(
+        return Err(r.push(
             Report::build(ReportKind::Error, ref_span)
                 .with_label(ariadne::Label::new(ref_span).with_message(format!(
                     "Register modifiers are not meaningful for non-register constants. Found a {}",
@@ -328,13 +326,12 @@ fn compose_mod(
                 )))
                 .with_label(ariadne::Label::new(def_span).with_message("Constant was defined here"))
                 .finish(),
-        );
-        return None;
+        ));
     };
 
     reg.mods = reg.mods.compose(mods, def_span, ref_span, r)?;
 
-    Some(def_span.with(ResolvedValue::Register(reg)))
+    Ok(def_span.with(ResolvedValue::Register(reg)))
 }
 
 type RegisterInfo = (RegisterReference, RhaiRegInfo);
@@ -396,18 +393,18 @@ impl RhaiCall {
         block_id: BlockID,
         branch_key: MacroBranchKey,
         r: &Reporter,
-    ) -> Option<WithSpan<Value>> {
+    ) -> OrErrorProof<WithSpan<Value>> {
         let args = self
             .args
             .into_iter()
             .map(|value| info.resolve(DefineValue::Value(value), block_id, branch_key, r))
-            .collect::<Option<Vec<_>>>()?;
+            .collect::<OrErrorProof<Vec<_>>>()?;
 
         let rhai = info.rhai_macros.get(&span.source()).unwrap();
 
         let result = rhai.do_rhai_call(&self.function_name, args, span, info, branch_key, r)?;
 
-        Some(span.with(result))
+        Ok(span.with(result))
     }
 }
 
@@ -559,7 +556,7 @@ enum Macro {
             BlockID,
             MacroBranchKey,
             &Reporter,
-        ) -> Option<Primitive>,
+        ) -> OrErrorProof<Primitive>,
     ),
 }
 
@@ -683,18 +680,17 @@ impl BlockInfoTracker {
         &self,
         block_id: BlockID,
         value: WithSpan<Value>,
-    ) -> Option<WithSpan<ResolvedValue>> {
+    ) -> OrErrorProof<WithSpan<ResolvedValue>> {
         let span = value.span();
-        Some(span.with(match value.into_inner() {
+        Ok(span.with(match value.into_inner() {
             Value::Resolved(resolved) => resolved,
             Value::Constant { name, mods } => {
                 let Some(v) = self.get_define(block_id, name) else {
-                    self.reporter.push(
+                    return Err(self.reporter.push(
                         Report::build(ReportKind::Error, span)
                             .with_label(ariadne::Label::new(span).with_message("Constant not found in this scope"))
                             .finish(),
-                    );
-                    return None;
+                    ));
                 };
 
                 compose_mod(v.value.clone(), mods, span, &self.reporter)?.into_inner()
@@ -754,7 +750,7 @@ impl ExpansionInfo {
         block_id: BlockID,
         branch_key: MacroBranchKey,
         r: &Reporter,
-    ) -> Option<WithSpan<ResolvedValue>> {
+    ) -> OrErrorProof<WithSpan<ResolvedValue>> {
         match value {
             DefineValue::Value(v) => self.block_info.resolve(block_id, v),
             DefineValue::RhaiCall(call) => {
@@ -830,7 +826,7 @@ mod tests {
 
         let reporter = Reporter::default();
 
-        let Some((program, _)) = compile(
+        let Ok((program, _)) = compile(
             File::new(Intern::from_ref("code.qat"), Intern::from_ref(code)),
             |_| unreachable!(),
             &reporter,
@@ -883,8 +879,8 @@ A: 3x3
             |_| unreachable!(),
             &reporter,
         ) {
-            Some(v) => panic!("{v:?}"),
-            None => {
+            Ok(v) => panic!("{v:?}"),
+            Err(_) => {
                 assert_eq!(reporter.iter().count(), 1);
             }
         }
@@ -909,8 +905,8 @@ A: 3x3
             |_| unreachable!(),
             &reporter,
         ) {
-            Some(v) => panic!("{v:?}"),
-            None => {
+            Ok(v) => panic!("{v:?}"),
+            Err(_) => {
                 assert_eq!(reporter.iter().count(), 1);
             }
         }
@@ -943,8 +939,8 @@ A: 3x3
             |_| unreachable!(),
             &reporter,
         ) {
-            Some(v) => panic!("{v:?}"),
-            None => {
+            Ok(v) => panic!("{v:?}"),
+            Err(_) => {
                 assert_eq!(reporter.iter().count(), 1);
 
                 for (_, report) in &reporter {

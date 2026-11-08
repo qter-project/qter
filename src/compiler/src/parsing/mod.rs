@@ -6,6 +6,7 @@ use sarlacc::Intern;
 
 use crate::{
     BlockID, ParsedSyntax, Reporter, builtin_macros::builtin_macros, parsing::level_two::tokenize,
+    reporter::OrErrorProof,
 };
 
 mod level_two;
@@ -18,7 +19,7 @@ thread_local! {
 
         let reporter = Reporter::default();
 
-        let Some(mut parsed_prelude) = parse(
+        let Ok(mut parsed_prelude) = parse(
             prelude,
             &Rc::new(|_: &str| {
                 panic!(
@@ -56,7 +57,9 @@ pub fn parse(
     find_import: &Rc<impl Fn(&str) -> Result<Intern<str>, String> + 'static>,
     is_prelude: bool,
     reporter: &Reporter,
-) -> Option<WithSpan<ParsedSyntax>> {
+) -> OrErrorProof<WithSpan<ParsedSyntax>> {
+    let count = reporter.count_token();
+    
     let enclosure = tokenize(qat, reporter.clone())?;
 
     let v = enclosure.parse(|iter| {
@@ -64,7 +67,9 @@ pub fn parse(
         parser::parse(iter, find_import, is_prelude)
     });
 
-    if reporter.count() != 0 { None } else { v }
+    reporter.errors_since(count)?;
+
+    v
 }
 
 fn merge_files(
@@ -73,14 +78,14 @@ fn merge_files(
     mut importee: ParsedSyntax,
     span: Span,
     reporter: &Reporter,
-) -> Option<()> {
+) -> OrErrorProof<()> {
     match (
         &importer.expansion_info.registers,
         importee.expansion_info.registers,
     ) {
         (None, Some(regs)) => importer.expansion_info.registers = Some(regs),
         (Some(regs1), Some(regs2)) => {
-            reporter.push(
+            return Err(reporter.push(
                 Report::build(ReportKind::Error, span)
                     .with_message("Importing this file introduces a second registers declaration")
                     .with_note("A QAT program may only contain one registers declaration")
@@ -91,8 +96,7 @@ fn merge_files(
                         Label::new(regs2.span()).with_message("Introduced registers declaration"),
                     )
                     .finish(),
-            );
-            return None;
+            ));
         }
         (_, None) => {}
     }
@@ -141,7 +145,7 @@ fn merge_files(
     });
     importer.code.extend(importee.code);
 
-    Some(())
+    Ok(())
 }
 
 #[cfg(test)]
@@ -209,8 +213,8 @@ pub(crate) mod tests {
             false,
             &reporter,
         ) {
-            Some(_) => {}
-            None => {
+            Ok(_) => {}
+            Err(_) => {
                 let mut cache = ariadne::sources(
                     [("pog.qat", "add 1 a"), ("<static>", code)]
                         .into_iter()
@@ -289,10 +293,10 @@ pub(crate) mod tests {
             let reporter = Reporter::default();
 
             match parse(file(code), &Rc::new(|_: &str| panic!()), false, &reporter) {
-                Some(_) => {
+                Ok(_) => {
                     assert!(counterexample.is_none());
                 }
-                None => {
+                Err(_) => {
                     let Some(counterexample) = counterexample else {
                         panic!()
                     };
