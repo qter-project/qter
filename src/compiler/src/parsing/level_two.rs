@@ -1,19 +1,17 @@
 use std::{cell::Cell, mem, sync::Arc};
 
 use ariadne::{Label, Report, ReportKind, Span as _};
-use sarlacc::Intern;
 use itertools::{Itertools, MultiPeek};
-use puzzle_theory::{
-    numbers::{Int, U},
-};
+use puzzle_theory::numbers::{Int, U};
+use sarlacc::Intern;
 
-use qter_core::span::{File, Span, WithSpan};
 use crate::{
     RegisterModifiers, RegisterReference, Reporter,
-    reporter::{OrErrorProof, ReportToken},
     parsing::tokenizer::{Encloser, Symbol, TokenFlat, TokenNLFlat, Tokenizer},
+    reporter::{OrErrorProof, ReportToken},
     rhai::RhaiCode,
 };
+use qter_core::span::{File, Span, WithSpan};
 
 pub fn tokenize(qat: File, reporter: Reporter) -> OrErrorProof<TokenEnclosure> {
     let mut t = Tokenizer::new(qat, reporter.clone());
@@ -39,7 +37,7 @@ pub fn tokenize(qat: File, reporter: Reporter) -> OrErrorProof<TokenEnclosure> {
 
     while last.get() != num_chars {
         let Some(token) = t.next() else {
-            return Err(todo!());
+            unreachable!()
         };
         let token = token?;
         let span = token.span();
@@ -130,7 +128,9 @@ pub fn tokenize(qat: File, reporter: Reporter) -> OrErrorProof<TokenEnclosure> {
                     let Some((before_t, after_t, encloser, prev_out)) = stack.pop() else {
                         return Err(reporter.push(
                             Report::build(ReportKind::Error, span)
-                                .with_label(Label::new(span).with_message("Unmatched closing delimiter"))
+                                .with_label(
+                                    Label::new(span).with_message("Unmatched closing delimiter"),
+                                )
                                 .finish(),
                         ));
                     };
@@ -139,8 +139,7 @@ pub fn tokenize(qat: File, reporter: Reporter) -> OrErrorProof<TokenEnclosure> {
                         return Err(reporter.push(
                             Report::build(ReportKind::Error, span)
                                 .with_label(
-                                    ariadne::Label::new(span)
-                                        .with_message("Mismatched delimiter"),
+                                    ariadne::Label::new(span).with_message("Mismatched delimiter"),
                                 )
                                 .with_label(
                                     ariadne::Label::new(mk_span(before_t, after_t))
@@ -150,10 +149,7 @@ pub fn tokenize(qat: File, reporter: Reporter) -> OrErrorProof<TokenEnclosure> {
                         ));
                     }
 
-                    out.push(
-                        span
-                            .with(TokenNL::Token(Token::EndOfEnclosure(Some(e)))),
-                    );
+                    out.push(span.with(TokenNL::Token(Token::EndOfEnclosure(Some(e)))));
 
                     let contents = mem::replace(&mut out, prev_out);
 
@@ -178,11 +174,16 @@ pub fn tokenize(qat: File, reporter: Reporter) -> OrErrorProof<TokenEnclosure> {
     let mut unmatched = None;
 
     for (before, after, _, _) in stack {
-        unmatched = Some(reporter.push(
-            Report::build(ReportKind::Error, mk_span(before, after))
-                .with_label(Label::new(mk_span(before, after)).with_message("Unmatched opening delimiter"))
-                .finish(),
-        ));
+        unmatched = Some(
+            reporter.push(
+                Report::build(ReportKind::Error, mk_span(before, after))
+                    .with_label(
+                        Label::new(mk_span(before, after))
+                            .with_message("Unmatched opening delimiter"),
+                    )
+                    .finish(),
+            ),
+        );
     }
 
     if let Some(token) = unmatched {
@@ -326,7 +327,7 @@ impl TokenIter {
             Attempt::Taken(match outcome {
                 Ok(v) => Ok(v),
                 Err(Some(token)) => Err(token),
-                Err(None) => Err(todo!()),
+                Err(None) => panic!("The closure input to `attempt` committed but returned `Err(None)`; closures must return proof of pushing an error when committing a failure."),
             })
         } else {
             let span = self.cash_in(marker);
@@ -454,7 +455,10 @@ impl TokenIter {
         })
     }
 
-    pub fn enclosure(&mut self, target_enloser: Encloser) -> OrErrorProof<WithSpan<TokenEnclosure>> {
+    pub fn enclosure(
+        &mut self,
+        target_enloser: Encloser,
+    ) -> OrErrorProof<WithSpan<TokenEnclosure>> {
         self.filter(
             match target_enloser {
                 Encloser::Paren => "a parenthesized expression",
@@ -538,7 +542,8 @@ impl TokenIter {
         Err(self.r().push(
             Report::build(ReportKind::Error, span)
                 .with_label(
-                    Label::new(span).with_message(format!("Expected {expected} but found {found}.")),
+                    Label::new(span)
+                        .with_message(format!("Expected {expected} but found {found}.")),
                 )
                 .finish(),
         ))

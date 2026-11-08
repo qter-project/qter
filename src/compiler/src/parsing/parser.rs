@@ -120,11 +120,16 @@ pub fn parse(
                         .macros
                         .contains_key(&(iter.file(), *name))
                     {
-                        err = Some(iter.report(
-                            Report::build(ReportKind::Error, name.span())
-                                .with_label(Label::new(name.span()).with_message("This macro is already defined."))
-                                .finish(),
-                        ));
+                        err = Some(
+                            iter.report(
+                                Report::build(ReportKind::Error, name.span())
+                                    .with_label(
+                                        Label::new(name.span())
+                                            .with_message("This macro is already defined."),
+                                    )
+                                    .finish(),
+                            ),
+                        );
                         continue;
                     }
 
@@ -140,22 +145,32 @@ pub fn parse(
                     let filename = iter.ident()?;
 
                     if !filename.ends_with(".qat") {
-                        err = Some(iter.report(
-                            Report::build(ReportKind::Error, filename.span())
-                                .with_label(Label::new(filename.span()).with_message("The file extension must be `.qat`"))
-                                .finish(),
-                        ));
+                        err = Some(
+                            iter.report(
+                                Report::build(ReportKind::Error, filename.span())
+                                    .with_label(
+                                        Label::new(filename.span())
+                                            .with_message("The file extension must be `.qat`"),
+                                    )
+                                    .finish(),
+                            ),
+                        );
                         continue;
                     }
 
                     let import = match (find_import)(&filename.value) {
                         Ok(v) => v,
                         Err(e) => {
-                            err = Some(iter.report(
-                                Report::build(ReportKind::Error, filename.span())
-                                    .with_label(Label::new(filename.span()).with_message(format!("Unable to find import: {e}")))
-                                    .finish(),
-                            ));
+                            err =
+                                Some(
+                                    iter.report(
+                                        Report::build(ReportKind::Error, filename.span())
+                                            .with_label(Label::new(filename.span()).with_message(
+                                                format!("Unable to find import: {e}"),
+                                            ))
+                                            .finish(),
+                                    ),
+                                );
 
                             continue;
                         }
@@ -188,7 +203,10 @@ pub fn parse(
                 } else {
                     return Err(iter.report(
                         Report::build(ReportKind::Error, span)
-                            .with_label(Label::new(span).with_message("Unknown directive; expected .macro or .import"))
+                            .with_label(
+                                Label::new(span)
+                                    .with_message("Unknown directive; expected .macro or .import"),
+                            )
                             .finish(),
                     ));
                 }
@@ -317,15 +335,15 @@ fn register_architecture(t: &mut TokenIter) -> OrErrorProof<PuzzleUnnamed> {
     let puzzle = match puzzle_def.parse::<PuzzleGeometry>() {
         Ok(v) => Ok(v),
         Err(err) => Err(t.report(
-                Report::build(ReportKind::Error, puzzle_def.span())
-                    .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
-                    .with_label(
-                        Label::new(puzzle_def.span())
-                            .with_message(err)
-                            .with_color(Color::Red),
-                    )
-                    .finish(),
-            )),
+            Report::build(ReportKind::Error, puzzle_def.span())
+                .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
+                .with_label(
+                    Label::new(puzzle_def.span())
+                        .with_message(err)
+                        .with_color(Color::Red),
+                )
+                .finish(),
+        )),
     };
 
     let def_span = puzzle_def.span();
@@ -379,7 +397,15 @@ fn arch(
 
         match with_presets(Arc::clone(group)).get_preset(&orders) {
             Some(v) => Ok(v),
-            None => Err(todo!()),
+            None => Err(Some(
+                t.report(
+                    Report::build(ReportKind::Error, token.span())
+                        .with_label(Label::new(token.span()).with_message(
+                            "The list of orders does not match any preset architecture.",
+                        ))
+                        .finish(),
+                ),
+            )),
         }
     });
 
@@ -462,18 +488,20 @@ fn parse_alg(t: &mut TokenIter, group: &Arc<PermutationGroup>) -> OrErrorProof<A
             let mut token = None;
 
             for span in spans.get(&k).unwrap() {
-                token = Some(t.report(
-                    Report::build(ReportKind::Error, *span)
-                        .with_help(format!(
-                            "Valid options are {}",
-                            group
-                                .generators()
-                                .sorted_by(|a, b| a.0.cmp(&b.0))
-                                .format_with(", ", |v, f| f(&format_args!("`{}`", v.0)))
-                        ))
-                        .with_label(Label::new(*span).with_message("Nonexistant move"))
-                        .finish(),
-                ));
+                token = Some(
+                    t.report(
+                        Report::build(ReportKind::Error, *span)
+                            .with_help(format!(
+                                "Valid options are {}",
+                                group
+                                    .generators()
+                                    .sorted_by(|a, b| a.0.cmp(&b.0))
+                                    .format_with(", ", |v, f| f(&format_args!("`{}`", v.0)))
+                            ))
+                            .with_label(Label::new(*span).with_message("Nonexistant move"))
+                            .finish(),
+                    ),
+                );
             }
 
             Err(token.expect("the nonexistant move to have come from the parsed move sequence"))
@@ -551,7 +579,10 @@ fn instruction(
     })
 }
 
-fn args(t: &mut TokenIter, branch_key: MacroBranchKey) -> OrErrorProof<WithSpan<Vec<WithSpan<Value>>>> {
+fn args(
+    t: &mut TokenIter,
+    branch_key: MacroBranchKey,
+) -> OrErrorProof<WithSpan<Vec<WithSpan<Value>>>> {
     let marker = t.marker();
     let mut args = Ok(Vec::new());
 
@@ -628,7 +659,9 @@ fn block(t: &mut TokenIter, branch_key: MacroBranchKey) -> OrErrorProof<WithSpan
             Attempt::NotTaken(span) => {
                 return Err(t.report(
                     Report::build(ReportKind::Error, span)
-                        .with_label(Label::new(span).with_message("Could not be parsed as an instruction"))
+                        .with_label(
+                            Label::new(span).with_message("Could not be parsed as an instruction"),
+                        )
                         .finish(),
                 ));
             }
@@ -711,7 +744,8 @@ fn rhai_call(t: &mut TokenIter, branch_key: MacroBranchKey) -> OrErrorProof<Rhai
                     }
                     _ => {
                         *commit = true;
-                        t.unexpected(token, "a comma or closing parenthesis").map_err(Some)
+                        t.unexpected(token, "a comma or closing parenthesis")
+                            .map_err(Some)
                     }
                 }
             },
@@ -786,11 +820,15 @@ fn macro_branch(t: &mut TokenIter) -> Attempt<OrErrorProof<WithSpan<MacroBranch>
 
         let subst = match instruction(t, branch_key) {
             Attempt::NotTaken(span) => {
-                return Err(Some(t.report(
-                    Report::build(ReportKind::Error, span)
-                        .with_label(Label::new(span).with_message("Unable to parse as an instruction"))
-                        .finish(),
-                )));
+                return Err(Some(
+                    t.report(
+                        Report::build(ReportKind::Error, span)
+                            .with_label(
+                                Label::new(span).with_message("Unable to parse as an instruction"),
+                            )
+                            .finish(),
+                    ),
+                ));
             }
             Attempt::Taken(v) => v?,
         };
@@ -802,7 +840,9 @@ fn macro_branch(t: &mut TokenIter) -> Attempt<OrErrorProof<WithSpan<MacroBranch>
     })
 }
 
-fn macro_pattern_component(t: &mut TokenIter) -> Attempt<OrErrorProof<WithSpan<MacroPatternComponent>>> {
+fn macro_pattern_component(
+    t: &mut TokenIter,
+) -> Attempt<OrErrorProof<WithSpan<MacroPatternComponent>>> {
     t.attempt(|t, commit| {
         let token = t.next()?;
         let span = token.span();
@@ -828,11 +868,15 @@ fn macro_pattern_component(t: &mut TokenIter) -> Attempt<OrErrorProof<WithSpan<M
                 let marker = t.marker();
 
                 if let Some(ws) = t.on_whitespace() {
-                    return Err(Some(t.report(
-                        Report::build(ReportKind::Error, ws)
-                            .with_label(Label::new(ws).with_message("Expected colon, found whitespace"))
-                            .finish(),
-                    )));
+                    return Err(Some(
+                        t.report(
+                            Report::build(ReportKind::Error, ws)
+                                .with_label(
+                                    Label::new(ws).with_message("Expected colon, found whitespace"),
+                                )
+                                .finish(),
+                        ),
+                    ));
                 }
 
                 t.symbol(Symbol::Colon)?;

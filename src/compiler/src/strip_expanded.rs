@@ -159,12 +159,10 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> OrErrorProof<Prog
     let global_regs = Arc::new(global_regs);
     let global_regs_for_iter = Arc::clone(&global_regs);
 
-    let before = r.count_token();
-
     let instructions_mapped = expanded
         .components
         .into_iter()
-        .filter_map(move |v| {
+        .map(move |v| {
             let span = v.span();
             let instr = match v.into_inner() {
                 ExpandedCodeComponent::Instruction(primitive, block_id) => {
@@ -197,15 +195,14 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> OrErrorProof<Prog
                             Primitive::Goto { label } => {
                                 let span = label.span();
                                 let Some(label) = expanded.block_info.label_scope(&label) else {
-                                    let _ = r.push(
+                                    return Err(r.push(
                                         Report::build(ReportKind::Error, label.span())
                                             .with_label(
                                                 Label::new(label.span())
                                                     .with_message("Could not find label in scope"),
                                             )
                                             .finish(),
-                                    );
-                                    return None;
+                                    ));
                                 };
 
                                 OptimizingPrimitive::Goto {
@@ -215,15 +212,14 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> OrErrorProof<Prog
                             Primitive::SolvedGoto { label, register } => {
                                 let span = label.span();
                                 let Some(label) = expanded.block_info.label_scope(&label) else {
-                                    let _ = r.push(
+                                    return Err(r.push(
                                         Report::build(ReportKind::Error, label.span())
                                             .with_label(
                                                 Label::new(label.span())
                                                     .with_message("Could not find label in scope"),
                                             )
                                             .finish(),
-                                    );
-                                    return None;
+                                    ));
                                 };
 
                                 OptimizingPrimitive::SolvedGoto {
@@ -247,11 +243,9 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> OrErrorProof<Prog
                 ExpandedCodeComponent::Label(label) => OptimizingCodeComponent::Label(label),
             };
 
-            Some(span.with(instr))
+            Ok(span.with(instr))
         })
-        .collect_vec();
-
-    r.errors_since(before)?;
+        .collect::<OrErrorProof<Vec<_>>>()?;
 
     let optimized = do_optimization(instructions_mapped.into_iter(), &global_regs);
 
@@ -285,11 +279,9 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> OrErrorProof<Prog
         })
         .collect_vec();
 
-    let before = r.count_token();
-
     let instructions = instructions
         .into_iter()
-        .filter_map(|fully_simplified| {
+        .map(|fully_simplified| {
             let span = fully_simplified.span();
 
             let instruction = match *fully_simplified.into_inner() {
@@ -308,7 +300,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> OrErrorProof<Prog
                     instruction_idx: *label_locations.get(&label).unwrap(),
                 },
                 OptimizingPrimitive::SolvedGoto { register, label } => {
-                    let (puzzle_idx, facelets) = global_regs.facelets(register, r).ok()?;
+                    let (puzzle_idx, facelets) = global_regs.facelets(register, r)?;
 
                     Instruction::SolvedGoto {
                         instruction_idx: *label_locations.get(&label).unwrap(),
@@ -324,7 +316,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> OrErrorProof<Prog
                 } => Instruction::RepeatUntil {
                     puzzle_idx: puzzle,
                     facelets: {
-                        let (idx, facelets) = global_regs.facelets(register, r).ok()?;
+                        let (idx, facelets) = global_regs.facelets(register, r)?;
                         assert_eq!(idx, puzzle);
                         facelets
                     },
@@ -337,7 +329,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> OrErrorProof<Prog
                 },
                 OptimizingPrimitive::Solve { puzzle } => Instruction::Solve(puzzle),
                 OptimizingPrimitive::Input { message, register } => {
-                    let decoding = global_regs.decoding(register, r).ok()?;
+                    let decoding = global_regs.decoding(register, r)?;
 
                     Instruction::Input {
                         message: message.into_inner(),
@@ -346,7 +338,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> OrErrorProof<Prog
                 }
                 OptimizingPrimitive::Halt { message, register } => {
                     let decoding = match register {
-                        Some(v) => Some(global_regs.decoding(v, r).ok()?),
+                        Some(v) => Some(global_regs.decoding(v, r)?),
                         None => None,
                     };
 
@@ -357,7 +349,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> OrErrorProof<Prog
                 }
                 OptimizingPrimitive::Print { message, register } => {
                     let decoding = match register {
-                        Some(v) => Some(global_regs.decoding(v, r).ok()?),
+                        Some(v) => Some(global_regs.decoding(v, r)?),
                         None => None,
                     };
 
@@ -368,11 +360,9 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> OrErrorProof<Prog
                 }
             };
 
-            Some(WithSpan::new(instruction, span))
+            Ok(WithSpan::new(instruction, span))
         })
-        .collect_vec();
-
-    r.errors_since(before)?;
+        .collect::<OrErrorProof<Vec<_>>>()?;
 
     let global_regs = Arc::into_inner(global_regs).unwrap();
 

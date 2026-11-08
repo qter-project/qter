@@ -63,7 +63,7 @@ pub fn expand(mut parsed: ParsedSyntax, r: &Reporter) -> OrErrorProof<ExpandedCo
     })
 }
 
-/// Returns whether any changes were made
+/// Returns whether any changes were made. If there are any errors, the offending code is removed from the syntax tree so that the rest can be checked.
 fn expand_block(
     block_id: BlockID,
     expansion_info: &mut ExpansionInfo,
