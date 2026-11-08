@@ -28,7 +28,7 @@ thread_local! {
             true,
             &reporter,
         ) else {
-            for report in reporter.iter() {
+            for report in &reporter {
                 report.1.eprint((Intern::from_ref("prelude.qat"), Source::from(prelude.inner()))).unwrap();
             }
 
@@ -217,7 +217,7 @@ pub(crate) mod tests {
                         .map(|(a, b)| (Intern::from_ref(a), Intern::from_ref(b))),
                 );
 
-                for (_, report) in reporter.iter() {
+                for (_, report) in &reporter {
                     report.eprint(&mut cache).unwrap();
                 }
 
@@ -299,7 +299,7 @@ pub(crate) mod tests {
 
                     assert_eq!(reporter.count(), 1);
 
-                    for (_, report) in reporter.iter() {
+                    for (_, report) in &reporter {
                         report_contains(report, code, counterexample);
                     }
                 }

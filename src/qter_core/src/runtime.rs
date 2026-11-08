@@ -9,16 +9,16 @@ use crate::span::WithSpan;
 /// The facelets needed for `solved-goto`
 #[derive(Debug, Clone)]
 pub struct Facelets {
-    facelets: Vec<usize>,
+    facelet_indices: Vec<usize>,
     pieces: Vec<Intern<str>>,
     order: Int<U>,
 }
 
 impl Facelets {
     #[must_use]
-    pub fn new(facelets: Vec<usize>, pieces: Vec<Intern<str>>, order: Int<U>) -> Self {
+    pub fn new(facelet_indices: Vec<usize>, pieces: Vec<Intern<str>>, order: Int<U>) -> Self {
         Self {
-            facelets,
+            facelet_indices,
             pieces,
             order,
         }
@@ -26,7 +26,7 @@ impl Facelets {
 
     #[must_use]
     pub fn facelets(&self) -> &[usize] {
-        &self.facelets
+        &self.facelet_indices
     }
 
     #[must_use]

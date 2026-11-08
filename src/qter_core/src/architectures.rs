@@ -220,7 +220,7 @@ impl CycleGenerator {
         }
 
         // Remove all of the cycles that don't contribute to the order of the register, removing the smallest ones first
-        cycles_with_extras.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+        cycles_with_extras.sort_unstable_by_key(|a| a.0);
 
         let mut cycles = Vec::<(Int<U>, usize)>::new();
 

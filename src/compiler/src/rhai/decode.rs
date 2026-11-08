@@ -211,6 +211,7 @@ fn get<T: Any>(
     }
 }
 
+#[expect(clippy::needless_pass_by_value)] // I need to take ownership for type safety
 fn done(map: rhai::Map, span: Span, r: &Reporter) -> Option<()> {
     if !map.is_empty() {
         r.push(

@@ -4,7 +4,9 @@
     clippy::similar_names,
     clippy::single_match_else,
     clippy::enum_glob_use,
-    clippy::question_mark
+    clippy::question_mark,
+    clippy::missing_panics_doc,
+    clippy::large_enum_variant,
 )]
 
 use std::{collections::HashMap, fmt::Display, rc::Rc, sync::Arc};
@@ -30,40 +32,9 @@ mod parsing;
 pub mod q_emitter;
 mod rhai;
 mod strip_expanded;
+mod reporter;
 
-#[derive(Clone, Default, Debug)]
-pub struct Reporter(Arc<boxcar::Vec<Report<'static, Span>>>);
-
-impl Reporter {
-    pub fn push(&self, report: Report<'static, Span>) {
-        self.0.push(report);
-    }
-
-    #[must_use]
-    pub fn count(&self) -> usize {
-        self.0.count()
-    }
-
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.count() == 0
-    }
-
-    #[must_use]
-    pub fn iter(&self) -> boxcar::vec::Iter<'_, Report<'static, Span>> {
-        self.0.iter()
-    }
-
-    #[must_use]
-    pub fn ptr_eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-
-    #[must_use]
-    pub fn drain(mut self) -> impl IntoIterator<Item = Report<'static, Span>> {
-        Arc::try_unwrap(std::mem::take(&mut self.0)).expect("the reporter not to be kept")
-    }
-}
+pub use reporter::Reporter;
 
 /// Compiles a QAT program into a Q program while returning the register architecture used.
 ///
@@ -236,6 +207,7 @@ impl RegisterModifiers {
     }
 }
 
+#[expect(clippy::derivable_impls)] // More readable and forces me to consider the default value if I add more fields
 impl Default for RegisterModifiers {
     fn default() -> Self {
         Self {
@@ -625,8 +597,6 @@ impl RegistersDecl {
     fn register_exists(&self, reference: RegisterReference) -> Option<RhaiRegInfo> {
         let reg_name = reference.reg_name;
 
-        let modulus = reference.mods.modulus;
-
         for Puzzle {
             reg_names,
             arch,
@@ -638,7 +608,6 @@ impl RegistersDecl {
                     let reg = &arch.value.registers()[i];
 
                     return Some(RhaiRegInfo {
-                        modulus: modulus.unwrap_or(reg.order()),
                         order: reg.order(),
                     });
                 }
@@ -656,7 +625,6 @@ impl RegistersDecl {
 
 #[derive(Clone, Debug)]
 struct RhaiRegInfo {
-    modulus: Int<U>,
     order: Int<U>,
 }
 
@@ -815,7 +783,7 @@ enum ExpandedCodeComponent {
 struct ExpandedCode {
     registers: RegistersDecl,
     block_info: BlockInfoTracker,
-    expanded_code_components: Vec<WithSpan<ExpandedCodeComponent>>,
+    components: Vec<WithSpan<ExpandedCodeComponent>>,
 }
 
 #[cfg(test)]
@@ -867,7 +835,7 @@ mod tests {
             |_| unreachable!(),
             &reporter,
         ) else {
-            for report in reporter.iter() {
+            for report in &reporter {
                 report
                     .1
                     .print(ariadne::sources(
@@ -979,7 +947,7 @@ A: 3x3
             None => {
                 assert_eq!(reporter.iter().count(), 1);
 
-                for (_, report) in reporter.iter() {
+                for (_, report) in &reporter {
                     report_contains(report, code, "over");
                 }
             }

@@ -133,7 +133,12 @@ e: 0 ignored, 1 unused
 - Multiple halt instruction
 - Directory of testing programs instead of hardcoding into Rust
   - Inline testing in the QAT format
-- Finish Rhai macros and the unimplemented macros in the prelude
+- Multiplication macro
+- Track spans through Rhai somehow
+- Forbid duplicate
+  - Register names
+  - Label names
+  - Macro names
 - Replace `halt` and `print` with `debug` `display` and `halt`
 - Testcase for ident arguments in macros
 - Allow parsing a constant as the name of a macro

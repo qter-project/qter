@@ -82,7 +82,7 @@ enum Commands {
 fn print_reports(reporter: &Reporter, sources: &HashMap<Intern<str>, Intern<str>>) {
     let mut cache = ariadne::sources(sources.iter().map(|(name, contents)| (*name, *contents)));
 
-    for (_, report) in reporter.iter() {
+    for (_, report) in reporter {
         report
             .eprint(&mut cache)
             .unwrap_or_else(|e| eprintln!("Failed to print report: {e}"));

@@ -158,7 +158,7 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> Option<Program> {
     let before = r.count();
 
     let instructions_mapped = expanded
-        .expanded_code_components
+        .components
         .into_iter()
         .filter_map(move |v| {
             let span = v.span();

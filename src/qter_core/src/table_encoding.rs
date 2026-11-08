@@ -4,9 +4,17 @@ use std::{
     rc::Rc,
 };
 
-use sarlacc::Intern;
 use itertools::Itertools;
 use pog_ans::{Cache, CodingFSM, TakeFrom, ans_decode, ans_encode};
+use sarlacc::Intern;
+
+fn require<A, B>(v: A) -> B
+where
+    A: TryInto<B>,
+    A::Error: core::fmt::Debug,
+{
+    v.try_into().unwrap()
+}
 
 #[derive(Debug)]
 struct TableStats {
@@ -98,20 +106,20 @@ pub fn encode_table(algs: &[Vec<Intern<str>>]) -> Option<(Vec<u8>, usize)> {
 
     let mut stream = Vec::new();
 
-    stream.extend_from_slice(&(stats.frequencies.len() as u32).to_le_bytes());
+    stream.extend_from_slice(&require::<_, u32>(stats.frequencies.len()).to_le_bytes());
 
     for (symbol, &idx) in symbol_indices.iter().sorted_unstable_by_key(|(_, i)| **i) {
         let freq = stats.frequencies[idx];
 
-        stream.extend_from_slice(&(symbol.len() as u32).to_le_bytes());
+        stream.extend_from_slice(&require::<_, u32>(symbol.len()).to_le_bytes());
         stream.extend_from_slice(symbol.as_bytes());
         stream.extend_from_slice(&freq.to_le_bytes());
     }
 
-    stream.extend_from_slice(&(stats.length_frequencies.len() as u32).to_le_bytes());
+    stream.extend_from_slice(&require::<_, u32>(stats.length_frequencies.len()).to_le_bytes());
 
     for (len, freq) in &stats.length_frequencies {
-        stream.extend_from_slice(&(*len as u32).to_le_bytes());
+        stream.extend_from_slice(&require::<_, u32>(*len).to_le_bytes());
         stream.extend_from_slice(&freq.to_le_bytes());
     }
 
@@ -142,7 +150,7 @@ pub fn encode_table(algs: &[Vec<Intern<str>>]) -> Option<(Vec<u8>, usize)> {
         }
     }
 
-    stream.extend_from_slice(&(disallowed_pair_symbols.len() as u32).to_le_bytes());
+    stream.extend_from_slice(&require::<_, u32>(disallowed_pair_symbols.len()).to_le_bytes());
 
     ans_encode(
         &mut stream,
@@ -187,7 +195,7 @@ fn rest_unweighted(ranges: &mut [u16], mut range_left: usize) {
 
         let range_to_take = ((range_left + amt_to_set) / amt_to_set).saturating_sub(1);
         range_left -= range_to_take;
-        *dist_spot += range_to_take as u16;
+        *dist_spot += require::<_, u16>(range_to_take);
         amt_to_set -= 1;
     }
 }
@@ -219,7 +227,7 @@ fn rest_weighted(ranges: &mut [u16], mut range_left: usize, distribution: &[u32]
         let range_to_take =
             (range_available * distribution[i] as usize / total_weight).saturating_sub(1);
         range_left -= range_to_take;
-        *dist_spot += range_to_take as u16;
+        *dist_spot += require::<_, u16>(range_to_take);
         total_weight -= distribution[i] as usize;
         amt_to_set -= 1;
     }
@@ -290,11 +298,7 @@ pub fn decode_table(data: &mut impl Iterator<Item = u8>) -> Option<Vec<Vec<Inter
 
     let algs = ans_decode(data, None, mk_distribution_fsm(stats))?
         .split(|s| *s == end_of_alg_symbol)
-        .map(|alg| {
-            alg.iter()
-                .map(|s| symbols[*s])
-                .collect_vec()
-        })
+        .map(|alg| alg.iter().map(|s| symbols[*s]).collect_vec())
         .collect_vec();
 
     Some(algs)
@@ -469,10 +473,10 @@ impl CodingFSM<u16> for DistributionFSM {
                 out[end_of_alg_symbol] = range_left;
                 return;
             }
-            let amt_to_give = ((u32::from(range_left) * len_chance / (len_chance + lens_cdf))
-                as u16)
-                .min(range_left - generator_count as u16)
-                .max(1);
+            let amt_to_give =
+                require::<_, u16>(u32::from(range_left) * len_chance / (len_chance + lens_cdf))
+                    .min(range_left - require::<_, u16>(generator_count))
+                    .max(1);
 
             out[end_of_alg_symbol] = amt_to_give;
             range_left -= amt_to_give;
@@ -503,8 +507,8 @@ impl CodingFSM<u16> for DistributionFSM {
 
 #[cfg(test)]
 mod tests {
-    use sarlacc::Intern;
     use itertools::Itertools;
+    use sarlacc::Intern;
 
     use crate::table_encoding::decode_table;
 

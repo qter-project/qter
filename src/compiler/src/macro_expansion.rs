@@ -41,7 +41,7 @@ pub fn expand(mut parsed: ParsedSyntax, r: &Reporter) -> Option<ExpandedCode> {
             },
         },
         block_info: parsed.expansion_info.block_info,
-        expanded_code_components: parsed
+        components: parsed
             .code
             .into_iter()
             .map(|tagged_instruction| {
@@ -352,7 +352,7 @@ mod tests {
             false,
             &reporter,
         ) else {
-            for report in reporter.iter() {
+            for report in &reporter {
                 report
                     .1
                     .print(ariadne::sources(

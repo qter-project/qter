@@ -1,21 +1,15 @@
-use std::{
-    any::Any,
-    fmt::{Debug, Display},
-};
+use std::fmt::{Debug, Display};
 
 use ariadne::{Color, Label, Report, ReportKind, Span as _};
-use itertools::Itertools;
-use puzzle_theory::numbers::{I, Int, U};
+use puzzle_theory::numbers::{I, Int};
 use qter_core::span::{Span, WithSpan};
 use rhai::{
-    AST, Array, CustomType, Dynamic, Engine, EvalAltResult, ImmutableString, NativeCallContext,
-    Position, Scope,
+    AST, CustomType, Dynamic, Engine, EvalAltResult, ImmutableString, NativeCallContext, Position,
+    Scope,
 };
-use sarlacc::Intern;
 
 use crate::{
-    Block, ExpansionInfo, MacroBranchKey, RegisterInfo, RegisterModifiers, Reporter, ResolvedValue,
-    Value,
+    ExpansionInfo, MacroBranchKey, RegisterInfo, RegisterModifiers, Reporter, ResolvedValue, Value,
     rhai::{decode::from_rhai, encode::into_rhai},
 };
 
@@ -113,10 +107,7 @@ fn register_mods(RegisterModifiers { modulus, negative }: RegisterModifiers) -> 
     let mut map = rhai::Map::new();
 
     if let Some(modulus) = modulus {
-        map.insert(
-            "modulus".into(),
-            Dynamic::from(WInt(modulus.into())),
-        );
+        map.insert("modulus".into(), Dynamic::from(WInt(modulus.into())));
     }
     map.insert("negative".into(), negative.into());
 
