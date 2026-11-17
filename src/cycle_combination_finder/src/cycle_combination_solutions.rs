@@ -578,9 +578,17 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                     borrowed_noncanonical_piece: _,
                 } = &mut self.register_orbit_constraints[register_orbit_constraint_index];
                 let mut exp = register_order_exp;
+                // A canonically orienting cycle with an `exp` of 0 normally borrows a piece later
+                // through `OrientationSatisfiedBy::RemainingPiece`. If the orientation is already
+                // satisfied then nothing borrows that piece, so we have to twist a piece ourselves
+                let own_twisted_piece = orient_state == CycleOrientState::Canonical
+                    && register_order_exp <= orientation_exp
+                    && *orientation_satisfied_by == OrientationSatisfiedBy::RegisterCycle;
                 let cycle_piece_count = if orient_state == CycleOrientState::Canonical {
                     exp = exp.saturating_sub(orientation_exp);
-                    if exp == 0 {
+                    if own_twisted_piece {
+                        1
+                    } else if exp == 0 {
                         0
                     } else {
                         prime.pow(u32::from(exp))
@@ -684,7 +692,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                     1 << prime_index;
                 // Do not announce the cycle assignment if the orbit orients but the `exp`
                 // factor is 0.
-                if orient_state != CycleOrientState::Canonical || exp != 0 {
+                if orient_state != CycleOrientState::Canonical || exp != 0 || own_twisted_piece {
                     self.register_assignments[register_index2].cycle_assignments[prime_index] =
                         PrimePowerCycleAssignment::Orbit(orbit_index, orient_state);
                 }
@@ -717,7 +725,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                     1 << prime_index;
                 // We need to do this now because we don't guarantee to assign every cycle
                 // anymore
-                if orient_state != CycleOrientState::Canonical || exp != 0 {
+                if orient_state != CycleOrientState::Canonical || exp != 0 || own_twisted_piece {
                     self.register_assignments[register_index2].cycle_assignments[prime_index] =
                         PrimePowerCycleAssignment::Unassigned;
                 }
@@ -1162,7 +1170,12 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                         } = &mut self.register_orbit_constraints[register_orbit_constraint_index];
 
                         let exp = register_order_exp.saturating_sub(orientation_exp);
-                        let cycle_piece_count = if exp == 0 {
+                        // See `own_twisted_piece` in the backtracking assignment
+                        let own_twisted_piece = exp == 0
+                            && *orientation_satisfied_by == OrientationSatisfiedBy::RegisterCycle;
+                        let cycle_piece_count = if own_twisted_piece {
+                            1
+                        } else if exp == 0 {
                             0
                         } else {
                             prime.pow(u32::from(exp))
@@ -1214,7 +1227,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                             next_orbit_unused_piece_count;
                         self.register_assignments[register_index2].unassigned_exponents_mask ^=
                             1 << prime_index;
-                        if exp != 0 {
+                        if exp != 0 || own_twisted_piece {
                             self.register_assignments[register_index2].cycle_assignments
                                 [prime_index] = PrimePowerCycleAssignment::Orbit(
                                 orbit_index,
@@ -1623,6 +1636,97 @@ mod tests {
     }
 
     #[test_log::test]
+    fn twisted_piece_when_orientation_satisfied() {
+        // Without a sum constraint, a 1+ twist still uses up its piece
+        let crazy = PuzzleDef::<64>::new((
+            vec![PartialOrbitDef {
+                name: None,
+                piece_count: 1.try_into().unwrap(),
+                orientation: OrientationStatus::CanOrient {
+                    count: 3,
+                    sum_constraint: OrientationSumConstraint::None,
+                },
+            }],
+            EvenParityConstraints(vec![]),
+        ))
+        .unwrap();
+        let analysis = PuzzleAnalysis {
+            puzzle_def: &crazy,
+            possible_orders_except_one: Arc::from(vec![PossibleOrder {
+                order: OrderExps::try_from(NonZeroU16::new(3).unwrap()).unwrap(),
+                min_piece_count: 1.try_into().unwrap(),
+            }]),
+        };
+        for fast_assumptions in [false, true] {
+            let ccf = CycleCombinationFinderBuilder::default()
+                .with_puzzle_analysis(&analysis)
+                .with_registers(Register::default_count(1))
+                .with_solution_expansion(SolutionExpansion::All)
+                .with_fast_assumptions(fast_assumptions)
+                .build()
+                .unwrap();
+            let expected = "
+                3: 0: (1+)
+
+                0: 0 ignored, 0 unused
+            ";
+            do_test(ccf.solutions_calculator(), vec![3], expected);
+
+            let ccf = CycleCombinationFinderBuilder::default()
+                .with_puzzle_analysis(&analysis)
+                .with_registers(Register::default_count(2))
+                .with_fast_assumptions(fast_assumptions)
+                .build()
+                .unwrap();
+            let registers = [0, 0];
+            assert!(!ccf.solutions_calculator().existence(DisjointRegisters::from(
+                NonemptySlice::try_from(&registers[..]).unwrap(),
+            )));
+        }
+
+        // The 3 cycle cannot also carry the flip because the flip must be undone
+        // elsewhere in the orbit
+        let crazy = PuzzleDef::<64>::new((
+            vec![
+                PartialOrbitDef {
+                    name: None,
+                    piece_count: 3.try_into().unwrap(),
+                    orientation: OrientationStatus::CanOrient {
+                        count: 2,
+                        sum_constraint: OrientationSumConstraint::Zero,
+                    },
+                },
+                PartialOrbitDef {
+                    name: None,
+                    piece_count: 1.try_into().unwrap(),
+                    orientation: OrientationStatus::CanOrient {
+                        count: 3,
+                        sum_constraint: OrientationSumConstraint::Zero,
+                    },
+                },
+            ],
+            EvenParityConstraints(vec![]),
+        ))
+        .unwrap();
+        let analysis = PuzzleAnalysis {
+            puzzle_def: &crazy,
+            possible_orders_except_one: Arc::from(vec![PossibleOrder {
+                order: OrderExps::try_from(NonZeroU16::new(6).unwrap()).unwrap(),
+                min_piece_count: 1.try_into().unwrap(),
+            }]),
+        };
+        let ccf = CycleCombinationFinderBuilder::default()
+            .with_puzzle_analysis(&analysis)
+            .with_registers(Register::default_count(1))
+            .with_fast_assumptions(false)
+            .build()
+            .unwrap();
+        assert!(!ccf.solutions_calculator().existence(DisjointRegisters::from(
+            NonemptySlice::try_from(&[0][..]).unwrap(),
+        )));
+    }
+
+    #[test_log::test]
     fn minx3_optimal_3() {
         let minx3 = MINX3.clone();
         let analysis = PuzzleAnalysis::new(&minx3, NumCores::AllCores).unwrap();
@@ -1818,4 +1922,5 @@ mod tests {
         );
         panic!();
     }
+
 }
