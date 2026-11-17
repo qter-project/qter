@@ -281,7 +281,9 @@ where
 {
     loop {
         let mut number = String::new();
-        io::stdin().read_line(&mut number)?;
+        if io::stdin().read_line(&mut number)? == 0 {
+            return Err(eyre!("Reached the end of stdin while waiting for input"));
+        }
         match number.parse::<Int<I>>() {
             Ok(value) => match interpreter.give_input(value).await? {
                 Ok(input_ret) => {
