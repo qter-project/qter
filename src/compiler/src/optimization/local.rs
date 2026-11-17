@@ -693,8 +693,21 @@ impl Rewriter for TransformSolve {
             .modulus
             .unwrap_or_else(|| arch.registers()[reg_idx].order());
 
-        let zeroed_mod = self.guaranteed_zeroed.entry(reg_idx).or_insert(modulus);
-        *zeroed_mod = lcm(*zeroed_mod, modulus);
+        // The loop keeps adding to the register until it is zero mod `modulus`. Any previously
+        // established zeroing mod `prev` is only preserved if each step adds a multiple of
+        // `prev`; otherwise the loop can leave the register nonzero mod `prev`.
+        let own_amt = amts
+            .iter()
+            .find(|(idx, _)| *idx == reg_idx)
+            .map(|(_, amt)| **amt);
+
+        let new_mod = match (self.guaranteed_zeroed.get(&reg_idx), own_amt) {
+            (Some(prev), Some(amt)) if !(amt % *prev).is_zero() => modulus,
+            (Some(prev), _) => lcm(*prev, modulus),
+            (None, _) => modulus,
+        };
+
+        self.guaranteed_zeroed.insert(reg_idx, new_mod);
 
         if self.guaranteed_zeroed.len() == arch.registers().len()
             && self
