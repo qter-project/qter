@@ -925,6 +925,15 @@ impl<'id, P: PuzzleState<'id>, S: StorageBackend<true>> OrbitPruningTable<'id, P
                 assert_eq!(exact_orbit_hash, entry_count);
                 break;
             }
+            // If this depth filled nothing then no later depth will either, so
+            // we stop instead of scanning the whole table up to depth 254. This
+            // happens when some orbit states are unreachable, like with <R, U>.
+            // Unreachable entries can never be solved so any value is
+            // admissible, and we use the current depth
+            if vacant_entry_count == prev_vacant_entry_count {
+                table.storage_backend.commit_depth_traversed(depth);
+                break;
+            }
             depth += 1;
         }
         Ok((table, used_size_bytes))
