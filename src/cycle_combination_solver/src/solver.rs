@@ -282,6 +282,11 @@ impl<'id, P: PuzzleState<'id>, T: PruningTables<'id, P>> CycleStructureSolver<'i
                 // It does NOT suffice to use next_state and is_some because
                 // this condition incorrectly returns true in the case of two
                 // non-commutative moves.
+                //
+                // This does not work for two move sequences: "A C" rotated
+                // and commuted is just "A C", so we would prune every two
+                // move solution of commuting moves like "D U"
+                && mutable.puzzle_state_history.stack_pointer() != 1
                 && unsafe {
                     self.canonical_fsm
                         .reverse_state(move_class_index, mutable.root_canonical_fsm_reversed_state)
@@ -624,6 +629,14 @@ impl<'id, P: PuzzleState<'id>> Iterator for SolutionsIntoIter<'id, '_, P> {
             }
         };
 
+        // If the entire solution is one commuting interval, then every
+        // rotation is already a canonical sequence expansion ("D U" rotated
+        // is "U D"), so we skip rotations to avoid duplicates
+        let whole_solution_commutes = self
+            .canonical_sequence_expansion
+            .as_ref()
+            .is_some_and(|cse| cse.expansion_intervals == [(0, self.solution_length)]);
+
         // Initialize the sequence symmetry expansion if it hasn't already been
         // done. We use get_or_insert_with unlike the first time because we
         // always have a sequence symmetry expansion.
@@ -639,6 +652,9 @@ impl<'id, P: PuzzleState<'id>> Iterator for SolutionsIntoIter<'id, '_, P> {
                 // https://leetcode.com/problems/rotate-string/solutions/5988868/rotate-string-by-leetcode-w5ch
                 let mut rotation_class_size = 1;
                 loop {
+                    if whole_solution_commutes {
+                        break;
+                    }
                     // If we have not yet exceeded the solution length,
                     if rotation_class_size >= self.solution_length {
                         break;

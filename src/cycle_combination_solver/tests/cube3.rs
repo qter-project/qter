@@ -338,7 +338,9 @@ fn test_commutative_moves_only() {
     let mut solutions = solver.solve::<[Cube3; 21]>().unwrap();
     assert_eq!(solutions.solution_length(), 2);
     while solutions.next().is_some() {}
-    assert_eq!(solutions.expanded_count(), 12);
+    // {U, U'} x {D, D'} in both orders for each axis; see
+    // `test_expanded_solutions_match_brute_force`
+    assert_eq!(solutions.expanded_count(), 24);
 }
 
 #[test_log::test]
@@ -597,6 +599,72 @@ fn test_many_optimal_cycles() {
             solutions.expanded_count(),
             optimal_cycle_test.expected_count,
         );
+
+        cube3_def = solver.into_puzzle_def_and_pruning_tables().0;
+    }
+}
+
+/// Compare the expanded solutions against every move sequence of the
+/// optimal length
+#[test_log::test]
+fn test_expanded_solutions_match_brute_force() {
+    use std::collections::HashSet;
+
+    use cycle_combination_solver::puzzle::apply_moves;
+
+    make_guard!(guard);
+    let mut cube3_def = PuzzleDef::<HeapPuzzle>::new(&puzzle("3x3").ksolve(), guard).unwrap();
+    let solved = cube3_def.new_solved_state();
+    let mut aux_mem = HeapPuzzle::new_aux_mem(cube3_def.sorted_orbit_defs_ref());
+
+    // "U D" is two commuting moves; "U2 R2" and "U R2 D" are not
+    for moves_str in ["U", "U D", "U D'", "U2 D", "U2 R2", "U R2 D", "U R'"] {
+        let target = apply_moves(&cube3_def, &solved, moves_str, 1)
+            .sorted_cycle_structure(cube3_def.sorted_orbit_defs_ref(), &mut aux_mem);
+
+        // Brute force the optimal length and solutions
+        let move_count = cube3_def.moves.len();
+        let mut brute_force = HashSet::new();
+        let mut optimal_length = 0;
+        while brute_force.is_empty() {
+            optimal_length += 1;
+            for mut code in 0..move_count.pow(optimal_length) {
+                let mut names = vec![];
+                for _ in 0..optimal_length {
+                    names.push(cube3_def.moves[code % move_count].name().to_owned());
+                    code /= move_count;
+                }
+                let sequence = names.join(" ");
+                if apply_moves(&cube3_def, &solved, &sequence, 1).induces_sorted_cycle_structure(
+                    target.as_ref(),
+                    cube3_def.sorted_orbit_defs_ref(),
+                    aux_mem.as_ref_mut(),
+                ) {
+                    brute_force.insert(sequence);
+                }
+            }
+        }
+
+        let zero_table = ZeroTable::try_generate_all(target, ()).unwrap();
+        let solver: CycleStructureSolver<HeapPuzzle, _> =
+            CycleStructureSolver::new(cube3_def, zero_table, SearchStrategy::AllSolutions);
+        let mut solutions = solver.solve::<Vec<_>>().unwrap();
+        assert_eq!(
+            solutions.solution_length(),
+            optimal_length as usize,
+            "{moves_str}"
+        );
+        let mut found = HashSet::new();
+        while solutions.next().is_some() {
+            let sequence = solutions
+                .expanded_solution()
+                .iter()
+                .map(|move_| move_.name())
+                .collect::<Vec<_>>()
+                .join(" ");
+            assert!(found.insert(sequence), "{moves_str}: duplicate expansion");
+        }
+        assert_eq!(found, brute_force, "{moves_str}");
 
         cube3_def = solver.into_puzzle_def_and_pruning_tables().0;
     }
