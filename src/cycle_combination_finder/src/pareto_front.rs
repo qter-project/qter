@@ -77,20 +77,21 @@ fn dominate<const ASSUME_UNIQUE: bool>(
 }
 
 impl CCParetoFront {
-    /// Removes all elements in the front that are dominated by `new_element`,
-    /// starting at index `index_start`.
+    /// Removes all elements in the front that are dominated by `registers`,
+    /// starting at `start`, which must already be known to be dominated.
     fn remove_dominated_starting_at<const ASSUME_UNIQUE: bool>(
         &mut self,
         registers: &[u32],
         start: usize,
     ) {
         let mut write_idx = start;
-        for read_idx in start..self.0.len() {
+        for read_idx in start + 1..self.0.len() {
             let member = &self.0[read_idx];
             if dominate::<ASSUME_UNIQUE>(registers.iter().copied(), member.iter().copied(), true)
                 .is_le()
             {
-                self.0[write_idx] = Arc::clone(&self.0[read_idx]);
+                // Move survivors into the gap without touching their reference counts.
+                self.0.swap(write_idx, read_idx);
                 write_idx += 1;
             }
         }
@@ -102,7 +103,6 @@ impl CCParetoFront {
             match dominate::<true>(member.iter().copied(), existing.iter().copied(), false) {
                 Ordering::Less => {
                     // `new_element` dominates `element`, it is thus part of the Pareto front
-                    self.0.remove(i);
                     // looks at the rest of the Pareto front to remove any further element that
                     // are dominated
                     self.remove_dominated_starting_at::<true>(&existing, i);
@@ -147,7 +147,6 @@ impl CCParetoFront {
                         if let Some(cycle_combination) = (dominating_check)(registers) {
                             // `new_element` dominates `element`, it is thus part of the Pareto
                             // front
-                            self.0.remove(i);
                             // looks at the rest of the Pareto front to remove any further element
                             // that are dominated
                             self.remove_dominated_starting_at::<true>(&cycle_combination, i);
@@ -188,7 +187,6 @@ impl CCParetoFront {
         for (i, member) in self.0.iter().enumerate() {
             match dominate::<false>(member.iter().copied(), registers.iter().copied(), false) {
                 Ordering::Less => {
-                    self.0.remove(i);
                     self.remove_dominated_starting_at::<false>(registers, i);
                     return true;
                 }
@@ -233,5 +231,102 @@ impl From<CCParetoFront> for Vec<Arc<[u32]>> {
     /// Converts the Pareto front into a vector.
     fn from(CCParetoFront(possible_registers): CCParetoFront) -> Vec<Arc<[u32]>> {
         possible_registers
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::nonemptyvec::NonemptySlice;
+
+    fn front(points: &[[u32; 2]]) -> CCParetoFront {
+        CCParetoFront(
+            points
+                .iter()
+                .map(|point| Arc::from(point.as_slice()))
+                .collect(),
+        )
+    }
+
+    fn assert_points(front: &CCParetoFront, points: &[[u32; 2]]) {
+        assert_eq!(
+            front.0.iter().map(AsRef::as_ref).collect::<Vec<_>>(),
+            points
+        );
+    }
+
+    #[test]
+    fn compaction_preserves_survivor_order_and_identity() {
+        let points = [[0, 9], [3, 7], [2, 8], [4, 6], [8, 2], [5, 5], [9, 0]];
+        for checked in [false, true] {
+            let mut front = front(&points);
+            let survivors: Vec<_> = [0, 2, 4, 6].map(|i| Arc::clone(&front.0[i])).into();
+            let candidate: Arc<[u32]> = Arc::from([7, 7]);
+            if checked {
+                let registers = NonemptySlice::try_from(candidate.as_ref()).unwrap().into();
+                let mut calls = 0;
+                assert!(front.push_and_dominating_check(registers, |_| {
+                    calls += 1;
+                    Some(Arc::clone(&candidate))
+                }));
+                assert_eq!(calls, 1);
+            } else {
+                assert!(front.push(Arc::clone(&candidate)));
+            }
+            assert_points(&front, &[[0, 9], [2, 8], [8, 2], [9, 0], [7, 7]]);
+            for (actual, original) in front.0.iter().zip(&survivors) {
+                assert!(Arc::ptr_eq(actual, original));
+                assert_eq!(Arc::strong_count(actual), 2);
+            }
+        }
+    }
+
+    #[test]
+    fn removing_first_last_or_all_members() {
+        for points in [
+            vec![],
+            vec![[1, 1]],
+            vec![[0, 9], [1, 1]],
+            vec![[1, 1], [9, 0]],
+        ] {
+            let expected: Vec<_> = points
+                .iter()
+                .copied()
+                .filter(|p| p[0] > 2 || p[1] > 2)
+                .chain([[2, 2]])
+                .collect();
+            let mut front = front(&points);
+            assert!(front.push(Arc::from([2, 2])));
+            assert_points(&front, &expected);
+        }
+    }
+
+    #[test]
+    fn failed_check_preserves_members_and_dominated_push_percolates() {
+        let points = [[0, 9], [3, 7], [2, 8], [4, 6], [8, 2]];
+        let mut front = front(&points);
+        let candidate = [7, 7];
+        let registers = NonemptySlice::try_from(candidate.as_slice())
+            .unwrap()
+            .into();
+        let mut calls = 0;
+        assert!(!front.push_and_dominating_check(registers, |_| {
+            calls += 1;
+            None
+        }));
+        assert_eq!(calls, 1);
+        assert_points(&front, &points);
+        assert!(!front.push(Arc::from([1, 6])));
+        assert_points(&front, &[[3, 7], [0, 9], [2, 8], [4, 6], [8, 2]]);
+    }
+
+    #[test]
+    fn merge_compacts_and_deduplicates() {
+        let mut a = front(&[[0, 9], [3, 7], [2, 8], [4, 6], [8, 2], [5, 5], [9, 0]]);
+        let b = front(&[[7, 7], [0, 9]]);
+        a.merge(b);
+        let mut actual: Vec<_> = a.0.iter().map(|point| point.to_vec()).collect();
+        actual.sort();
+        assert_eq!(actual, [[0, 9], [2, 8], [7, 7], [8, 2], [9, 0]]);
     }
 }
