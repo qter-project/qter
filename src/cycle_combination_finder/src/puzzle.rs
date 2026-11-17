@@ -308,7 +308,8 @@ impl<const N: usize> PuzzleDef<N> {
         }
 
         let mut connected_components = FxHashMap::<usize, Vec<u16>>::default();
-        for (orbit_index, &root) in uf.link_parent().iter().enumerate() {
+        for orbit_index in 0..cols {
+            let root = uf.find(orbit_index);
             connected_components
                 .entry(root)
                 .or_default()
@@ -720,6 +721,27 @@ mod tests {
                 EvenParityConstraints(vec![]),
             ))
             .is_ok()
+        );
+    }
+
+    #[test_log::test]
+    fn connected_components_merge_multi_orbit_sets() {
+        let puzzle_def = PuzzleDef::<8>::new((
+            vec![
+                PartialOrbitDef {
+                    name: None,
+                    piece_count: 2.try_into().unwrap(),
+                    orientation: OrientationStatus::CannotOrient,
+                };
+                7
+            ],
+            // {0, 1, 4, 6} and {2, 3, 5} are each formed before the last constraint joins them
+            EvenParityConstraints(vec![vec![0, 4, 6], vec![1, 4], vec![2, 5], vec![3, 5, 6]]),
+        ))
+        .unwrap();
+        assert_eq!(
+            puzzle_def.connected_components(),
+            [Box::from([0u16, 1, 2, 3, 4, 5, 6])]
         );
     }
 }
