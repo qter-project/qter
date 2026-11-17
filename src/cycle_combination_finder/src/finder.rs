@@ -661,7 +661,7 @@ impl<'pd, const N: usize>
                         let possible_order_bigint = *possible_order_to_bigint
                             .entry(possible_order.order.clone())
                             .or_insert_with_key(OrderExps::as_bigint);
-                        possible_order_bigint <= order_value_bigint
+                        possible_order_bigint < order_value_bigint
                     });
                     Some(Ok(ValidatedOrderValueConstraint::AtLeast(
                         possible_orders_len_cast(i),
