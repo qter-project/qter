@@ -37,11 +37,12 @@ pub async fn perform_input<'a, P: PuzzleState>(
     decoding: &'a Decoding,
     state: &mut InterpreterState<P>,
 ) -> Result<ActionPerformed<'a>, P::Error> {
+    let chromatic_orders = chromatic_orders_by_facelets(&decoding.algorithm);
     let order = decoding
         .facelets
         .facelets()
         .iter()
-        .map(|facelet| chromatic_orders_by_facelets(&decoding.algorithm)[*facelet])
+        .map(|&facelet| chromatic_orders[facelet])
         .fold(Int::<U>::one(), lcm);
 
     let max_input = order - Int::<U>::one();
@@ -154,11 +155,18 @@ pub async fn perform_repeat_until<'a, P: PuzzleState>(
     alg: &'a Algorithm,
     state: &mut InterpreterState<P>,
 ) -> Result<ActionPerformed<'a>, P::Error> {
-    state
+    if state
         .puzzle_states
         .puzzle_state_mut(puzzle_idx)
         .repeat_until(facelets.facelets(), alg)
-        .await?;
+        .await?
+        .is_none()
+    {
+        // Repeating the algorithm can never solve the facelets, so the program would loop forever.
+        return Ok(state.panic(
+            "The facelets can never be solved by repeating the algorithm; the `repeat until` would loop forever!",
+        ));
+    }
 
     state.program_counter += 1;
 

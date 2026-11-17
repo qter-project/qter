@@ -260,6 +260,7 @@ where
                 data: _,
             }
         );
+        let panicked = matches!(paused_state, PausedState::Panicked);
 
         while let Some(message) = interpreter.state_mut().messages().pop_front() {
             println!("{message}");
@@ -267,6 +268,8 @@ where
 
         if is_input_state {
             give_number_input(&mut interpreter).await?;
+        } else if panicked {
+            break Err(eyre!("The program panicked"));
         } else {
             break Ok(());
         }
@@ -281,7 +284,9 @@ where
 {
     loop {
         let mut number = String::new();
-        io::stdin().read_line(&mut number)?;
+        if io::stdin().read_line(&mut number)? == 0 {
+            return Err(eyre!("Reached the end of stdin while waiting for input"));
+        }
         match number.parse::<Int<I>>() {
             Ok(value) => match interpreter.give_input(value).await? {
                 Ok(input_ret) => {
@@ -312,6 +317,7 @@ where
 
         let mut should_give_input = false;
         let mut halted = false;
+        let mut panicked = false;
 
         match action {
             ActionPerformed::None => {
@@ -375,7 +381,7 @@ where
             }
             ActionPerformed::Panicked => {
                 eprintln!("{}", "Panicked!".red());
-                halted = true;
+                panicked = true;
             }
             ActionPerformed::Solved(idx) => {
                 eprintln!("Solved {}", idx.0);
@@ -390,11 +396,17 @@ where
                 for move_ in alg.move_seq_iter() {
                     eprint!(" {move_}");
                 }
+
+                eprintln!();
             }
         }
 
         while let Some(interpreter_message) = interpreter.state_mut().messages().pop_front() {
             println!("{interpreter_message}");
+        }
+
+        if panicked {
+            break Err(eyre!("The program panicked"));
         }
 
         if halted {

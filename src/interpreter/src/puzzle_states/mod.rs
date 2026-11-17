@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, error::Error, fmt::Display, sync::Arc};
 
 use puzzle_theory::{
-    numbers::{I, Int, U, lcm_iter},
+    numbers::{Int, U, lcm_iter},
     permutations::{Algorithm, Permutation, PermutationGroup},
 };
 use qter_core::{

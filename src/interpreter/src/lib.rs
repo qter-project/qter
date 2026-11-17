@@ -1251,4 +1251,49 @@ A: 3x3
             assert_eq!(message, expected);
         }
     }
+
+    #[tokio::test]
+    async fn unsolvable_repeat_until_panics() {
+        // `add B` never affects A, so this loop can never terminate. It must not be silently
+        // skipped as if A had become solved.
+        let code = "
+            .registers {
+                A, B <- 3x3 builtin (90, 90)
+            }
+
+                add A 1
+            spot:
+                solved-goto A done
+                add B 1
+                goto spot
+            done:
+                halt \"A=\" A
+        ";
+
+        let reporter = Reporter::default();
+        let (program, _) = match compile(file(code), |_| unreachable!(), &reporter) {
+            Ok(v) => v,
+            Err(_) => panic!("{:?}", reporter.iter().collect::<Vec<_>>()),
+        };
+
+        assert!(
+            program
+                .instructions
+                .iter()
+                .any(|instr| matches!(&**instr, Instruction::RepeatUntil { .. })),
+            "Expected the loop to be compiled into a `repeat until`"
+        );
+
+        let mut interpreter: Interpreter<SimulatedPuzzle> =
+            Interpreter::new(Arc::new(program), ()).await.unwrap();
+
+        assert!(matches!(
+            interpreter.step_until_halt().await.unwrap(),
+            PausedState::Panicked
+        ));
+
+        let messages = interpreter.state_mut().messages();
+        assert_eq!(messages.len(), 1, "{messages:?}");
+        assert!(messages[0].starts_with("Panicked:"), "{messages:?}");
+    }
 }
