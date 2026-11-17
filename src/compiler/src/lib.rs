@@ -858,6 +858,101 @@ A: 3x3
         );
     }
 
+    fn compile_to_q(code: &str) -> String {
+        let reporter = Reporter::default();
+
+        let Ok((program, _)) = compile(
+            File::new(Intern::from_ref("<static>"), Intern::from_ref(code)),
+            |_| unreachable!(),
+            &reporter,
+        ) else {
+            panic!("{:?}", reporter.iter().collect::<Vec<_>>());
+        };
+
+        emit_q(&program, Intern::from_ref("code.q"), &reporter)
+            .unwrap()
+            .0
+            .inner()
+            .to_string()
+    }
+
+    #[test]
+    fn transform_solve_respects_broken_moduli() {
+        // `B` is made of a 6-cycle and an 8-cycle. Zeroing `B%8` with steps of 1 after zeroing
+        // `B%6` does not keep `B%6` zeroed (e.g. B=12 ends at B=8), so this must not become `solve`.
+        let q = compile_to_q(
+            "
+            .registers {
+                A, B <- 3x3 builtin (210, 24)
+            }
+
+            input \"B:\" B
+            while not-solved A {
+                dec A
+            }
+            while not-solved B%6 {
+                dec B
+            }
+            while not-solved B%8 {
+                dec B
+            }
+            halt \"B is\" B
+        ",
+        );
+
+        assert!(!q.contains("solve\n"), "{q}");
+    }
+
+    #[test]
+    fn sub_more_than_order() {
+        // Subtracting more than the register's order used to underflow and panic
+        let big = compile_to_q(
+            "
+            .registers {
+                A, B <- 3x3 builtin (90, 90)
+            }
+
+            sub A 100
+            halt \"A is\" A
+        ",
+        );
+
+        let small = compile_to_q(
+            "
+            .registers {
+                A, B <- 3x3 builtin (90, 90)
+            }
+
+            sub A 10
+            halt \"A is\" A
+        ",
+        );
+
+        assert_eq!(big, small);
+    }
+
+    #[test]
+    fn transform_solve_still_fires() {
+        let q = compile_to_q(
+            "
+            .registers {
+                A, B <- 3x3 builtin (210, 24)
+            }
+
+            input \"B:\" B
+            while not-solved A {
+                dec A
+            }
+            while not-solved B {
+                dec B
+            }
+            halt \"B is\" B
+        ",
+        );
+
+        assert!(q.contains("solve\n"), "{q}");
+    }
+
     #[test]
     fn test_recursion_limit() {
         let code = "
