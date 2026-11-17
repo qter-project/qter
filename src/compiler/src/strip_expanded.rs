@@ -181,10 +181,10 @@ pub fn strip_expanded(expanded: ExpandedCode, r: &Reporter) -> OrErrorProof<Prog
                                     amts: vec![(
                                         reg_idx,
                                         if mods.negative {
-                                            amt.span().with(
-                                                arch.registers()[reg_idx].order()
-                                                    - amt.into_inner(),
-                                            )
+                                            // Reduce first so that amounts larger than the
+                                            // register's order don't underflow
+                                            let order = arch.registers()[reg_idx].order();
+                                            amt.span().with(order - amt.into_inner() % order)
                                         } else {
                                             amt
                                         },
