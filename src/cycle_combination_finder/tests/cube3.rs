@@ -1,9 +1,13 @@
 #![warn(clippy::pedantic)]
 
 use cycle_combination_finder::{
-    finder::{CycleCombinationFinderBuilder, NumCores, Optimality, PuzzleAnalysis, Register},
+    finder::{
+        CycleCombinationFinderBuilder, NumCores, Optimality, OrderValueConstraint, PuzzleAnalysis,
+        Register,
+    },
     puzzle::cubeN::CUBE3,
 };
+use puzzle_theory::numbers::{Int, U};
 
 use crate::common::cycles;
 
@@ -136,4 +140,62 @@ fn equivalent_3() {
         .find()
         .unwrap();
     assert_eq!(cycles(cycle_combinations), vec![vec![30, 30, 30]]);
+}
+
+#[test_log::test]
+fn exactly_1_register() {
+    let cube3 = CUBE3.clone();
+    let analysis = PuzzleAnalysis::new(&cube3, NumCores::AllCores).unwrap();
+    for order in [90, 360, 1260] {
+        let cycle_combinations = CycleCombinationFinderBuilder::default()
+            .with_puzzle_analysis(&analysis)
+            .with_registers(vec![Register::default().with_order_value_constraint(
+                OrderValueConstraint::Exactly(Int::<U>::from(order)),
+            )])
+            .build()
+            .unwrap()
+            .find()
+            .unwrap();
+        assert_eq!(cycles(cycle_combinations), vec![vec![order]]);
+    }
+}
+
+/// Constraining either register of an unconstrained cycle combination `[x, y]`
+/// to exactly `x` or `y` should only find `[x, y]` because it dominates
+/// everything else with `x` or `y`
+#[test_log::test]
+fn exactly_front_entries() {
+    let cube3 = CUBE3.clone();
+    let analysis = PuzzleAnalysis::new(&cube3, NumCores::AllCores).unwrap();
+    let front = cycles(
+        CycleCombinationFinderBuilder::default()
+            .with_puzzle_analysis(&analysis)
+            .with_registers(Register::default_count(2))
+            .build()
+            .unwrap()
+            .find()
+            .unwrap(),
+    );
+    assert!(!front.is_empty());
+    for entry in front {
+        for &order in &entry {
+            let cycle_combinations = CycleCombinationFinderBuilder::default()
+                .with_puzzle_analysis(&analysis)
+                .with_registers(vec![
+                    Register::default().with_order_value_constraint(OrderValueConstraint::Exactly(
+                        Int::<U>::from(order),
+                    )),
+                    Register::default(),
+                ])
+                .build()
+                .unwrap()
+                .find()
+                .unwrap();
+            assert_eq!(
+                cycles(cycle_combinations),
+                vec![entry.clone()],
+                "Exactly({order})"
+            );
+        }
+    }
 }

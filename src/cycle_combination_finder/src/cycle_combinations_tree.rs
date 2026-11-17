@@ -706,6 +706,26 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
             // i * r^(c - 1)
             let i_u32 = possible_orders_len_cast(i);
 
+            // Same exact order value constraint logic as `search_dfs_recur`. We claim roots in
+            // decreasing order, so once the root is smaller than the largest exact constraint no
+            // later root can satisfy it either
+            let mut exact_order_value_constraints_index = 0;
+            if let Some(&j) = shard.exact_order_value_constraints.first() {
+                if i_u32 < j {
+                    break;
+                }
+                if i_u32 == j {
+                    exact_order_value_constraints_index = 1;
+                }
+            }
+            // Same as the check in `search_dfs_recur`: the remaining registers must be able
+            // to satisfy the remaining exact constraints
+            if usize::from(shard.register_count().get()) + exact_order_value_constraints_index
+                < 1 + shard.exact_order_value_constraints.len()
+            {
+                continue;
+            }
+
             // Synchronize with the data in the try_update CAS loop
             let maybe_raw_prunings = shard
                 .pareto_efficient_prunings
@@ -773,7 +793,7 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                     shard.search_dfs_recur(
                         next_possible_orders_except_one,
                         NonZeroU16::new(1).unwrap(),
-                        0,
+                        exact_order_value_constraints_index,
                         next_remaining_piece_count,
                     );
                 }
