@@ -426,6 +426,14 @@ impl<'id, P: PuzzleState<'id>, T: PruningTables<'id, P>> CycleStructureSolver<'i
         {
             return Err(CycleStructureSolverError::MaxSolutionLengthExceeded);
         }
+        // Fixed size histories like `[Cube3; 21]` use unchecked indexing and
+        // assume God's number, which does not hold for move subsets or
+        // impossible cycle structures
+        if let Some(upper_bound) = H::UPPER_GODS_NUMBER_BOUND
+            && usize::from(next_depth) > upper_bound
+        {
+            return Err(CycleStructureSolverError::MaxSolutionLengthExceeded);
+        }
         mutable.traversed = 0;
         mutable.tmp = 0;
         mutable
@@ -811,4 +819,46 @@ fn pandita1(perm: &mut [usize]) -> bool {
 
     perm[i..].reverse();
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use generativity::make_guard;
+    use puzzle_theory::puzzle_geometry::parsing::puzzle;
+
+    use super::*;
+    use crate::{
+        pruning::ZeroTable,
+        puzzle::{SortedCycleStructure, cube3::Cube3},
+    };
+
+    #[test]
+    fn test_fixed_size_history_bounds_depth() {
+        make_guard!(guard);
+        let cube3_def = PuzzleDef::<Cube3>::new(&puzzle("3x3").ksolve(), guard).unwrap();
+        let sorted_cycle_structure =
+            SortedCycleStructure::new(&[vec![], vec![]], cube3_def.sorted_orbit_defs_ref())
+                .unwrap();
+        let solver: CycleStructureSolver<Cube3, _> = CycleStructureSolver::new(
+            cube3_def,
+            ZeroTable::try_generate_all(sorted_cycle_structure, ()).unwrap(),
+            SearchStrategy::FirstSolution,
+        );
+        let mut mutable: CycleStructureSolverMutable<Cube3, [Cube3; 21]> =
+            CycleStructureSolverMutable {
+                puzzle_state_history: (&solver.puzzle_def).into(),
+                aux_mem: Cube3::new_aux_mem(solver.puzzle_def.sorted_orbit_defs_ref()),
+                solutions: vec![],
+                root_canonical_fsm_reversed_state: 0,
+                traversed: 0,
+                tmp: 0,
+            };
+        // Depth 20 uses entries 0..=20
+        assert!(solver.prepare_next_depth(&mut mutable, 20).is_ok());
+        // Depth 21 would write out of bounds
+        assert!(matches!(
+            solver.prepare_next_depth(&mut mutable, 21),
+            Err(CycleStructureSolverError::MaxSolutionLengthExceeded)
+        ));
+    }
 }
