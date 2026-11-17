@@ -241,10 +241,13 @@ pub use portable::Cube3;
 #[cfg(all(not(avx2), simd8and16))]
 pub use simd8and16::Cube3;
 
+// This is unsound implementation because we want to support move subsets and
+// impossible cycle combinations.
+//
 // SAFETY: God's number for the 3x3x3 is 20, so any sequence of moves that
 // finds an optimal path cannot be longer than 20 moves. 21 is used to account
 // for the solved state at the beginning of the stack.
-unsafe impl PuzzleStateHistoryArrayBuf<'_, Cube3> for [Cube3; 21] {}
+// unsafe impl PuzzleStateHistoryArrayBuf<'_, Cube3> for [Cube3; 21] {}
 
 // pub struct StackEvenCubeSimd<const S_24S: usize> {
 //     cp: u8x8,

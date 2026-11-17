@@ -220,8 +220,6 @@ mod tests {
     fn test_initialize() {
         make_guard!(guard);
         initialize::<Vec<Cube3>>(guard);
-        make_guard!(guard);
-        initialize::<[Cube3; 21]>(guard);
     }
 
     fn puzzle_state_history_composition<'id, H: PuzzleStateHistory<'id, Cube3>>(guard: Guard<'id>) {
@@ -249,8 +247,6 @@ mod tests {
     fn test_puzzle_state_history_composition() {
         make_guard!(guard);
         puzzle_state_history_composition::<Vec<Cube3>>(guard);
-        make_guard!(guard);
-        puzzle_state_history_composition::<[Cube3; 21]>(guard);
     }
 
     fn puzzle_state_history_pop<'id, H: PuzzleStateHistory<'id, Cube3>>(guard: Guard<'id>) {
@@ -325,7 +321,5 @@ mod tests {
     fn test_puzzle_state_history_pop() {
         make_guard!(guard);
         puzzle_state_history_pop::<Vec<Cube3>>(guard);
-        make_guard!(guard);
-        puzzle_state_history_pop::<[Cube3; 21]>(guard);
     }
 }

@@ -27,7 +27,7 @@ fn test_identity_cycle_structure() {
         ZeroTable::try_generate_all(identity_cycle_structure.clone(), ()).unwrap(),
         SearchStrategy::AllSolutions,
     );
-    let mut solutions = solver.solve::<[Cube3; 21]>().unwrap();
+    let mut solutions = solver.solve::<Vec<Cube3>>().unwrap();
     assert_eq!(solutions.solution_length(), 0);
     solutions.next().unwrap();
     assert!(solutions.next().is_none());
@@ -47,7 +47,7 @@ fn test_identity_cycle_structure() {
     .unwrap();
     let solver: CycleStructureSolver<Cube3, _> =
         CycleStructureSolver::new(cube3_def, pruning_tables, SearchStrategy::AllSolutions);
-    let mut solutions = solver.solve::<[Cube3; 21]>().unwrap();
+    let mut solutions = solver.solve::<Vec<Cube3>>().unwrap();
     assert_eq!(solutions.solution_length(), 0);
     solutions.next().unwrap();
     assert!(solutions.next().is_none());
@@ -67,7 +67,7 @@ fn test_single_quarter_turn() {
         ZeroTable::try_generate_all(sorted_cycle_structure, ()).unwrap(),
         SearchStrategy::AllSolutions,
     );
-    let mut solutions = solver.solve::<[Cube3; 21]>().unwrap();
+    let mut solutions = solver.solve::<Vec<Cube3>>().unwrap();
     assert_eq!(solutions.solution_length(), 1);
     while solutions.next().is_some() {
         if solutions.expanded_count() == 1 {
@@ -101,7 +101,7 @@ fn test_single_half_turn() {
         ZeroTable::try_generate_all(sorted_cycle_structure, ()).unwrap(),
         SearchStrategy::AllSolutions,
     );
-    let mut solutions = solver.solve::<[Cube3; 21]>().unwrap();
+    let mut solutions = solver.solve::<Vec<Cube3>>().unwrap();
     assert_eq!(solutions.solution_length(), 1);
     while solutions.next().is_some() {
         if solutions.expanded_count() == 1 {
@@ -141,7 +141,7 @@ fn test_optimal_subgroup_cycle() {
         ZeroTable::try_generate_all(sorted_cycle_structure, ()).unwrap(),
         SearchStrategy::AllSolutions,
     );
-    let mut solutions = solver.solve::<[Cube3; 21]>().unwrap();
+    let mut solutions = solver.solve::<Vec<Cube3>>().unwrap();
     assert_eq!(solutions.solution_length(), 4);
     while solutions.next().is_some() {
         if solutions.expanded_count() == 1 {
@@ -176,7 +176,7 @@ fn test_210_optimal_cycle() {
         SearchStrategy::AllSolutions,
     );
 
-    let mut solutions = solver.solve::<[Cube3; 21]>().unwrap();
+    let mut solutions = solver.solve::<Vec<Cube3>>().unwrap();
     assert_eq!(solutions.solution_length(), 5);
     while solutions.next().is_some() {}
     assert_eq!(solutions.expanded_count(), 480);
@@ -206,7 +206,7 @@ fn test_easy_30x30x30_optimal_cycle() {
     let solver: CycleStructureSolver<Cube3, _> =
         CycleStructureSolver::new(cube3_def, pruning_tables, SearchStrategy::AllSolutions);
 
-    let mut solutions = solver.solve::<[Cube3; 21]>().unwrap();
+    let mut solutions = solver.solve::<Vec<Cube3>>().unwrap();
     assert_eq!(solutions.solution_length(), 11);
     while solutions.next().is_some() {}
     assert_eq!(solutions.expanded_count(), 2112);
@@ -238,7 +238,7 @@ fn test_hard_30x30x30_optimal_cycle() {
         CycleStructureSolver::new(cube3_def, pruning_tables, SearchStrategy::AllSolutions)
             .with_max_solution_length(10);
 
-    let failed = solver.solve::<[Cube3; 21]>().unwrap_err();
+    let failed = solver.solve::<Vec<Cube3>>().unwrap_err();
     assert!(matches!(
         failed,
         CycleStructureSolverError::MaxSolutionLengthExceeded
@@ -262,7 +262,7 @@ fn test_3c_optimal_cycle() {
         SearchStrategy::AllSolutions,
     );
 
-    let mut solutions = solver.solve::<[Cube3; 21]>().unwrap();
+    let mut solutions = solver.solve::<Vec<Cube3>>().unwrap();
     assert_eq!(solutions.solution_length(), 8);
     while solutions.next().is_some() {}
     assert_eq!(solutions.expanded_count(), 864);
@@ -283,7 +283,7 @@ fn test_8c8e_optimal_cycle() {
         SearchStrategy::AllSolutions,
     );
 
-    let mut solutions = solver.solve::<[Cube3; 21]>().unwrap();
+    let mut solutions = solver.solve::<Vec<Cube3>>().unwrap();
     assert_eq!(solutions.solution_length(), 5);
     while solutions.next().is_some() {}
     assert_eq!(solutions.expanded_count(), 960);
@@ -314,7 +314,7 @@ fn test_consecutive_commutative_moves() {
         SearchStrategy::AllSolutions,
     );
 
-    let mut solutions = solver.solve::<[Cube3; 21]>().unwrap();
+    let mut solutions = solver.solve::<Vec<Cube3>>().unwrap();
     assert_eq!(solutions.solution_length(), 4);
     while solutions.next().is_some() {}
     assert_eq!(solutions.expanded_count(), 96);
@@ -335,7 +335,7 @@ fn test_commutative_moves_only() {
         SearchStrategy::AllSolutions,
     );
 
-    let mut solutions = solver.solve::<[Cube3; 21]>().unwrap();
+    let mut solutions = solver.solve::<Vec<Cube3>>().unwrap();
     assert_eq!(solutions.solution_length(), 2);
     while solutions.next().is_some() {}
     assert_eq!(solutions.expanded_count(), 12);
@@ -356,7 +356,7 @@ fn test_sequence_symmetry_wrapping_sequence_edge_case() {
         SearchStrategy::AllSolutions,
     );
 
-    let mut solutions = solver.solve::<[Cube3; 21]>().unwrap();
+    let mut solutions = solver.solve::<Vec<Cube3>>().unwrap();
     assert_eq!(solutions.solution_length(), 7);
     while solutions.next().is_some() {}
     assert_eq!(solutions.expanded_count(), 6048);
