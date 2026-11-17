@@ -51,12 +51,59 @@ struct CycleCombinationsTreeShard<'a> {
     // but also in a different order: 40 35 30 or 35 30 25. Therefore, it does not suffice to use a
     // singular index, and we must track the satisfaction of both requirements separately
     exact_order_value_constraints: Vec<u32>,
-    // TODO
-    at_least_order_value_constraints: Vec<u32>,
+    // "At least" and custom constraints are arbitrary predicates, so we cannot assume anything
+    // about which orders satisfy them. Instead, `predicate_masks[i]` has a bit set for every
+    // predicate that possible order `i` satisfies, and we keep track of the maximum matching
+    // from the predicates to the registers
+    predicate_masks: Arc<[u64]>,
+    predicate_count: usize,
+    // The predicate masks of the registers so far that do not satisfy an exact constraint
+    register_predicate_masks: Vec<u64>,
 }
 
 #[derive(Debug, Clone)]
 struct PackedCycleCombinationCandidateQueue(Box<[u32]>);
+
+/// Kuhn's algorithm for the maximum matching from the predicates to the registers, where
+/// `register_predicate_masks[r]` has a bit set for every predicate that register `r` satisfies
+fn max_predicate_matching(register_predicate_masks: &[u64]) -> usize {
+    fn augment(
+        register: usize,
+        register_predicate_masks: &[u64],
+        predicate_owners: &mut [usize; 64],
+        visited: &mut u64,
+    ) -> bool {
+        let mut mask = register_predicate_masks[register];
+        while mask != 0 {
+            let predicate = mask.trailing_zeros() as usize;
+            mask &= mask - 1;
+            if *visited & (1 << predicate) != 0 {
+                continue;
+            }
+            *visited |= 1 << predicate;
+            let owner = predicate_owners[predicate];
+            if owner == usize::MAX
+                || augment(owner, register_predicate_masks, predicate_owners, visited)
+            {
+                predicate_owners[predicate] = register;
+                return true;
+            }
+        }
+        false
+    }
+
+    let mut predicate_owners = [usize::MAX; 64];
+    (0..register_predicate_masks.len())
+        .filter(|&register| {
+            augment(
+                register,
+                register_predicate_masks,
+                &mut predicate_owners,
+                &mut 0,
+            )
+        })
+        .count()
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct DisjointRegisters<'a> {
@@ -336,6 +383,38 @@ unsafe fn try_next_pareto_efficient_prunings(
 }
 
 impl CycleCombinationsTreeShard<'_> {
+    /// Returns the predicate mask of possible order `i` if it should be matched to a predicate,
+    /// which is never the case when it already satisfies an exact constraint. If another register
+    /// has the same order then they are interchangeable, and otherwise the exact constraint had no
+    /// other choice
+    fn maybe_predicate_mask(&self, i: u32, satisfies_exact: bool) -> Option<u64> {
+        if satisfies_exact || self.predicate_count == 0 {
+            return None;
+        }
+        let mask = self.predicate_masks[i as usize];
+        if mask == 0 { None } else { Some(mask) }
+    }
+
+    /// Returns the size of the maximum matching after assigning a register with the predicate
+    /// mask `maybe_mask`
+    fn next_predicate_matching_count(
+        &mut self,
+        predicate_matching_count: usize,
+        maybe_mask: Option<u64>,
+    ) -> usize {
+        let Some(mask) = maybe_mask else {
+            return predicate_matching_count;
+        };
+        // Adding a register can only increase the matching by one
+        if predicate_matching_count == self.predicate_count {
+            return predicate_matching_count;
+        }
+        self.register_predicate_masks.push(mask);
+        let next_predicate_matching_count = max_predicate_matching(&self.register_predicate_masks);
+        self.register_predicate_masks.pop();
+        next_predicate_matching_count
+    }
+
     fn register_count(&self) -> NonZeroU16 {
         // Cast truncation is fine because `self.registers` is the length of the number
         // of registers, which is a `NonZeroU16`
@@ -402,6 +481,7 @@ impl CycleCombinationsTreeShard<'_> {
         possible_orders_except_one: NonemptySlice<'_, PossibleOrder<N>>,
         register_index: NonZeroU16,
         mut exact_order_value_constraints_index: usize,
+        predicate_matching_count: usize,
         remaining_piece_count: NonZeroU32,
     ) {
         let mut curr_possible_orders_except_one = possible_orders_except_one;
@@ -418,6 +498,7 @@ impl CycleCombinationsTreeShard<'_> {
             let (possible_order, next_possible_orders_except_one) =
                 curr_possible_orders_except_one.split_last();
             let i = possible_orders_len_cast(next_possible_orders_except_one.len());
+            let mut satisfies_exact = false;
             if let Some(j) = maybe_curr_exact_order_value_constraint {
                 // Ensure the `i == j` is the last iteration
                 if i < j {
@@ -425,8 +506,12 @@ impl CycleCombinationsTreeShard<'_> {
                 }
                 if i == j {
                     exact_order_value_constraints_index += 1;
+                    satisfies_exact = true;
                 }
             }
+            let maybe_predicate_mask = self.maybe_predicate_mask(i, satisfies_exact);
+            let next_predicate_matching_count =
+                self.next_predicate_matching_count(predicate_matching_count, maybe_predicate_mask);
             // TODO: inline this in previous call
             if i < self.lower_index_cutoff {
                 break;
@@ -466,13 +551,15 @@ impl CycleCombinationsTreeShard<'_> {
                 .get()
                 .checked_sub(u32::from(possible_order.min_piece_count.get()))
                 // rearranged version of
-                // register_count - next_register_index >= exact_order_value_constraints - exact_order_value_constraints_index
+                // register_count - next_register_index >= exact_order_value_constraints - exact_order_value_constraints_index + predicate_count - predicate_matching_count
                 // which ensures the number of unsatisfied constraints left can be fulfilled
                 // by the number of remaining registers
                 && NonZeroUsize::from(self.register_count()).get()
                     + exact_order_value_constraints_index
+                    + next_predicate_matching_count
                     >= NonZeroUsize::from(next_register_index).get()
                         + self.exact_order_value_constraints.len()
+                        + self.predicate_count
             {
                 if leaf {
                     if candidate_count == 0 {
@@ -493,6 +580,9 @@ impl CycleCombinationsTreeShard<'_> {
                         },
                         i,
                     );
+                    if let Some(predicate_mask) = maybe_predicate_mask {
+                        self.register_predicate_masks.push(predicate_mask);
+                    }
                     // SAFETY: `next_register_index != self.exact_register_count()` in this
                     // branch, and caller guarantees we are less
                     unsafe {
@@ -500,8 +590,12 @@ impl CycleCombinationsTreeShard<'_> {
                             curr_possible_orders_except_one,
                             next_register_index,
                             exact_order_value_constraints_index,
+                            next_predicate_matching_count,
                             next_remaining_piece_count,
                         );
+                    }
+                    if maybe_predicate_mask.is_some() {
+                        self.register_predicate_masks.pop();
                     }
                     // SAFETY: caller guarantees `register_index < self.exact_register_count()`,
                     // therefore we are in bounds
@@ -718,10 +812,15 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                     exact_order_value_constraints_index = 1;
                 }
             }
+            let maybe_predicate_mask =
+                shard.maybe_predicate_mask(i_u32, exact_order_value_constraints_index == 1);
+            let predicate_matching_count = usize::from(maybe_predicate_mask.is_some());
             // Same as the check in `search_dfs_recur`: the remaining registers must be able
-            // to satisfy the remaining exact constraints
-            if usize::from(shard.register_count().get()) + exact_order_value_constraints_index
-                < 1 + shard.exact_order_value_constraints.len()
+            // to satisfy the remaining constraints
+            if usize::from(shard.register_count().get())
+                + exact_order_value_constraints_index
+                + predicate_matching_count
+                < 1 + shard.exact_order_value_constraints.len() + shard.predicate_count
             {
                 continue;
             }
@@ -780,6 +879,8 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                     NonemptySlice::try_from(&self.possible_orders_except_one[..=i])
             {
                 *shard.registers.first_mut() = i_u32;
+                shard.register_predicate_masks.clear();
+                shard.register_predicate_masks.extend(maybe_predicate_mask);
                 if let Some(max_order_ratio) = maybe_max_order_ratio {
                     shard.lower_index_cutoff = possible_orders_len_cast(
                         next_possible_orders_except_one.partition_point(|possible_order| {
@@ -794,6 +895,7 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                         next_possible_orders_except_one,
                         NonZeroU16::new(1).unwrap(),
                         exact_order_value_constraints_index,
+                        predicate_matching_count,
                         next_remaining_piece_count,
                     );
                 }
@@ -848,24 +950,43 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
 
         let pareto_efficient_prunings = AtomicPtr::default();
         let mut exact_order_value_constraints = vec![];
-        let mut at_least_order_value_constraints = vec![];
+        let mut predicates = vec![];
         for order_value_constraint in &self.order_value_constraints {
             match *order_value_constraint {
-                ValidatedOrderValueConstraint::Custom(c) => {
-                    todo!();
-                }
-                ValidatedOrderValueConstraint::AtLeast(c) => {
-                    at_least_order_value_constraints.push(c);
-                }
                 ValidatedOrderValueConstraint::Exactly(c) => {
                     exact_order_value_constraints.push(c);
+                }
+                ValidatedOrderValueConstraint::AtLeast(_)
+                | ValidatedOrderValueConstraint::Custom(_) => {
+                    predicates.push(order_value_constraint);
                 }
             }
         }
         // Registers are assigned in descending order, so `search_dfs_recur` must
         // consume exact constraints in descending order too
         exact_order_value_constraints.sort_by_key(|&a| std::cmp::Reverse(a));
-        at_least_order_value_constraints.sort_by_key(|&a| std::cmp::Reverse(a));
+        // We validated there are at most 64 predicates
+        let predicate_masks = if predicates.is_empty() {
+            Arc::from([])
+        } else {
+            self.possible_orders_except_one
+                .iter()
+                .enumerate()
+                .map(|(i, possible_order)| {
+                    predicates
+                        .iter()
+                        .enumerate()
+                        .filter(|&(_, predicate)| match **predicate {
+                            ValidatedOrderValueConstraint::AtLeast(j) => {
+                                possible_orders_len_cast(i) >= j
+                            }
+                            ValidatedOrderValueConstraint::Custom(f) => f(&possible_order.order),
+                            ValidatedOrderValueConstraint::Exactly(_) => unreachable!(),
+                        })
+                        .fold(0, |mask, (bit, _)| mask | (1 << bit))
+                })
+                .collect()
+        };
 
         // We can unwrap because `exact_register_count` is NonZero.
         #[allow(clippy::missing_panics_doc)]
@@ -887,7 +1008,9 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
             batch_size: self.mss_batch_size,
             pareto_efficient_prunings: &AtomicPtr::null(),
             exact_order_value_constraints,
-            at_least_order_value_constraints,
+            predicate_count: predicates.len(),
+            predicate_masks,
+            register_predicate_masks: vec![],
         };
 
         let mut candidate_count = 0;
