@@ -301,7 +301,7 @@ impl<const N: usize> PuzzleDef<N> {
         let mut connected_component_parity_constraints = BitMatrix::build(
             even_parity_constraints.rows(),
             connected_component.len(),
-            |i, j| even_parity_constraints[(i, j + usize::from(connected_component[0]))],
+            |i, j| even_parity_constraints[(i, usize::from(connected_component[j]))],
         );
 
         gauss_jordan_without_zero_rows(
