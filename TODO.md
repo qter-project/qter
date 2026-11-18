@@ -10,14 +10,10 @@
 - consider removing no orientation sum
   - there was a logic issue with possible orders and minimum piece count
   - i also know it makes that pr buggy
-- charge a piece for 1+ twists in satisfied orbits
-- dont make the first thread only log the total time, make it every "first register reciever + len(orders) / 100"
-- root register should fit an exact constraint
 - log outliers instead of hardcoding 1s
 - Fit exact cycles first, not relevant to orbit ordering
-- implement AC3 into solutions
-- Fit exact **cycles** first, not relevant to orbit ordering
   - The largest unplaced non-orienting pᵏ is bigger than the largest orbit's unused count → fail.
+- implement AC3 into solutions
   - The current register's remaining cycles need more pieces than are left in total → fail.
 
 - parity; look in stash!

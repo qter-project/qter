@@ -4,9 +4,20 @@ experimental = ["benchmarks"]
 filter = "binary_id(cycle_combination_solver::cube3) or binary_id(cycle_combination_solver::cube4) or binary_id(cycle_combination_solver::megaminx)"
 # placeholder for later; I will need to config these to have threads
 
+# The CCF tests that finish in about a second or less. A test that needs
+# longer belongs in the regex below, which leaves it to `ccf-long`.
 [profile.ccf]
+default-filter = 'package(cycle_combination_finder) and not test(/^(finder::tests::(minx4_optimal_[345]|minx5_optimal_[23])|possible_orders::puzzle::minx5)$/)'
 fail-fast = false
+# Terminate a test after 10 seconds
+slow-timeout = { period = "5s", terminate-after = 2 }
 
 [[profile.ccf.overrides]]
 filter = 'test(possible_orders::puzzle) or test(finder::tests)'
 threads-required = "num-cpus"
+
+# Every CCF test
+[profile.ccf-long]
+inherits = "ccf"
+default-filter = 'package(cycle_combination_finder)'
+slow-timeout = "60s"
