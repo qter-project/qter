@@ -10,7 +10,6 @@
 - consider removing no orientation sum
   - there was a logic issue with possible orders and minimum piece count
   - i also know it makes that pr buggy
-- log outliers instead of hardcoding 1s
 - Fit exact cycles first, not relevant to orbit ordering
   - The largest unplaced non-orienting pᵏ is bigger than the largest orbit's unused count → fail.
 - implement AC3 into solutions
@@ -18,7 +17,6 @@
 - post-processing to auto flip cycles
 
 - parity; look in stash!
-
 
 - `stash@{0}`'s `identical_orbits_dedup` second case (20/18/17 pieces) expects exactly the same output as the 20/20/20 case, including `2: 20 unused` on a 17-piece orbit. It looks copy-pasted and will fail as written.
 - put "equal to" registers first; one less dof

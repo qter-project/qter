@@ -226,7 +226,7 @@ impl<'pd, const N: usize> CycleCombinationFinder<'pd, N> {
                     ) {
                         OrientationSatisfiedBy::NoConstraint
                     } else {
-                        OrientationSatisfiedBy::TwoCycles
+                        unimplemented!()
                     };
                     RegisterOrbitConstraint {
                         known_share_state: ShareState::default(),

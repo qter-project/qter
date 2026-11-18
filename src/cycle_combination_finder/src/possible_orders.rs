@@ -128,6 +128,8 @@ impl OrbitDef {
                 .is_prime_power()
                 .then_some(piece_count_orderexps)
         } else {
+            // None `OrientationSumConstraint` is technically not supported but it still
+            // works in possible orders.
             None
         };
 

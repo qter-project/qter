@@ -49,11 +49,17 @@ pub enum PuzzleDefCreationError {
     #[error("Orbit has too much orientation. Expected a maximum of {max} but found {actual}")]
     OrbitTooMuchOrientation { actual: u8, max: u16 },
     #[error(
-        "The CCF only supports puzzle with prime power orientations, due to implementation \
-         difficulty reasons. There is currently progress in making this happen, and support will \
-         be added in a future release."
+        "The CCF only supports puzzle with prime power orientations (found orientation {actual}), \
+         due to implementation difficulty reasons. There is currently progress in making this \
+         happen, and support will be added in a future release."
     )]
     NonPrimePowerOrientation { actual: u8 },
+    #[error(
+        "The CCF only supports puzzles with orbits that can only have a zero sum constraint, due \
+         to implementation difficulty reasons. There is currently progress in making this happen, \
+         and support will be added in a future release."
+    )]
+    NoneOrientationSumConstraint,
 }
 
 #[derive(Clone)]
@@ -152,6 +158,9 @@ impl<const N: usize> PuzzleDef<N> {
             .iter()
             .zip(orbit_constraints)
             .map(|(ksolveset, orbit_orientation_sum_constraint)| {
+                if orbit_orientation_sum_constraint == OrientationSumConstraint::None {
+                    return Err(PuzzleDefCreationError::NoneOrientationSumConstraint);
+                }
                 let piece_count = ksolveset.piece_count();
                 let orientation = if ksolveset.orientation_count().get() == 1 {
                     OrientationStatus::CannotOrient
@@ -161,13 +170,13 @@ impl<const N: usize> PuzzleDef<N> {
                         sum_constraint: orbit_orientation_sum_constraint,
                     }
                 };
-                PartialOrbitDef {
+                Ok(PartialOrbitDef {
                     name: Some(ksolve.name().to_string()),
                     piece_count,
                     orientation,
-                }
+                })
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, PuzzleDefCreationError>>()?;
         Self::new((parial_orbit_defs, even_parity_constraints))
     }
 

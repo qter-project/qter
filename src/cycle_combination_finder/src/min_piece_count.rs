@@ -209,7 +209,7 @@ mod tests {
     }
 
     pub fn big_puzzle_with_oris(orientations: &[u8]) -> PuzzleDef<64> {
-        puzzle_with_piece_count_and_oris(
+        puzzle_with_piece_count_and_zero_sum_constraint_oris(
             orientations
                 .iter()
                 .map(|&orientation| (312, orientation))
@@ -218,7 +218,9 @@ mod tests {
         )
     }
 
-    pub fn puzzle_with_piece_count_and_oris(partial_orbit_defs: &[(u16, u8)]) -> PuzzleDef<64> {
+    pub fn puzzle_with_piece_count_and_zero_sum_constraint_oris(
+        partial_orbit_defs: &[(u16, u8)],
+    ) -> PuzzleDef<64> {
         PuzzleDef::new((
             partial_orbit_defs
                 .iter()
@@ -242,7 +244,7 @@ mod tests {
 
     #[test_log::test]
     fn ii_suboptimal_piece_count() {
-        let puzzle = puzzle_with_piece_count_and_oris(&[(8, 1), (17, 2)]);
+        let puzzle = puzzle_with_piece_count_and_zero_sum_constraint_oris(&[(8, 1), (17, 2)]);
         let mut min_piece_count = MinPieceCount::from(&puzzle);
         assert_eq!(
             min_piece_count,
