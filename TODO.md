@@ -7,12 +7,18 @@
 
 ## CCF
 
+- consider removing no orientation sum
+  - there was a logic issue with possible orders and minimum piece count
+  - i also know it makes that pr buggy
+- charge a piece for 1+ twists in satisfied orbits
 - dont make the first thread only log the total time, make it every "first register reciever + len(orders) / 100"
-- figure out why putting the 9 cycles in the edges orbit didnt just preassign that 9 cycle to corners
 - root register should fit an exact constraint
 - log outliers instead of hardcoding 1s
 - Fit exact cycles first, not relevant to orbit ordering
-- An exact fit is also *invalid* when the orbit's orientation still has to be satisfied by a leftover piece (`:532`), so a "perfect fit first" rule needs that exception.
+- implement AC3 into solutions
+- Fit exact **cycles** first, not relevant to orbit ordering
+  - The largest unplaced non-orienting pᵏ is bigger than the largest orbit's unused count → fail.
+  - The current register's remaining cycles need more pieces than are left in total → fail.
 
 - parity; look in stash!
 
@@ -48,8 +54,6 @@ e: 0 ignored, 1 unused
 - min piece count doesnt work with orientation constraint none
 - is possible_order.0.simd_ne(Simd::splat(0)) really needed
 - note that we deduplicate orbits. in general catalog all optimizations
-
-- find registers to compute 3 body problem
 
 - tree
   - note that batching "ramps up" the mkp threads when the batch size is large; there are few solutions/batch in the beginning which helps make sure the 
