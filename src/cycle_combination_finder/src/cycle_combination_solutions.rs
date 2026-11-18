@@ -1459,9 +1459,7 @@ mod tests {
         orderexps::OrderExps,
         puzzle::{
             EvenParityConstraints, OrientationStatus, OrientationSumConstraint, PartialOrbitDef,
-            PuzzleDef,
-            minxN::{MINX3, MINX5},
-            possible_orders_len_cast,
+            PuzzleDef, minxN::MINX3, possible_orders_len_cast,
         },
     };
 
@@ -1514,7 +1512,11 @@ mod tests {
         let actual_copy = actual.clone();
         actual.retain(|c| !c.is_whitespace());
 
-        assert_eq!(expected, actual, "\n{actual_copy}");
+        assert_eq!(
+            expected, actual,
+            "\nfast_assumptions = {}\n{actual_copy}",
+            solutions_calculator.ccf.fast_assumptions
+        );
     }
 
     #[test_log::test]
@@ -1549,16 +1551,19 @@ mod tests {
                 min_piece_count: 1.try_into().unwrap(),
             }]),
         };
-        let ccf = CycleCombinationFinderBuilder::default()
-            .with_puzzle_analysis(&analysis)
-            .with_registers(Register::default_count(1))
-            .with_solution_expansion(SolutionExpansion::All)
-            .build()
-            .unwrap();
-        let mut solutions_calculator = ccf.solutions_calculator();
-        solutions_calculator.existence(DisjointRegisters::from(
-            NonemptySlice::try_from(&[0][..]).unwrap(),
-        ));
+        for fast_assumptions in [false, true] {
+            let ccf = CycleCombinationFinderBuilder::default()
+                .with_puzzle_analysis(&analysis)
+                .with_registers(Register::default_count(1))
+                .with_solution_expansion(SolutionExpansion::All)
+                .with_fast_assumptions(fast_assumptions)
+                .build()
+                .unwrap();
+            let mut solutions_calculator = ccf.solutions_calculator();
+            solutions_calculator.existence(DisjointRegisters::from(
+                NonemptySlice::try_from(&[0][..]).unwrap(),
+            ));
+        }
     }
 
     #[test_log::test]
@@ -1592,11 +1597,6 @@ mod tests {
             .with_solution_expansion(SolutionExpansion::All);
         let register_orders = vec![9];
 
-        let ccf = ccf_base
-            .clone()
-            .with_fast_assumptions(false)
-            .build()
-            .unwrap();
         let expected = "
             9: 0: () 1: (3+)
 
@@ -1608,20 +1608,25 @@ mod tests {
             0: 1 ignored, 2 unused
             1: 0 ignored, 4 unused
         ";
-        do_test(
-            ccf.solutions_calculator(),
-            register_orders.clone(),
-            expected,
-        );
-
-        let ccf = ccf_base.with_fast_assumptions(true).build().unwrap();
-        let expected = "
+        let expected_fast = "
             9: 0: (1+) 1: ()
 
             0: 1 ignored, 2 unused
             1: 0 ignored, 4 unused
         ";
-        do_test(ccf.solutions_calculator(), register_orders, expected);
+
+        for (fast_assumptions, expected) in [(false, expected), (true, expected_fast)] {
+            let ccf = ccf_base
+                .clone()
+                .with_fast_assumptions(fast_assumptions)
+                .build()
+                .unwrap();
+            do_test(
+                ccf.solutions_calculator(),
+                register_orders.clone(),
+                expected,
+            );
+        }
     }
 
     #[test_log::test]
@@ -1643,13 +1648,8 @@ mod tests {
         ))
         .unwrap();
         let analysis = PuzzleAnalysis::new(&crazy, NumCores::AllCores).unwrap();
-        let ccf = CycleCombinationFinderBuilder::default()
-            .with_puzzle_analysis(&analysis)
-            .with_registers(Register::default_count(2))
-            .with_solution_expansion(SolutionExpansion::All)
-            .build()
-            .unwrap();
         let register_orders = vec![3, 2];
+
         let expected = "
             3: 0: () 1: (3)
             2: 0: () 1: (2)
@@ -1675,7 +1675,21 @@ mod tests {
             0: 0 ignored, 5 unused
             1: 0 ignored, 3 unused
         ";
-        do_test(ccf.solutions_calculator(), register_orders, expected);
+
+        for fast_assumptions in [false, true] {
+            let ccf = CycleCombinationFinderBuilder::default()
+                .with_puzzle_analysis(&analysis)
+                .with_registers(Register::default_count(2))
+                .with_solution_expansion(SolutionExpansion::All)
+                .with_fast_assumptions(fast_assumptions)
+                .build()
+                .unwrap();
+            do_test(
+                ccf.solutions_calculator(),
+                register_orders.clone(),
+                expected,
+            );
+        }
     }
 
     #[test_log::test]
@@ -1693,13 +1707,6 @@ mod tests {
         ))
         .unwrap();
         let analysis = PuzzleAnalysis::new(&crazy, NumCores::AllCores).unwrap();
-        let ccf = CycleCombinationFinderBuilder::default()
-            .with_puzzle_analysis(&analysis)
-            .with_registers(Register::default_count(1))
-            .with_solution_expansion(SolutionExpansion::All)
-            .build()
-            .unwrap();
-        let solutions_calculator = ccf.solutions_calculator();
         let register_orders = vec![3];
 
         let expected = "
@@ -1708,20 +1715,26 @@ mod tests {
             0: 0 ignored, 0 unused
         ";
 
-        do_test(solutions_calculator, register_orders, expected);
+        for fast_assumptions in [false, true] {
+            let ccf = CycleCombinationFinderBuilder::default()
+                .with_puzzle_analysis(&analysis)
+                .with_registers(Register::default_count(1))
+                .with_solution_expansion(SolutionExpansion::All)
+                .with_fast_assumptions(fast_assumptions)
+                .build()
+                .unwrap();
+            do_test(
+                ccf.solutions_calculator(),
+                register_orders.clone(),
+                expected,
+            );
+        }
     }
 
     #[test_log::test]
     fn minx3_optimal_3() {
         let minx3 = MINX3.clone();
         let analysis = PuzzleAnalysis::new(&minx3, NumCores::AllCores).unwrap();
-        let ccf = CycleCombinationFinderBuilder::default()
-            .with_puzzle_analysis(&analysis)
-            .with_registers(Register::default_count(3))
-            .with_solution_expansion(SolutionExpansion::All)
-            .build()
-            .unwrap();
-        let solutions_calculator = ccf.solutions_calculator();
         // 2520 630 420
         //
         // 2 2 2 3 3 5 7 : 4e 3c
@@ -1745,20 +1758,26 @@ mod tests {
             e: 0 ignored, 0 unused
         ";
 
-        do_test(solutions_calculator, register_orders, expected);
+        for fast_assumptions in [false, true] {
+            let ccf = CycleCombinationFinderBuilder::default()
+                .with_puzzle_analysis(&analysis)
+                .with_registers(Register::default_count(3))
+                .with_solution_expansion(SolutionExpansion::All)
+                .with_fast_assumptions(fast_assumptions)
+                .build()
+                .unwrap();
+            do_test(
+                ccf.solutions_calculator(),
+                register_orders.clone(),
+                expected,
+            );
+        }
     }
 
     #[test_log::test]
     fn minx3_equivalent_3() {
         let minx3 = MINX3.clone();
         let analysis = PuzzleAnalysis::new(&minx3, NumCores::AllCores).unwrap();
-        let ccf = CycleCombinationFinderBuilder::default()
-            .with_puzzle_analysis(&analysis)
-            .with_registers(Register::default_count(3))
-            .with_solution_expansion(SolutionExpansion::All)
-            .build()
-            .unwrap();
-        let solutions_calculator = ccf.solutions_calculator();
         // 840: 2 2 2 3 5 7
         let register_orders = vec![840, 840, 840];
 
@@ -1785,7 +1804,20 @@ mod tests {
             e: 0 ignored, 1 unused
         ";
 
-        do_test(solutions_calculator, register_orders, expected);
+        for fast_assumptions in [false, true] {
+            let ccf = CycleCombinationFinderBuilder::default()
+                .with_puzzle_analysis(&analysis)
+                .with_registers(Register::default_count(3))
+                .with_solution_expansion(SolutionExpansion::All)
+                .with_fast_assumptions(fast_assumptions)
+                .build()
+                .unwrap();
+            do_test(
+                ccf.solutions_calculator(),
+                register_orders.clone(),
+                expected,
+            );
+        }
     }
 
     #[test_log::test]
@@ -1806,13 +1838,6 @@ mod tests {
         ))
         .unwrap();
         let analysis = PuzzleAnalysis::new(&crazy, NumCores::AllCores).unwrap();
-        let ccf = ccf_base
-            .clone()
-            .with_puzzle_analysis(&analysis)
-            .with_registers(Register::default_count(1))
-            .build()
-            .unwrap();
-        let solutions_calculator = ccf.solutions_calculator();
         let register_orders = vec![6];
 
         let expected = "
@@ -1821,7 +1846,20 @@ mod tests {
             0: 1 ignored, 0 unused
         ";
 
-        do_test(solutions_calculator, register_orders, expected);
+        for fast_assumptions in [false, true] {
+            let ccf = ccf_base
+                .clone()
+                .with_puzzle_analysis(&analysis)
+                .with_registers(Register::default_count(1))
+                .with_fast_assumptions(fast_assumptions)
+                .build()
+                .unwrap();
+            do_test(
+                ccf.solutions_calculator(),
+                register_orders.clone(),
+                expected,
+            );
+        }
 
         let crazy = PuzzleDef::<64>::new((
             vec![PartialOrbitDef {
@@ -1836,12 +1874,6 @@ mod tests {
         ))
         .unwrap();
         let analysis = PuzzleAnalysis::new(&crazy, NumCores::AllCores).unwrap();
-        let ccf = ccf_base
-            .with_puzzle_analysis(&analysis)
-            .with_registers(Register::default_count(1))
-            .build()
-            .unwrap();
-        let solutions_calculator = ccf.solutions_calculator();
         let register_orders = vec![3];
 
         let expected = "
@@ -1850,7 +1882,20 @@ mod tests {
             0: 1 ignored, 0 unused
         ";
 
-        do_test(solutions_calculator, register_orders, expected);
+        for fast_assumptions in [false, true] {
+            let ccf = ccf_base
+                .clone()
+                .with_puzzle_analysis(&analysis)
+                .with_registers(Register::default_count(1))
+                .with_fast_assumptions(fast_assumptions)
+                .build()
+                .unwrap();
+            do_test(
+                ccf.solutions_calculator(),
+                register_orders.clone(),
+                expected,
+            );
+        }
     }
 
     #[test_log::test]
@@ -1895,7 +1940,24 @@ mod tests {
             1: 0 ignored, 0 unused
         ";
 
-        for (piece_count, expected) in [(3u16, expected_3_pieces), (4, expected_4_pieces)] {
+        // Fast assumptions always orient the 3 on orbit 1
+        let expected_3_pieces_fast = "
+            6: 0: (1+) 1: (1+)
+
+            0: 1 ignored, 1 unused
+            1: 1 ignored, 0 unused
+        ";
+        let expected_4_pieces_fast = "
+            6: 0: (1+) 1: (1+)
+
+            0: 1 ignored, 2 unused
+            1: 1 ignored, 0 unused
+        ";
+
+        for (piece_count, expected, expected_fast) in [
+            (3u16, expected_3_pieces, expected_3_pieces_fast),
+            (4, expected_4_pieces, expected_4_pieces_fast),
+        ] {
             let crazy = PuzzleDef::<8>::new((
                 vec![
                     PartialOrbitDef {
@@ -1919,15 +1981,17 @@ mod tests {
             ))
             .unwrap();
             let analysis = PuzzleAnalysis::new(&crazy, NumCores::AllCores).unwrap();
-            let ccf = CycleCombinationFinderBuilder::default()
-                .with_solution_expansion(SolutionExpansion::All)
-                .with_puzzle_analysis(&analysis)
-                .with_registers(Register::default_count(1))
-                .with_fast_assumptions(false)
-                .build()
-                .unwrap();
+            for (fast_assumptions, expected) in [(false, expected), (true, expected_fast)] {
+                let ccf = CycleCombinationFinderBuilder::default()
+                    .with_solution_expansion(SolutionExpansion::All)
+                    .with_puzzle_analysis(&analysis)
+                    .with_registers(Register::default_count(1))
+                    .with_fast_assumptions(fast_assumptions)
+                    .build()
+                    .unwrap();
 
-            do_test(ccf.solutions_calculator(), vec![6], expected);
+                do_test(ccf.solutions_calculator(), vec![6], expected);
+            }
         }
     }
 
@@ -1974,60 +2038,5 @@ mod tests {
                 NonemptySlice::try_from(&*registers).unwrap(),
             )));
         }
-    }
-
-    #[test_log::test]
-    // #[ignore = "long"]
-    fn main1() {
-        let minx5 = MINX5.clone();
-        let analysis = PuzzleAnalysis::new(&minx5, NumCores::AllCores).unwrap();
-        let ccf = CycleCombinationFinderBuilder::default()
-            .with_solution_expansion(SolutionExpansion::FIRST)
-            .with_puzzle_analysis(&analysis)
-            .with_registers(Register::default_count(4))
-            .build()
-            .unwrap();
-        let mut solutions_calculator = ccf.solutions_calculator();
-        let register_orders = vec![5_354_228_880, 1_531_530, 90090, 9240];
-
-        let mut registers = register_orders
-            .into_iter()
-            .map(|register_order| {
-                possible_orders_len_cast(
-                    solutions_calculator
-                        .ccf
-                        .possible_orders_except_one
-                        .iter()
-                        .position(|possible_order| {
-                            u64::try_from(possible_order.order.as_bigint()).unwrap()
-                                == register_order
-                        })
-                        .unwrap(),
-                )
-            })
-            .collect::<Box<[_]>>();
-        registers.sort_by_key(|&r| std::cmp::Reverse(r));
-        let registers = Arc::from(registers);
-        let now = Instant::now();
-        let solutions = solutions_calculator
-            .expansion(DisjointRegisters::from(
-                NonemptySlice::try_from(&*registers).unwrap(),
-            ))
-            .unwrap();
-        let len = solutions.0.len();
-        let cycle_combination = CycleCombination {
-            registers: Arc::clone(&registers),
-            solutions,
-        };
-
-        println!(
-            "Found {len} solutions in {}:\n{}",
-            now.elapsed().human(Truncate::Micro),
-            cycle_combination.solutions_fmt(
-                &solutions_calculator.ccf.possible_orders_except_one,
-                solutions_calculator.ccf.puzzle_def,
-            )
-        );
-        panic!();
     }
 }

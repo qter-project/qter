@@ -123,6 +123,37 @@ fn main() {
             );
             println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
         }
+    } else if p == "minx5 4" {
+        let minx5 = minxN::MINX5.clone();
+        let analysis =
+            PuzzleAnalysis::new(&minx5, NumCores::AllCores).unwrap_or_else(|e| panic!("{e}"));
+        let ret = CycleCombinationFinderBuilder::default()
+            .with_solution_expansion(SolutionExpansion::FIRST)
+            .with_puzzle_analysis(&analysis)
+            .with_registers(vec![
+                Register::default().with_order_value_constraint(OrderValueConstraint::Exactly(
+                    Int::<U>::from(5_354_228_880u64),
+                )),
+                Register::default().with_order_value_constraint(OrderValueConstraint::Exactly(
+                    Int::<U>::from(1_531_530u64),
+                )),
+                Register::default().with_order_value_constraint(OrderValueConstraint::Exactly(
+                    Int::<U>::from(90090u64),
+                )),
+                Register::default().with_order_value_constraint(OrderValueConstraint::Exactly(
+                    Int::<U>::from(9240u64),
+                )),
+            ])
+            .build()
+            .unwrap_or_else(|e| panic!("{e}"))
+            .find()
+            .unwrap_or_else(|e| panic!("{e}"));
+        for x in ret.cycle_combinations {
+            println!(
+                "{}",
+                x.solutions_fmt(&ret.possible_orders_except_one, &minx5)
+            );
+        }
     } else if p == "cube3" {
         let cube3 = cubeN::CUBE3.clone();
         let analysis =

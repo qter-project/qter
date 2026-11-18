@@ -225,7 +225,7 @@ mod tests {
     #[test_log::test]
     #[should_panic(expected = "PrimeTooLarge")]
     fn try_from_prime_too_large() {
-        OrderExps::<64>::try_from(NonZeroU16::new(FIRST_65_PRIMES[64] + 1).unwrap()).unwrap();
+        OrderExps::<64>::try_from(NonZeroU16::new(FIRST_65_PRIMES[64]).unwrap()).unwrap();
     }
 
     #[test_log::test]

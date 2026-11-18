@@ -25,7 +25,8 @@ Guidance for agents working in this repo. Verified against current config; where
 
 ## Building / testing
 
-- Tests use **nextest** (config `src/.config/nextest.toml`). Custom profiles: `ccs`, `ccf`. The `ccf` profile sets `fail-fast = false` and pins `threads-required = num-cpus` for `possible_orders::puzzle` and `finder::tests`.
+- Tests use **nextest** (config `src/.config/nextest.toml`). Custom profiles: `ccs`, `ccf`, `ccf-long`. Both CCF profiles set `fail-fast = false` and pin `threads-required = num-cpus` for `possible_orders::puzzle` and `finder::tests`.
+- `cargo nextest run --profile ccf --release -p cycle_combination_finder` is the quick CCF run (about 2 seconds): its `default-filter` leaves out the slow tests and it terminates any test after 10 seconds. A test-name filter cannot select a left-out test; use `--profile ccf-long` (every CCF test, some run for minutes) or `--ignore-default-filter`. A new test slower than about a second goes in the `ccf` `default-filter` regex.
 - Run a single test: `cargo nextest run -p <crate> <name>` (fallback: `cargo test -p <crate> <name>`).
 - Test crates use `test-log` + `pretty_env_logger` for tracing output.
 - `cargo fmt` runs nightly rustfmt. The CCF and CCS crates have their own `rustfmt.toml` with unstable options (`imports_granularity = "Crate"`, `group_imports = "StdExternalCrate"`, etc.).
