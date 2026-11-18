@@ -1080,17 +1080,26 @@ mod tests {
     fn cube3_optimal_4() {
         let cube3 = CUBE3.clone();
         let analysis = PuzzleAnalysis::new(&cube3, NumCores::AllCores).unwrap();
-        let ret = CycleCombinationFinderBuilder::default()
-            .with_puzzle_analysis(&analysis)
-            .with_registers(Register::default_count(4))
-            .with_expected_solutions_count_assertion(Some(43))
-            .build()
-            .unwrap()
-            .find()
-            .unwrap();
+        // Fast assumptions miss four solutions and find the seven they dominate:
+        //
+        // (90, 36, 6, 6): (90, 30, 6, 6)
+        // (72, 36, 12, 6): (72, 36, 8, 6), (72, 30, 12, 6), (60, 36, 12, 6)
+        // (36, 36, 24, 6): (36, 30, 24, 6)
+        // (36, 36, 12, 12): (36, 36, 12, 10), (36, 30, 12, 12)
+        for (fast_assumptions, expected_solutions_count) in [(false, 34), (true, 37)] {
+            let ret = CycleCombinationFinderBuilder::default()
+                .with_puzzle_analysis(&analysis)
+                .with_registers(Register::default_count(4))
+                .with_fast_assumptions(fast_assumptions)
+                .with_expected_solutions_count_assertion(Some(expected_solutions_count))
+                .build()
+                .unwrap()
+                .find()
+                .unwrap();
 
-        for x in ret.cycle_combinations {
-            println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
+            for x in ret.cycle_combinations {
+                println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
+            }
         }
     }
 
