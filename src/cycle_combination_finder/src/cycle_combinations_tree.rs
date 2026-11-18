@@ -26,6 +26,7 @@ use crate::{
     nonemptyvec::{NonemptySlice, NonemptyVec},
     pareto_front::CCParetoFront,
     puzzle::possible_orders_len_cast,
+    utils::RunningDurationStats,
 };
 
 #[derive(Clone)]
@@ -680,6 +681,7 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
             self.optimality.maybe_min_max_order_ratio();
 
         let mut candidate_count = 0;
+        let mut subtree_real_times = RunningDurationStats::default();
         // Threads claim first register orders from largest to smallest whenever they
         // finish one, so a thread with expensive subtrees does not hold up the others
         while let Some(i) = self
@@ -799,13 +801,14 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                 }
                 if log_enabled!(Level::Debug) {
                     let subtree_real_time = subtree_real_time.elapsed();
-                    if subtree_real_time >= Duration::from_secs(1) {
+                    if subtree_real_times.is_outlier(subtree_real_time) {
                         trace!(
                             "DFS: root register order {:?} took {}; i={i}",
                             possible_order,
-                            subtree_real_time.human(Truncate::Millis)
+                            subtree_real_time.human(Truncate::Micro)
                         );
                     }
+                    subtree_real_times.push(subtree_real_time);
                 }
             }
         }

@@ -54,3 +54,4 @@ pub mod pareto_front;
 pub mod possible_orders;
 pub mod puzzle;
 pub mod trie;
+mod utils;
