@@ -10,9 +10,10 @@ use thiserror::Error;
 use union_find::{QuickUnionUf, UnionBySize, UnionFind};
 
 use crate::{
-    FIRST_65_PRIMES, gauss_jordan_without_zero_rows,
+    FIRST_65_PRIMES,
     nonemptyvec::{NonemptySlice, NonemptyVec},
     orderexps::OrderExps,
+    utils::{gauss_jordan_without_zero_rows, orbit_index_cast},
 };
 
 #[allow(non_snake_case)]
@@ -106,43 +107,6 @@ pub enum ParityConstraint {
     Even,
     Dependent,
     None,
-}
-
-#[must_use]
-pub fn orbit_index_cast(orbit_index: usize) -> u16 {
-    // We guarantee only `u16` number of orbits
-    #[allow(clippy::cast_possible_truncation)]
-    let orbit_index = orbit_index as u16;
-    orbit_index
-}
-
-#[must_use]
-pub fn register_index_cast(register_index: usize) -> u16 {
-    // We guarantee only `u16` number of registers
-    #[allow(clippy::cast_possible_truncation)]
-    let register_index = register_index as u16;
-    register_index
-}
-
-#[must_use]
-pub fn possible_order_index_cast(possible_order_index: u32) -> usize {
-    // We guarantee only `u32` number of orders for now
-    possible_order_index as usize
-}
-
-#[must_use]
-pub fn prime_index_cast(prime_index: usize) -> u8 {
-    // There are max 64 primes
-    #[allow(clippy::cast_possible_truncation)]
-    let prime_index = prime_index as u8;
-    prime_index
-}
-
-#[must_use]
-pub fn possible_orders_len_cast(len: usize) -> u32 {
-    #[allow(clippy::cast_possible_truncation)]
-    let len = len as u32;
-    len
 }
 
 // impl From<&KSolveSet> for OrbitDef {

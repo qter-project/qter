@@ -15,11 +15,12 @@ use log::{Level, debug, log_enabled, trace};
 
 use crate::{
     FIRST_65_PRIMES,
-    cycle_combinations_tree::{DisjointRegisters, dbg_registers},
+    cycle_combinations_tree::DisjointRegisters,
     finder::{CycleCombination, CycleCombinationFinder},
     nonemptyvec::NonemptySlice,
     orderexps::OrderExps,
-    puzzle::{OrientationStatus, OrientationSumConstraint, orbit_index_cast, register_index_cast},
+    puzzle::{OrientationStatus, OrientationSumConstraint},
+    utils::{dbg_registers, new_percent, orbit_index_cast, prime_index_cast, register_index_cast},
 };
 
 const MAX_ORIENTATION_EXP: usize = 8;
@@ -462,12 +463,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
             .fold(
                 None,
                 |acc, (orbit_index2, (orientation_exps, &orbit_remaining_pieces))| {
-                    let orientation_prime_index = orientation_exps
-                        .0
-                        .simd_ne(Simd::splat(0))
-                        .to_bitmask()
-                        .trailing_zeros()
-                        as usize;
+                    let orientation_prime_index = orientation_exps.lowest_prime_index();
                     // To help understand we examine the two cases:
                     //
                     // 1) There exist orbits with orientation factors that divide this cycle
@@ -658,11 +654,8 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                             // we can only add an orienting cycle to this orbit without announcing
                             // the cycle assignment if we have two or more cycles, not with only one
                             // cycle
-                            // prime indicies are <=255
-                            #[allow(clippy::cast_possible_truncation)]
-                            let non_orienting_cycle_prime_index = prime_index as u8;
                             OrientationSatisfiedBy::NoConstraintWithNonOrientingCycle {
-                                non_orienting_cycle_prime_index,
+                                non_orienting_cycle_prime_index: prime_index_cast(prime_index),
                             }
                         }
                     }
@@ -924,11 +917,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                     trace!("assigning piece to orbit {orbit_index2}");
 
                     let orientation_prime_index =
-                        self.ccf.puzzle_def.orientations_exps()[orbit_index2]
-                            .0
-                            .simd_ne(Simd::splat(0))
-                            .to_bitmask()
-                            .trailing_zeros() as usize;
+                        self.ccf.puzzle_def.orientations_exps()[orbit_index2].lowest_prime_index();
                     self.register_assignments[register_index2].cycle_assignments
                         [orientation_prime_index] = PrimePowerCycleAssignment::Orbit(
                         orbit_index_cast(orbit_index2),
@@ -1084,11 +1073,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                 remaining_piece_type: _,
             } = orientation_satisfied_by
             {
-                let orientation_prime_index = orientation_exps
-                    .0
-                    .simd_ne(Simd::splat(0))
-                    .to_bitmask()
-                    .trailing_zeros() as usize;
+                let orientation_prime_index = orientation_exps.lowest_prime_index();
                 self.register_assignments[register_index2].cycle_assignments
                     [orientation_prime_index] = PrimePowerCycleAssignment::Unassigned;
                 trace!("unassigned piece from orbit");
@@ -1428,14 +1413,9 @@ pub fn expand_possible_registers<const N: usize>(
     };
 
     if log_enabled!(Level::Debug) {
-        const PERCENT: usize = 1;
-
         let done = expansion_percent_done.fetch_add(1, atomic::Ordering::Relaxed) + 1;
-        let new_bucket = done * 100 / (PERCENT * possible_registers_len);
-        let mut bucket = logged_bucket.lock();
-        if new_bucket > *bucket {
-            *bucket = new_bucket;
-            debug!("Expansion: {}%", done * 100 / possible_registers_len);
+        if let Some(percent) = new_percent(done, possible_registers_len, logged_bucket) {
+            debug!("Expansion: {percent}%");
         }
     }
 
@@ -1459,8 +1439,9 @@ mod tests {
         orderexps::OrderExps,
         puzzle::{
             EvenParityConstraints, OrientationStatus, OrientationSumConstraint, PartialOrbitDef,
-            PuzzleDef, minxN::MINX3, possible_orders_len_cast,
+            PuzzleDef, minxN::MINX3,
         },
+        utils::possible_orders_len_cast,
     };
 
     fn find_registers<const N: usize>(

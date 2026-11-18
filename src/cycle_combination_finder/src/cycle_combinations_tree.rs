@@ -25,8 +25,7 @@ use crate::{
     },
     nonemptyvec::{NonemptySlice, NonemptyVec},
     pareto_front::CCParetoFront,
-    puzzle::possible_orders_len_cast,
-    utils::RunningDurationStats,
+    utils::{RunningDurationStats, dbg_registers_iter, new_percent, possible_orders_len_cast},
 };
 
 #[derive(Clone)]
@@ -187,30 +186,6 @@ impl Display for TreeProfileInfo {
             .field(&format!("{:>25}", "num_cores"), &self.num_cores)
             .finish()
     }
-}
-
-#[must_use]
-pub fn dbg_registers<const N: usize>(
-    registers: impl IntoIterator<Item = u32>,
-    possible_orders: &[PossibleOrder<N>],
-) -> String {
-    registers
-        .into_iter()
-        .map(|x| possible_orders[x as usize].order.as_bigint().to_string())
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
-#[must_use]
-pub fn dbg_registers_iter<const N: usize>(
-    registers_iter: impl IntoIterator<Item = impl IntoIterator<Item = u32>>,
-    possible_orders: &[PossibleOrder<N>],
-) -> String {
-    registers_iter
-        .into_iter()
-        .map(|registers| dbg_registers(registers, possible_orders))
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 impl DisjointRegisters<'_> {
@@ -708,9 +683,9 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
             // i * r^(c - 1)
             let i_u32 = possible_orders_len_cast(i);
 
-            // Same exact order value constraint logic as `search_dfs_recur`. We claim roots in
-            // decreasing order, so once the root is smaller than the largest exact constraint no
-            // later root can satisfy it either
+            // Same exact order value constraint logic as `search_dfs_recur`. We claim roots
+            // in decreasing order, so once the root is smaller than the largest exact
+            // constraint no later root can satisfy it either
             let mut exact_order_value_constraints_index = 0;
             if let Some(&j) = shard.exact_order_value_constraints.first() {
                 if i_u32 < j {
@@ -743,19 +718,14 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
 
             // We validated `possible_orders` to be of len `u32` or less
             if log_enabled!(Level::Debug) {
-                const PERCENT: usize = 1;
-
                 let num = self.possible_orders_except_one.len() - i;
                 // We don't subtract `max_last_register` here. Cores with large
                 // `max_last_register` values are going to exist early, while those with lower
                 // values will persist and perform this logging, so the % meter typically goes
                 // up to 100%.
                 let den = self.possible_orders_except_one.len();
-                let new_bucket = num * 100 / (PERCENT * den);
-                let mut bucket = old_bucket.lock();
-                if new_bucket > *bucket {
-                    *bucket = new_bucket;
-                    debug!("DFS: {}% complete", num * 100 / den);
+                if let Some(percent) = new_percent(num, den, old_bucket) {
+                    debug!("DFS: {percent}% complete");
                 }
             }
 

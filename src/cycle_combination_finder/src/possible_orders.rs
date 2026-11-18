@@ -10,11 +10,11 @@ use rayon::{ThreadPool, prelude::*};
 use crate::{
     FIRST_65_PRIMES,
     ac3::backtrack_ac3,
-    gauss_jordan_without_zero_rows,
     number_theory::divisors,
     orderexps::OrderExps,
     puzzle::{OrbitDef, OrientationStatus, OrientationSumConstraint, ParityConstraint, PuzzleDef},
     trie::MaxOrderTrie,
+    utils::gauss_jordan_without_zero_rows,
 };
 
 pub type OrdersSet<const N: usize> = FxHashSet<OrderExps<N>>;

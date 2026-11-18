@@ -63,6 +63,13 @@ impl<const N: usize> OrderExps<N> {
             .is_power_of_two()
     }
 
+    /// 64 if there is none
+    #[inline]
+    #[must_use]
+    pub fn lowest_prime_index(&self) -> usize {
+        self.0.simd_ne(Simd::splat(0)).to_bitmask().trailing_zeros() as usize
+    }
+
     #[inline]
     #[must_use]
     pub fn ln(&self) -> f64 {

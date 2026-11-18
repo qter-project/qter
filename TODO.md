@@ -15,28 +15,10 @@
   - The largest unplaced non-orienting pᵏ is bigger than the largest orbit's unused count → fail.
 - implement AC3 into solutions
   - The current register's remaining cycles need more pieces than are left in total → fail.
+- post-processing to auto flip cycles
 
 - parity; look in stash!
 
-- make this case auto flip the edges cycle
-
-840:
-
-c: (5+)
-e: (4+, 7)
-
-3:
-
-c: (1+)
-e: ()
-
-3:
-
-c: (1+)
-e: ()
-
-c: 1 ignored, 0 unused
-e: 0 ignored, 1 unused
 
 - `stash@{0}`'s `identical_orbits_dedup` second case (20/18/17 pieces) expects exactly the same output as the 20/20/20 case, including `2: 20 unused` on a 17-piece orbit. It looks copy-pasted and will fail as written.
 - put "equal to" registers first; one less dof

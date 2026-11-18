@@ -19,8 +19,6 @@
     split_array
 )]
 
-use bitgauss::BitMatrix;
-
 pub const P9: u16 = FIRST_65_PRIMES[8];
 pub const P17: u16 = FIRST_65_PRIMES[16];
 pub const P33: u16 = FIRST_65_PRIMES[32];
@@ -34,14 +32,6 @@ pub const FIRST_65_PRIMES: [u16; 65] = [
     311, 313,
 ];
 
-fn gauss_jordan_without_zero_rows(m: &mut BitMatrix, expected_rows: usize) -> Vec<usize> {
-    let pivot_cols = m.gauss(true);
-    if expected_rows != pivot_cols.len() {
-        *m = BitMatrix::build(pivot_cols.len(), m.cols(), |i, j| m[(i, j)]);
-    }
-    pivot_cols
-}
-
 pub mod ac3;
 pub mod cycle_combination_solutions;
 pub mod cycle_combinations_tree;
@@ -54,4 +44,4 @@ pub mod pareto_front;
 pub mod possible_orders;
 pub mod puzzle;
 pub mod trie;
-mod utils;
+pub mod utils;

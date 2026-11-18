@@ -22,9 +22,9 @@ use crate::{
     },
     min_piece_count::MinPieceCount,
     orderexps::OrderExps,
-    puzzle::{
-        PuzzleDef, orbit_index_cast, possible_order_index_cast, possible_orders_len_cast,
-        register_index_cast,
+    puzzle::PuzzleDef,
+    utils::{
+        orbit_index_cast, possible_order_index_cast, possible_orders_len_cast, register_index_cast,
     },
 };
 
