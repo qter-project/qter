@@ -7,9 +7,6 @@
 
 ## CCF
 
-- consider removing no orientation sum
-  - there was a logic issue with possible orders and minimum piece count
-  - i also know it makes that pr buggy
 - Fit exact cycles first, not relevant to orbit ordering
   - The largest unplaced non-orienting pᵏ is bigger than the largest orbit's unused count → fail.
 - implement AC3 into solutions

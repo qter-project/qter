@@ -221,12 +221,12 @@ impl<'pd, const N: usize> CycleCombinationFinder<'pd, N> {
                         orbit_def.orientation,
                         OrientationStatus::CanOrient {
                             count: _,
-                            sum_constraint: OrientationSumConstraint::Zero
+                            sum_constraint: OrientationSumConstraint::None
                         }
                     ) {
-                        OrientationSatisfiedBy::NoConstraint
-                    } else {
                         unimplemented!()
+                    } else {
+                        OrientationSatisfiedBy::NoConstraint
                     };
                     RegisterOrbitConstraint {
                         known_share_state: ShareState::default(),
