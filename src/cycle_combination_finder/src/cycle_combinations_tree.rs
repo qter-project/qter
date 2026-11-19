@@ -934,6 +934,9 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                 .collect::<Vec<_>>();
             drop(base_shard);
             drop(solutions_sender);
+            // Disconnects the channel if every solutions thread panics, so the DFS threads
+            // fail to send instead of blocking forever (when they call .unwrap() )
+            drop(candidates_receiver);
 
             for (tree_thread_info, solutions_thread_info) in
                 handles
