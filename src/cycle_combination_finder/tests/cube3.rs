@@ -5,6 +5,7 @@ use cycle_combination_finder::{
         CycleCombinationFinderBuilder, NumCores, Optimality, OrderValueConstraint, PuzzleAnalysis,
         Register,
     },
+    orderexps::OrderExps,
     puzzle::cubeN::CUBE3,
 };
 use puzzle_theory::numbers::{Int, U};
@@ -197,5 +198,157 @@ fn exactly_front_entries() {
                 "Exactly({order})"
             );
         }
+    }
+}
+
+#[test_log::test]
+fn at_least_1_register() {
+    let cube3 = CUBE3.clone();
+    let analysis = PuzzleAnalysis::new(&cube3, NumCores::AllCores).unwrap();
+    for (order, expected) in [
+        (2_u64, vec![vec![1260]]),
+        (1260, vec![vec![1260]]),
+        (1261, vec![]),
+    ] {
+        let cycle_combinations = CycleCombinationFinderBuilder::default()
+            .with_puzzle_analysis(&analysis)
+            .with_registers(vec![Register::default().with_order_value_constraint(
+                OrderValueConstraint::AtLeast(Int::<U>::from(order)),
+            )])
+            .build()
+            .unwrap()
+            .find()
+            .unwrap();
+        assert_eq!(cycles(cycle_combinations), expected, "AtLeast({order})");
+    }
+}
+
+/// Compare "at least" and custom constraints against the Pareto front of every
+/// 2 register cycle combination that satisfies them, found by pinning both
+/// registers with `Exactly`
+#[test_log::test]
+#[allow(clippy::too_many_lines)]
+fn predicates_match_brute_force() {
+    let cube3 = CUBE3.clone();
+    let analysis = PuzzleAnalysis::new(&cube3, NumCores::AllCores).unwrap();
+    let find = |registers| {
+        let mut cycle_combinations = cycles(
+            CycleCombinationFinderBuilder::default()
+                .with_puzzle_analysis(&analysis)
+                .with_registers(registers)
+                .build()
+                .unwrap()
+                .find()
+                .unwrap(),
+        );
+        for cycle_combination in &mut cycle_combinations {
+            cycle_combination.sort_unstable_by(|a, b| b.cmp(a));
+        }
+        cycle_combinations.sort_unstable();
+        cycle_combinations
+    };
+    // `Exactly` fails to build if the order is not a possible order
+    let orders = (2..=1260_u64)
+        .filter(|&order| {
+            CycleCombinationFinderBuilder::default()
+                .with_puzzle_analysis(&analysis)
+                .with_registers(vec![Register::default().with_order_value_constraint(
+                    OrderValueConstraint::Exactly(Int::<U>::from(order)),
+                )])
+                .build()
+                .is_ok()
+        })
+        .collect::<Vec<_>>();
+    let mut all = vec![];
+    for (index, &x) in orders.iter().enumerate() {
+        for &y in &orders[..=index] {
+            all.extend(find(vec![
+                Register::default()
+                    .with_order_value_constraint(OrderValueConstraint::Exactly(Int::<U>::from(x))),
+                Register::default()
+                    .with_order_value_constraint(OrderValueConstraint::Exactly(Int::<U>::from(y))),
+            ]));
+        }
+    }
+
+    // Not monotonic
+    let odd: fn(&OrderExps<8>) -> bool =
+        |order| order.as_bigint() % Int::<U>::from(2_u64) != Int::<U>::zero();
+    let cases: [(Vec<Register<8>>, fn(u64, u64) -> bool); 6] = [
+        (
+            vec![
+                Register::default().with_order_value_constraint(OrderValueConstraint::AtLeast(
+                    Int::<U>::from(180_u64),
+                )),
+                Register::default().with_order_value_constraint(OrderValueConstraint::AtLeast(
+                    Int::<U>::from(36_u64),
+                )),
+            ],
+            |x, y| x >= 180 && y >= 36,
+        ),
+        (
+            vec![
+                Register::default().with_order_value_constraint(OrderValueConstraint::AtLeast(
+                    Int::<U>::from(12_u64),
+                )),
+                Register::default().with_order_value_constraint(OrderValueConstraint::AtLeast(
+                    Int::<U>::from(420_u64),
+                )),
+            ],
+            |x, y| x >= 420 && y >= 12,
+        ),
+        (
+            vec![
+                Register::default().with_order_value_constraint(OrderValueConstraint::Exactly(
+                    Int::<U>::from(36_u64),
+                )),
+                Register::default().with_order_value_constraint(OrderValueConstraint::AtLeast(
+                    Int::<U>::from(180_u64),
+                )),
+            ],
+            |x, y| (x == 36 && y >= 180) || (y == 36 && x >= 180),
+        ),
+        (
+            vec![
+                Register::default().with_order_value_constraint(OrderValueConstraint::Custom(odd)),
+                Register::default(),
+            ],
+            |x, y| x % 2 == 1 || y % 2 == 1,
+        ),
+        (
+            vec![
+                Register::default().with_order_value_constraint(OrderValueConstraint::Custom(odd)),
+                Register::default().with_order_value_constraint(OrderValueConstraint::Custom(odd)),
+            ],
+            |x, y| x % 2 == 1 && y % 2 == 1,
+        ),
+        (
+            vec![
+                Register::default().with_order_value_constraint(OrderValueConstraint::Custom(odd)),
+                Register::default().with_order_value_constraint(OrderValueConstraint::AtLeast(
+                    Int::<U>::from(360_u64),
+                )),
+            ],
+            |x, y| (x % 2 == 1 && y >= 360) || (y % 2 == 1 && x >= 360),
+        ),
+    ];
+    for (case, (registers, satisfies)) in cases.into_iter().enumerate() {
+        let satisfying = all
+            .iter()
+            .filter(|cycle_combination| satisfies(cycle_combination[0], cycle_combination[1]))
+            .collect::<Vec<_>>();
+        let mut expected = satisfying
+            .iter()
+            .filter(|&&a| {
+                !satisfying
+                    .iter()
+                    .any(|&b| b != a && b[0] >= a[0] && b[1] >= a[1])
+            })
+            .map(|&cycle_combination| cycle_combination.clone())
+            .collect::<Vec<_>>();
+        expected.sort_unstable();
+        expected.dedup();
+        assert!(!expected.is_empty(), "case {case}");
+        assert_eq!(find(registers), expected);
     }
 }

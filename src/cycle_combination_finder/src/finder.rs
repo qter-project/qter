@@ -192,6 +192,8 @@ pub enum CycleCombinationFinderBuildError {
     InvalidMssBatchSize,
     #[error("Solution expansion limit must be non-zero")]
     InvalidSolutionExpansion,
+    #[error("There can be at most 64 \"at least\" and custom order value constraints")]
+    TooManyOrderValueConstraints,
     #[error(
         "Optimality order ratios must be finite and >= 1.0, and a clamp's min must not exceed its \
          max."
@@ -708,6 +710,19 @@ impl<'pd, const N: usize>
                 }
             })
             .collect::<Result<Box<[_]>, _>>()?;
+        if order_value_constraints
+            .iter()
+            .filter(|order_value_constraint| {
+                !matches!(
+                    order_value_constraint,
+                    ValidatedOrderValueConstraint::Exactly(_)
+                )
+            })
+            .count()
+            > 64
+        {
+            return Err(CycleCombinationFinderBuildError::TooManyOrderValueConstraints);
+        }
         Ok(CycleCombinationFinder {
             register_count,
             puzzle_def,
