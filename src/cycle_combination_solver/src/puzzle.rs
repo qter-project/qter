@@ -546,18 +546,24 @@ impl<'id, P: PuzzleState<'id>> PuzzleDef<'id, P> {
                             .map(|j| Ok((j, 0)))
                             .collect::<Result<Vec<_>, KSolveConversionError>>()
                     } else {
-                        perm_and_ori
-                            .iter()
-                            .map(|&(perm, orientation)| {
-                                // we can unwrap because sorted_orbit_defs exists
-                                Ok((
-                                    (perm.get() - 1)
-                                        .try_into()
-                                        .map_err(|_| KSolveConversionError::SetSizeTooBig)?,
-                                    orientation,
-                                ))
-                            })
-                            .collect::<Result<Vec<_>, KSolveConversionError>>()
+                        // `puzzle_theory` uses the "piece at i goes to p[i]"
+                        // convention but `replace_compose` uses the KSolve "i is
+                        // replaced by p[i]" convention, so we invert the
+                        // permutation. Otherwise every move is applied in reverse
+                        // (the T-perm would have order 6)
+                        //
+                        // Unfilled entries stay out of range so
+                        // `TransformationsMeta::new` still rejects invalid
+                        // permutations
+                        let mut replaced_by = vec![(u8::MAX, 0); perm_and_ori.len()];
+                        for (from, &(to, orientation)) in perm_and_ori.iter().enumerate() {
+                            let from = u8::try_from(from)
+                                .map_err(|_| KSolveConversionError::SetSizeTooBig)?;
+                            if let Some(entry) = replaced_by.get_mut(usize::from(to.get() - 1)) {
+                                *entry = (from, orientation);
+                            }
+                        }
+                        Ok(replaced_by)
                     }
                 })
                 .collect::<Result<Vec<Vec<_>>, KSolveConversionError>>()?;
