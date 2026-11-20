@@ -99,7 +99,7 @@ enum OrientationSatisfiedBy {
         orienting_cycle_saturated: bool,
         remaining_piece_type: RemainingPieceType,
     },
-    TwoCycles,
+    Satisfied,
 }
 
 #[derive(Clone, Copy, Debug, Ord, Eq, PartialEq, PartialOrd)]
@@ -217,16 +217,19 @@ impl<'pd, const N: usize> CycleCombinationFinder<'pd, N> {
         let register_orbit_constraints = (0..NonZeroUsize::from(self.register_count).get())
             .flat_map(|_| {
                 orbit_defs.iter().map(|&orbit_def| {
-                    let orientation_satisfied_by = if matches!(
-                        orbit_def.orientation,
+                    let orientation_satisfied_by = match orbit_def.orientation {
                         OrientationStatus::CanOrient {
                             count: _,
-                            sum_constraint: OrientationSumConstraint::None
-                        }
-                    ) {
-                        unimplemented!()
-                    } else {
-                        OrientationSatisfiedBy::NoConstraint
+                            sum_constraint: OrientationSumConstraint::Zero,
+                        } => OrientationSatisfiedBy::NoConstraint,
+                        OrientationStatus::CanOrient {
+                            count: _,
+                            sum_constraint: OrientationSumConstraint::None,
+                        } => unimplemented!(),
+                        // We choose `Satisfied` over `NoConstraint` because we don't want to
+                        // transition through `NonConstraintWithNonOrientingCycle` and other states,
+                        // which would not get deduplicated.
+                        OrientationStatus::CannotOrient => OrientationSatisfiedBy::Satisfied,
                     };
                     RegisterOrbitConstraint {
                         known_share_state: ShareState::default(),
@@ -320,7 +323,7 @@ fn orbit_traversal_key_cmp<const N: usize>(
                 orienting_cycle_saturated,
                 remaining_piece_type,
             } => (2, Some((orienting_cycle_saturated, remaining_piece_type))),
-            OrientationSatisfiedBy::TwoCycles => (3, None),
+            OrientationSatisfiedBy::Satisfied => (3, None),
         };
     let mut ret = orbit_pass
         .cmp(&orbit_pass_1)
@@ -649,7 +652,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                                 remaining_piece_type,
                             }
                         } else {
-                            // We have a non-orienting cycle. We cannot switch to `TwoCycles`
+                            // We have a non-orienting cycle. We cannot switch to `Satisfied`
                             // because we must distinguish between one and two cycles in an orbit:
                             // we can only add an orienting cycle to this orbit without announcing
                             // the cycle assignment if we have two or more cycles, not with only one
@@ -687,8 +690,8 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                                 remaining_piece_type,
                             }
                         } else {
-                            // Cycle takes up pieces meeting the criteria for `TwoCycles`
-                            OrientationSatisfiedBy::TwoCycles
+                            // Cycle takes up pieces meeting the criteria for `Satisfied`
+                            OrientationSatisfiedBy::Satisfied
                         }
                     }
                     // We have a singular orienting cycle in this orbit without pieces.
@@ -721,9 +724,9 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                             | RemainingPieceType::Unknown,
                     }
                     // Or our constraint is already satisfied
-                    | OrientationSatisfiedBy::TwoCycles => {
+                    | OrientationSatisfiedBy::Satisfied => {
                         // By adding this cycle we always satisfy the orientation constraint
-                        OrientationSatisfiedBy::TwoCycles
+                        OrientationSatisfiedBy::Satisfied
                     }
                 };
 
@@ -1266,7 +1269,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
                             } => {
                                 unreachable!("Preassignment only places orienting cycles");
                             }
-                            OrientationSatisfiedBy::TwoCycles => OrientationSatisfiedBy::TwoCycles,
+                            OrientationSatisfiedBy::Satisfied => OrientationSatisfiedBy::Satisfied,
                         };
 
                         trace!(

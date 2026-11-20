@@ -7,6 +7,7 @@
 
 ## CCF
 
+- one MSS thread only
 - Fit exact cycles first, not relevant to orbit ordering
   - The largest unplaced non-orienting pᵏ is bigger than the largest orbit's unused count → fail.
 - implement AC3 into solutions
