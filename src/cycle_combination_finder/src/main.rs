@@ -52,7 +52,7 @@ fn main() {
             //     Register::default(),
             // ])
             // .with_optimality(Optimality::MaxOrderRatio(20.0))
-            // .with_expected_solutions_count_assertion(Some(347))
+            .with_expected_solutions_count_assertion(Some(18))
             .build()
             .unwrap_or_else(|e| panic!("{e}"))
             .find()
@@ -60,6 +60,7 @@ fn main() {
         for x in ret.cycle_combinations {
             println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
         }
+    // 5.7s
     } else if p == "minx4 3" {
         let minx4 = minxN::MINX4.clone();
         let analysis =
@@ -82,16 +83,16 @@ fn main() {
             );
             println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
         }
+    // 2m 18s
     } else if p == "minx4 4" {
         let minx4 = minxN::MINX4.clone();
         let analysis =
             PuzzleAnalysis::new(&minx4, NumCores::AllCores).unwrap_or_else(|e| panic!("{e}"));
         let ret = CycleCombinationFinderBuilder::default()
             .with_puzzle_analysis(&analysis)
-            .with_mss_batch_size(Some(100000))
+            .with_mss_batch_size(Some(10000))
             .with_registers(Register::default_count(4))
-            // .with_optimality(Optimality::MaxOrderRatio(10.0))
-            .with_mss_batch_size(Some(1))
+            .with_expected_solutions_count_assertion(Some(2474))
             .build()
             .unwrap_or_else(|e| panic!("{e}"))
             .find()
@@ -99,17 +100,19 @@ fn main() {
         for x in ret.cycle_combinations {
             println!("{}", x.orders_fmt(&ret.possible_orders_except_one));
         }
-    } else if p == "minx5" {
+    // 1m 43s
+    } else if p == "minx5 3" {
         let minx5 = minxN::MINX5.clone();
         let analysis =
             PuzzleAnalysis::new(&minx5, NumCores::AllCores).unwrap_or_else(|e| panic!("{e}"));
         let ret = CycleCombinationFinderBuilder::default()
             .with_puzzle_analysis(&analysis)
             .with_registers(Register::default_count(3))
-            .with_mss_batch_size(Some(10000))
-            .with_optimality(Optimality::MaxOrderRatio(5.0))
+            .with_mss_batch_size(Some(100))
+            .with_optimality(Optimality::MaxOrderRatio(4.0))
             .with_time_limit(Some(Duration::from_mins(10)))
             .with_solution_expansion(SolutionExpansion::MaxCount(100000))
+            .with_expected_solutions_count_assertion(Some(2))
             .build()
             .unwrap_or_else(|e| panic!("{e}"))
             .find()

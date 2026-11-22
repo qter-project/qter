@@ -45,11 +45,13 @@ struct CycleCombinationsTreeShard<'a> {
     candidates_sender_capacity: usize,
     batch_size: NonZeroUsize,
     pareto_efficient_prunings: &'a AtomicPtr<u32>,
-    // We must separate these two fields because we cannot guarantee that "at least" and "exact"
-    // orders will be satisfied in the same order. For example, consider [Exactly(30),
-    // AtLeast(20), AtLeast(10)]. We could satisfy the constraints in the stated order: 30 25 20
-    // but also in a different order: 40 35 30 or 35 30 25. Therefore, it does not suffice to use a
-    // singular index, and we must track the satisfaction of both requirements separately
+    // We must separate these two fields because we cannot guarantee that "at
+    // least" and "exact" orders will be satisfied in the same order. For
+    // example, consider [Exactly(30), AtLeast(20), AtLeast(10)]. We could
+    // satisfy the constraints in the stated order: 30 25 20 but also in a
+    // different order: 40 35 30 or 35 30 25. Therefore, it does not suffice to
+    // use a singular index, and we must track the satisfaction of both
+    // requirements separately
     exact_order_value_constraints: Vec<u32>,
     // TODO
     at_least_order_value_constraints: Vec<u32>,
@@ -243,9 +245,9 @@ unsafe fn try_next_pareto_efficient_prunings(
     raw_pruning_len: NonZeroUsize,
 ) -> Option<NonNull<u32>> {
     if let Some(raw_prunings) = NonNull::new(maybe_raw_prunings) {
-        // SAFETY: the called guarantees `pareto_efficient_pruning` is valid. Also later
-        // in this block we always initialize `pareto_efficient_pruning` to be of
-        // `raw_pruning_len` length.
+        // SAFETY: the called guarantees `pareto_efficient_pruning` is valid.
+        // Also later in this block we always initialize
+        // `pareto_efficient_pruning` to be of `raw_pruning_len` length.
         let raw_prunings = unsafe {
             NonemptySlice::from_raw_parts(
                 NonNull::slice_from_raw_parts(raw_prunings, raw_pruning_len.get())
@@ -313,8 +315,8 @@ unsafe fn try_next_pareto_efficient_prunings(
 
 impl CycleCombinationsTreeShard<'_> {
     fn register_count(&self) -> NonZeroU16 {
-        // Cast truncation is fine because `self.registers` is the length of the number
-        // of registers, which is a `NonZeroU16`
+        // Cast truncation is fine because `self.registers` is the length of the
+        // number of registers, which is a `NonZeroU16`
         #[allow(clippy::cast_possible_truncation)]
         // SAFETY: `self.registers.len()` is not zero
         unsafe {
@@ -353,12 +355,12 @@ impl CycleCombinationsTreeShard<'_> {
             self.sender_lens += len;
             self.sends += 1;
             self.fails = 0;
-            // We can unwrap because the senders is only dropped after all threads are
-            // joined.
+            // We can unwrap because the senders is only dropped after all
+            // threads are joined.
             self.candidates_sender.send(payload).unwrap();
         } else {
-            // We can unwrap because the senders is only dropped after all threads are
-            // joined.
+            // We can unwrap because the senders is only dropped after all
+            // threads are joined.
             self.candidates_sender
                 .send(PackedCycleCombinationCandidateQueue(Box::clone_from_ref(
                     &self.batch_packed_queue,
@@ -381,8 +383,8 @@ impl CycleCombinationsTreeShard<'_> {
         remaining_piece_count: NonZeroU32,
     ) {
         let mut curr_possible_orders_except_one = possible_orders_except_one;
-        // It should never overflow, and I don't want a panic path, so use saturating
-        // logic
+        // It should never overflow, and I don't want a panic path, so use
+        // saturating logic
         let next_register_index = register_index.saturating_add(1);
         let leaf = next_register_index == self.register_count();
         let mut candidate_count = 0;
@@ -413,8 +415,9 @@ impl CycleCombinationsTreeShard<'_> {
                 .load(atomic::Ordering::Acquire);
             if let Some(raw_pruning) = NonNull::new(maybe_raw_prunings) {
                 // SAFETY: `raw_pruning` is guaranteed to point to
-                // `self.exact_register_count().get().saturating_sub(1) + 1` u32s. The caller
-                // guarantees `register_index` is less than `self.exact_register_count()`;
+                // `self.exact_register_count().get().saturating_sub(1) + 1`
+                // u32s. The caller guarantees `register_index`
+                // is less than `self.exact_register_count()`;
                 // therefore we are in bounds
                 let raw_prunings = unsafe {
                     NonemptySlice::from_raw_parts(
@@ -460,7 +463,8 @@ impl CycleCombinationsTreeShard<'_> {
                 } else if let Some(next_remaining_piece_count) =
                     NonZeroU32::new(next_remaining_piece_count)
                 {
-                    // SAFETY: caller guarantees `register_index < self.exact_register_count()`,
+                    // SAFETY: caller guarantees `register_index <
+                    // self.exact_register_count()`,
                     // therefore we are in bounds
                     let old = std::mem::replace(
                         unsafe {
@@ -469,7 +473,8 @@ impl CycleCombinationsTreeShard<'_> {
                         },
                         i,
                     );
-                    // SAFETY: `next_register_index != self.exact_register_count()` in this
+                    // SAFETY: `next_register_index !=
+                    // self.exact_register_count()` in this
                     // branch, and caller guarantees we are less
                     unsafe {
                         self.search_dfs_recur(
@@ -479,7 +484,8 @@ impl CycleCombinationsTreeShard<'_> {
                             next_remaining_piece_count,
                         );
                     }
-                    // SAFETY: caller guarantees `register_index < self.exact_register_count()`,
+                    // SAFETY: caller guarantees `register_index <
+                    // self.exact_register_count()`,
                     // therefore we are in bounds
                     unsafe {
                         *self
@@ -585,10 +591,12 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                         continue;
                     }
                     // Note that we are allowed to set
-                    // `max_last_register_order_reverse_index` to potentially dominated
-                    // solutions. If something is the maximum in our atomic variable,
-                    // then it must either be in the front or the atomic variable is an
-                    // underestimate, which is permitted since our bound is admissible
+                    // `max_last_register_order_reverse_index` to potentially
+                    // dominated solutions. If something is
+                    // the maximum in our atomic variable,
+                    // then it must either be in the front or the atomic
+                    // variable is an underestimate, which
+                    // is permitted since our bound is admissible
 
                     let mut maybe_raw_prunings =
                         pareto_efficient_prunings.load(atomic::Ordering::Acquire);
@@ -605,13 +613,17 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                             atomic::Ordering::Release,
                             atomic::Ordering::Acquire,
                         ) {
-                            // The replaced prunings are leaked because DFS threads may still
-                            // be reading them
-                            Ok(_) => (),
+                            // The replaced prunings are leaked because DFS
+                            // threads may still be reading them
+                            Ok(_) => {
+                                debug!("Upgraded pruning");
+                            }
                             Err(curr_raw_prunings) => {
-                                // SAFETY: `next_raw_prunings` was never published, and
-                                // `try_next_pareto_efficient_prunings` allocates it as a
-                                // `Box<[u32]>` of `raw_pruning_len` length
+                                // SAFETY: `next_raw_prunings` was never
+                                // published, and
+                                // `try_next_pareto_efficient_prunings`
+                                // allocates it as a `Box<[u32]>` of
+                                // `raw_pruning_len` length
                                 unsafe {
                                     drop(Box::from_raw(ptr::slice_from_raw_parts_mut(
                                         next_raw_prunings.as_ptr(),
@@ -657,8 +669,9 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
 
         let mut candidate_count = 0;
         let mut subtree_real_times = RunningDurationStats::default();
-        // Threads claim first register orders from largest to smallest whenever they
-        // finish one, so a thread with expensive subtrees does not hold up the others
+        // Threads claim first register orders from largest to smallest whenever
+        // they finish one, so a thread with expensive subtrees does not
+        // hold up the others
         while let Some(i) = self
             .possible_orders_except_one
             .len()
@@ -667,7 +680,7 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
             let possible_order = &self.possible_orders_except_one[i];
             if thread_index == 0
                 && let Some(time_limit) = self.maybe_time_limit
-                && real_time.elapsed() >= time_limit
+                && real_time.elapsed().cmp(&time_limit).is_ge()
             {
                 eprintln!("Time limit reached!");
                 time_limit_reached.store(true, atomic::Ordering::Relaxed);
@@ -683,9 +696,10 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
             // i * r^(c - 1)
             let i_u32 = possible_orders_len_cast(i);
 
-            // Same exact order value constraint logic as `search_dfs_recur`. We claim roots
-            // in decreasing order, so once the root is smaller than the largest exact
-            // constraint no later root can satisfy it either
+            // Same exact order value constraint logic as `search_dfs_recur`. We
+            // claim roots in decreasing order, so once the root is
+            // smaller than the largest exact constraint no later
+            // root can satisfy it either
             let mut exact_order_value_constraints_index = 0;
             if let Some(&j) = shard.exact_order_value_constraints.first() {
                 if i_u32 < j {
@@ -695,8 +709,9 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                     exact_order_value_constraints_index = 1;
                 }
             }
-            // Same as the check in `search_dfs_recur`: the remaining registers must be able
-            // to satisfy the remaining exact constraints
+            // Same as the check in `search_dfs_recur`: the remaining registers
+            // must be able to satisfy the remaining exact
+            // constraints
             if usize::from(shard.register_count().get()) + exact_order_value_constraints_index
                 < 1 + shard.exact_order_value_constraints.len()
             {
@@ -708,8 +723,8 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                 .pareto_efficient_prunings
                 .load(atomic::Ordering::Acquire);
             if let Some(raw_prunings) = NonNull::new(maybe_raw_prunings) {
-                // SAFETY: `solutions_thread` guarantees `raw_pruning` points to at least one
-                // element
+                // SAFETY: `solutions_thread` guarantees `raw_pruning` points to
+                // at least one element
                 let max_last_register = unsafe { raw_prunings.read() };
                 if i_u32 <= max_last_register {
                     break;
@@ -720,8 +735,9 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
             if log_enabled!(Level::Debug) {
                 let num = self.possible_orders_except_one.len() - i;
                 // We don't subtract `max_last_register` here. Cores with large
-                // `max_last_register` values are going to exist early, while those with lower
-                // values will persist and perform this logging, so the % meter typically goes
+                // `max_last_register` values are going to exist early, while
+                // those with lower values will persist and
+                // perform this logging, so the % meter typically goes
                 // up to 100%.
                 let den = self.possible_orders_except_one.len();
                 if let Some(percent) = new_percent(num, den, old_bucket) {
@@ -810,12 +826,13 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
         }
         let num_cores = core_ids.len();
 
-        // We do not use `0` as to allow a buffer for every core to prevent starvation
+        // We do not use `0` as to allow a buffer for every core to prevent
+        // starvation
         let candidates_sender_capacity = num_cores * 2;
         let (candidates_sender, candidates_receiver) =
             mpmc::sync_channel::<PackedCycleCombinationCandidateQueue>(candidates_sender_capacity);
-        // I will only send at most `batch_size` solutions before receiving the queue,
-        // so I can make the capacity equal to this
+        // I will only send at most `batch_size` solutions before receiving the
+        // queue, so I can make the capacity equal to this
         let (solutions_sender, _) =
             tokio::sync::broadcast::channel(num_cores * self.mss_batch_size.get());
 
@@ -835,8 +852,8 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                 }
             }
         }
-        // Registers are assigned in descending order, so `search_dfs_recur` must
-        // consume exact constraints in descending order too
+        // Registers are assigned in descending order, so `search_dfs_recur`
+        // must consume exact constraints in descending order too
         exact_order_value_constraints.sort_by_key(|&a| std::cmp::Reverse(a));
         at_least_order_value_constraints.sort_by_key(|&a| std::cmp::Reverse(a));
 
@@ -877,8 +894,9 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
         let mut sender_lens = 0;
         let mut smallest_fronts = BinaryHeap::new();
 
-        // We are allowed to unwrap because `orbit_defs` is non-empty, and `piece_count`
-        // is a NonZero. Therefore the sum must be non-zero.
+        // We are allowed to unwrap because `orbit_defs` is non-empty, and
+        // `piece_count` is a NonZero. Therefore the sum must be
+        // non-zero.
         let exact_piece_count = NonZeroU32::new(
             self.puzzle_def
                 .orbit_defs()
@@ -934,8 +952,9 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                 .collect::<Vec<_>>();
             drop(base_shard);
             drop(solutions_sender);
-            // Disconnects the channel if every solutions thread panics, so the DFS threads
-            // fail to send instead of blocking forever (when they call .unwrap() )
+            // Disconnects the channel if every solutions thread panics, so the
+            // DFS threads fail to send instead of blocking forever (when they
+            // call .unwrap() )
             drop(candidates_receiver);
 
             for (tree_thread_info, solutions_thread_info) in
@@ -992,8 +1011,8 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
 
         let maybe_raw_prunings = pareto_efficient_prunings.into_inner();
         let max_last_register = if let Some(raw_prunings) = NonNull::new(maybe_raw_prunings) {
-            // SAFETY: `solutions_thread` guarantees `raw_pruning` points to at least one
-            // element
+            // SAFETY: `solutions_thread` guarantees `raw_pruning` points to at
+            // least one element
             unsafe { raw_prunings.read() }
         } else {
             0
