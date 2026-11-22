@@ -10,7 +10,7 @@
     ptr_as_uninit,
     nonpoison_mutex,
     sync_nonpoison,
-    mpmc_channel,
+    mpsc_channel_len,
     slice_swap_unchecked,
     portable_simd,
     gen_blocks,

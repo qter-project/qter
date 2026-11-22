@@ -144,7 +144,7 @@ pub struct PossibleOrder<const N: usize> {
 
 #[derive(Debug)]
 pub struct CycleCombination {
-    pub(crate) registers: Arc<[u32]>,
+    pub(crate) registers: Box<[u32]>,
     pub(crate) solutions: CycleCombinationSolutions,
 }
 

@@ -5,7 +5,6 @@ use std::{
     num::NonZeroUsize,
     simd::{Mask, Simd, cmp::SimdPartialEq},
     sync::{
-        Arc,
         atomic::{self, AtomicUsize},
         nonpoison::Mutex,
     },
@@ -1397,7 +1396,7 @@ impl<const N: usize> CycleCombinationSolutionsCalculator<'_, '_, N> {
 
 pub fn expand_possible_registers<const N: usize>(
     solutions_calculator: &mut CycleCombinationSolutionsCalculator<N>,
-    possible_registers: Arc<[u32]>,
+    possible_registers: Box<[u32]>,
     expansion_percent_done: &AtomicUsize,
     logged_bucket: &Mutex<usize>,
     possible_registers_len: usize,
@@ -1450,7 +1449,7 @@ mod tests {
     fn find_registers<const N: usize>(
         solutions_calculator: &CycleCombinationSolutionsCalculator<N>,
         register_orders: Vec<u64>,
-    ) -> Arc<[u32]> {
+    ) -> Box<[u32]> {
         let mut registers = register_orders
             .into_iter()
             .map(|register_order| {
@@ -1468,7 +1467,7 @@ mod tests {
             })
             .collect::<Box<[_]>>();
         registers.sort_by_key(|&r| std::cmp::Reverse(r));
-        Arc::from(registers)
+        registers
     }
 
     fn do_test<const N: usize>(
@@ -1483,7 +1482,7 @@ mod tests {
         ));
         println!("{}", now.elapsed().human(Truncate::Micro));
         let cycle_combination = CycleCombination {
-            registers: Arc::clone(&registers),
+            registers,
             solutions: solutions.unwrap(),
         };
 

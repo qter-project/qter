@@ -719,7 +719,6 @@ dependencies = [
  "rayon",
  "test-log",
  "thiserror",
- "tokio",
  "union-find",
 ]
 

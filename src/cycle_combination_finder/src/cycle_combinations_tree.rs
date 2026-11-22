@@ -1,13 +1,11 @@
 use std::{
     cmp::Ordering,
-    collections::BinaryHeap,
     fmt::{self, Debug, Display},
     num::{NonZeroU16, NonZeroU32, NonZeroUsize},
     ptr::{self, NonNull},
     sync::{
-        Arc,
         atomic::{self, AtomicBool, AtomicPtr, AtomicUsize},
-        mpmc,
+        mpsc,
         nonpoison::Mutex,
     },
     time::{Duration, Instant},
@@ -17,7 +15,6 @@ use core_affinity::CoreId;
 use cpu_time::ThreadTime;
 use humanize_duration::{Truncate, prelude::DurationExt};
 use log::{Level, debug, info, log_enabled, trace};
-use tokio::sync::broadcast::error::TryRecvError as TokioTryRecvError;
 
 use crate::{
     finder::{
@@ -25,7 +22,7 @@ use crate::{
     },
     nonemptyvec::{NonemptySlice, NonemptyVec},
     pareto_front::CCParetoFront,
-    utils::{RunningDurationStats, dbg_registers_iter, new_percent, possible_orders_len_cast},
+    utils::{RunningDurationStats, new_percent, possible_orders_len_cast},
 };
 
 #[derive(Clone)]
@@ -41,7 +38,7 @@ struct CycleCombinationsTreeShard<'a> {
     lower_index_cutoff: u32,
     candidates_count: u64,
 
-    candidates_sender: mpmc::Sender<PackedCycleCombinationCandidateQueue>,
+    candidates_sender: mpsc::SyncSender<PackedCycleCombinationCandidateQueue>,
     candidates_sender_capacity: usize,
     batch_size: NonZeroUsize,
     pareto_efficient_prunings: &'a AtomicPtr<u32>,
@@ -347,7 +344,7 @@ impl CycleCombinationsTreeShard<'_> {
 
             let len = self.candidates_sender.len();
             trace!(
-                "{:?}: candidates={candidate_count}; mpmc={len}; fail_sends={}",
+                "{:?}: candidates={candidate_count}; mpsc={len}; fail_sends={}",
                 std::thread::current().id(),
                 self.fail_sends,
             );
@@ -521,15 +518,9 @@ impl CycleCombinationsTreeShard<'_> {
 impl<const N: usize> CycleCombinationFinder<'_, N> {
     fn solutions_thread(
         &self,
-        core_id: CoreId,
-        candidates_receiver: mpmc::Receiver<PackedCycleCombinationCandidateQueue>,
-        mut solutions_receiver: tokio::sync::broadcast::Receiver<(CoreId, Arc<[u32]>)>,
-        solutions_sender: tokio::sync::broadcast::Sender<(CoreId, Arc<[u32]>)>,
+        candidates_receiver: mpsc::Receiver<PackedCycleCombinationCandidateQueue>,
         pareto_efficient_prunings: &AtomicPtr<u32>,
     ) -> SolutionsThreadInfo {
-        if core_affinity::set_for_current(core_id) {
-            debug!("Solutions: Pinned {core_id:?}");
-        }
         let mut cycle_combinations = CCParetoFront::default();
         let mut solutions_calculator = self.solutions_calculator();
 
@@ -543,18 +534,6 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
         while let Ok(PackedCycleCombinationCandidateQueue(batch_packed_queue)) =
             candidates_receiver.recv()
         {
-            loop {
-                match solutions_receiver.try_recv() {
-                    Ok((c, s)) => {
-                        if c != core_id {
-                            cycle_combinations.push(s);
-                        }
-                    }
-                    Err(TokioTryRecvError::Closed) => panic!(),
-                    Err(TokioTryRecvError::Empty | TokioTryRecvError::Lagged(_)) => break,
-                }
-            }
-
             let (candidate_counts, mut packed_candidates) =
                 batch_packed_queue.split_at(self.mss_batch_size.get());
             for &candidate_count in candidate_counts {
@@ -583,12 +562,7 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                                 return None;
                             }
                             let possible_registers =
-                                dominating_registers.iter().collect::<Arc<[_]>>();
-                            assert!(
-                                solutions_sender
-                                    .send((core_id, Arc::clone(&possible_registers)))
-                                    .is_ok()
-                            );
+                                dominating_registers.iter().collect::<Box<[_]>>();
                             Some(possible_registers)
                         },
                     ) {
@@ -642,7 +616,6 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                 }
             }
         }
-        drop(solutions_sender);
         drop(candidates_receiver);
         SolutionsThreadInfo {
             cpu_time: cpu_time.elapsed(),
@@ -822,7 +795,7 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
         }
     }
 
-    pub(crate) fn search_dfs(&self) -> Vec<Arc<[u32]>> {
+    pub(crate) fn search_dfs(&self) -> Vec<Box<[u32]>> {
         // If we return a None here then /shrug
         #[allow(clippy::missing_panics_doc)]
         let mut core_ids = core_affinity::get_core_ids().unwrap();
@@ -835,11 +808,7 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
         // starvation
         let candidates_sender_capacity = num_cores * 2;
         let (candidates_sender, candidates_receiver) =
-            mpmc::sync_channel::<PackedCycleCombinationCandidateQueue>(candidates_sender_capacity);
-        // I will only send at most `batch_size` solutions before receiving the
-        // queue, so I can make the capacity equal to this
-        let (solutions_sender, _) =
-            tokio::sync::broadcast::channel(num_cores * self.mss_batch_size.get());
+            mpsc::sync_channel::<PackedCycleCombinationCandidateQueue>(candidates_sender_capacity);
 
         let pareto_efficient_prunings = AtomicPtr::default();
         let mut exact_order_value_constraints = vec![];
@@ -898,7 +867,6 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
         let mut empty_sends = 0;
         let mut full_sends = 0;
         let mut sender_lens = 0;
-        let mut smallest_fronts = BinaryHeap::new();
 
         // We are allowed to unwrap because `orbit_defs` is non-empty, and
         // `piece_count` is a NonZero. Therefore the sum must be
@@ -915,7 +883,8 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
         let first_register_claims = AtomicUsize::new(0);
         let old_bucket = Mutex::new(0);
         let time_limit_reached = AtomicBool::new(false);
-        std::thread::scope(|s| {
+        let combined_cycle_combinations = std::thread::scope(|s| {
+            let pareto_efficient_prunings = &pareto_efficient_prunings;
             let handles = core_ids
                 .into_iter()
                 .enumerate()
@@ -924,12 +893,12 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                     shard
                         .batch_packed_queue
                         .extend(std::iter::repeat_n(0, self.mss_batch_size.get()));
-                    shard.pareto_efficient_prunings = &pareto_efficient_prunings;
+                    shard.pareto_efficient_prunings = pareto_efficient_prunings;
 
                     let first_register_claims = &first_register_claims;
                     let old_bucket = &old_bucket;
                     let time_limit_reached = &time_limit_reached;
-                    let tree_thread_handle = s.spawn(move || {
+                    s.spawn(move || {
                         self.dfs_shard_thread(
                             core_id,
                             thread_index,
@@ -939,39 +908,23 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                             old_bucket,
                             time_limit_reached,
                         )
-                    });
-                    let candidates_receiver = candidates_receiver.clone();
-                    let solutions_receiver = solutions_sender.subscribe();
-                    let solutions_sender = solutions_sender.clone();
-                    let pareto_efficient_prunings = &pareto_efficient_prunings;
-                    let solutions_thread_handle = s.spawn(move || {
-                        self.solutions_thread(
-                            core_id,
-                            candidates_receiver,
-                            solutions_receiver,
-                            solutions_sender,
-                            pareto_efficient_prunings,
-                        )
-                    });
-                    (tree_thread_handle, solutions_thread_handle)
+                    })
                 })
                 .collect::<Vec<_>>();
-            drop(base_shard);
-            drop(solutions_sender);
-            // Disconnects the channel if every solutions thread panics, so the
-            // DFS threads fail to send instead of blocking forever (when they
-            // call .unwrap() )
-            drop(candidates_receiver);
 
-            for (tree_thread_info, solutions_thread_info) in
-                handles
-                    .into_iter()
-                    .map(|(tree_thread_handle, solutions_thread_handle)| {
-                        (
-                            tree_thread_handle.join().unwrap(),
-                            solutions_thread_handle.join().unwrap(),
-                        )
-                    })
+            let solutions_thread_handle = s.spawn(move || {
+                // Move candidates_receiver to isconnect the channel if every
+                // solutions thread panics, so the DFS threads
+                // fail to send instead of blocking forever (when
+                // they call .unwrap() )
+                self.solutions_thread(candidates_receiver, pareto_efficient_prunings)
+            });
+
+            drop(base_shard);
+
+            for tree_thread_info in handles
+                .into_iter()
+                .map(|tree_thread_handle| tree_thread_handle.join().unwrap())
             {
                 candidate_count += tree_thread_info.candidate_count;
                 dfs_real_time += tree_thread_info.real_time;
@@ -981,38 +934,16 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                 empty_sends += tree_thread_info.empty_sends;
                 full_sends += tree_thread_info.full_sends;
                 sender_lens += tree_thread_info.sender_lens;
-
-                solutions_cpu_time += solutions_thread_info.cpu_time;
-                solutions_real_time += solutions_thread_info.real_time;
-                processed_candidate_count += solutions_thread_info.processed_candidate_count;
-                post_candidate_count += solutions_thread_info.post_candidate_count;
-                smallest_fronts.push(solutions_thread_info.cycle_combinations);
             }
+
+            let solutions_thread_info = solutions_thread_handle.join().unwrap();
+
+            solutions_cpu_time += solutions_thread_info.cpu_time;
+            solutions_real_time += solutions_thread_info.real_time;
+            processed_candidate_count += solutions_thread_info.processed_candidate_count;
+            post_candidate_count += solutions_thread_info.post_candidate_count;
+            solutions_thread_info.cycle_combinations
         });
-
-        let mut combined_cycle_combinations = CCParetoFront::default();
-        trace!(
-            "{}",
-            smallest_fronts
-                .iter()
-                .filter_map(|x| {
-                    let s = dbg_registers_iter(
-                        x.0.iter().map(|combination| combination.iter().copied()),
-                        &self.possible_orders_except_one,
-                    );
-                    if s.is_empty() { None } else { Some(s) }
-                })
-                .collect::<Vec<_>>()
-                .join("\n\n")
-        );
-        while let Some(mut smallest_front) = smallest_fronts.pop() {
-            if let Some(smaller_front) = smallest_fronts.pop() {
-                smallest_front.merge(smaller_front);
-                smallest_fronts.push(smallest_front);
-            } else {
-                combined_cycle_combinations = smallest_front;
-            }
-        }
 
         let real_time = real_time.elapsed();
 
