@@ -2089,7 +2089,6 @@ name = "puzzle_theory"
 version = "0.1.0"
 dependencies = [
  "algebraics",
- "ariadne",
  "bnum",
  "boxcar",
  "itertools 0.15.0",

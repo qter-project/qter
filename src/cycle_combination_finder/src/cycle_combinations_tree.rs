@@ -30,7 +30,7 @@ use crate::{
 
 #[derive(Clone)]
 struct CycleCombinationsTreeShard<'a> {
-    fails: u64,
+    fail_sends: u64,
     batch_packed_queue: Vec<u32>,
     sends: u64,
     empty_sends: u64,
@@ -82,6 +82,7 @@ struct TreeThreadInfo {
     empty_sends: u64,
     full_sends: u64,
     sends: u64,
+    fail_sends: u64,
     sender_lens: usize,
 }
 
@@ -89,6 +90,8 @@ struct TreeProfileInfo {
     candidate_count: u64,
     processed_candidate_count: u64,
     post_candidate_count: u64,
+    sends: u64,
+    fail_sends: u64,
     pruned_orders_percentage: f64,
     sender_len_percentage: f64,
     empty_sends_percentage: f64,
@@ -120,6 +123,8 @@ impl Display for TreeProfileInfo {
                     self.post_candidate_count / u64::try_from(self.num_cores).unwrap(),
                 ),
             )
+            .field(&format!("{:>25}", "sends"), &self.sends)
+            .field(&format!("{:>25}", "fail_sends"), &self.fail_sends)
             .field(
                 &format!("{:>25}", "pruned_orders_percentage"),
                 &format_args!("{:05.2}%", self.pruned_orders_percentage * 100.0),
@@ -342,9 +347,9 @@ impl CycleCombinationsTreeShard<'_> {
 
             let len = self.candidates_sender.len();
             trace!(
-                "{:?}: candidates={candidate_count}; mpmc={len}; fails={}",
+                "{:?}: candidates={candidate_count}; mpmc={len}; fail_sends={}",
                 std::thread::current().id(),
-                self.fails,
+                self.fail_sends,
             );
             if len == self.candidates_sender_capacity {
                 self.full_sends += 1;
@@ -354,7 +359,6 @@ impl CycleCombinationsTreeShard<'_> {
             }
             self.sender_lens += len;
             self.sends += 1;
-            self.fails = 0;
             // We can unwrap because the senders is only dropped after all
             // threads are joined.
             self.candidates_sender.send(payload).unwrap();
@@ -508,7 +512,7 @@ impl CycleCombinationsTreeShard<'_> {
                 self.batch_packed_queue[self.curr_batch_len] = candidate_count;
                 self.maybe_send_queue(false);
             } else if log_enabled!(Level::Debug) {
-                self.fails += 1;
+                self.fail_sends += 1;
             }
         }
     }
@@ -813,6 +817,7 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
             empty_sends: shard.empty_sends,
             full_sends: shard.full_sends,
             sends: shard.sends,
+            fail_sends: shard.fail_sends,
             sender_lens: shard.sender_lens,
         }
     }
@@ -860,7 +865,7 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
         // We can unwrap because `exact_register_count` is NonZero.
         #[allow(clippy::missing_panics_doc)]
         let base_shard = CycleCombinationsTreeShard {
-            fails: 0,
+            fail_sends: 0,
             batch_packed_queue: vec![],
             sends: 0,
             empty_sends: 0,
@@ -889,6 +894,7 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
         let mut processed_candidate_count = 0;
         let mut post_candidate_count = 0;
         let mut sends = 0;
+        let mut fail_sends = 0;
         let mut empty_sends = 0;
         let mut full_sends = 0;
         let mut sender_lens = 0;
@@ -971,6 +977,7 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
                 dfs_real_time += tree_thread_info.real_time;
                 dfs_cpu_time += tree_thread_info.cpu_time;
                 sends += tree_thread_info.sends;
+                fail_sends += tree_thread_info.fail_sends;
                 empty_sends += tree_thread_info.empty_sends;
                 full_sends += tree_thread_info.full_sends;
                 sender_lens += tree_thread_info.sender_lens;
@@ -1039,6 +1046,8 @@ impl<const N: usize> CycleCombinationFinder<'_, N> {
             candidate_count,
             processed_candidate_count,
             post_candidate_count,
+            sends,
+            fail_sends,
             pruned_orders_percentage,
             sender_len_percentage,
             empty_sends_percentage,

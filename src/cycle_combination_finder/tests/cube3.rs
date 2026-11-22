@@ -176,7 +176,7 @@ fn exactly_front_entries() {
             .find()
             .unwrap(),
     );
-    assert!(!front.is_empty());
+    assert_ne!(front, [] as [Vec<u64>; 0]);
     for entry in front {
         for &order in &entry {
             let cycle_combinations = CycleCombinationFinderBuilder::default()
