@@ -132,8 +132,8 @@ mod tests {
     #[test]
     fn trivial_cube() {
         let (orbits, EvenParityConstraints(constraints)) = cube(1);
-        assert!(orbits.is_empty());
-        assert!(constraints.is_empty());
+        assert_eq!(orbits, [] as [PartialOrbitDef; 0]);
+        assert_eq!(constraints, [] as [Vec<usize>; 0]);
     }
 
     #[test]
